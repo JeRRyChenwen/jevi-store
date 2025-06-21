@@ -1,0 +1,7 @@
+{
+  "tailwindCSS.includeLanguages": {
+    "css": "css",
+    "postcss": "css"
+  },
+  "css.lint.unknownAtRules": "ignore"
+}
