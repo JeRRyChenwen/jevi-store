@@ -33,7 +33,12 @@ export default function RegisterPage() {
     setLoading(true)
     setErrorMessage("")
 
+
+    
+
     try {
+
+      console.log("请求发送数据：", data)
       const res = await fetch("/api/register", {
         method: "POST",
         headers: {
@@ -48,12 +53,13 @@ export default function RegisterPage() {
       }
 
       window.location.href = "/auth/login"
-    } catch (error: any) {
-      setErrorMessage(error.message)
-    } finally {
-      setLoading(false)
-    }
+    } catch (error: unknown) {
+  if (error instanceof Error) {
+    setErrorMessage(error.message)
+  } else {
+    setErrorMessage("未知错误")
   }
+}}
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-muted/30">

@@ -30,30 +30,34 @@ export default function LoginPage() {
   const [errorMessage, setErrorMessage] = useState("")
 
   const onSubmit = async (data: LoginFormData) => {
-    setLoading(true)
-    setErrorMessage("")
+  setLoading(true)
+  setErrorMessage("")
 
-    try {
-      const res = await fetch("/api/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(data),
-      })
+  try {
+    const res = await fetch("/api/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    })
 
-      if (!res.ok) {
-        const errorRes = await res.json()
-        throw new Error(errorRes.message || "登录失败")
-      }
-
-      window.location.href = "/dashboard"
-    } catch (error: any) {
-      setErrorMessage(error.message)
-    } finally {
-      setLoading(false)
+    if (!res.ok) {
+      const errorRes = await res.json()
+      throw new Error(errorRes.message || "登录失败")
     }
+
+    window.location.href = "/dashboard"
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      setErrorMessage(error.message)
+    } else {
+      setErrorMessage("发生未知错误")
+    }
+  } finally {
+    setLoading(false)
   }
+}
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-muted/30">

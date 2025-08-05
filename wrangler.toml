@@ -1,0 +1,10 @@
+name = "social-platform"
+compatibility_date = "2025-08-03"
+
+pages_build_output_dir = "out"
+migrations_dir = "migrations"
+
+[[d1_databases]]
+binding = "DB_D1"
+database_name = "socialplatform"
+database_id = "c25047d3-3051-47b6-93c4-a41cfd09f730"

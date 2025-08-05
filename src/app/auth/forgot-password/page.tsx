@@ -29,31 +29,35 @@ export default function ForgotPasswordPage() {
   const [errorMessage, setErrorMessage] = useState("")
 
   const onSubmit = async (data: ForgotPasswordFormData) => {
-    setLoading(true)
-    setSuccessMessage("")
-    setErrorMessage("")
+  setLoading(true)
+  setSuccessMessage("")
+  setErrorMessage("")
 
-    try {
-      const res = await fetch("/api/forgot-password", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(data),
-      })
+  try {
+    const res = await fetch("/api/forgot-password", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    })
 
-      if (!res.ok) {
-        const errorRes = await res.json()
-        throw new Error(errorRes.message || "请求失败")
-      }
-
-      setSuccessMessage("验证码已发送到您的邮箱，请查收")
-    } catch (error: any) {
-      setErrorMessage(error.message)
-    } finally {
-      setLoading(false)
+    if (!res.ok) {
+      const errorRes = await res.json()
+      throw new Error(errorRes.message || "请求失败")
     }
+
+    setSuccessMessage("验证码已发送到您的邮箱，请查收")
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      setErrorMessage(error.message)
+    } else {
+      setErrorMessage("发生未知错误")
+    }
+  } finally {
+    setLoading(false)
   }
+}
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-muted/30">
