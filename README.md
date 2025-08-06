@@ -115,3 +115,30 @@ Your database may not be available to serve requests during the migration, conti
 ├───────────────────────┼────────┤
 │ 0001_create_users.sql │ ✅ │
 └───────────────────────┴────────┘
+
+============================================================================
+
+npx wrangler pages dev --remote
+
+npx wrangler pages dev --local
+
+============================================================================
+
+wrangler pages dev 在本地运行时强制使用本地 D1 副本，不能直接切换到远程模式。
+
+这也是 Cloudflare 的设计——pages dev 主要是本地模拟 Pages 环境，不会直连远程数据库。
+
+============================================================================
+
+我明白了，你现在的项目是通过 npx wrangler pages deploy 直接上传静态文件到 Workers & Pages，
+这种方式没有走 Cloudflare Pages 的“构建”流程，所以你看不到 Pages 专用的 Build settings 入口。
+
+Cloudflare 把 Workers 和 Pages 合并到一个菜单了（所以现在只有“Workers & Pages”），但是只有通过 Pages 项目创建并连接 Git 仓库的方式，才会出现 Build settings 选项。
+
+要让你的网站可以用 Pages 的构建功能（自动执行 npx @cloudflare/next-on-pages 之类的命令），你需要这样做：
+
+============================================================================
+
+npm run build
+
+npx wrangler pages deploy out

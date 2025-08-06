@@ -7,4 +7,4 @@ migrations_dir = "migrations"
 [[d1_databases]]
 binding = "DB_D1"
 database_name = "socialplatform"
-database_id = "c25047d3-3051-47b6-93c4-a41cfd09f730"
+database_id = "95ca431b-fe75-4d1f-bbc7-7312f65fc8f9"
