@@ -236,3 +236,53 @@ User API Tokens
 这样才能保护数据库凭据、做输入校验、加密密码、设定会话/鉴权等。
 
 下面给你一套「能跑」的最小方案：在你现有的 Worker（purple-pond-3b88）里加注册/登录接口，然后前端直接 fetch 调这些接口。
+
+可以！思路是：前端表单 ➜ 调你的 Worker API ➜ Worker 写入 D1。不要让浏览器直接连 D1。
+
+# ============================================================================
+
+在开发阶段：
+
+可以删除数据库以及迁移记录
+
+# 进入 d1-worker 目录
+
+# 删除数据库（慎用，会清空所有表）
+
+npx wrangler d1 execute socialplatform --remote --command "DROP TABLE IF EXISTS users;"
+
+# 同时删除迁移记录（可选，如果要重新执行 0001）
+
+npx wrangler d1 execute socialplatform --remote --command "DELETE FROM d1_migrations WHERE name='0001_init.sql';"
+
+1. 应用迁移
+
+npx wrangler d1 migrations apply socialplatform --remote
+
+2）验证表结构与行为
+
+# 查看 users 列定义
+
+npx wrangler d1 execute socialplatform --remote --command "PRAGMA table_info(users);"
+
+# 查看触发器
+
+npx wrangler d1 execute socialplatform --remote --command "SELECT name FROM sqlite_master WHERE type='trigger';"
+
+验证是否存在
+npx wrangler d1 execute socialplatform --remote --command "SELECT name, sql FROM sqlite_master WHERE type='trigger';"
+
+显示特定的 column
+npx wrangler d1 execute socialplatform --remote --command "INSERT INTO users (email,name,pw_hash,pw_salt,pw_iters,bio) VALUES ('test@example.com','TestUser','hash_demo','salt_demo',120000,'hi there');"
+
+显示所有的 column
+npx wrangler d1 execute socialplatform --remote --command "SELECT \* FROM users WHERE email='test@example.com';"
+
+# ============================================================================
+
+开发阶段：
+
+本地跑工：npx wrangler dev --x-remote-bindings（端口 8787）
+
+FRONTEND_ORIGIN 设置你的前端本地地址（如 http://localhost:3000），避免 CORS 问题。
+生产阶段：改成 FRONTEND_ORIGIN 你的正式站点域名。
