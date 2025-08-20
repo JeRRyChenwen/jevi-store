@@ -217,6 +217,122 @@ Cloudflare D1 数据库（类似 SQLite / PostgreSQL）
 
     ```
 
+# 6. 前端表单 ➜ 调 Worker API ➜ Worker 写入 D1 （不要让浏览器直接连 D1）
+
+    ```bash
+
+    把“前端 → 你的 Cloudflare Worker API → D1”这条链路串起来就行。核心原则：前端永远不要直接连 D1，所有写入都走 Worker（后端）来做密码哈希、校验、入库。
+
+
+    ```
+
+### 6.1 首先如果要修改 table 的话，第一种选择在 d1-worker 仓库 里创建一个新迁移，第二种选择则是直接在 d1-worker 仓库 里的原有的迁移中进行修改，也就是删表重建（但如果原有的数据库中已经存在数据的话就不行）
+
+    ```bash
+
+    之所以要在 d1-worker 仓库 里创建一个新迁移，是因为 D1 数据库是结构化的，它和 MySQL、PostgreSQL 一样，需要明确的表结构（Schema）。迁移（migration）就是用来记录并应用数据库结构变更的。
+
+    在 D1（或者 MySQL、PostgreSQL 这些关系型数据库）里，每次你对表结构有改动，都应该新建一个迁移文件，而不是直接去改之前的迁移文件。
+
+    如果你决定删表重建的话：
+
+
+    # 进入 d1-worker 目录
+    # 删除数据库（慎用，会清空所有表）
+    npx wrangler d1 execute socialplatform --remote --command "DROP TABLE IF EXISTS users;"
+
+    # 同时删除迁移记录（可选，如果要重新执行 0001）
+    npx wrangler d1 execute socialplatform --remote --command "DELETE FROM d1_migrations WHERE name='0001_init.sql';"
+
+    # 重新跑 0001_init.sql
+    npx wrangler d1 migrations apply socialplatform --remote
+
+
+    同时如果你想修改 0001_init.sql 文件名的话：
+
+    Cloudflare D1 的迁移文件命名规则
+    D1 的迁移是靠 文件名中的编号（0001, 0002, …） 来识别执行顺序的。
+    文件名的后半部分（比如 _init.sql）只是你自己起的描述名，D1 并不强制要求固定写法。
+    例如：
+    0001_init.sql
+    0001_d1_init.sql
+    0001_create_users.sql
+    这些效果完全一样，只要前缀编号没变。
+
+
+    ```
+
+### 6.2 在 Worker 里新增“注册”接口，在 d1-worker 里（src/index.ts），加入一个 /auth/register 路由
+
+    ```bash
+    在前端中 发送信息到下面的网址：
+    NEXT_PUBLIC_API_BASE=http://127.0.0.1:8787
+
+
+    我们可以创建一个 .env.local 文件来储存 NEXT_PUBLIC_API_BASE 这个变量
+
+    ✅ .env.local
+    专门用于本地开发。
+    里面的值往往是：http://127.0.0.1:8787、http://localhost:3000 这种本地地址。
+    .env.local 默认不会被 git 提交（因为 .gitignore 里一般忽略了它），这样你就不会把本地配置上传到代码仓库。
+
+
+    ✅ .env.production
+    专门用于生产部署（线上环境）。
+    里面写的是你的真实线上 Worker/API 地址，比如：
+    NEXT_PUBLIC_API_BASE=https://social-platform.yourdomain.com
+    在部署到 Cloudflare Pages / Vercel / Netlify 等环境时，可以让 CI/CD 自动加载这个文件。
+
+    ```
+
+### 6.3 在 前端（social-platform 仓库） 的注册页里调用这个接口并提交到 Worker
+
+    ```bash
+    worker 监听下面的网址的请求（调试阶段用本地网址）：
+    FRONTEND_ORIGIN = "http://localhost:3000";
+
+    ```
+
+### 6.4 如果你要修改 0001_init.sql 文件名的话，需要检测是否识别到你要应用的新的迁移 0001_d1_init.sql 文件
+
+    ```bash
+
+    npx wrangler d1 migrations list socialplatform --remote
+
+    如果识别成功就运行下面的代码应用迁移：
+    npx wrangler d1 migrations apply socialplatform --remote
+    # 查看 users 列定义
+    npx wrangler d1 execute socialplatform --remote --command "PRAGMA table_info(users);"
+
+
+    验证触发器是否存在：
+    npx wrangler d1 execute socialplatform --remote --command "SELECT name, sql FROM sqlite_master WHERE type='trigger';"
+
+    # 如果想显示table里的所有内容的话可以运行
+    npx wrangler d1 execute socialplatform --remote --command "SELECT * FROM users WHERE email='test@example.com';"
+
+    ```
+
+### 6.5 在 前端（social-platform 仓库） 的注册页里调用这个接口并提交到 Worker
+
+    ```bash
+    worker 监听下面的网址的请求（调试阶段用本地网址）：
+    FRONTEND_ORIGIN = "http://localhost:3000";
+
+    ```
+
+### 6.6 测试，前端本地 + Worker 本地预览（推荐开发期）
+
+    ```bash
+
+    在 d1-worker 项目里运行：
+    npx wrangler dev --x-remote-bindings
+
+    在 前端 项目里运行：
+    npm run dev
+
+    ```
+
 # ============================================================================
 
 # ============================================================================
@@ -229,60 +345,3 @@ User API Tokens
 # ============================================================================
 
 # ============================================================================
-
-千万不要让前端浏览器直接连 D1。正确做法是：
-
-前端网站（React/Next/Vite/任意） ⟶ 调用你的 Worker API ⟶ Worker 在服务器侧访问 D1
-这样才能保护数据库凭据、做输入校验、加密密码、设定会话/鉴权等。
-
-下面给你一套「能跑」的最小方案：在你现有的 Worker（purple-pond-3b88）里加注册/登录接口，然后前端直接 fetch 调这些接口。
-
-可以！思路是：前端表单 ➜ 调你的 Worker API ➜ Worker 写入 D1。不要让浏览器直接连 D1。
-
-# ============================================================================
-
-在开发阶段：
-
-可以删除数据库以及迁移记录
-
-# 进入 d1-worker 目录
-
-# 删除数据库（慎用，会清空所有表）
-
-npx wrangler d1 execute socialplatform --remote --command "DROP TABLE IF EXISTS users;"
-
-# 同时删除迁移记录（可选，如果要重新执行 0001）
-
-npx wrangler d1 execute socialplatform --remote --command "DELETE FROM d1_migrations WHERE name='0001_init.sql';"
-
-1. 应用迁移
-
-npx wrangler d1 migrations apply socialplatform --remote
-
-2）验证表结构与行为
-
-# 查看 users 列定义
-
-npx wrangler d1 execute socialplatform --remote --command "PRAGMA table_info(users);"
-
-# 查看触发器
-
-npx wrangler d1 execute socialplatform --remote --command "SELECT name FROM sqlite_master WHERE type='trigger';"
-
-验证是否存在
-npx wrangler d1 execute socialplatform --remote --command "SELECT name, sql FROM sqlite_master WHERE type='trigger';"
-
-显示特定的 column
-npx wrangler d1 execute socialplatform --remote --command "INSERT INTO users (email,name,pw_hash,pw_salt,pw_iters,bio) VALUES ('test@example.com','TestUser','hash_demo','salt_demo',120000,'hi there');"
-
-显示所有的 column
-npx wrangler d1 execute socialplatform --remote --command "SELECT \* FROM users WHERE email='test@example.com';"
-
-# ============================================================================
-
-开发阶段：
-
-本地跑工：npx wrangler dev --x-remote-bindings（端口 8787）
-
-FRONTEND_ORIGIN 设置你的前端本地地址（如 http://localhost:3000），避免 CORS 问题。
-生产阶段：改成 FRONTEND_ORIGIN 你的正式站点域名。
