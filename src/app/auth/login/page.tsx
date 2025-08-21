@@ -1,63 +1,80 @@
-"use client"
+"use client";
 
-import { useForm } from "react-hook-form"
-import { z } from "zod"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card"
-import { useState } from "react"
-import Link from "next/link"
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
+import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
 const schema = z.object({
   email: z.string().email("请输入有效的邮箱"),
-  password: z.string().min(6, "密码至少6位"),
-})
+  password: z.string().min(8, "密码至少8位"),
+});
 
-type LoginFormData = z.infer<typeof schema>
+type LoginFormData = z.infer<typeof schema>;
 
 export default function LoginPage() {
+  const router = useRouter();
   const {
     register,
     handleSubmit,
     formState: { errors },
   } = useForm<LoginFormData>({
     resolver: zodResolver(schema),
-  })
+  });
 
-  const [loading, setLoading] = useState(false)
-  const [errorMessage, setErrorMessage] = useState("")
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
   const onSubmit = async (data: LoginFormData) => {
-  setLoading(true)
-  setErrorMessage("")
+    setLoading(true);
+    setErrorMessage("");
 
-  try {
-    const res = await fetch("/api/login", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(data),
-    })
+    try {
+      if (!API_BASE) {
+        throw new Error("未配置 NEXT_PUBLIC_API_BASE（请在 .env.local 设置）");
+      }
 
-    if (!res.ok) {
-      const errorRes = await res.json()
-      throw new Error(errorRes.message || "登录失败")
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // 如果后端以后改为发 HttpOnly Cookie，会需要携带凭据：
+        // credentials: "include",
+        body: JSON.stringify(data),
+      });
+
+      let payload: any = null;
+      try {
+        payload = await res.json();
+      } catch {
+        /* ignore json parse error */
+      }
+
+      if (!res.ok || !payload?.ok) {
+        const msg = payload?.error || payload?.message || "登录失败";
+        throw new Error(msg);
+      }
+
+      // 登录成功：保存非敏感用户信息用于 UI（Navbar 显示昵称等）
+      if (payload?.user) {
+        localStorage.setItem("sp_user", JSON.stringify(payload.user));
+      }
+
+      // 跳转到你的主页
+      router.push("/");
+    } catch (error: any) {
+      setErrorMessage(error?.message || "网络或服务器异常");
+    } finally {
+      setLoading(false);
     }
-
-    window.location.href = "/dashboard"
-  } catch (error: unknown) {
-    if (error instanceof Error) {
-      setErrorMessage(error.message)
-    } else {
-      setErrorMessage("发生未知错误")
-    }
-  } finally {
-    setLoading(false)
-  }
-}
+  };
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-muted/30">
@@ -99,5 +116,5 @@ export default function LoginPage() {
         </CardFooter>
       </Card>
     </div>
-  )
+  );
 }
