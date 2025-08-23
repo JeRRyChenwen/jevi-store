@@ -335,6 +335,102 @@ Cloudflare D1 数据库（类似 SQLite / PostgreSQL）
 
 ### 6.7 在测试的时候，特别是账号注册测试的时候，弱/重复使用的密码会导致 Google Password Manager 的提醒
 
+### 6.8 在 d1-worker 中新增 /auth/login，因为你现在用的是 静态导出 的 Next 项目，/api/login 不存在，前端必须改为调用 Worker 的 /auth/login
+
+    ```bash
+
+    把 fetch("/api/login") 改为 fetch(\${API_BASE}/auth/login`)`
+
+    用环境变量 NEXT_PUBLIC_API_BASE 指向你的 Worker（开发：http://127.0.0.1:8787）
+
+    密码校验与后端对齐到 至少 8 位
+
+    兼容后端返回的 { error: "..." } 与 { ok: true, user } 结构
+
+    成功后把非敏感 user 存到 localStorage 以便 Navbar 展示（后续可升级为 Cookie/JWT）
+
+    ```
+
+### 6.9 在前端新增/修正登录页
+
+### 6.10 如果报错 500 （internal server error）
+
+    ```bash
+
+    把 fetch("/api/login") 改为 fetch(\${API_BASE}/auth/login`)`
+
+    用环境变量 NEXT_PUBLIC_API_BASE 指向你的 Worker（开发：http://127.0.0.1:8787）
+
+    密码校验与后端对齐到 至少 8 位
+
+    兼容后端返回的 { error: "..." } 与 { ok: true, user } 结构
+
+    成功后把非敏感 user 存到 localStorage 以便 Navbar 展示（后续可升级为 Cookie/JWT）
+
+    ```
+
+### 6.11 确认是否全局安装” Wrangler
+
+    ```bash
+
+    cd "D:\前端练习\d1-worker"
+
+    :: 1) 用 npx 调 wrangler（无需全局安装）
+    npx wrangler -v
+
+    :: 2) 查看你的 D1 数据库名字（确认是 socialplatform）
+    npx wrangler d1 list
+
+    :: 3) 应用迁移到本地（dev 用）——确保有 users 表
+    npx wrangler d1 migrations apply socialplatform --local
+
+    :: 4) 验证表是否存在
+    npx wrangler d1 execute socialplatform --local --command "SELECT name FROM sqlite_master WHERE type='table';"
+
+    :: 5) 看 users 列定义
+    npx wrangler d1 execute socialplatform --local --command "PRAGMA table_info(users);"
+
+    :: 6) 启动本地开发 Worker
+    npx wrangler dev
+
+    ------------------------------------------------------------------------
+    想要“永久可用”的全局安装（可选）
+    如果你希望 wrangler 这个命令在任何终端都能用：
+
+    npm i -g wrangler@latest
+    wrangler -v
+
+    ------------------------------------------------------------------------
+    应用本地 D1 迁移（创建 users 表）
+    cd "D:\前端练习\d1-worker"
+
+    :: 查看你的 D1 实例名（确认是不是 socialplatform）
+    wrangler d1 list
+
+    :: 把迁移应用到本地开发数据库
+    wrangler d1 migrations apply socialplatform --local
+
+    ------------------------------------------------------------------------
+    验证表是否真的存在
+    wrangler d1 execute socialplatform --local --command "SELECT name FROM sqlite_master WHERE type='table';"
+    wrangler d1 execute socialplatform --local --command "PRAGMA table_info(users);"
+
+    ------------------------------------------------------------------------
+    升级到最新 wrangler（推荐）
+    cd "D:\前端练习\d1-worker"
+
+    :: 确认 npx 用的版本
+    npx wrangler -v   :: 如果还是 4.28.x，继续下面两步
+
+    :: 把 wrangler 加到项目 devDependency，并用 npx 调用本地版本
+    npm i -D wrangler@4.31.0
+
+    :: 本地开发（连本地 D1）
+    npx wrangler dev --local
+
+
+    ```
+
 # ============================================================================
 
 # ============================================================================
@@ -351,3 +447,49 @@ User API Tokens
 npm run dev
 
 npx wrangler dev --x-remote-bindings
+
+npm i -g wrangler@latest
+
+三、（可选）Navbar 显示登录状态
+
+登录成功后我把 user 放到了 localStorage。你可以在 Navbar 里读取它显示昵称/退出。
+
+// 伪代码：在你的 Navbar 组件里
+"use client";
+import { useEffect, useState } from "react";
+
+type User = { id: number; email: string; name?: string | null };
+
+export default function TopNav() {
+const [user, setUser] = useState<User | null>(null);
+useEffect(() => {
+const raw = localStorage.getItem("sp_user");
+if (raw) setUser(JSON.parse(raw));
+}, []);
+
+function logoutUIOnly() {
+// 前端 UI 退出（不清 Cookie，只清本地态）
+localStorage.removeItem("sp_user");
+setUser(null);
+// 也可以顺便跳转
+}
+
+return (
+
+<nav className="w-full p-4 flex items-center justify-between border-b">
+<a href="/" className="font-semibold">Social Platform</a>
+<div>
+{user ? (
+<div className="flex items-center gap-3">
+<span>Hi, {user.name ?? user.email}</span>
+<button className="underline" onClick={logoutUIOnly}>退出</button>
+</div>
+) : (
+<a className="underline" href="/auth/login">登录</a>
+)}
+</div>
+</nav>
+);
+}
+
+进阶：如果你想做真正后端登出，在 Worker 里做 /auth/logout，把 sp_session 置空并设置 Max-Age=0 回写 Cookie 即可。
