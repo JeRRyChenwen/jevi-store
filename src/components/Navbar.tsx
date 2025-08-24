@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { usePathname } from "next/navigation"; // ★ 新增
+import { usePathname } from "next/navigation";
 import { ModeToggle } from "@/components/ui/mode-toggle";
 import { User as UserIcon, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -35,7 +35,7 @@ export default function Navbar() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const didInit = useRef(false);
-  const pathname = usePathname(); // ★ 路由变化时触发
+  const pathname = usePathname();
 
   const fetchMe = async (opts?: { force?: boolean; retries?: number }) => {
     const force = !!opts?.force;
@@ -49,6 +49,7 @@ export default function Navbar() {
       cookie: typeof document !== "undefined" ? document.cookie : "(ssr)",
     });
 
+    // 未登录并且不是强制：不打 /auth/me，直接认为 guest
     if (!force && !hasSessionCookie()) {
       console.log("[Navbar] fetchMe:skip (no sp_has_session flag & not forced)");
       setUser(null);
@@ -84,7 +85,7 @@ export default function Navbar() {
     setLoading(false);
   };
 
-  // 首次挂载
+  // 首次挂载：根据标志决定是否请求
   useEffect(() => {
     if (didInit.current) return;
     didInit.current = true;
@@ -116,14 +117,21 @@ export default function Navbar() {
     };
   }, []);
 
-  // ★ 新增：路由变化后强制拉取（防事件丢失）
+  // 路由变化：只有“看起来已登录”时才强制拉取，避免未登录时的 401 噪音
   useEffect(() => {
-    if (!didInit.current) return; // 首次 mount 已在上面拉过
+    if (!didInit.current) return; // 首次 mount 已在上面处理
     console.log("[Navbar] pathname changed:", pathname);
-    fetchMe({ force: true, retries: 3 });
-  }, [pathname]);
+    if (hasSessionCookie()) {
+      console.log("[Navbar] route-change -> has sp_has_session, force fetch");
+      fetchMe({ force: true, retries: 2 });
+    } else {
+      console.log("[Navbar] route-change -> no sp_has_session, skip fetch");
+      setUser(null);
+      setLoading(false);
+    }
+  }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 观测渲染状态变化
+  // 观测渲染状态变化（调试）
   useEffect(() => {
     console.log("[Navbar] render state:", {
       loading,
@@ -182,7 +190,6 @@ export default function Navbar() {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="flex items-center gap-2" aria-label="account menu">
                   <UserIcon className="w-5 h-5" />
-                  {/* 小屏也显示，避免被隐藏 */}
                   <span>Hi, {displayName(user)}</span>
                 </Button>
               </DropdownMenuTrigger>
