@@ -440,56 +440,12 @@ User API Tokens
 
 # ============================================================================
 
-# ============================================================================
-
-# ============================================================================
-
 npm run dev
 
 npx wrangler dev --x-remote-bindings
 
-npm i -g wrangler@latest
+# ============================================================================
 
-三、（可选）Navbar 显示登录状态
+# ============================================================================
 
-登录成功后我把 user 放到了 localStorage。你可以在 Navbar 里读取它显示昵称/退出。
-
-// 伪代码：在你的 Navbar 组件里
-"use client";
-import { useEffect, useState } from "react";
-
-type User = { id: number; email: string; name?: string | null };
-
-export default function TopNav() {
-const [user, setUser] = useState<User | null>(null);
-useEffect(() => {
-const raw = localStorage.getItem("sp_user");
-if (raw) setUser(JSON.parse(raw));
-}, []);
-
-function logoutUIOnly() {
-// 前端 UI 退出（不清 Cookie，只清本地态）
-localStorage.removeItem("sp_user");
-setUser(null);
-// 也可以顺便跳转
-}
-
-return (
-
-<nav className="w-full p-4 flex items-center justify-between border-b">
-<a href="/" className="font-semibold">Social Platform</a>
-<div>
-{user ? (
-<div className="flex items-center gap-3">
-<span>Hi, {user.name ?? user.email}</span>
-<button className="underline" onClick={logoutUIOnly}>退出</button>
-</div>
-) : (
-<a className="underline" href="/auth/login">登录</a>
-)}
-</div>
-</nav>
-);
-}
-
-进阶：如果你想做真正后端登出，在 Worker 里做 /auth/logout，把 sp_session 置空并设置 Max-Age=0 回写 Cookie 即可。
+把你的项目升级到“电商标准方案”。我给你可以直接替换的后端 Worker 代码（带 JWT + HttpOnly Cookie + /auth/me + /auth/logout），以及前端两处改动（Login 页 & Navbar）。照做即可。

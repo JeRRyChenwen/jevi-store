@@ -11,68 +11,82 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE!; // 开发建议: http://localhost:8787
 
 const schema = z.object({
   email: z.string().email("请输入有效的邮箱"),
   password: z.string().min(8, "密码至少8位"),
 });
-
 type LoginFormData = z.infer<typeof schema>;
 
 export default function LoginPage() {
   const router = useRouter();
+
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isSubmitting },
   } = useForm<LoginFormData>({
     resolver: zodResolver(schema),
   });
 
-  const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
   const onSubmit = async (data: LoginFormData) => {
-    setLoading(true);
     setErrorMessage("");
 
+    const payload = {
+      email: data.email.trim().toLowerCase(),
+      password: data.password,
+    };
+
     try {
-      if (!API_BASE) {
-        throw new Error("未配置 NEXT_PUBLIC_API_BASE（请在 .env.local 设置）");
-      }
+      if (!API_BASE) throw new Error("未配置 NEXT_PUBLIC_API_BASE（请在 .env.local 设置）");
+
+      console.log("[Login] submit", { email: payload.email, API_BASE });
 
       const res = await fetch(`${API_BASE}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // 如果后端以后改为发 HttpOnly Cookie，会需要携带凭据：
-        // credentials: "include",
-        body: JSON.stringify(data),
+        credentials: "include", // ★ 接收 HttpOnly Cookie
+        body: JSON.stringify(payload),
       });
 
-      let payload: any = null;
-      try {
-        payload = await res.json();
-      } catch {
-        /* ignore json parse error */
+      console.log("[Login] /auth/login status =", res.status);
+
+      const body = await res.json().catch(() => ({} as any));
+
+      if (!res.ok) {
+        if (res.status === 401) throw new Error("邮箱或密码不正确");
+        throw new Error(body?.error || body?.message || "登录失败");
       }
 
-      if (!res.ok || !payload?.ok) {
-        const msg = payload?.error || payload?.message || "登录失败";
-        throw new Error(msg);
+      // ✅ 登录成功：等待会话就绪，再通知 Navbar 并跳转
+      console.log("[Login] res.ok. document.cookie(before poll) =", document.cookie);
+
+      const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      let ready = false;
+      for (const delay of [0, 80, 160, 320, 480]) {
+        try {
+          const r = await fetch(`${API_BASE}/auth/me`, { credentials: "include" });
+          console.log(`[Login] /auth/me attempt delay=${delay} status=${r.status}`);
+          if (r.ok) { ready = true; break; }
+        } catch (e) {
+          console.log("[Login] /auth/me attempt error:", e);
+        }
+        await sleep(delay);
       }
 
-      // 登录成功：保存非敏感用户信息用于 UI（Navbar 显示昵称等）
-      if (payload?.user) {
-        localStorage.setItem("sp_user", JSON.stringify(payload.user));
-      }
+      console.log("[Login] meReady =", ready, "document.cookie(after poll) =", document.cookie);
 
-      // 跳转到你的主页
-      router.push("/");
-    } catch (error: any) {
-      setErrorMessage(error?.message || "网络或服务器异常");
-    } finally {
-      setLoading(false);
+      console.log("[Login] dispatch sp-auth-changed");
+      window.dispatchEvent(new Event("sp-auth-changed")); // 让 Navbar 立刻刷新
+
+      console.log("[Login] router.push('/')");
+      router.push("/");                                   // 跳到首页
+    } catch (err: any) {
+      console.error("[Login] error:", err);
+      setErrorMessage(err?.message || "网络或服务器异常");
     }
   };
 
@@ -87,20 +101,20 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div>
               <Label htmlFor="email">邮箱</Label>
-              <Input type="email" {...register("email")} />
+              <Input type="email" autoComplete="email" {...register("email")} />
               {errors.email && <p className="text-red-500 text-sm">{errors.email.message}</p>}
             </div>
 
             <div>
               <Label htmlFor="password">密码</Label>
-              <Input type="password" {...register("password")} />
+              <Input type="password" autoComplete="current-password" {...register("password")} />
               {errors.password && <p className="text-red-500 text-sm">{errors.password.message}</p>}
             </div>
 
             {errorMessage && <p className="text-red-500">{errorMessage}</p>}
 
-            <Button type="submit" disabled={loading} className="w-full">
-              {loading ? "登录中..." : "登录"}
+            <Button type="submit" disabled={isSubmitting} className="w-full">
+              {isSubmitting ? "登录中..." : "登录"}
             </Button>
           </form>
         </CardContent>
