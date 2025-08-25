@@ -431,6 +431,22 @@ Cloudflare D1 数据库（类似 SQLite / PostgreSQL）
 
     ```
 
+### 7.1 下面是一份“从 0 到能用”的登录 + 登录态实现流程说明，覆盖你的两个项目：d1-worker（Cloudflare Worker + D1）和 social-platform（Next.js 前端）
+
+    ```bash
+    1. 用户在前端 /auth/login 输入邮箱/密码 →
+
+    2. POST ${API_BASE}/auth/login（携带 credentials: 'include'）→
+
+    3. Worker 校验密码，签发 JWT，通过 HttpOnly Cookie sp_session 返回，并额外下发一个可读的 存在标记 Cookie sp_has_session=1 →
+
+    4. 前端登录页轮询一次 /auth/me 确认会话可用，发送 window.dispatchEvent(new Event('sp-auth-changed')) →
+
+    5. Navbar 监听该事件并调用 /auth/me 获取用户，显示“Hi, Jerry” →
+
+    6. 退出登录时 POST /auth/logout，服务端清空这两个 Cookie，前端刷新 UI 并跳转登录页。
+    ```
+
 # ============================================================================
 
 # ============================================================================
