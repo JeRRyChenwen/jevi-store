@@ -515,4 +515,8 @@ npx wrangler dev --x-remote-bindings
 
 # ============================================================================
 
-把你的项目升级到“电商标准方案”。我给你可以直接替换的后端 Worker 代码（带 JWT + HttpOnly Cookie + /auth/me + /auth/logout），以及前端两处改动（Login 页 & Navbar）。照做即可。
+2.1
+
+（可选）已登录用户修改密码：POST /auth/change-password
+
+这个接口通过现有会话（/auth/me 的同样校验），要求提供 old_password + new_password，校验旧密后更新为新密。你以后要做“安全设置”页就能直接用。
