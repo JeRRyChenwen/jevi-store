@@ -498,6 +498,30 @@ Cloudflare D1 数据库（类似 SQLite / PostgreSQL）
     6. 修改密码（已登录）：用户提供旧密码 + 新密码，验证通过后直接更新 users 表即可（这不需要额外表）。
     ```
 
+# 9. 购买自己的域名，用于发邮件
+
+    ```bash
+    大致要花多少钱取决于你选的后缀（TLD）。给你用 Cloudflare Registrar（按“成本价”卖） 的最新价格区间当参考：
+
+    .com：约 US$10.44/年（便宜、通用）。
+    Cloudflare Domain Pricing
+
+    .xyz：约 US$11.18/年（价格接近 .com）。
+    Cloudflare Domain Pricing
+
+    .org：注册约 US$7.50、续费 US$10.11/年。
+    Cloudflare Domain Pricing
+
+    .net：约 US$11.84/年。
+    Cloudflare Domain Pricing
+
+    .io：约 US$45/年。
+    Cloudflare Domain Pricing
+
+    .ai：约 US$70/年（偏贵）。
+    Cloudflare Domain Pricing
+    ```
+
 # ============================================================================
 
 # ============================================================================
@@ -520,3 +544,5 @@ npx wrangler dev --x-remote-bindings
 （可选）已登录用户修改密码：POST /auth/change-password
 
 这个接口通过现有会话（/auth/me 的同样校验），要求提供 old_password + new_password，校验旧密后更新为新密。你以后要做“安全设置”页就能直接用。
+
+密码 eye icon
