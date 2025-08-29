@@ -522,6 +522,28 @@ Cloudflare D1 数据库（类似 SQLite / PostgreSQL）
     Cloudflare Domain Pricing
     ```
 
+# 10. 创建一个新的 mailer-api 项目，也就是说要创建一个发邮件的 api
+
+    ```bash
+    推荐架构（稳 & 易扩展）
+
+    1. 两个独立 Worker
+
+    d1-api：你的业务 API（注册、登录、D1 操作）
+
+    mailer-api：专职发邮件
+
+    2. Service Binding（强烈推荐）
+
+    在 Cloudflare 内网把 mailer-api 绑定到 d1-api，无需暴露公网，安全又省心。
+
+    3. 邮件服务用 HTTP 提供商
+
+    Workers 不支持原生 SMTP，选 Resend / SendGrid / Mailgun 这类 HTTP API。
+
+    入门建议：Resend，API 简洁、模板好维护。
+    ```
+
 # ============================================================================
 
 # ============================================================================
@@ -534,6 +556,8 @@ User API Tokens
 npm run dev
 
 npx wrangler dev --x-remote-bindings
+
+wrangler dev --port 8789
 
 # ============================================================================
 
