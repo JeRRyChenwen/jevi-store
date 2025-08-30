@@ -544,6 +544,20 @@ Cloudflare D1 数据库（类似 SQLite / PostgreSQL）
     入门建议：Resend，API 简洁、模板好维护。
     ```
 
+# 11. 创建一个 Strapi 开源自托管版（Community Edition）
+
+    ```bash
+    用 Strapi 开源自托管版（Community Edition） 就能满足你“上新/打折/排序/图文管理”的需求，而且和你现在的栈（Next.js 前端 + Cloudflare Workers + D1 + mailer-api）非常搭
+
+    运行下面命令启动：
+    npm run develop
+
+    如果想以“生产模式”启动（更稳定，后台不热重载）：
+    npm run build
+    npm run start
+
+    ```
+
 # ============================================================================
 
 # ============================================================================
@@ -558,6 +572,8 @@ npm run dev
 npx wrangler dev --x-remote-bindings
 
 wrangler dev --port 8789
+
+npm run develop
 
 # ============================================================================
 
