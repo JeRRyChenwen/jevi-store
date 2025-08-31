@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { ModeToggle } from "@/components/ui/mode-toggle";
-import { User as UserIcon, Settings } from "lucide-react";
+import { User as UserIcon, Settings, Heart, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -117,9 +117,9 @@ export default function Navbar() {
     };
   }, []);
 
-  // 路由变化：只有“看起来已登录”时才强制拉取，避免未登录时的 401 噪音
+  // 路由变化：只有“看起来已登录”时才强制拉取
   useEffect(() => {
-    if (!didInit.current) return; // 首次 mount 已在上面处理
+    if (!didInit.current) return;
     console.log("[Navbar] pathname changed:", pathname);
     if (hasSessionCookie()) {
       console.log("[Navbar] route-change -> has sp_has_session, force fetch");
@@ -159,7 +159,7 @@ export default function Navbar() {
   };
 
   return (
-    <nav className="w-full flex justify-between items-center px-6 py-4 border-b bg-background">
+    <nav className="w-full flex justify-between items-center h-20 md:h-20 px-6 md:px-8 border-b bg-background">
       <Link href="/" className="text-xl font-bold">SocialPlatform</Link>
 
       <div className="flex items-center gap-4">
@@ -174,6 +174,55 @@ export default function Navbar() {
             <DropdownMenuItem asChild>
               <div className="w-full"><ModeToggle /></div>
             </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* 心愿单（点击弹出菜单，不跳转） */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-10 w-10 md:h-12 md:w-12"
+              aria-label="wishlist"
+            >
+              <Heart className="w-6 h-6 md:w-7 md:h-7" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuItem disabled>0 saved items</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            {/* 如需跳转到心愿单页，可保留下面这一项；不需要可删除 */}
+            <DropdownMenuItem asChild>
+              <Link href="/wishlist">Open wishlist</Link>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* 购物袋（点击弹出菜单，不跳转） */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-10 w-10 md:h-12 md:w-12"
+              aria-label="cart"
+            >
+              <ShoppingBag className="w-6 h-6 md:w-7 md:h-7" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-72 p-0">
+            <div className="p-3 text-sm text-muted-foreground">Your bag is empty.</div>
+            <DropdownMenuSeparator />
+            <div className="p-3 flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Subtotal</span>
+              <span className="font-medium">$0.00</span>
+            </div>
+            <div className="p-3 grid grid-cols-2 gap-2">
+              {/* 需要跳转时再点击下面按钮；如果完全不跳转可换成普通按钮 */}
+              <Link href="/cart"><Button variant="outline" className="w-full">View cart</Button></Link>
+              <Link href="/checkout"><Button className="w-full">Checkout</Button></Link>
+            </div>
           </DropdownMenuContent>
         </DropdownMenu>
 
