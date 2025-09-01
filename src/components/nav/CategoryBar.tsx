@@ -17,7 +17,7 @@ type Item = {
 };
 
 const DEFAULT_ITEMS: Item[] = [
-  { label: "New In",        href: "/category/new" },
+  { label: "New In",        href: "/category/new-in" },
   { label: "Women",         href: "/category/women" },
   { label: "Men",           href: "/category/men" },
   { label: "Beauty",        href: "/category/beauty" },
