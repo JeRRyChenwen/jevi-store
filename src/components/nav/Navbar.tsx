@@ -1,11 +1,11 @@
-// src/components/Navbar.tsx
+// src/components/nav/Navbar.tsx
 "use client";
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { ModeToggle } from "@/components/ui/mode-toggle";
-import { User as UserIcon, Settings, Heart, ShoppingBag } from "lucide-react";
+import { User as UserIcon, Settings, Heart, ShoppingBag, Search as SearchIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -15,33 +15,32 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 
+import CompactSearch from "@/components/search/CompactSearch";
+import SearchOverlay from "@/components/search/SearchOverlay";
+
 type User = { id: string; email: string; name?: string | null };
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE!;
 
-// 非 HttpOnly 的标志，用于“未登录时不打 /auth/me”
+// 非 HttpOnly 的标志
 function hasSessionCookie() {
   const has =
     typeof document !== "undefined" &&
     document.cookie.split("; ").some((c) => c.startsWith("sp_has_session=1"));
   return has;
 }
-
 function displayName(u: User) {
   if (u.name && u.name.trim()) return u.name.trim().split(/\s+/)[0];
   return u.email.split("@")[0];
 }
 
 // 统一尺寸（按钮与图标）
-// const ICON_BTN = "h-10 w-10 md:h-12 md:w-12";    // 点击区域更大
-// const ICON_SIZE = "w-20 h-20 md:w-21 md:h-21";       // 图标本体更大
-const ICON_BTN  = "!h-12 !w-12 md:!h-14 md:!w-14";   // 点击区域：48px / 56px
-const ICON_SIZE = "!h-6  !w-6  md:!h-6  md:!w-6";    // 图标本体：28px / 32px
-
-
+const ICON_BTN  = "!h-12 !w-12 md:!h-14 md:!w-14";  // 48/56 点击区域
+const ICON_SIZE = "!h-6  !w-6  md:!h-6  md:!w-6";   // 24/24 图标本体
 
 export default function Navbar() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [openSearch, setOpenSearch] = useState(false); // ← 新增：移动端搜索弹层开关
   const didInit = useRef(false);
   const pathname = usePathname();
 
@@ -49,43 +48,25 @@ export default function Navbar() {
     const force = !!opts?.force;
     const retries = opts?.retries ?? 0;
 
-    console.log("[Navbar] fetchMe:start", {
-      force,
-      retries,
-      hasFlag: hasSessionCookie(),
-      API_BASE,
-      cookie: typeof document !== "undefined" ? document.cookie : "(ssr)",
-    });
-
     if (!force && !hasSessionCookie()) {
-      console.log("[Navbar] fetchMe:skip (no sp_has_session flag & not forced)");
       setUser(null);
       setLoading(false);
       return;
     }
-
     let lastErr: any = null;
     for (let i = 0; i <= retries; i++) {
       try {
-        console.log(`[Navbar] /auth/me TRY #${i}`);
         const r = await fetch(`${API_BASE}/auth/me`, { credentials: "include" });
-        console.log(`[Navbar] /auth/me STATUS #${i} =`, r.status);
         if (r.ok) {
           const u = (await r.json()) as User;
-          console.log("[Navbar] /auth/me OK user =", u);
           setUser(u);
           setLoading(false);
           return;
         }
       } catch (e) {
         lastErr = e;
-        console.log(`[Navbar] /auth/me ERROR #${i}`, e);
       }
-      if (i < retries) {
-        const wait = i === 0 ? 0 : 100 * i;
-        console.log(`[Navbar] /auth/me RETRY in ${wait}ms`);
-        await new Promise((r) => setTimeout(r, wait));
-      }
+      if (i < retries) await new Promise((r) => setTimeout(r, i === 0 ? 0 : 100 * i));
     }
     if (lastErr) console.log("[Navbar] fetchMe:failed lastErr =", lastErr);
     setUser(null);
@@ -96,23 +77,11 @@ export default function Navbar() {
   useEffect(() => {
     if (didInit.current) return;
     didInit.current = true;
-    console.log("[Navbar] mounted. will initial fetch (force:false)");
     fetchMe({ force: false });
 
-    const onAuthChanged = () => {
-      console.log("[Navbar] EVENT sp-auth-changed");
-      fetchMe({ force: true, retries: 3 });
-    };
-    const onFocus = () => {
-      console.log("[Navbar] EVENT window focus");
-      fetchMe({ force: false });
-    };
-    const onVisibility = () => {
-      if (!document.hidden) {
-        console.log("[Navbar] EVENT visibilitychange -> visible");
-        fetchMe({ force: false });
-      }
-    };
+    const onAuthChanged = () => fetchMe({ force: true, retries: 3 });
+    const onFocus = () => fetchMe({ force: false });
+    const onVisibility = () => { if (!document.hidden) fetchMe({ force: false }); };
 
     window.addEventListener("sp-auth-changed", onAuthChanged);
     window.addEventListener("focus", onFocus);
@@ -127,46 +96,55 @@ export default function Navbar() {
   // 路由变化
   useEffect(() => {
     if (!didInit.current) return;
-    console.log("[Navbar] pathname changed:", pathname);
-    if (hasSessionCookie()) {
-      console.log("[Navbar] route-change -> has sp_has_session, force fetch");
-      fetchMe({ force: true, retries: 2 });
-    } else {
-      console.log("[Navbar] route-change -> no sp_has_session, skip fetch");
-      setUser(null);
-      setLoading(false);
-    }
+    if (hasSessionCookie()) fetchMe({ force: true, retries: 2 });
+    else { setUser(null); setLoading(false); }
   }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 渲染观测
+  // 快捷键：⌘K / Ctrl+K 打开搜索
   useEffect(() => {
-    console.log("[Navbar] render state:", { loading, hasUser: !!user, user });
-  }, [loading, user]);
+    const onKey = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase();
+      if ((e.metaKey || e.ctrlKey) && key === "k") {
+        e.preventDefault();
+        setOpenSearch(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const logout = async () => {
-    console.log("[Navbar] logout:begin");
     try {
-      const r = await fetch(`${API_BASE}/auth/logout`, {
-        method: "POST",
-        credentials: "include",
-      });
-      console.log("[Navbar] logout:status =", r.status);
-    } catch (e) {
-      console.log("[Navbar] logout:error", e);
-    } finally {
+      await fetch(`${API_BASE}/auth/logout`, { method: "POST", credentials: "include" });
+    } catch {}
+    finally {
       setUser(null);
       window.dispatchEvent(new Event("sp-auth-changed"));
-      console.log("[Navbar] logout:redirect -> /auth/login");
       window.location.href = "/auth/login";
     }
   };
 
   return (
-    <nav className="w-full flex justify-between items-center h-20 md:h-20 px-6 md:px-8 border-b bg-background">
-      <Link href="/" className="text-xl font-bold">SocialPlatform</Link>
+    <nav className="w-full flex items-center gap-4 h-20 md:h-20 px-6 md:px-8 border-b bg-background">
+      {/* 左：Logo */}
+      <Link href="/" className="text-xl font-bold whitespace-nowrap">SocialPlatform</Link>
 
-      {/* 右侧图标（统一尺寸与间距） */}
-      <div className="flex items-center gap-0 md:gap-1">
+      {/* 中：桌面端紧凑搜索框（md 及以上显示） */}
+      <CompactSearch className="mx-2" />
+
+      {/* 右：图标组 */}
+      <div className="flex items-center gap-0 md:gap-1 ml-auto">
+        {/* 移动端：放大镜按钮（md 以下显示） */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className={`${ICON_BTN} md:hidden`}
+          aria-label="search"
+          onClick={() => setOpenSearch(true)}
+        >
+          <SearchIcon className={ICON_SIZE} />
+        </Button>
+
         {/* 设置 */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -218,7 +196,7 @@ export default function Navbar() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* 用户（加载 / 未登录 / 已登录 -> 全部使用同一 icon 按钮尺寸） */}
+        {/* 用户 */}
         {loading ? (
           <Button variant="ghost" size="icon" className={`${ICON_BTN} opacity-60`} disabled aria-label="account loading">
             <UserIcon className={ICON_SIZE} />
@@ -246,6 +224,9 @@ export default function Navbar() {
           </Button>
         )}
       </div>
+
+      {/* 移动端全屏搜索弹层 */}
+      <SearchOverlay open={openSearch} onClose={() => setOpenSearch(false)} />
     </nav>
   );
 }
