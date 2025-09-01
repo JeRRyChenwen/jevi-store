@@ -31,6 +31,14 @@ function displayName(u: User) {
   return u.email.split("@")[0];
 }
 
+// 统一尺寸（按钮与图标）
+// const ICON_BTN = "h-10 w-10 md:h-12 md:w-12";    // 点击区域更大
+// const ICON_SIZE = "w-20 h-20 md:w-21 md:h-21";       // 图标本体更大
+const ICON_BTN  = "!h-12 !w-12 md:!h-14 md:!w-14";   // 点击区域：48px / 56px
+const ICON_SIZE = "!h-6  !w-6  md:!h-6  md:!w-6";    // 图标本体：28px / 32px
+
+
+
 export default function Navbar() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -49,7 +57,6 @@ export default function Navbar() {
       cookie: typeof document !== "undefined" ? document.cookie : "(ssr)",
     });
 
-    // 未登录并且不是强制：不打 /auth/me，直接认为 guest
     if (!force && !hasSessionCookie()) {
       console.log("[Navbar] fetchMe:skip (no sp_has_session flag & not forced)");
       setUser(null);
@@ -85,7 +92,7 @@ export default function Navbar() {
     setLoading(false);
   };
 
-  // 首次挂载：根据标志决定是否请求
+  // 首次挂载
   useEffect(() => {
     if (didInit.current) return;
     didInit.current = true;
@@ -117,7 +124,7 @@ export default function Navbar() {
     };
   }, []);
 
-  // 路由变化：只有“看起来已登录”时才强制拉取
+  // 路由变化
   useEffect(() => {
     if (!didInit.current) return;
     console.log("[Navbar] pathname changed:", pathname);
@@ -131,13 +138,9 @@ export default function Navbar() {
     }
   }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 观测渲染状态变化（调试）
+  // 渲染观测
   useEffect(() => {
-    console.log("[Navbar] render state:", {
-      loading,
-      hasUser: !!user,
-      user,
-    });
+    console.log("[Navbar] render state:", { loading, hasUser: !!user, user });
   }, [loading, user]);
 
   const logout = async () => {
@@ -162,12 +165,13 @@ export default function Navbar() {
     <nav className="w-full flex justify-between items-center h-20 md:h-20 px-6 md:px-8 border-b bg-background">
       <Link href="/" className="text-xl font-bold">SocialPlatform</Link>
 
-      <div className="flex items-center gap-4">
+      {/* 右侧图标（统一尺寸与间距） */}
+      <div className="flex items-center gap-0 md:gap-1">
         {/* 设置 */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="icon" aria-label="settings">
-              <Settings className="w-5 h-5" />
+            <Button variant="outline" size="icon" className={ICON_BTN} aria-label="settings">
+              <Settings className={ICON_SIZE} />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
@@ -177,38 +181,27 @@ export default function Navbar() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* 心愿单（点击弹出菜单，不跳转） */}
+        {/* 心愿单 */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-10 w-10 md:h-12 md:w-12"
-              aria-label="wishlist"
-            >
-              <Heart className="w-6 h-6 md:w-7 md:h-7" />
+            <Button variant="ghost" size="icon" className={ICON_BTN} aria-label="wishlist">
+              <Heart className={ICON_SIZE} />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuItem disabled>0 saved items</DropdownMenuItem>
             <DropdownMenuSeparator />
-            {/* 如需跳转到心愿单页，可保留下面这一项；不需要可删除 */}
             <DropdownMenuItem asChild>
               <Link href="/wishlist">Open wishlist</Link>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* 购物袋（点击弹出菜单，不跳转） */}
+        {/* 购物袋 */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-10 w-10 md:h-12 md:w-12"
-              aria-label="cart"
-            >
-              <ShoppingBag className="w-6 h-6 md:w-7 md:h-7" />
+            <Button variant="ghost" size="icon" className={ICON_BTN} aria-label="cart">
+              <ShoppingBag className={ICON_SIZE} />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-72 p-0">
@@ -219,43 +212,38 @@ export default function Navbar() {
               <span className="font-medium">$0.00</span>
             </div>
             <div className="p-3 grid grid-cols-2 gap-2">
-              {/* 需要跳转时再点击下面按钮；如果完全不跳转可换成普通按钮 */}
               <Link href="/cart"><Button variant="outline" className="w-full">View cart</Button></Link>
               <Link href="/checkout"><Button className="w-full">Checkout</Button></Link>
             </div>
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* 用户 */}
+        {/* 用户（加载 / 未登录 / 已登录 -> 全部使用同一 icon 按钮尺寸） */}
         {loading ? (
-          <>
-            {console.log("[Navbar] render -> LOADING")}
-            <UserIcon className="w-6 h-6 opacity-60" aria-hidden />
-          </>
+          <Button variant="ghost" size="icon" className={`${ICON_BTN} opacity-60`} disabled aria-label="account loading">
+            <UserIcon className={ICON_SIZE} />
+          </Button>
         ) : user ? (
-          <>
-            {console.log("[Navbar] render -> AUTHED (show name)")}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="flex items-center gap-2" aria-label="account menu">
-                  <UserIcon className="w-5 h-5" />
-                  <span>Hi, {displayName(user)}</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem asChild><Link href="/profile">个人资料</Link></DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={logout} className="text-red-600">退出登录</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className={ICON_BTN} aria-label="account menu">
+                <UserIcon className={ICON_SIZE} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem disabled>Signed in as {displayName(user)}</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild><Link href="/profile">个人资料</Link></DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={logout} className="text-red-600">退出登录</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         ) : (
-          <>
-            {console.log("[Navbar] render -> GUEST (login link)")}
-            <Link href="/auth/login" title="登录" aria-label="go to login">
-              <UserIcon className="w-6 h-6 hover:text-primary transition-colors cursor-pointer" />
+          <Button asChild variant="ghost" size="icon" className={ICON_BTN} aria-label="go to login">
+            <Link href="/auth/login" title="登录">
+              <UserIcon className={ICON_SIZE} />
             </Link>
-          </>
+          </Button>
         )}
       </div>
     </nav>

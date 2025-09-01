@@ -1,5 +1,6 @@
 import React from "react";
-import SearchStrip from "@/components/home/SearchStrip";   // ← 新增：搜索条组件
+import { Navbar, ClientNavbar, CategoryBar } from "@/components/nav";  
+import SearchStrip from "@/components/home/SearchStrip";
 import HomeHeroGrid from "@/components/home/HomeHeroGrid";
 
 const SIDE_LEFT = {
@@ -64,8 +65,11 @@ const RIGHT_BOTTOM = {
 
 export default function HomePage() {
   return (
-    <main className="w-full max-w-none px-4 md:px-6 lg:px-8 pt-2 md:pt-3 pb-6 md:pb-8 space-y-8">
-      {/* 顶部导航下方的长条搜索区 */}
+    <main className="w-full max-w-none px-4 md:px-6 lg:px-8 pt-2 md:pt-3 pb-6 md:pb-8 space-y-6">
+      {/* 新增：类别区域（在搜索条之上） */}
+      <CategoryBar />
+
+      {/* 搜索条 */}
       <SearchStrip />
 
       {/* 主视觉网格 */}

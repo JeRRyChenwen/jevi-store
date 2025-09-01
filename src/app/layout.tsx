@@ -2,7 +2,7 @@ import "./globals.css";
 import { Inter } from "next/font/google";
 import { cn } from "@/lib/utils";
 import { ThemeProvider } from "@/components/theme-provider";
-import ClientNavbar from "@/components/ClientNavbar"; // ⬅️ 用客户端包装组件
+import { Navbar, ClientNavbar, CategoryBar } from "@/components/nav";
 
 const inter = Inter({ subsets: ["latin"] });
 
