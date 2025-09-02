@@ -5,7 +5,13 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { ModeToggle } from "@/components/ui/mode-toggle";
-import { User as UserIcon, Settings, Heart, ShoppingBag, Search as SearchIcon } from "lucide-react";
+import {
+  User as UserIcon,
+  Settings,
+  Heart,
+  ShoppingBag,
+  Search as SearchIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -21,12 +27,11 @@ import SearchOverlay from "@/components/search/SearchOverlay";
 type User = { id: string; email: string; name?: string | null };
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE!;
 
-// 非 HttpOnly 的标志
 function hasSessionCookie() {
-  const has =
+  return (
     typeof document !== "undefined" &&
-    document.cookie.split("; ").some((c) => c.startsWith("sp_has_session=1"));
-  return has;
+    document.cookie.split("; ").some((c) => c.startsWith("sp_has_session=1"))
+  );
 }
 function displayName(u: User) {
   if (u.name && u.name.trim()) return u.name.trim().split(/\s+/)[0];
@@ -34,13 +39,13 @@ function displayName(u: User) {
 }
 
 // 统一尺寸（按钮与图标）
-const ICON_BTN  = "!h-12 !w-12 md:!h-14 md:!w-14";  // 48/56 点击区域
-const ICON_SIZE = "!h-6  !w-6  md:!h-6  md:!w-6";   // 24/24 图标本体
+const ICON_BTN = "!h-12 !w-12 md:!h-14 md:!w-14"; // 48/56 点击区域
+const ICON_SIZE = "!h-6 !w-6 md:!h-6 md:!w-6";    // 24/24 图标
 
 export default function Navbar() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [openSearch, setOpenSearch] = useState(false); // ← 新增：移动端搜索弹层开关
+  const [openSearch, setOpenSearch] = useState(false);
   const didInit = useRef(false);
   const pathname = usePathname();
 
@@ -73,7 +78,6 @@ export default function Navbar() {
     setLoading(false);
   };
 
-  // 首次挂载
   useEffect(() => {
     if (didInit.current) return;
     didInit.current = true;
@@ -93,14 +97,13 @@ export default function Navbar() {
     };
   }, []);
 
-  // 路由变化
   useEffect(() => {
     if (!didInit.current) return;
     if (hasSessionCookie()) fetchMe({ force: true, retries: 2 });
     else { setUser(null); setLoading(false); }
   }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 快捷键：⌘K / Ctrl+K 打开搜索
+  // ⌘K / Ctrl+K 打开搜索
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
@@ -125,16 +128,16 @@ export default function Navbar() {
   };
 
   return (
-    <nav className="w-full flex items-center gap-4 h-20 md:h-20 px-6 md:px-8 border-b bg-background">
+    <nav className="w-full flex items-center h-16 md:h-20 px-4 md:px-8 bg-white border-b border-neutral-200 sticky top-0 z-50">
       {/* 左：Logo */}
       <Link href="/" className="text-xl font-bold whitespace-nowrap">SocialPlatform</Link>
 
-      {/* 中：桌面端紧凑搜索框（md 及以上显示） */}
-      <CompactSearch className="mx-2" />
+      {/* 右侧整体（搜索 + 图标）推到右边 */}
+      <div className="ml-auto flex items-center gap-1 md:gap-2">
+        {/* 桌面端搜索框 —— 轻微左移：加右外边距（只是一点点） */}
+        <CompactSearch className="w-[420px] lg:w-[560px] mr-10 md:mr-30" />
 
-      {/* 右：图标组 */}
-      <div className="flex items-center gap-0 md:gap-1 ml-auto">
-        {/* 移动端：放大镜按钮（md 以下显示） */}
+        {/* 移动端放大镜按钮（md 以下显示） */}
         <Button
           variant="ghost"
           size="icon"
@@ -198,7 +201,13 @@ export default function Navbar() {
 
         {/* 用户 */}
         {loading ? (
-          <Button variant="ghost" size="icon" className={`${ICON_BTN} opacity-60`} disabled aria-label="account loading">
+          <Button
+            variant="ghost"
+            size="icon"
+            className={`${ICON_BTN} opacity-60`}
+            disabled
+            aria-label="account loading"
+          >
             <UserIcon className={ICON_SIZE} />
           </Button>
         ) : user ? (

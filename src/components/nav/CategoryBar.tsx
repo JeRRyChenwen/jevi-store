@@ -12,7 +12,7 @@ import {
 
 type Item = {
   label: string;
-  href: string;                 // 建议走 /category/[slug]
+  href: string; // 建议走 /category/[slug]
   children?: { label: string; href: string }[];
 };
 
@@ -38,7 +38,10 @@ export default function CategoryBar({ items = DEFAULT_ITEMS }: { items?: Item[] 
   const pathname = usePathname();
 
   return (
-    <section className="w-full border-b bg-background">
+    // ✅ 纯白不透明；深色模式也保持白底 + 深色文字；加下边框与轻阴影
+    // 如果 CategoryBar 不在 sticky 的 header 里，并且需要吸顶，
+    // 可以把下一行换成： "sticky top-20 z-40 w-full border-b bg-white dark:bg-white text-neutral-900 shadow-sm"
+    <section className="w-full border-b bg-white dark:bg-white text-neutral-900 shadow-sm">
       <div className="mx-auto max-w-7xl px-4 md:px-6 lg:px-8">
         <nav
           aria-label="Shop categories"
@@ -49,7 +52,7 @@ export default function CategoryBar({ items = DEFAULT_ITEMS }: { items?: Item[] 
               pathname === it.href ||
               (pathname?.startsWith(it.href + "/") ?? false);
 
-            // 有子项：用 Dropdown（可选）
+            // 有子项：下拉
             if (it.children && it.children.length > 0) {
               return (
                 <DropdownMenu key={it.href}>
