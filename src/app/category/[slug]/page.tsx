@@ -2,19 +2,14 @@
 import { notFound } from "next/navigation";
 import CategoryGridClient from "./CategoryGridClient";
 
-// 和 CategoryBar 的 href 一致
+// 和 CategoryBar 的 href 一致（只保留这 6 个）
 const CATEGORIES = [
-  { slug: "new-in",       title: "New In" },
-  { slug: "women",        title: "Women" },
-  { slug: "men",          title: "Men" },
-  { slug: "beauty",       title: "Beauty" },
-  { slug: "home",         title: "Home" },
-  { slug: "travel-tech",  title: "Travel & Tech" },
-  { slug: "kids",         title: "Kids" },
-  { slug: "toys",         title: "Toys" },
-  { slug: "gifts",        title: "Gifts" },
-  { slug: "sale",         title: "Sale" },
-  { slug: "myer-one",     title: "MYER one" },
+  { slug: "shoes",       title: "Shoes" },
+  { slug: "bottoms",     title: "Bottoms" },
+  { slug: "tops",        title: "Tops" },
+  { slug: "suit",        title: "Suit" },
+  { slug: "accessories", title: "Accessories" },
+  { slug: "outfit",      title: "Outfit" },
 ];
 
 // 静态导出需要列出所有 slug

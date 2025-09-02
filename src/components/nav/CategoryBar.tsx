@@ -17,17 +17,12 @@ type Item = {
 };
 
 const DEFAULT_ITEMS: Item[] = [
-  { label: "New In",        href: "/category/new-in" },
-  { label: "Women",         href: "/category/women" },
-  { label: "Men",           href: "/category/men" },
-  { label: "Beauty",        href: "/category/beauty" },
-  { label: "Home",          href: "/category/home" },
-  { label: "Travel & Tech", href: "/category/travel-tech" },
-  { label: "Kids",          href: "/category/kids" },
-  { label: "Toys",          href: "/category/toys" },
-  { label: "Gifts",         href: "/category/gifts" },
-  { label: "Sale",          href: "/category/sale" },
-  { label: "MYER one",      href: "/category/member" },
+  { label: "Shoes",       href: "/category/shoes" },
+  { label: "Bottoms",     href: "/category/bottoms" },
+  { label: "Tops",        href: "/category/tops" },
+  { label: "Suit",        href: "/category/suit" },
+  { label: "Accessories", href: "/category/accessories" },
+  { label: "Outfit",      href: "/category/outfit" },
 ];
 
 function cls(...x: Array<string | false | undefined>) {
@@ -45,7 +40,13 @@ export default function CategoryBar({ items = DEFAULT_ITEMS }: { items?: Item[] 
       <div className="mx-auto max-w-7xl px-4 md:px-6 lg:px-8">
         <nav
           aria-label="Shop categories"
-          className="flex items-center gap-2 md:gap-4 overflow-x-auto py-3 md:py-4"
+          className="
+            flex w-full items-center
+            gap-2 md:gap-4
+            overflow-x-auto md:overflow-visible
+            py-3 md:py-4
+            justify-start md:justify-center
+          "
         >
           {items.map((it) => {
             const active =
