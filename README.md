@@ -594,3 +594,91 @@ Category: Shoes, Bottoms, Tops, Suit, Accessories, Outfit
 Sub-Category: Causal, Formal, long sleeve, short sleeve
 
 Filter: New Arrival, Sale
+
+# ============================================================================
+
+# ============================================================================
+
+核心 3 个
+
+1. Category（分类，含父子关系）
+
+用途： 顶级分类（Shoes/Bottoms…）和其子分类（Casual shoes/Formal shoes/Boots…）都存在这一个表里。
+
+字段（Columns）：
+
+name (Text, required)
+
+slug (UID from name, unique, required) 例：shoes, casual-shoes
+
+parent (Relation: many-to-one → Category) —— 该分类属于哪个父分类；顶级=空
+
+children (Relation: one-to-many → Category, mappedBy: parent) —— 该分类拥有哪些子分类
+
+nav_show (Boolean, default: true) —— 是否在导航/下拉展示
+
+nav_order (Integer, default: 0) —— 导航排序用
+
+（可选）banner (Media)
+
+（可选）description (Rich Text / Text)
+
+示例：
+顶级：Shoes (slug: shoes, parent: null)
+子级：Casual shoes (slug: casual-shoes, parent: Shoes)
+子级：Formal shoes (slug: formal-shoes, parent: Shoes)
+以后新增 Boots (slug: boots, parent: Shoes) → 前端会自动出现在 Shoes 的下拉里。
+
+2. Product（商品）
+
+用途： 商品基础信息；商品属于一个子分类（简单版，够用）。
+
+字段：
+
+title (Text, required)
+
+slug (UID from title, unique, required)
+
+description (Rich text / Blocks，可选)
+
+base_price_cents (Integer, required) —— 基础价（分）
+
+currency (Text 或 Enum：AUD/CNY…，required)
+
+priority (Integer，默认 0，用于排序)
+
+is_featured (Boolean，默认 false)
+
+gallery (Media, Multiple)
+
+category (Relation: many-to-one → Category，required；指向子分类)
+
+（可选）brand (Text 或 Relation → Brand)
+
+（可选）status (Enum：active/archived，也可用 Draft & Publish)
+
+价格显示 = (base_price_cents + variant.extra_price_cents) / 100。
+
+3. Variant（变体：颜色/尺码/库存）
+
+用途： 每个商品的具体可售项。
+
+字段：
+
+sku (Text, unique, required)
+
+color (Text 或 Enum：Black/White…，required)
+
+size (Text 或 Enum：S/M/L…，required)
+
+extra_price_cents (Integer，默认 0) —— 相对 product 基价的加价
+
+stock (Integer，默认 0) —— 库存
+
+enabled (Boolean，默认 true)
+
+images (Media, Multiple，可选)
+
+product (Relation: many-to-one → Product，required)
+
+建议：在 Variant 上做业务层去重（同一 product 下 (color, size) 组合不重复）。需要时可用 lifecycle 校验实现（之前我给过示例）。
