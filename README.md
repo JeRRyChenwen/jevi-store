@@ -684,3 +684,55 @@ product (Relation: many-to-one → Product，required)
 建议：在 Variant 上做业务层去重（同一 product 下 (color, size) 组合不重复）。需要时可用 lifecycle 校验实现（之前我给过示例）。
 
 价格全球化
+
+=====================
+
+对的。现在左侧只显示 Price，是因为我们的代码只在“有可选项可用”时才渲染 Size / Colour / Material 三块，而这些可选项是从 Variant 集合里统计出来的。你目前还没在 Variant 里创建数据（或字段为空/未发布），facetSizes/materials/colors 就是空数组，所以面板里只剩 Price。
+
+要让 3 个筛选都出现，你需要：
+
+确保数据模型匹配代码假设
+
+Variant 集合里有字段：size（Text）、color（Text）、material（Text）。
+
+Variant ↔ Product 关系：many-to-one 指向 Product，在 Variant 这边的关系字段 API ID 必须叫 product（代码里就是按 filters[product]... 过滤的）。
+
+Product ↔ Category 关系已存在（你之前有）。
+
+在产品下创建并发布一些变体
+
+打开某个 Product（比如 Richie Textured Shoe），在 variants 里“Add new entry”：
+
+size: 42（或任意字符串，比如 “M”）
+
+color: Black
+
+material: Leather
+
+关联到该 product（Strapi 会自动带上），Publish 变体。
+
+可以一口气加几条不同 size/color/material 的变体。
+
+给 Public 角色放行（如果你是未登录访问）
+
+Settings → Users & Permissions → Roles → Public：
+
+勾选 variant 的 find / findOne
+
+以及 product、category、upload（图片）等需要的读取权限。
+
+验证接口有数据
+
+浏览器打开类似（按你的 slug 改）：
+
+http://localhost:1337/api/variants?filters[product][category][slug][$eq]=formal-shoes&fields[0]=material&fields[1]=size&fields[2]=color&pagination[pageSize]=500&publicationState=live
+
+能看到变体里的 material/size/color，刷新前端页面，左侧就会出现这三个筛选块了。
+
+小提示
+
+我们的组件里是 facetSizes.length > 0 等条件才渲染折叠块，所以至少有一条对应字段不为空的变体即可显示。
+
+字段名必须精确匹配：material、size、color。如果你在 Strapi 里用了别的 API ID（比如 colour 或 materials），要么改字段名，要么我可以帮你把前端的查询路径一起改掉。
+
+如果你不想用 Variant，而是把 size/color/material 放在 Product 上，也可以把代码改成从产品字段做 facets 和过滤；需要的话我给你一份对应的改法。
