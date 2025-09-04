@@ -1,14 +1,16 @@
 // src/app/category/[slug]/CategoryGridClient.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Pagination from "@/components/pagination/Pagination";
 import { api, mediaUrl } from "@/lib/strapi";
+import { Button } from "@/components/ui/button";
 
 type Props = {
   slug: string;
   title: string;
+  /** 初始总数（未筛选）。应用筛选后会用接口返回的 filteredTotal 覆盖 */
   total: number;
   pageSize?: number;
   /** 顶级分类 = 自身 + 子分类 documentId，用于 $in 过滤 */
@@ -18,58 +20,53 @@ type Props = {
 type ProductLite = {
   key: string;
   name: string;
-  price: number | null; // 元（由 base_price_cents / 100 换算）
+  price: number | null;
   currency?: string | null;
   imageUrl?: string;
 };
 
-// dev-only 日志（生产环境不打印）
 const DEV = process.env.NODE_ENV !== "production";
-function debug(...args: unknown[]) {
-  if (DEV) console.debug(...args);
+const dbg = (...args: unknown[]) => DEV && console.debug("[Grid]", ...args);
+
+// ---------- helpers ----------
+const toCents = (n?: number | null) =>
+  typeof n === "number" && Number.isFinite(n) ? Math.round(n * 100) : undefined;
+
+function parseCSV(sp: URLSearchParams, key: string): string[] {
+  const raw = sp.get(key)?.trim() || "";
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
-/** 从 Multiple Media 的 gallery 中稳健地取第一张图片 URL */
 function getFirstGalleryUrl(attrs: any): string | undefined {
-  // 统一拿到第 1 个媒体节点（支持 data: [], data: {}, 或直接是数组）
   const raw = Array.isArray(attrs?.gallery?.data)
     ? attrs.gallery.data[0]
-    : attrs?.gallery?.data ??
-      (Array.isArray(attrs?.gallery) ? attrs.gallery[0] : undefined);
-
+    : attrs?.gallery?.data ?? (Array.isArray(attrs?.gallery) ? attrs.gallery[0] : undefined);
   const media = raw?.attributes ?? raw ?? {};
-  // 优先从 formats 中取合适尺寸，再退回到顶层 url
-  const candidateUrl: unknown =
+  const u =
     media?.formats?.medium?.url ??
     media?.formats?.large?.url ??
     media?.formats?.small?.url ??
     media?.formats?.thumbnail?.url ??
     media?.url;
-
-  const url = typeof candidateUrl === "string" ? candidateUrl : undefined;
-
-  debug("[Grid:getFirstGalleryUrl] media =", media);
-  debug("[Grid:getFirstGalleryUrl] picked url =", url);
-
-  return url ? mediaUrl(url) : undefined;
+  return typeof u === "string" ? mediaUrl(u) : undefined;
 }
 
 function normalizeProduct(row: any): ProductLite {
   const attrs = row?.attributes ?? row ?? {};
   const name: string = attrs.title ?? attrs.name ?? attrs.slug ?? "Product";
-
   const cents = Number(attrs.base_price_cents);
   const price = Number.isFinite(cents) ? Math.max(0, cents) / 100 : null;
   const currency: string | undefined = (attrs.currency ?? "USD") as string;
-
   const imageUrl = getFirstGalleryUrl(attrs);
-
   const key =
     String(row?.id ?? "") ||
     String(attrs.documentId ?? "") ||
     String(attrs.slug ?? "") ||
     `${name}-${Math.random().toString(36).slice(2)}`;
-
   return { key, name, price, currency, imageUrl };
 }
 
@@ -86,6 +83,7 @@ function CardSkeleton() {
   );
 }
 
+// ============ Main ============
 export default function CategoryGridClient({
   slug,
   title,
@@ -93,11 +91,32 @@ export default function CategoryGridClient({
   pageSize = 40,
   categoryDocIds,
 }: Props) {
+  const router = useRouter();
   const sp = useSearchParams();
-  const pageParam = sp.get("page");
-  const pageCount = Math.max(1, Math.ceil(total / pageSize));
 
-  // 当前页（校正到 1..pageCount）
+  // === Refs 用于无障碍焦点管理 ===
+  const triggerBtnRef = useRef<HTMLButtonElement | null>(null);
+  const closeBtnRef = useRef<HTMLButtonElement | null>(null);
+
+  // 应用中的筛选（来自 URL）
+  const minParam = sp.get("min");
+  const maxParam = sp.get("max");
+  const appliedMin = useMemo(
+    () => (minParam ? Math.max(0, Number(minParam)) : undefined),
+    [minParam]
+  );
+  const appliedMax = useMemo(
+    () => (maxParam ? Math.max(0, Number(maxParam)) : undefined),
+    [maxParam]
+  );
+  const appliedMaterials = useMemo(() => parseCSV(sp, "material"), [sp]);
+  const appliedSizes = useMemo(() => parseCSV(sp, "size"), [sp]);
+  const appliedColors = useMemo(() => parseCSV(sp, "color"), [sp]);
+
+  // 分页（基于筛选后的总数）
+  const pageParam = sp.get("page");
+  const [filteredTotal, setFilteredTotal] = useState<number>(total);
+  const pageCount = Math.max(1, Math.ceil(filteredTotal / pageSize));
   const page = (() => {
     const n = Number(pageParam ?? "1");
     if (!Number.isFinite(n) || n < 1) return 1;
@@ -108,90 +127,191 @@ export default function CategoryGridClient({
   const [list, setList] = useState<ProductLite[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // 结果数量文案
-  const resultLabel = useMemo(
-    () => `${total} ${total === 1 ? "result" : "results"}`,
-    [total]
-  );
+  // 可选项（来自 variants 表）
+  const [facetMaterials, setFacetMaterials] = useState<string[]>([]);
+  const [facetSizes, setFacetSizes] = useState<string[]>([]);
+  const [facetColors, setFacetColors] = useState<string[]>([]);
+  const [variantFiltersSupported, setVariantFiltersSupported] = useState(true);
 
-  // 拉取当前页产品
+  // Drawer（左侧筛选面板）草稿值
+  const [open, setOpen] = useState(false);
+  const [draftMin, setDraftMin] = useState<number | undefined>(appliedMin);
+  const [draftMax, setDraftMax] = useState<number | undefined>(appliedMax);
+  const [draftMaterials, setDraftMaterials] = useState<Set<string>>(
+    new Set(appliedMaterials)
+  );
+  const [draftSizes, setDraftSizes] = useState<Set<string>>(new Set(appliedSizes));
+  const [draftColors, setDraftColors] = useState<Set<string>>(new Set(appliedColors));
+
+  // 打开抽屉时，用已应用的筛选值重置草稿
+  useEffect(() => {
+    if (open) {
+      setDraftMin(appliedMin);
+      setDraftMax(appliedMax);
+      setDraftMaterials(new Set(appliedMaterials));
+      setDraftSizes(new Set(appliedSizes));
+      setDraftColors(new Set(appliedColors));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // 打开抽屉后把焦点放到 Close，支持 Esc 关闭；关闭后把焦点还给 Filter 按钮
+  useEffect(() => {
+    if (!open) return;
+    // 打开时聚焦 Close
+    setTimeout(() => closeBtnRef.current?.focus(), 0);
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        (document.activeElement as HTMLElement | null)?.blur?.();
+        setOpen(false);
+        setTimeout(() => triggerBtnRef.current?.focus(), 0);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  // 读取 variants 的可选项
   useEffect(() => {
     let aborted = false;
+    async function fetchFacets() {
+      if (!variantFiltersSupported) return;
+      try {
+        const parts: string[] = [];
+        if (categoryDocIds?.length) {
+          categoryDocIds.forEach((id, i) =>
+            parts.push(
+              `filters[product][category][documentId][$in][${i}]=${encodeURIComponent(id)}`
+            )
+          );
+        } else {
+          parts.push(`filters[product][category][slug][$eq]=${encodeURIComponent(slug)}`);
+        }
+        const qs =
+          `/api/variants?${parts.join("&")}` +
+          `&fields[0]=material&fields[1]=size&fields[2]=color` +
+          `&pagination[pageSize]=500&publicationState=live`;
 
-    async function run() {
-      if (total === 0) {
-        setList([]);
-        return;
+        dbg("facets:GET", qs);
+        const json = await api(qs, { noCache: true });
+
+        const rows: any[] = Array.isArray(json?.data) ? json.data : [];
+        const m = new Set<string>();
+        const s = new Set<string>();
+        const c = new Set<string>();
+        for (const r of rows) {
+          const a = r?.attributes ?? r ?? {};
+          if (a.material && String(a.material).trim()) m.add(String(a.material).trim());
+          if (a.size && String(a.size).trim()) s.add(String(a.size).trim());
+          if (a.color && String(a.color).trim()) c.add(String(a.color).trim());
+        }
+        if (!aborted) {
+          setFacetMaterials(Array.from(m).sort((a, b) => a.localeCompare(b)));
+          setFacetSizes(Array.from(s).sort((a, b) => a.localeCompare(b)));
+          setFacetColors(Array.from(c).sort((a, b) => a.localeCompare(b)));
+        }
+      } catch (e: any) {
+        dbg("facets:error", e?.message || e);
+        if (!aborted) setVariantFiltersSupported(false);
       }
+    }
+    fetchFacets();
+    return () => {
+      aborted = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug, JSON.stringify(categoryDocIds)]);
+
+  // 拉取产品（按筛选+分页）
+  useEffect(() => {
+    let aborted = false;
+    async function run() {
       setLoading(true);
       setError(null);
       try {
-        // v5 稳妥的 $in 写法：filters[...][$in][0]=a&filters[...][$in][1]=b
-        const filterPart = categoryDocIds?.length
-          ? categoryDocIds
-              .map(
-                (id, i) =>
-                  `filters[category][documentId][$in][${i}]=${encodeURIComponent(id)}`
-              )
-              .join("&")
-          : `filters[category][slug][$eq]=${encodeURIComponent(slug)}`;
+        const parts: string[] = [];
+        // 分类
+        if (categoryDocIds?.length) {
+          categoryDocIds.forEach((id, i) =>
+            parts.push(
+              `filters[category][documentId][$in][${i}]=${encodeURIComponent(id)}`
+            )
+          );
+        } else {
+          parts.push(`filters[category][slug][$eq]=${encodeURIComponent(slug)}`);
+        }
+        // 价格（元→分）
+        const minCents = toCents(appliedMin);
+        const maxCents = toCents(appliedMax);
+        if (typeof minCents === "number")
+          parts.push(`filters[base_price_cents][$gte]=${minCents}`);
+        if (typeof maxCents === "number")
+          parts.push(`filters[base_price_cents][$lte]=${maxCents}`);
 
-        // 只展开 product.gallery
+        // 变体
+        if (variantFiltersSupported) {
+          const pushIN = (key: string, arr: string[]) => {
+            arr.forEach((v, i) =>
+              parts.push(`filters[variants][${key}][$in][${i}]=${encodeURIComponent(v)}`)
+            );
+          };
+          if (appliedMaterials.length) pushIN("material", appliedMaterials);
+          if (appliedSizes.length) pushIN("size", appliedSizes);
+          if (appliedColors.length) pushIN("color", appliedColors);
+        }
+
         const qs =
-          `/api/products?` +
-          `${filterPart}` +
+          `/api/products?${parts.join("&")}` +
           `&populate[gallery]=true` +
           `&pagination[page]=${page}&pagination[pageSize]=${pageSize}` +
-          `&sort[0]=updatedAt:desc` +
-          `&publicationState=live`;
+          `&sort[0]=updatedAt:desc&publicationState=live`;
 
-        debug("[Grid:fetch] QS =", qs);
-        debug("[Grid:fetch] slug =", slug, "docIds =", categoryDocIds);
+        dbg("products:GET", qs);
 
-        const json: any = await api(qs, { noCache: true });
-
-        debug("[Grid:fetch] meta =", json?.meta);
+        const json = await api(qs, { noCache: true });
         const rows: any[] = Array.isArray(json?.data) ? json.data : [];
-        const first: any = rows[0];
-        debug("[Grid:fetch] first item =", first);
-        debug("[Grid:fetch] first gallery =", first?.attributes?.gallery);
+        const totalMeta = Number(json?.meta?.pagination?.total ?? 0);
 
-        const mapped = rows.map(normalizeProduct);
-
-        debug(
-          "[Grid:fetch] mapped:",
-          mapped.map((m, i) => ({
-            i,
-            name: m.name,
-            imageUrl: m.imageUrl,
-            price: m.price,
-            currency: m.currency,
-          }))
-        );
-
-        if (!aborted) setList(mapped);
-      } catch (e: unknown) {
-        const msg =
-          (e as Error)?.message ??
-          (typeof e === "string" ? e : "Failed to load products");
         if (!aborted) {
-          setError(msg);
+          setFilteredTotal(totalMeta || 0);
+          setList(rows.map(normalizeProduct));
+        }
+      } catch (e: any) {
+        if (!aborted) {
+          setError(e?.message || "Failed to load products");
           setList([]);
+          setFilteredTotal(0);
         }
       } finally {
         if (!aborted) setLoading(false);
       }
     }
-
-    void run();
+    run();
     return () => {
       aborted = true;
     };
-  }, [slug, categoryDocIds, page, pageSize, total]);
+  }, [
+    slug,
+    JSON.stringify(categoryDocIds),
+    page,
+    pageSize,
+    appliedMin,
+    appliedMax,
+    variantFiltersSupported,
+    appliedMaterials.join(","),
+    appliedSizes.join(","),
+    appliedColors.join(","),
+  ]);
 
   const start = (page - 1) * pageSize;
+
   const hrefForPage = useMemo(
-    () => (p: number) => `/category/${slug}?page=${p}`,
+    () => (p: number) => {
+      const u = new URL(window.location.href);
+      u.searchParams.set("page", String(p));
+      return `/category/${slug}${u.search}`;
+    },
     [slug]
   );
 
@@ -199,6 +319,60 @@ export default function CategoryGridClient({
     if (price == null) return "$129";
     const cur = (currency || "USD").toUpperCase();
     return cur === "USD" ? `$${price}` : `${price} ${cur}`;
+  };
+
+  const resultLabel = `${filteredTotal} ${filteredTotal === 1 ? "result" : "results"}`;
+
+  // 统一的关闭抽屉（先失焦，再还焦给 Filter）
+  const closeDrawer = () => {
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    setOpen(false);
+    setTimeout(() => triggerBtnRef.current?.focus(), 0);
+  };
+
+  // 提交筛选（把草稿写入 URL，重置到第 1 页）
+  const applyDraft = () => {
+    const u = new URL(window.location.href);
+
+    if (typeof draftMin === "number" && draftMin >= 0)
+      u.searchParams.set("min", String(draftMin));
+    else u.searchParams.delete("min");
+
+    if (typeof draftMax === "number" && draftMax >= 0)
+      u.searchParams.set("max", String(draftMax));
+    else u.searchParams.delete("max");
+
+    const setCSV = (key: string, set: Set<string>) => {
+      const arr = Array.from(set).filter(Boolean);
+      if (arr.length) u.searchParams.set(key, arr.join(","));
+      else u.searchParams.delete(key);
+    };
+    setCSV("material", draftMaterials);
+    setCSV("size", draftSizes);
+    setCSV("color", draftColors);
+
+    u.searchParams.set("page", "1");
+
+    // 先失焦并关闭，再跳转；跳转后把焦点还给 Filter
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    setOpen(false);
+    router.replace(`/category/${slug}${u.search}`);
+    setTimeout(() => triggerBtnRef.current?.focus(), 0);
+  };
+
+  const resetDraft = () => {
+    setDraftMin(undefined);
+    setDraftMax(undefined);
+    setDraftMaterials(new Set());
+    setDraftSizes(new Set());
+    setDraftColors(new Set());
+  };
+
+  const toggleInSet = (set: Set<string>, v: string, next: boolean) => {
+    const n = new Set(set);
+    if (next) n.add(v);
+    else n.delete(v);
+    return n;
   };
 
   return (
@@ -211,18 +385,189 @@ export default function CategoryGridClient({
               Category: <code className="font-mono">{slug}</code>
             </p>
           </div>
-          <div className="text-sm md:text-base text-neutral-600 whitespace-nowrap">
-            {resultLabel}
+
+          <div className="flex items-center gap-3">
+            <div className="text-sm md:text-base text-neutral-600 whitespace-nowrap">
+              {resultLabel}
+            </div>
+
+            <Button
+              ref={triggerBtnRef}
+              variant="outline"
+              className="rounded-full px-5"
+              onClick={() => setOpen(true)}
+            >
+              Filter
+            </Button>
           </div>
         </div>
       </header>
 
+      {/* === 左侧抽屉（纯 Tailwind 实现） === */}
+      <div
+        className={`fixed inset-0 z-50 transition ${
+          open ? "pointer-events-auto" : "pointer-events-none"
+        }`}
+      >
+        {/* 背景遮罩 */}
+        <div
+          className={`absolute inset-0 bg-black/30 transition-opacity ${
+            open ? "opacity-100" : "opacity-0"
+          }`}
+          onClick={closeDrawer}
+        />
+        {/* 面板 */}
+        <aside
+          role="dialog"
+          aria-modal="true"
+          className={`absolute left-0 top-0 h-full w-[92vw] sm:w-[380px] bg-white shadow-xl transition-transform ${
+            open ? "translate-x-0" : "-translate-x-full"
+          }`}
+        >
+          <div className="p-4 border-b flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Filter by</h2>
+            <button
+              ref={closeBtnRef}
+              onClick={closeDrawer}
+              className="rounded-md px-3 py-1 text-sm hover:bg-neutral-100"
+            >
+              Close
+            </button>
+          </div>
+
+          <div className="h-[calc(100%-120px)] overflow-y-auto p-4">
+            {/* Size */}
+            {variantFiltersSupported && facetSizes.length > 0 && (
+              <details className="mb-4" open>
+                <summary className="cursor-pointer select-none py-2 font-medium">
+                  Size
+                </summary>
+                <div className="mt-2 space-y-2">
+                  {facetSizes.map((v) => (
+                    <label key={v} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4"
+                        checked={draftSizes.has(v)}
+                        onChange={(e) =>
+                          setDraftSizes((s) => toggleInSet(s, v, e.currentTarget.checked))
+                        }
+                      />
+                      <span>{v}</span>
+                    </label>
+                  ))}
+                </div>
+              </details>
+            )}
+
+            {/* Colour */}
+            {variantFiltersSupported && facetColors.length > 0 && (
+              <details className="mb-4" open>
+                <summary className="cursor-pointer select-none py-2 font-medium">
+                  Colour
+                </summary>
+                <div className="mt-2 space-y-2">
+                  {facetColors.map((v) => (
+                    <label key={v} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4"
+                        checked={draftColors.has(v)}
+                        onChange={(e) =>
+                          setDraftColors((s) => toggleInSet(s, v, e.currentTarget.checked))
+                        }
+                      />
+                      <span>{v}</span>
+                    </label>
+                  ))}
+                </div>
+              </details>
+            )}
+
+            {/* Material */}
+            {variantFiltersSupported && facetMaterials.length > 0 && (
+              <details className="mb-4" open>
+                <summary className="cursor-pointer select-none py-2 font-medium">
+                  Material
+                </summary>
+                <div className="mt-2 space-y-2">
+                  {facetMaterials.map((v) => (
+                    <label key={v} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4"
+                        checked={draftMaterials.has(v)}
+                        onChange={(e) =>
+                          setDraftMaterials((s) => toggleInSet(s, v, e.currentTarget.checked))
+                        }
+                      />
+                      <span>{v}</span>
+                    </label>
+                  ))}
+                </div>
+              </details>
+            )}
+
+            {/* Price */}
+            <details className="mb-2" open>
+              <summary className="cursor-pointer select-none py-2 font-medium">
+                Price
+              </summary>
+              <div className="mt-2 flex items-end gap-3">
+                <div className="flex-1">
+                  <div className="text-xs text-neutral-500 mb-1">Min</div>
+                  <input
+                    type="number"
+                    min={0}
+                    className="w-full rounded-md border px-3 py-2 text-sm"
+                    placeholder="Min"
+                    value={draftMin ?? ""}
+                    onChange={(e) =>
+                      setDraftMin(
+                        e.currentTarget.value === ""
+                          ? undefined
+                          : Math.max(0, Number(e.currentTarget.value))
+                      )
+                    }
+                  />
+                </div>
+                <div className="flex-1">
+                  <div className="text-xs text-neutral-500 mb-1">Max</div>
+                  <input
+                    type="number"
+                    min={0}
+                    className="w-full rounded-md border px-3 py-2 text-sm"
+                    placeholder="Max"
+                    value={draftMax ?? ""}
+                    onChange={(e) =>
+                      setDraftMax(
+                        e.currentTarget.value === ""
+                          ? undefined
+                          : Math.max(0, Number(e.currentTarget.value))
+                      )
+                    }
+                  />
+                </div>
+              </div>
+            </details>
+          </div>
+
+          <div className="p-4 border-t flex items-center justify-between gap-2">
+            <Button variant="ghost" onClick={resetDraft}>
+              Reset
+            </Button>
+            <Button onClick={applyDraft}>Apply</Button>
+          </div>
+        </aside>
+      </div>
+
+      {/* ====== 列表 ====== */}
       {error ? (
         <div className="py-20 text-center text-red-600">{error}</div>
       ) : loading ? (
         <section>
           <div className="grid gap-7 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-4">
-            {Array.from({ length: Math.min(pageSize, total - start) || 8 }).map(
+            {Array.from({ length: Math.min(pageSize, filteredTotal - start) || 8 }).map(
               (_, i) => (
                 <CardSkeleton key={i} />
               )
@@ -230,9 +575,7 @@ export default function CategoryGridClient({
           </div>
         </section>
       ) : list.length === 0 ? (
-        <div className="py-20 text-center text-muted-foreground">
-          No products yet.
-        </div>
+        <div className="py-20 text-center text-muted-foreground">No products yet.</div>
       ) : (
         <section>
           <div className="grid gap-7 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-4">
@@ -269,9 +612,9 @@ export default function CategoryGridClient({
                     <span className="text-xl md:text-2xl font-bold">
                       {formatPrice(p.price, p.currency)}
                     </span>
-                    <button className="rounded-full px-4 py-2 md:px-5 md:py-2.5 text-sm md:text-base bg-primary text-primary-foreground transition-opacity hover:opacity-90">
+                    <Button className="rounded-full px-5" size="sm">
                       Add
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </article>
