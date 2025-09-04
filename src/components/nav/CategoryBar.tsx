@@ -212,7 +212,7 @@ export default function CategoryBar() {
                       <div className="text-[15px] font-medium">
                         {sub.attributes.name || sub.attributes.slug}
                       </div>
-                      <div className="text-xs opacity-60 mt-1">Shop now</div>
+                      {/* 已移除 “Shop now” 行 */}
                     </Link>
                   ))}
                 </div>
