@@ -176,11 +176,11 @@ export default async function CategoryPage({
     <main className="w-full max-w-none px-4 md:px-6 lg:px-8 py-8 space-y-6">
       {/* 子分类跳转按钮（放在标题上方；按钮更大） */}
       {siblings.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-2">
+        <div className="flex flex-wrap gap-y-3 md:gap-y-4 gap-x-8 md:gap-x-12 mb-3 md:mb-4">
           {siblings.map((s) => {
             const active = s.slug === slug;
             const base =
-              "rounded-full border px-4 md:px-5 py-2 md:py-2.5 text-sm md:text-base font-medium";
+              "rounded-full border px-12 md:px-14 py-7 md:py-6 text-base md:text-lg font-semibold whitespace-nowrap";
             const cls = active
               ? `${base} bg-black text-white border-black`
               : `${base} border-neutral-300 text-neutral-800 hover:bg-neutral-50`;
