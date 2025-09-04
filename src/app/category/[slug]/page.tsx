@@ -8,10 +8,10 @@ const STRAPI =
   process.env.NEXT_PUBLIC_STRAPI_URL ||
   "http://localhost:1337";
 
-// 兜底顶级分类
+// 兜底顶级分类（防止没连上 Strapi 时至少有这 6 个）
 const STATIC_SLUGS = ["shoes", "bottoms", "tops", "suit", "accessories", "outfit"];
 
-/** 拉全量分类 slug（不依赖 populate） */
+/** 遍历全部分类（不依赖 populate[children]），拿到所有 slug */
 async function fetchAllCategorySlugs(): Promise<string[]> {
   const set = new Set<string>(STATIC_SLUGS);
   let page = 1;
@@ -35,10 +35,11 @@ async function fetchAllCategorySlugs(): Promise<string[]> {
     if (page * pageSize >= total) break;
     page += 1;
   }
+
   return Array.from(set);
 }
 
-/** 生成静态路径 */
+/** ① 生成静态路径：顶级兜底 + Strapi 返回的所有分类（含子分类） */
 export async function generateStaticParams() {
   try {
     const all = await fetchAllCategorySlugs();
@@ -48,82 +49,25 @@ export async function generateStaticParams() {
   }
 }
 
-// 与 output:export 兼容
+// ✅ 与 output: export 兼容
 export const dynamicParams = false;
 export const dynamic = "force-static";
 
-/** 取当前分类 + 父信息（用来判断是否顶级） */
-async function getCurrentWithParent(slug: string): Promise<{
-  current: { name: string; slug: string; documentId?: string };
-  parentDocId?: string; // 若存在则是子分类
-}> {
-  const url =
-    `${STRAPI}/api/categories` +
-    `?filters[slug][$eq]=${encodeURIComponent(slug)}` +
-    `&fields[0]=name&fields[1]=slug&fields[2]=documentId` +
-    `&populate[parent][fields][0]=documentId` +
-    `&publicationState=live`;
+/** 统计商品总数：支持 slug 或 documentId 列表（$in） */
+async function getProductTotal(opts: { slug?: string; categoryDocIds?: string[] }): Promise<number> {
+  const { slug, categoryDocIds } = opts;
 
-  const res = await fetch(url, {
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-  });
+  const filterPart = categoryDocIds?.length
+    ? categoryDocIds.map((id, i) =>
+        `filters[category][documentId][$in][${i}]=${encodeURIComponent(id)}`
+      ).join("&")
+    : `filters[category][slug][$eq]=${encodeURIComponent(slug || "")}`;
 
-  if (!res.ok) return { current: { name: slug, slug } };
-
-  const json = await res.json();
-  const row = json?.data?.[0];
-  if (!row) return { current: { name: slug, slug } };
-
-  const current = {
-    name: row?.name ?? row?.attributes?.name ?? slug,
-    slug: row?.slug ?? row?.attributes?.slug ?? slug,
-    documentId: row?.documentId ?? row?.attributes?.documentId,
-  };
-
-  const parentNode = row?.attributes?.parent?.data ?? row?.parent?.data;
-  const parentDocId =
-    parentNode?.documentId ?? parentNode?.attributes?.documentId ?? undefined;
-
-  return { current, parentDocId };
-}
-
-/** 取“某顶级分类”的所有直接子分类的 docId 列表 */
-async function getChildrenDocIds(rootDocId?: string): Promise<string[]> {
-  if (!rootDocId) return [];
   try {
     const res = await fetch(
-      `${STRAPI}/api/categories` +
-        `?filters[parent][documentId][$eq]=${encodeURIComponent(rootDocId)}` +
-        `&fields[0]=documentId` +
-        `&pagination[pageSize]=200&publicationState=live`,
+      `${STRAPI}/api/products?${filterPart}&fields[0]=id&pagination[pageSize]=1&publicationState=live`,
       { headers: { "Content-Type": "application/json", Accept: "application/json" } }
     );
-    if (!res.ok) return [];
-    const json = await res.json();
-    const list: any[] = json?.data ?? [];
-    return list
-      .map((c) => c?.documentId ?? c?.attributes?.documentId)
-      .filter(Boolean);
-  } catch {
-    return [];
-  }
-}
-
-/** 统计商品总数：支持 docId 列表（$in）或单 slug */
-async function getProductTotal(opts: { slug?: string; categoryDocIds?: string[] }): Promise<number> {
-  const qs =
-    opts.categoryDocIds?.length
-      ? `/api/products?filters[category][documentId][$in]=${opts.categoryDocIds
-          .map(encodeURIComponent)
-          .join(",")}&fields[0]=id&pagination[pageSize]=1&publicationState=live`
-      : `/api/products?filters[category][slug][$eq]=${encodeURIComponent(
-          opts.slug || ""
-        )}&fields[0]=id&pagination[pageSize]=1&publicationState=live`;
-
-  try {
-    const res = await fetch(`${STRAPI}${qs}`, {
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-    });
     if (!res.ok) return 0;
     const json = await res.json();
     return json?.meta?.pagination?.total ?? 0;
@@ -132,81 +76,141 @@ async function getProductTotal(opts: { slug?: string; categoryDocIds?: string[] 
   }
 }
 
-/** 取兄弟子分类（用于顶部按钮） */
-async function getSiblings(rootDocId?: string): Promise<Array<{ name: string; slug: string }>> {
+/** 取“当前分类 + 顶级父分类 documentId”（若当前就是顶级，则父为自身） */
+async function getCurrentAndRootDocId(slug: string): Promise<{
+  current: { name: string; slug: string; documentId?: string };
+  rootDocId?: string;
+}> {
+  const url =
+    `${STRAPI}/api/categories` +
+    `?filters[slug][$eq]=${encodeURIComponent(slug)}` +
+    `&fields[0]=name&fields[1]=slug&fields[2]=documentId` +
+    `&populate[parent][fields][0]=documentId` +
+    `&populate[parent][fields][1]=slug` +
+    `&publicationState=live`;
+
+  const res = await fetch(url, {
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+  });
+
+  if (!res.ok) {
+    return { current: { name: slug, slug } };
+  }
+
+  const json = await res.json();
+  const row = json?.data?.[0];
+  if (!row) return { current: { name: slug, slug } };
+
+  const current = {
+    name: row?.attributes?.name ?? row?.name ?? slug,
+    slug: row?.attributes?.slug ?? row?.slug ?? slug,
+    documentId: row?.attributes?.documentId ?? row?.documentId,
+  };
+
+  const parentNode =
+    row?.attributes?.parent?.data ??
+    row?.parent?.data ??
+    row?.attributes?.parent ??
+    row?.parent;
+
+  const parentDocId =
+    parentNode?.attributes?.documentId ??
+    parentNode?.documentId ??
+    parentNode?.id ??
+    undefined;
+
+  const rootDocId = parentDocId || current.documentId;
+  return { current, rootDocId };
+}
+
+/** 根据“顶级父分类 documentId”取它的所有子分类（兄弟） */
+async function getRootChildren(rootDocId?: string): Promise<
+  Array<{ name: string; slug: string; documentId?: string; nav_order?: number }>
+> {
   if (!rootDocId) return [];
   try {
     const res = await fetch(
-      `${STRAPI}/api/categories` +
-        `?filters[parent][documentId][$eq]=${encodeURIComponent(rootDocId)}` +
-        `&fields[0]=name&fields[1]=slug&fields[2]=nav_order` +
-        `&sort[0]=nav_order:asc&sort[1]=name:asc` +
-        `&pagination[pageSize]=200&publicationState=live`,
+      `${STRAPI}/api/categories?filters[parent][documentId][$eq]=${encodeURIComponent(rootDocId)}&fields[0]=name&fields[1]=slug&fields[2]=documentId&fields[3]=nav_order&sort[0]=nav_order:asc&sort[1]=name:asc&pagination[pageSize]=200&publicationState=live`,
       { headers: { "Content-Type": "application/json", Accept: "application/json" } }
     );
     if (!res.ok) return [];
     const json = await res.json();
     const list: any[] = json?.data ?? [];
     return list.map((c) => ({
-      name: c?.name ?? c?.attributes?.name ?? "",
-      slug: c?.slug ?? c?.attributes?.slug ?? "",
+      name: c?.attributes?.name ?? c?.name ?? "",
+      slug: c?.attributes?.slug ?? c?.slug ?? "",
+      documentId: c?.attributes?.documentId ?? c?.documentId,
+      nav_order: c?.attributes?.nav_order ?? c?.nav_order,
     }));
   } catch {
     return [];
   }
 }
 
-// Next 15: params 需要 await
+// 👇 Next 15 的异步 params 需要 await
 type ParamsPromise = Promise<{ slug: string }>;
 
-export default async function CategoryPage({ params }: { params: ParamsPromise }) {
+export default async function CategoryPage({
+  params,
+}: {
+  params: ParamsPromise;
+}) {
   const { slug } = await params;
 
-  // 1) 当前分类与父信息
-  const { current, parentDocId } = await getCurrentWithParent(slug);
+  // 1) 当前分类 + 顶级父分类 docId
+  const [{ current, rootDocId }] = await Promise.all([
+    getCurrentAndRootDocId(slug),
+  ]);
+
   if (!current?.slug) notFound();
 
-  // 2) 判断是否顶级分类
-  const isTopLevel = !parentDocId; // 没有父 → 顶级
-  const rootDocId = isTopLevel ? current.documentId : parentDocId;
+  // 2) 拿到顶级父分类的所有子分类（兄弟 = 顶级的 children）
+  const siblings = await getRootChildren(rootDocId);
 
-  // 3) 顶部兄弟子分类按钮（若是顶级，就显示它的所有子分类；若是子分类，也显示同一顶级下的兄弟）
-  const siblings = await getSiblings(rootDocId);
+  // 3) 如果当前就是顶级分类：把“自己 + 所有子分类”的 documentId 组成一个列表
+  //    用于产品过滤（$in）与 total 统计；否则子分类页面只看自己
+  let categoryDocIds: string[] | undefined;
+  const isTop = current.documentId && rootDocId && current.documentId === rootDocId;
 
-  // 4) 计算商品查询范围：
-  //   - 顶级分类：自己 + 其所有直接子分类 docId（union）
-  //   - 子分类：只查自己
-  let categoryDocIdsForPage: string[] | undefined = undefined;
-  if (isTopLevel && rootDocId) {
-    const childrenIds = await getChildrenDocIds(rootDocId);
-    categoryDocIdsForPage = [rootDocId, ...childrenIds];
+  if (isTop) {
+    const childIds = siblings
+      .map((s) => s.documentId)
+      .filter((x): x is string => Boolean(x));
+    categoryDocIds = [
+      current.documentId!, // 顶级自身（若顶级也挂了产品）
+      ...childIds,
+    ];
   }
 
-  // 5) 真实商品总数
-  const total = await getProductTotal(
-    categoryDocIdsForPage?.length
-      ? { categoryDocIds: categoryDocIdsForPage }
-      : { slug }
-  );
+  // 4) 统计总数：顶级走 $in，子级走 slug
+  const total = await getProductTotal({
+    slug: isTop ? undefined : slug,
+    categoryDocIds,
+  });
 
-  // （可选）演示：无数据也显示占位
+  // （可选）演示模式：没有商品时给一个占位总数，避免页面空白
   const DEMO = process.env.NEXT_PUBLIC_DEMO_MODE === "1";
   const totalForUI = DEMO && total === 0 ? 120 : total;
 
   return (
     <main className="w-full max-w-none px-4 md:px-6 lg:px-8 py-8 space-y-6">
-      {/* 顶部兄弟子分类按钮 */}
+      {/* 子分类跳转按钮（放在标题上方；按钮更大） */}
       {siblings.length > 0 && (
-        <div className="flex flex-wrap gap-y-3 md:gap-y-4 gap-x-8 md:gap-x-12 mb-3 md:mb-4">
+        <div className="flex flex-wrap gap-4 mb-2">
           {siblings.map((s) => {
             const active = s.slug === slug;
             const base =
-              "rounded-full border px-6 md:px-8 py-3 md:py-3.5 text-base md:text-lg font-semibold whitespace-nowrap";
+              "rounded-full border px-12 md:px-14 py-7 md:py-6 text-base md:text-lg font-semibold whitespace-nowrap";
             const cls = active
               ? `${base} bg-black text-white border-black`
               : `${base} border-neutral-300 text-neutral-800 hover:bg-neutral-50`;
             return (
-              <Link key={s.slug} href={`/category/${s.slug}`} className={cls} aria-current={active ? "page" : undefined}>
+              <Link
+                key={s.slug}
+                href={`/category/${s.slug}`}
+                className={cls}
+                aria-current={active ? "page" : undefined}
+              >
                 {s.name || s.slug}
               </Link>
             );
@@ -214,14 +218,14 @@ export default async function CategoryPage({ params }: { params: ParamsPromise }
         </div>
       )}
 
-      {/* 商品网格：把 union 的 docId 列表传给子组件 */}
+      {/* 列表：把顶级的 docId 列表传下去，子级则不传 */}
       <div className="mt-2">
         <CategoryGridClient
           slug={slug}
           title={current.name}
           total={totalForUI}
           pageSize={40}
-          categoryDocIds={categoryDocIdsForPage} // 👈 新增
+          categoryDocIds={categoryDocIds}
         />
       </div>
     </main>
