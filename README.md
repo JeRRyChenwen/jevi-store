@@ -682,3 +682,5 @@ images (Media, Multiple，可选)
 product (Relation: many-to-one → Product，required)
 
 建议：在 Variant 上做业务层去重（同一 product 下 (color, size) 组合不重复）。需要时可用 lifecycle 校验实现（之前我给过示例）。
+
+价格全球化

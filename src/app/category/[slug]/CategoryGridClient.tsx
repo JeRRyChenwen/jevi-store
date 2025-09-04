@@ -60,7 +60,7 @@ function normalizeProduct(row: any): ProductLite {
 
   const cents = Number(attrs.base_price_cents);
   const price = Number.isFinite(cents) ? Math.max(0, cents) / 100 : null;
-  const currency: string | undefined = attrs.currency ?? "USD";
+  const currency: string | undefined = (attrs.currency ?? "USD") as string;
 
   const imageUrl = getFirstGalleryUrl(attrs);
 
@@ -107,6 +107,12 @@ export default function CategoryGridClient({
   const [loading, setLoading] = useState(false);
   const [list, setList] = useState<ProductLite[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  // 结果数量文案
+  const resultLabel = useMemo(
+    () => `${total} ${total === 1 ? "result" : "results"}`,
+    [total]
+  );
 
   // 拉取当前页产品
   useEffect(() => {
@@ -198,10 +204,17 @@ export default function CategoryGridClient({
   return (
     <>
       <header className="mb-6">
-        <h1 className="text-2xl font-bold">{title}</h1>
-        <p className="text-neutral-600">
-          Category: <code className="font-mono">{slug}</code>
-        </p>
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold">{title}</h1>
+            <p className="text-neutral-600">
+              Category: <code className="font-mono">{slug}</code>
+            </p>
+          </div>
+          <div className="text-sm md:text-base text-neutral-600 whitespace-nowrap">
+            {resultLabel}
+          </div>
+        </div>
       </header>
 
       {error ? (
