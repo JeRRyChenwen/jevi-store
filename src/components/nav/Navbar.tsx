@@ -4,10 +4,10 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { ModeToggle } from "@/components/ui/mode-toggle";
+// ⬇️ 已移除 ModeToggle
 import {
   User as UserIcon,
-  Settings,
+  // ⬇️ 已移除 Settings
   Heart,
   ShoppingBag,
   Search as SearchIcon,
@@ -134,7 +134,7 @@ export default function Navbar() {
 
       {/* 右侧整体（搜索 + 图标）推到右边 */}
       <div className="ml-auto flex items-center gap-1 md:gap-2">
-        {/* 桌面端搜索框 —— 轻微左移：加右外边距（只是一点点） */}
+        {/* 桌面端搜索框 */}
         <CompactSearch className="w-[420px] lg:w-[560px] mr-10 md:mr-30" />
 
         {/* 移动端放大镜按钮（md 以下显示） */}
@@ -148,19 +148,7 @@ export default function Navbar() {
           <SearchIcon className={ICON_SIZE} />
         </Button>
 
-        {/* 设置 */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="icon" className={ICON_BTN} aria-label="settings">
-              <Settings className={ICON_SIZE} />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem asChild>
-              <div className="w-full"><ModeToggle /></div>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {/* ⬇️ 已移除“设置”图标及其下拉菜单与 ModeToggle */}
 
         {/* 心愿单 */}
         <DropdownMenu>
