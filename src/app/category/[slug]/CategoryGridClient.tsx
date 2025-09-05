@@ -8,7 +8,6 @@ import { api, mediaUrl } from "@/lib/strapi";
 import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
 
-
 type Props = {
   slug: string;
   title: string;
@@ -96,11 +95,11 @@ export default function CategoryGridClient({
   const router = useRouter();
   const sp = useSearchParams();
 
-  // === Refs 用于无障碍焦点管理 ===
+  // === Refs：无障碍焦点管理 ===
   const triggerBtnRef = useRef<HTMLButtonElement | null>(null);
   const closeBtnRef = useRef<HTMLButtonElement | null>(null);
 
-  // 应用中的筛选（来自 URL）
+  // 已应用的筛选（来自 URL）
   const minParam = sp.get("min");
   const maxParam = sp.get("max");
   const appliedMin = useMemo(
@@ -114,6 +113,7 @@ export default function CategoryGridClient({
   const appliedMaterials = useMemo(() => parseCSV(sp, "material"), [sp]);
   const appliedSizes = useMemo(() => parseCSV(sp, "size"), [sp]);
   const appliedColors = useMemo(() => parseCSV(sp, "color"), [sp]);
+  const appliedGenders = useMemo(() => parseCSV(sp, "gender"), [sp]); // 👈 product 级别
 
   // 分页（基于筛选后的总数）
   const pageParam = sp.get("page");
@@ -129,13 +129,15 @@ export default function CategoryGridClient({
   const [list, setList] = useState<ProductLite[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // 可选项（来自 variants 表）
+  // Facets
   const [facetMaterials, setFacetMaterials] = useState<string[]>([]);
   const [facetSizes, setFacetSizes] = useState<string[]>([]);
   const [facetColors, setFacetColors] = useState<string[]>([]);
+  const [facetGenders, setFacetGenders] = useState<string[]>([]);
   const [variantFiltersSupported, setVariantFiltersSupported] = useState(true);
+  const [productGenderSupported, setProductGenderSupported] = useState(true);
 
-  // Drawer（左侧筛选面板）草稿值
+  // Drawer 草稿值
   const [open, setOpen] = useState(false);
   const [draftMin, setDraftMin] = useState<number | undefined>(appliedMin);
   const [draftMax, setDraftMax] = useState<number | undefined>(appliedMax);
@@ -144,6 +146,7 @@ export default function CategoryGridClient({
   );
   const [draftSizes, setDraftSizes] = useState<Set<string>>(new Set(appliedSizes));
   const [draftColors, setDraftColors] = useState<Set<string>>(new Set(appliedColors));
+  const [draftGenders, setDraftGenders] = useState<Set<string>>(new Set(appliedGenders));
 
   // 打开抽屉时，用已应用的筛选值重置草稿
   useEffect(() => {
@@ -153,14 +156,14 @@ export default function CategoryGridClient({
       setDraftMaterials(new Set(appliedMaterials));
       setDraftSizes(new Set(appliedSizes));
       setDraftColors(new Set(appliedColors));
+      setDraftGenders(new Set(appliedGenders));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // 打开抽屉后把焦点放到 Close，支持 Esc 关闭；关闭后把焦点还给 Filter 按钮
+  // 打开后把焦点放到 Close；Esc 关闭并把焦点还给 Filter
   useEffect(() => {
     if (!open) return;
-    // 打开时聚焦 Close
     setTimeout(() => closeBtnRef.current?.focus(), 0);
 
     const onKey = (e: KeyboardEvent) => {
@@ -174,48 +177,79 @@ export default function CategoryGridClient({
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  // 读取 variants 的可选项
+  // 拉 facets：variants(size/color/material) + product(gender)
   useEffect(() => {
     let aborted = false;
     async function fetchFacets() {
-      if (!variantFiltersSupported) return;
+      const partsForProducts: string[] = [];
+      const partsForVariants: string[] = [];
+      if (categoryDocIds?.length) {
+        categoryDocIds.forEach((id, i) => {
+          const enc = encodeURIComponent(id);
+          partsForProducts.push(`filters[category][documentId][$in][${i}]=${enc}`);
+          partsForVariants.push(`filters[product][category][documentId][$in][${i}]=${enc}`);
+        });
+      } else {
+        const enc = encodeURIComponent(slug);
+        partsForProducts.push(`filters[category][slug][$eq]=${enc}`);
+        partsForVariants.push(`filters[product][category][slug][$eq]=${enc}`);
+      }
+
+      // 两类并行
       try {
-        const parts: string[] = [];
-        if (categoryDocIds?.length) {
-          categoryDocIds.forEach((id, i) =>
-            parts.push(
-              `filters[product][category][documentId][$in][${i}]=${encodeURIComponent(id)}`
-            )
-          );
-        } else {
-          parts.push(`filters[product][category][slug][$eq]=${encodeURIComponent(slug)}`);
-        }
-        const qs =
-          `/api/variants?${parts.join("&")}` +
+        // variants -> size/color/material
+        const qsV =
+          `/api/variants?${partsForVariants.join("&")}` +
           `&fields[0]=material&fields[1]=size&fields[2]=color` +
           `&pagination[pageSize]=500&publicationState=live`;
+        dbg("facets:variants GET", qsV);
 
-        dbg("facets:GET", qs);
-        const json = await api(qs, { noCache: true });
+        const [vJson, pJson] = await Promise.all([
+          api(qsV, { noCache: true }).catch((e) => {
+            dbg("facets:variants error", e?.message || e);
+            setVariantFiltersSupported(false);
+            return null;
+          }),
+          // products -> gender（product 级别）
+          api(
+            `/api/products?${partsForProducts.join("&")}` +
+              `&fields[0]=gender&pagination[pageSize]=500&publicationState=live`,
+            { noCache: true }
+          ).catch((e) => {
+            dbg("facets:products(gender) error", e?.message || e);
+            setProductGenderSupported(false);
+            return null;
+          }),
+        ]);
 
-        const rows: any[] = Array.isArray(json?.data) ? json.data : [];
-        const m = new Set<string>();
-        const s = new Set<string>();
-        const c = new Set<string>();
-        for (const r of rows) {
-          const a = r?.attributes ?? r ?? {};
-          if (a.material && String(a.material).trim()) m.add(String(a.material).trim());
-          if (a.size && String(a.size).trim()) s.add(String(a.size).trim());
-          if (a.color && String(a.color).trim()) c.add(String(a.color).trim());
-        }
-        if (!aborted) {
+        if (!aborted && vJson) {
+          const rows: any[] = Array.isArray(vJson?.data) ? vJson.data : [];
+          const m = new Set<string>();
+          const s = new Set<string>();
+          const c = new Set<string>();
+          for (const r of rows) {
+            const a = r?.attributes ?? r ?? {};
+            if (a.material && String(a.material).trim()) m.add(String(a.material).trim());
+            if (a.size && String(a.size).trim()) s.add(String(a.size).trim());
+            if (a.color && String(a.color).trim()) c.add(String(a.color).trim());
+          }
           setFacetMaterials(Array.from(m).sort((a, b) => a.localeCompare(b)));
           setFacetSizes(Array.from(s).sort((a, b) => a.localeCompare(b)));
           setFacetColors(Array.from(c).sort((a, b) => a.localeCompare(b)));
         }
-      } catch (e: any) {
-        dbg("facets:error", e?.message || e);
-        if (!aborted) setVariantFiltersSupported(false);
+
+        if (!aborted && pJson) {
+          const rows: any[] = Array.isArray(pJson?.data) ? pJson.data : [];
+          const g = new Set<string>();
+          for (const r of rows) {
+            const a = r?.attributes ?? r ?? {};
+            const v = a.gender;
+            if (v && String(v).trim()) g.add(String(v).trim());
+          }
+          setFacetGenders(Array.from(g).sort((a, b) => a.localeCompare(b)));
+        }
+      } catch (e) {
+        // 已在各自 catch 里做处理，这里忽略
       }
     }
     fetchFacets();
@@ -236,9 +270,7 @@ export default function CategoryGridClient({
         // 分类
         if (categoryDocIds?.length) {
           categoryDocIds.forEach((id, i) =>
-            parts.push(
-              `filters[category][documentId][$in][${i}]=${encodeURIComponent(id)}`
-            )
+            parts.push(`filters[category][documentId][$in][${i}]=${encodeURIComponent(id)}`)
           );
         } else {
           parts.push(`filters[category][slug][$eq]=${encodeURIComponent(slug)}`);
@@ -251,7 +283,14 @@ export default function CategoryGridClient({
         if (typeof maxCents === "number")
           parts.push(`filters[base_price_cents][$lte]=${maxCents}`);
 
-        // 变体
+        // product 级（gender）
+        if (productGenderSupported && appliedGenders.length) {
+          appliedGenders.forEach((v, i) =>
+            parts.push(`filters[gender][$in][${i}]=${encodeURIComponent(v)}`)
+          );
+        }
+
+        // variant 级（material / size / color）
         if (variantFiltersSupported) {
           const pushIN = (key: string, arr: string[]) => {
             arr.forEach((v, i) =>
@@ -300,6 +339,8 @@ export default function CategoryGridClient({
     pageSize,
     appliedMin,
     appliedMax,
+    productGenderSupported,
+    appliedGenders.join(","), // 👈 依赖 gender
     variantFiltersSupported,
     appliedMaterials.join(","),
     appliedSizes.join(","),
@@ -325,7 +366,7 @@ export default function CategoryGridClient({
 
   const resultLabel = `${filteredTotal} ${filteredTotal === 1 ? "result" : "results"}`;
 
-  // 统一的关闭抽屉（先失焦，再还焦给 Filter）
+  // 统一关闭抽屉（焦点回退）
   const closeDrawer = () => {
     (document.activeElement as HTMLElement | null)?.blur?.();
     setOpen(false);
@@ -352,10 +393,10 @@ export default function CategoryGridClient({
     setCSV("material", draftMaterials);
     setCSV("size", draftSizes);
     setCSV("color", draftColors);
+    setCSV("gender", draftGenders); // 👈 新增
 
     u.searchParams.set("page", "1");
 
-    // 先失焦并关闭，再跳转；跳转后把焦点还给 Filter
     (document.activeElement as HTMLElement | null)?.blur?.();
     setOpen(false);
     router.replace(`/category/${slug}${u.search}`);
@@ -368,6 +409,7 @@ export default function CategoryGridClient({
     setDraftMaterials(new Set());
     setDraftSizes(new Set());
     setDraftColors(new Set());
+    setDraftGenders(new Set()); // 👈 新增
   };
 
   const toggleInSet = (set: Set<string>, v: string, next: boolean) => {
@@ -405,7 +447,7 @@ export default function CategoryGridClient({
         </div>
       </header>
 
-      {/* === 左侧抽屉（纯 Tailwind 实现） === */}
+      {/* === 左侧抽屉 === */}
       <div
         className={`fixed inset-0 z-50 transition ${
           open ? "pointer-events-auto" : "pointer-events-none"
@@ -429,7 +471,8 @@ export default function CategoryGridClient({
           <div className="p-4 border-b flex items-center justify-between">
             <h2 className="text-lg font-semibold">Filter by</h2>
             <button
-              onClick={() => setOpen(false)}
+              ref={closeBtnRef}
+              onClick={closeDrawer}
               aria-label="Close filter panel"
               title="Close"
               className="rounded-full p-2 hover:bg-neutral-100 focus:outline-none focus:ring-2 focus:ring-black/10"
@@ -439,7 +482,32 @@ export default function CategoryGridClient({
           </div>
 
           <div className="h-[calc(100%-120px)] overflow-y-auto p-4">
-            {/* Size */}
+            {/* Gender（Product 级） */}
+            {productGenderSupported && facetGenders.length > 0 && (
+              <details className="mb-4" open>
+                <summary className="cursor-pointer select-none py-2 font-medium">
+                  Gender
+                </summary>
+                <div className="mt-2 space-y-2">
+                  {facetGenders.map((v) => (
+                    <label key={v} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4"
+                        checked={draftGenders.has(v)}
+                        onChange={(e) => {
+                          const { checked } = e.currentTarget;
+                          setDraftGenders((s) => toggleInSet(s, v, checked));
+                        }}
+                      />
+                      <span>{v}</span>
+                    </label>
+                  ))}
+                </div>
+              </details>
+            )}
+
+            {/* Size（Variant 级） */}
             {variantFiltersSupported && facetSizes.length > 0 && (
               <details className="mb-4" open>
                 <summary className="cursor-pointer select-none py-2 font-medium">
@@ -464,7 +532,7 @@ export default function CategoryGridClient({
               </details>
             )}
 
-            {/* Colour */}
+            {/* Colour（Variant 级） */}
             {variantFiltersSupported && facetColors.length > 0 && (
               <details className="mb-4" open>
                 <summary className="cursor-pointer select-none py-2 font-medium">
@@ -489,7 +557,7 @@ export default function CategoryGridClient({
               </details>
             )}
 
-            {/* Material */}
+            {/* Material（Variant 级） */}
             {variantFiltersSupported && facetMaterials.length > 0 && (
               <details className="mb-4" open>
                 <summary className="cursor-pointer select-none py-2 font-medium">
