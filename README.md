@@ -597,12 +597,6 @@ Filter: New Arrival, Sale
 
 价格全球化
 
-打折
-
-打折 和 热门产品
-
-鞋子的性别
-
 不同国际标准的 size
 
 is showed?

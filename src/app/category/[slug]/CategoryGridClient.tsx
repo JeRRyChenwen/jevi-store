@@ -113,7 +113,7 @@ export default function CategoryGridClient({
   const appliedMaterials = useMemo(() => parseCSV(sp, "material"), [sp]);
   const appliedSizes = useMemo(() => parseCSV(sp, "size"), [sp]);
   const appliedColors = useMemo(() => parseCSV(sp, "color"), [sp]);
-  const appliedGenders = useMemo(() => parseCSV(sp, "gender"), [sp]); // 👈 product 级别
+  const appliedGenders = useMemo(() => parseCSV(sp, "gender"), [sp]); // product 级别
 
   // 分页（基于筛选后的总数）
   const pageParam = sp.get("page");
@@ -194,8 +194,10 @@ export default function CategoryGridClient({
         partsForProducts.push(`filters[category][slug][$eq]=${enc}`);
         partsForVariants.push(`filters[product][category][slug][$eq]=${enc}`);
       }
+      // 仅统计/展示「被上架显示」的商品
+      partsForProducts.push(`filters[is_showed][$eq]=true`);
+      partsForVariants.push(`filters[product][is_showed][$eq]=true`);
 
-      // 两类并行
       try {
         // variants -> size/color/material
         const qsV =
@@ -248,8 +250,8 @@ export default function CategoryGridClient({
           }
           setFacetGenders(Array.from(g).sort((a, b) => a.localeCompare(b)));
         }
-      } catch (e) {
-        // 已在各自 catch 里做处理，这里忽略
+      } catch {
+        /* 已在各自 catch 里处理 */
       }
     }
     fetchFacets();
@@ -275,6 +277,10 @@ export default function CategoryGridClient({
         } else {
           parts.push(`filters[category][slug][$eq]=${encodeURIComponent(slug)}`);
         }
+
+        // 仅展示「被上架显示」的商品
+        parts.push(`filters[is_showed][$eq]=true`);
+
         // 价格（元→分）
         const minCents = toCents(appliedMin);
         const maxCents = toCents(appliedMax);
@@ -340,7 +346,7 @@ export default function CategoryGridClient({
     appliedMin,
     appliedMax,
     productGenderSupported,
-    appliedGenders.join(","), // 👈 依赖 gender
+    appliedGenders.join(","), // 依赖 gender
     variantFiltersSupported,
     appliedMaterials.join(","),
     appliedSizes.join(","),
@@ -393,7 +399,7 @@ export default function CategoryGridClient({
     setCSV("material", draftMaterials);
     setCSV("size", draftSizes);
     setCSV("color", draftColors);
-    setCSV("gender", draftGenders); // 👈 新增
+    setCSV("gender", draftGenders);
 
     u.searchParams.set("page", "1");
 
@@ -409,7 +415,7 @@ export default function CategoryGridClient({
     setDraftMaterials(new Set());
     setDraftSizes(new Set());
     setDraftColors(new Set());
-    setDraftGenders(new Set()); // 👈 新增
+    setDraftGenders(new Set());
   };
 
   const toggleInSet = (set: Set<string>, v: string, next: boolean) => {
@@ -682,7 +688,7 @@ export default function CategoryGridClient({
                     Short description goes here…
                   </p>
 
-                  <div className="mt-5 flex items-center justify-between">
+                <div className="mt-5 flex items-center justify-between">
                     <span className="text-xl md:text-2xl font-bold">
                       {formatPrice(p.price, p.currency)}
                     </span>
