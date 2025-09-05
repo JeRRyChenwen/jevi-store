@@ -452,9 +452,10 @@ export default function CategoryGridClient({
                         type="checkbox"
                         className="h-4 w-4"
                         checked={draftSizes.has(v)}
-                        onChange={(e) =>
-                          setDraftSizes((s) => toggleInSet(s, v, e.currentTarget.checked))
-                        }
+                        onChange={(e) => {
+                          const { checked } = e.currentTarget;
+                          setDraftSizes((s) => toggleInSet(s, v, checked));
+                        }}
                       />
                       <span>{v}</span>
                     </label>
@@ -476,9 +477,10 @@ export default function CategoryGridClient({
                         type="checkbox"
                         className="h-4 w-4"
                         checked={draftColors.has(v)}
-                        onChange={(e) =>
-                          setDraftColors((s) => toggleInSet(s, v, e.currentTarget.checked))
-                        }
+                        onChange={(e) => {
+                          const { checked } = e.currentTarget;
+                          setDraftColors((s) => toggleInSet(s, v, checked));
+                        }}
                       />
                       <span>{v}</span>
                     </label>
@@ -500,9 +502,10 @@ export default function CategoryGridClient({
                         type="checkbox"
                         className="h-4 w-4"
                         checked={draftMaterials.has(v)}
-                        onChange={(e) =>
-                          setDraftMaterials((s) => toggleInSet(s, v, e.currentTarget.checked))
-                        }
+                        onChange={(e) => {
+                          const { checked } = e.currentTarget;
+                          setDraftMaterials((s) => toggleInSet(s, v, checked));
+                        }}
                       />
                       <span>{v}</span>
                     </label>
