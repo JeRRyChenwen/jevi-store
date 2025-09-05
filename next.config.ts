@@ -1,6 +1,9 @@
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  output: "export", // ✅ 告诉 Next.js 用静态导出模式
-}
+// next.config.ts
+import type { NextConfig } from 'next';
+
+const nextConfig: NextConfig = {
+  // 不要写 output: 'export'
+  reactStrictMode: true,
+};
 
 export default nextConfig;
