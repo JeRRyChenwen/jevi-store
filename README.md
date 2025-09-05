@@ -595,6 +595,18 @@ Sub-Category: Causal, Formal, long sleeve, short sleeve
 
 Filter: New Arrival, Sale
 
+价格全球化
+
+打折
+
+打折 和 热门产品
+
+鞋子的性别
+
+不同国际标准的 size
+
+is showed?
+
 # ============================================================================
 
 # ============================================================================
@@ -683,8 +695,6 @@ product (Relation: many-to-one → Product，required)
 
 建议：在 Variant 上做业务层去重（同一 product 下 (color, size) 组合不重复）。需要时可用 lifecycle 校验实现（之前我给过示例）。
 
-价格全球化
-
 =====================
 
 对的。现在左侧只显示 Price，是因为我们的代码只在“有可选项可用”时才渲染 Size / Colour / Material 三块，而这些可选项是从 Variant 集合里统计出来的。你目前还没在 Variant 里创建数据（或字段为空/未发布），facetSizes/materials/colors 就是空数组，所以面板里只剩 Price。
@@ -736,10 +746,6 @@ http://localhost:1337/api/variants?filters[product][category][slug][$eq]=formal-
 字段名必须精确匹配：material、size、color。如果你在 Strapi 里用了别的 API ID（比如 colour 或 materials），要么改字段名，要么我可以帮你把前端的查询路径一起改掉。
 
 如果你不想用 Variant，而是把 size/color/material 放在 Product 上，也可以把代码改成从产品字段做 facets 和过滤；需要的话我给你一份对应的改法。
-
-打折
-
-打折 和 热门产品
 
 ====================
 
