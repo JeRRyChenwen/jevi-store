@@ -6,6 +6,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Pagination from "@/components/pagination/Pagination";
 import { api, mediaUrl } from "@/lib/strapi";
 import { Button } from "@/components/ui/button";
+import { X } from "lucide-react";
+
 
 type Props = {
   slug: string;
@@ -427,11 +429,12 @@ export default function CategoryGridClient({
           <div className="p-4 border-b flex items-center justify-between">
             <h2 className="text-lg font-semibold">Filter by</h2>
             <button
-              ref={closeBtnRef}
-              onClick={closeDrawer}
-              className="rounded-md px-3 py-1 text-sm hover:bg-neutral-100"
+              onClick={() => setOpen(false)}
+              aria-label="Close filter panel"
+              title="Close"
+              className="rounded-full p-2 hover:bg-neutral-100 focus:outline-none focus:ring-2 focus:ring-black/10"
             >
-              Close
+              <X className="h-5 w-5 text-neutral-600" />
             </button>
           </div>
 
