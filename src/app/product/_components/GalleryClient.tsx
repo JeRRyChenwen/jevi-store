@@ -8,7 +8,6 @@ type Props = {
   images: string[];
   title: string;
   slug: string;
-  /** 当前选中的大图索引（来自 ?img=） */
   selectedIndex?: number;
 };
 
@@ -18,10 +17,8 @@ export default function GalleryClient({
   slug,
   selectedIndex = 0,
 }: Props) {
-  const wrapRef = useRef<HTMLDivElement | null>(null);
   const activeRef = useRef<HTMLAnchorElement | null>(null);
 
-  // 选中缩略图滚动到可见
   useEffect(() => {
     activeRef.current?.scrollIntoView({
       behavior: "smooth",
@@ -40,14 +37,15 @@ export default function GalleryClient({
 
   return (
     <div
-      ref={wrapRef}
       aria-label="Product image thumbnails"
       className="
         relative
         max-h-[70vh] md:max-h-[76vh]
         overflow-y-auto
         pr-2 md:pr-3 py-1 md:py-2
-        flex md:block
+
+        /* 关键：始终用 flex；移动端横排，桌面竖排 */
+        flex md:flex-col
         gap-5 md:gap-6
       "
     >
@@ -62,8 +60,8 @@ export default function GalleryClient({
             aria-label={`Preview ${i + 1}`}
             ref={active ? activeRef : null}
             className={[
-              "group block select-none mx-auto",
-              "w-[140px] md:w-[160px]", // 缩略图更宽
+              "group block select-none",
+              "w-[140px] md:w-[160px] shrink-0", // 防止被压缩导致贴合
               active
                 ? "rounded-2xl ring-2 ring-neutral-900 ring-offset-4 ring-offset-white shadow-lg"
                 : "rounded-2xl ring-1 ring-transparent hover:ring-neutral-300 hover:shadow transition",
