@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Pagination from "@/components/pagination/Pagination";
 import { api, mediaUrl } from "@/lib/strapi";
 import { Button } from "@/components/ui/button";
-import { X, Star } from "lucide-react";
+import { X, Star, ChevronLeft, ChevronRight } from "lucide-react";
 
 type Props = {
   slug: string;
@@ -24,12 +24,13 @@ type ProductLite = {
   price: number | null;
   currency?: string | null;
   imageUrl?: string;
-  /** 新增：折扣与时间窗/热度/颜色 */
+  /** 新增：折扣与时间窗/热度/颜色/相册 */
   discountPercent?: number;
   saleStartsAt?: string | null;
   saleEndsAt?: string | null;
   hotScore?: number | null;
   colors?: string[];
+  galleryUrls: string[];
 };
 
 const DEV = process.env.NODE_ENV !== "production";
@@ -62,6 +63,27 @@ function getFirstGalleryUrl(attrs: any): string | undefined {
   return typeof u === "string" ? mediaUrl(u) : undefined;
 }
 
+/** 取出 gallery 的所有图片 URL（按合适尺寸优先级） */
+function getGalleryUrls(attrs: any): string[] {
+  const arr: any[] = Array.isArray(attrs?.gallery?.data)
+    ? attrs.gallery.data
+    : Array.isArray(attrs?.gallery)
+    ? attrs.gallery
+    : [];
+  const urls: string[] = [];
+  for (const r of arr) {
+    const media = r?.attributes ?? r ?? {};
+    const u =
+      media?.formats?.large?.url ??
+      media?.formats?.medium?.url ??
+      media?.formats?.small?.url ??
+      media?.formats?.thumbnail?.url ??
+      media?.url;
+    if (typeof u === "string") urls.push(mediaUrl(u));
+  }
+  return urls;
+}
+
 /** 解析 variants 下的 color 列表（兼容 v5 / v4 返回形态） */
 function getVariantColors(attrs: any): string[] {
   const arr: any[] = Array.isArray(attrs?.variants?.data)
@@ -69,7 +91,6 @@ function getVariantColors(attrs: any): string[] {
     : Array.isArray(attrs?.variants)
     ? attrs.variants
     : [];
-
   const set = new Set<string>();
   for (const r of arr) {
     const a = r?.attributes ?? r ?? {};
@@ -84,13 +105,8 @@ function formatPriceVal(n: number | null, currency?: string | null) {
   if (n == null) return "—";
   const cur = (currency || "AUD").toUpperCase();
   const value = Number(n);
-
-  // 对 CNY 用货币代码显示，避免出现 “CN¥”
-  if (cur === "CNY") {
-    return `CNY ${value.toFixed(2)}`;
-  }
-
-  // 其他币种保持原有格式化
+  // CNY 用代码显示，避免 CN¥
+  if (cur === "CNY") return `CNY ${value.toFixed(2)}`;
   return new Intl.NumberFormat(undefined, {
     style: "currency",
     currency: cur,
@@ -140,7 +156,11 @@ function normalizeProduct(row: any): ProductLite {
   const price = Number.isFinite(cents) ? Math.max(0, cents) / 100 : null;
 
   const currency: string | undefined = (attrs.currency ?? "AUD") as string;
-  const imageUrl = getFirstGalleryUrl(attrs);
+
+  const galleryUrls = getGalleryUrls(attrs);
+  const imageUrl = getFirstGalleryUrl(attrs) || galleryUrls[0];
+
+  const colors = getVariantColors(attrs);
 
   const key =
     String(row?.id ?? "") ||
@@ -150,8 +170,6 @@ function normalizeProduct(row: any): ProductLite {
 
   const discountPercent: number | undefined =
     typeof attrs.discount_percent_off === "number" ? attrs.discount_percent_off : undefined;
-
-  const colors = getVariantColors(attrs);
 
   return {
     key,
@@ -164,6 +182,7 @@ function normalizeProduct(row: any): ProductLite {
     saleEndsAt: attrs.sale_ends_at ?? null,
     hotScore: typeof attrs.hot_score === "number" ? attrs.hot_score : null,
     colors,
+    galleryUrls,
   };
 }
 
@@ -177,6 +196,55 @@ function CardSkeleton() {
         <div className="h-8 w-24 rounded bg-muted animate-pulse" />
       </div>
     </article>
+  );
+}
+
+/** 图片轮播（左右箭头切换） */
+function ImageCarousel({ urls, alt }: { urls: string[]; alt: string }) {
+  const [idx, setIdx] = useState(0);
+  const count = urls.length;
+
+  if (!count) {
+    return (
+      <div className="aspect-[4/3] bg-muted flex items-center justify-center text-muted-foreground">
+        No Image
+      </div>
+    );
+  }
+
+  const go = (delta: number) => setIdx((i) => (i + delta + count) % count);
+
+  return (
+    <div className="relative aspect-[4/3] bg-muted">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        alt={alt}
+        src={urls[idx]}
+        className="h-full w-full object-cover"
+        loading="lazy"
+      />
+
+      {count > 1 && (
+        <>
+          <button
+            type="button"
+            aria-label="Previous image"
+            className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-white/80 hover:bg-white shadow p-1"
+            onClick={() => go(-1)}
+          >
+            <ChevronLeft className="h-5 w-5 text-neutral-800" />
+          </button>
+          <button
+            type="button"
+            aria-label="Next image"
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-white/80 hover:bg-white shadow p-1"
+            onClick={() => go(1)}
+          >
+            <ChevronRight className="h-5 w-5 text-neutral-800" />
+          </button>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -408,10 +476,10 @@ export default function CategoryGridClient({
         const qs =
           `/api/products?${parts.join("&")}` +
           `&fields[0]=title&fields[1]=slug&fields[2]=base_price_cents&fields[3]=currency` +
-          `&fields[4]=discount_percent_off&fields[5]=sale_starts_at&fields[6]=sale_ends_at&fields[7]=hot_score` +
+          `&fields[4]=discount_percent_off&fields[5]=sale_starts_at&fields[6]=sale_ends_at&fields[7]=hot_score&fields[8]=priority` +
           `&populate[gallery]=true&populate[variants][fields][0]=color` +
           `&pagination[page]=${page}&pagination[pageSize]=${pageSize}` +
-          `&sort[0]=updatedAt:desc&publicationState=live`;
+          `&sort[0]=priority:asc&sort[1]=updatedAt:desc&publicationState=live`;
 
         dbg("products:GET", qs);
 
@@ -765,32 +833,15 @@ export default function CategoryGridClient({
               if (stars > 5) stars = Math.round(clamp(stars, 0, 100) / 20);
               stars = clamp(Math.round(stars), 0, 5);
 
+              const urls = p.galleryUrls?.length ? p.galleryUrls : (p.imageUrl ? [p.imageUrl] : []);
+
               return (
                 <article
                   key={p.key}
                   className="group overflow-hidden rounded-3xl border bg-card shadow-sm transition-shadow hover:shadow-md"
                 >
-                  <div className="relative aspect-[4/3] bg-muted">
-                    {p.imageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        alt={p.name}
-                        src={p.imageUrl}
-                        className="h-full w-full object-cover"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div className="h-full w-full flex items-center justify-center text-muted-foreground">
-                        Image #{start + idx + 1}
-                      </div>
-                    )}
-                    {/* 你也可以把折扣徽标放到图片左上角（像示例1一样） */}
-                    {/* {onSale && (
-                      <span className="absolute left-3 top-3 rounded bg-emerald-600 px-2 py-1 text-xs font-semibold text-white">
-                        {p.discountPercent}% OFF {endsSoon ? "ENDS SOON" : ""}
-                      </span>
-                    )} */}
-                  </div>
+                  {/* 轮播图片区 */}
+                  <ImageCarousel urls={urls} alt={p.name || `Image #${start + idx + 1}`} />
 
                   <div className="p-6 md:p-8">
                     {/* 1. 名称 */}
@@ -798,14 +849,14 @@ export default function CategoryGridClient({
                       {p.name || `Product #${start + idx + 1}`}
                     </h3>
 
-                    {/* 2. 折扣文案（仅在有折扣且有效期内显示） */}
+                    {/* 2. 折扣文案（统一字号） */}
                     {onSale && (
                       <p className="mt-1 text-base font-semibold text-emerald-700 uppercase tracking-wide">
                         {p.discountPercent}% OFF {endsSoon ? "ENDS SOON" : ""}
                       </p>
                     )}
 
-                    {/* 3. 价格区 */}
+                    {/* 3. 价格区（统一字号） */}
                     <div className="mt-2">
                       {onSale ? (
                         <div className="flex items-baseline gap-2">
@@ -856,6 +907,8 @@ export default function CategoryGridClient({
                         />
                       ))}
                     </div>
+
+                    {/* 已按你的要求移除 “Add” 按钮 */}
                   </div>
                 </article>
               );
