@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import Pagination from "@/components/pagination/Pagination";
 import { api, mediaUrl } from "@/lib/strapi";
@@ -28,6 +29,7 @@ type Props = {
 
 type ProductLite = {
   key: string;
+  slug?: string;            // ★ 新增：用于详情页路由
   name: string;
   price: number | null;
   currency?: string | null;
@@ -49,7 +51,6 @@ type ProductLite = {
 };
 
 // ============ 排序键 & 标签 ============
-//（提前放在顶部，便于下方使用）
 export type SortKey = "default" | "price-desc" | "price-asc" | "hot";
 
 const SORT_LABELS: Record<SortKey, string> = {
@@ -135,7 +136,7 @@ function formatPriceVal(n: number | null, currency?: string | null, locale?: str
   return new Intl.NumberFormat(locale, {
     style: "currency",
     currency: cur,
-    currencyDisplay: "code", // 始终显示 USD / CNY / AUD ...
+    currencyDisplay: "code", // 修复 USD 少 D：用货币代码
     maximumFractionDigits: 2,
   }).format(Number(n));
 }
@@ -211,6 +212,7 @@ function normalizeProduct(row: any): ProductLite {
 
   return {
     key,
+    slug: attrs.slug, // ★ 保存 slug
     name,
     price,
     currency,
@@ -272,7 +274,7 @@ function ImageCarousel({ urls, alt }: { urls: string[]; alt: string }) {
           <button
             type="button"
             aria-label="Previous image"
-            className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-white/80 hover:bg-white shadow p-1"
+            className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-white/80 hover:bg-white shadow p-1 z-20" // ★ 提高层级，避免被覆盖链接挡住
             onClick={() => go(-1)}
           >
             <ChevronLeft className="h-5 w-5 text-neutral-800" />
@@ -280,7 +282,7 @@ function ImageCarousel({ urls, alt }: { urls: string[]; alt: string }) {
           <button
             type="button"
             aria-label="Next image"
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-white/80 hover:bg-white shadow p-1"
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-white/80 hover:bg-white shadow p-1 z-20" // ★
             onClick={() => go(1)}
           >
             <ChevronRight className="h-5 w-5 text-neutral-800" />
@@ -291,7 +293,7 @@ function ImageCarousel({ urls, alt }: { urls: string[]; alt: string }) {
   );
 }
 
-/** 单个卡片：支持点击颜色切换到该颜色变体的图片 */
+/** 单个卡片：点击图片或标题跳到详情页 */
 function ProductCard({ p, idx, start }: { p: ProductLite; idx: number; start: number }) {
   const [selectedColor, setSelectedColor] = useState<string | null>(p.colors?.[0] ?? null);
 
@@ -327,13 +329,28 @@ function ProductCard({ p, idx, start }: { p: ProductLite; idx: number; start: nu
 
   return (
     <article className="group overflow-hidden rounded-3xl border bg-card shadow-sm transition-shadow hover:shadow-md">
-      {/* 轮播图片区 */}
-      <ImageCarousel urls={urls} alt={p.name || `Image #${start + idx + 1}`} />
+      {/* 图片区 + 覆盖式链接 */}
+      <div className="relative">
+        <ImageCarousel urls={urls} alt={p.name || `Image #${start + idx + 1}`} />
+        {p.slug && (
+          <Link
+            href={`/product/${p.slug}`}
+            aria-label={`View ${p.name}`}
+            className="absolute inset-0 z-10"
+          />
+        )}
+      </div>
 
       <div className="p-6 md:p-8">
-        {/* 1. 名称 */}
+        {/* 1. 名称（点击到详情） */}
         <h3 className="text-lg md:text-xl font-semibold line-clamp-1">
-          {p.name || `Product #${start + idx + 1}`}
+          {p.slug ? (
+            <Link href={`/product/${p.slug}`} className="hover:underline">
+              {p.name || `Product #${start + idx + 1}`}
+            </Link>
+          ) : (
+            p.name || `Product #${start + idx + 1}`
+          )}
         </h3>
 
         {/* 2. 折扣文案（统一字号） */}
@@ -482,8 +499,7 @@ export default function CategoryGridClient({
       setDraftColors(new Set(appliedColors));
       setDraftGenders(new Set(appliedGenders));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open]); // eslint-disable-line
 
   // 打开后把焦点放到 Close；Esc 关闭并把焦点还给 Filter
   useEffect(() => {
@@ -584,8 +600,7 @@ export default function CategoryGridClient({
     return () => {
       aborted = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug, JSON.stringify(categoryDocIds)]);
+  }, [slug, JSON.stringify(categoryDocIds)]); // eslint-disable-line
 
   // ===== 排序串：把 sortKey 转为 Strapi 的 sort[...] 查询参数 =====
   const sortQueryString = useMemo(() => {
@@ -785,10 +800,7 @@ export default function CategoryGridClient({
                     {SORT_LABELS[sortKey] ?? "Sort"}
                   </SelectValue>
                 </SelectTrigger>
-                <SelectContent
-                  align="end"
-                  className="z-50 rounded-xl border shadow-lg"
-                >
+                <SelectContent align="end" className="z-50 rounded-xl border shadow-lg">
                   <SelectGroup>
                     <SelectItem value="default">Default</SelectItem>
                     <SelectItem value="price-desc">Price: High → Low</SelectItem>
