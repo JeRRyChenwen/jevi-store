@@ -23,14 +23,21 @@ type ProductLite = {
   name: string;
   price: number | null;
   currency?: string | null;
-  imageUrl?: string;
-  /** 新增：折扣与时间窗/热度/颜色/相册 */
+
+  /** 折扣与时间窗/热度 */
   discountPercent?: number;
   saleStartsAt?: string | null;
   saleEndsAt?: string | null;
   hotScore?: number | null;
+
+  /** 可选颜色（来自 variants.color 与/或 color_galleries.color） */
   colors?: string[];
-  galleryUrls: string[];
+
+  /** 颜色 -> 该颜色的图片数组（来自 product.color_galleries） */
+  variantsByColor: Record<string, string[]>;
+
+  /** 兜底首图（从 variantsByColor 中取第一张） */
+  imageUrl?: string;
 };
 
 const DEV = process.env.NODE_ENV !== "production";
@@ -49,42 +56,44 @@ function parseCSV(sp: URLSearchParams, key: string): string[] {
     .filter(Boolean);
 }
 
-function getFirstGalleryUrl(attrs: any): string | undefined {
-  const raw = Array.isArray(attrs?.gallery?.data)
-    ? attrs.gallery.data[0]
-    : attrs?.gallery?.data ?? (Array.isArray(attrs?.gallery) ? attrs.gallery[0] : undefined);
-  const media = raw?.attributes ?? raw ?? {};
-  const u =
-    media?.formats?.medium?.url ??
-    media?.formats?.large?.url ??
-    media?.formats?.small?.url ??
-    media?.formats?.thumbnail?.url ??
-    media?.url;
-  return typeof u === "string" ? mediaUrl(u) : undefined;
+/** 统一颜色字符串：小写、空格→-、gray→grey */
+function normalizeColor(s: any) {
+  const v = String(s ?? "").trim().toLowerCase().replace(/\s+/g, "-");
+  if (v === "gray") return "grey";
+  return v;
 }
 
-/** 取出 gallery 的所有图片 URL（按合适尺寸优先级） */
-function getGalleryUrls(attrs: any): string[] {
-  const arr: any[] = Array.isArray(attrs?.gallery?.data)
-    ? attrs.gallery.data
-    : Array.isArray(attrs?.gallery)
-    ? attrs.gallery
-    : [];
-  const urls: string[] = [];
-  for (const r of arr) {
-    const media = r?.attributes ?? r ?? {};
-    const u =
-      media?.formats?.large?.url ??
-      media?.formats?.medium?.url ??
-      media?.formats?.small?.url ??
-      media?.formats?.thumbnail?.url ??
-      media?.url;
-    if (typeof u === "string") urls.push(mediaUrl(u));
+/** 解析 product.color_galleries：颜色 -> 图片数组 */
+function getImagesByColorFromProduct(attrs: any): Record<string, string[]> {
+  const arr: any[] = Array.isArray(attrs?.color_galleries) ? attrs.color_galleries : [];
+  const out: Record<string, string[]> = {};
+  for (const cg of arr) {
+    const colorRaw = (cg?.color ?? cg?.attributes?.color) as string | undefined;
+    const color = normalizeColor(colorRaw);
+    if (!color) continue;
+
+    const imgs: any[] = Array.isArray(cg?.images?.data)
+      ? cg.images.data
+      : Array.isArray(cg?.images)
+      ? cg.images
+      : [];
+    const urls: string[] = [];
+    for (const im of imgs) {
+      const m = im?.attributes ?? im ?? {};
+      const u =
+        m?.formats?.large?.url ??
+        m?.formats?.medium?.url ??
+        m?.formats?.small?.url ??
+        m?.formats?.thumbnail?.url ??
+        m?.url;
+      if (typeof u === "string") urls.push(mediaUrl(u));
+    }
+    if (urls.length) out[color] = urls;
   }
-  return urls;
+  return out;
 }
 
-/** 解析 variants 下的 color 列表（兼容 v5 / v4 返回形态） */
+/** 解析 variants 下的 color 列表（仅取颜色做筛选/打点） */
 function getVariantColors(attrs: any): string[] {
   const arr: any[] = Array.isArray(attrs?.variants?.data)
     ? attrs.variants.data
@@ -94,7 +103,7 @@ function getVariantColors(attrs: any): string[] {
   const set = new Set<string>();
   for (const r of arr) {
     const a = r?.attributes ?? r ?? {};
-    const c = (a.color ?? "").toString().trim();
+    const c = normalizeColor(a.color ?? "");
     if (c) set.add(c);
   }
   return Array.from(set);
@@ -157,10 +166,22 @@ function normalizeProduct(row: any): ProductLite {
 
   const currency: string | undefined = (attrs.currency ?? "AUD") as string;
 
-  const galleryUrls = getGalleryUrls(attrs);
-  const imageUrl = getFirstGalleryUrl(attrs) || galleryUrls[0];
+  // 主图/颜色图片来自 product.color_galleries
+  const variantsByColor = getImagesByColorFromProduct(attrs);
 
-  const colors = getVariantColors(attrs);
+  // 颜色集合：color_galleries + variants.color（去重）
+  const set = new Set<string>(Object.keys(variantsByColor));
+  for (const c of getVariantColors(attrs)) set.add(c);
+  const colors = Array.from(set);
+
+  // 任意首图（兜底）：取映射里的第一张
+  let imageUrl: string | undefined;
+  for (const k of Object.keys(variantsByColor)) {
+    if (variantsByColor[k]?.[0]) {
+      imageUrl = variantsByColor[k][0];
+      break;
+    }
+  }
 
   const key =
     String(row?.id ?? "") ||
@@ -182,7 +203,7 @@ function normalizeProduct(row: any): ProductLite {
     saleEndsAt: attrs.sale_ends_at ?? null,
     hotScore: typeof attrs.hot_score === "number" ? attrs.hot_score : null,
     colors,
-    galleryUrls,
+    variantsByColor,
   };
 }
 
@@ -203,6 +224,11 @@ function CardSkeleton() {
 function ImageCarousel({ urls, alt }: { urls: string[]; alt: string }) {
   const [idx, setIdx] = useState(0);
   const count = urls.length;
+
+  // 颜色/图片数组切换时重置到第一张
+  useEffect(() => {
+    setIdx(0);
+  }, [urls?.join("|")]);
 
   if (!count) {
     return (
@@ -245,6 +271,115 @@ function ImageCarousel({ urls, alt }: { urls: string[]; alt: string }) {
         </>
       )}
     </div>
+  );
+}
+
+/** 单个卡片：支持点击颜色切换到该颜色变体的图片 */
+function ProductCard({ p, idx, start }: { p: ProductLite; idx: number; start: number }) {
+  const [selectedColor, setSelectedColor] = useState<string | null>(p.colors?.[0] ?? null);
+
+  const onSale = isSaleActive(p);
+  const finalPrice = onSale ? salePrice(p) : p.price ?? 0;
+
+  // 折扣是否快结束（≤7天）
+  const endsSoon =
+    onSale &&
+    p.saleEndsAt &&
+    !Number.isNaN(Date.parse(p.saleEndsAt)) &&
+    Date.parse(p.saleEndsAt) - Date.now() <= 7 * 24 * 3600 * 1000;
+
+  // 热度星级（0~5）
+  let stars = p.hotScore ?? 0;
+  if (stars > 5) stars = Math.round(clamp(stars, 0, 100) / 20);
+  stars = clamp(Math.round(stars), 0, 5);
+
+  // 优先用选中颜色的图片；否则取任意颜色；再否则用兜底首图
+  const colorKey = selectedColor ? normalizeColor(selectedColor) : null;
+  const byColor = colorKey && p.variantsByColor[colorKey];
+  const anyColor =
+    byColor && byColor.length
+      ? byColor
+      : (() => {
+          for (const arr of Object.values(p.variantsByColor)) {
+            if (arr?.length) return arr;
+          }
+          return [];
+        })();
+
+  const urls = (byColor && byColor.length ? byColor : anyColor) || (p.imageUrl ? [p.imageUrl] : []);
+
+  return (
+    <article className="group overflow-hidden rounded-3xl border bg-card shadow-sm transition-shadow hover:shadow-md">
+      {/* 轮播图片区 */}
+      <ImageCarousel urls={urls} alt={p.name || `Image #${start + idx + 1}`} />
+
+      <div className="p-6 md:p-8">
+        {/* 1. 名称 */}
+        <h3 className="text-lg md:text-xl font-semibold line-clamp-1">
+          {p.name || `Product #${start + idx + 1}`}
+        </h3>
+
+        {/* 2. 折扣文案（统一字号） */}
+        {onSale && (
+          <p className="mt-1 text-base font-semibold text-emerald-700 uppercase tracking-wide">
+            {p.discountPercent}% OFF {endsSoon ? "ENDS SOON" : ""}
+          </p>
+        )}
+
+        {/* 3. 价格区（统一字号） */}
+        <div className="mt-2">
+          {onSale ? (
+            <div className="flex items-baseline gap-2">
+              <span className="text-base text-neutral-400 line-through">
+                {formatPriceVal(p.price, p.currency)}
+              </span>
+              <span className="text-neutral-300">|</span>
+              <span className="text-base font-bold text-emerald-700">
+                {formatPriceVal(finalPrice, p.currency)}
+              </span>
+            </div>
+          ) : (
+            <div className="text-base font-bold">{formatPriceVal(finalPrice, p.currency)}</div>
+          )}
+        </div>
+
+        {/* 4. 颜色（可点击切图） */}
+        {p.colors && p.colors.length > 0 && (
+          <div className="mt-3 flex items-center gap-2">
+            {p.colors.slice(0, 8).map((c) => {
+              const normalized = normalizeColor(c);
+              const active = normalizeColor(selectedColor) === normalized;
+              return (
+                <button
+                  key={normalized}
+                  type="button"
+                  title={c}
+                  aria-pressed={active}
+                  onClick={() => setSelectedColor(normalized)}
+                  className={`h-4 w-4 rounded-full ring-1 ring-black/10 transition ${
+                    active ? "outline outline-2 outline-black/60" : "hover:scale-110"
+                  }`}
+                  style={{ backgroundColor: colorToBg(normalized) }}
+                />
+              );
+            })}
+            {p.colors.length > 8 && (
+              <span className="text-xs text-neutral-500">+{p.colors.length - 8}</span>
+            )}
+          </div>
+        )}
+
+        {/* 5. 热度（星级） */}
+        <div className="mt-3 flex items-center gap-1">
+          {Array.from({ length: 5 }).map((_, i3) => (
+            <Star
+              key={i3}
+              className={i3 < (stars as number) ? "h-4 w-4 fill-black text-black" : "h-4 w-4 text-neutral-300"}
+            />
+          ))}
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -305,9 +440,7 @@ export default function CategoryGridClient({
   const [open, setOpen] = useState(false);
   const [draftMin, setDraftMin] = useState<number | undefined>(appliedMin);
   const [draftMax, setDraftMax] = useState<number | undefined>(appliedMax);
-  const [draftMaterials, setDraftMaterials] = useState<Set<string>>(
-    new Set(appliedMaterials)
-  );
+  const [draftMaterials, setDraftMaterials] = useState<Set<string>>(new Set(appliedMaterials));
   const [draftSizes, setDraftSizes] = useState<Set<string>>(new Set(appliedSizes));
   const [draftColors, setDraftColors] = useState<Set<string>>(new Set(appliedColors));
   const [draftGenders, setDraftGenders] = useState<Set<string>>(new Set(appliedGenders));
@@ -361,6 +494,8 @@ export default function CategoryGridClient({
       // 仅统计/展示「被上架显示」的商品
       partsForProducts.push(`filters[is_showed][$eq]=true`);
       partsForVariants.push(`filters[product][is_showed][$eq]=true`);
+      // 仅统计已上架的变体（如果你在 Variant 上用了 is_showed）
+      partsForVariants.push(`filters[is_showed][$eq]=true`);
 
       try {
         // variants -> size/color/material
@@ -397,7 +532,7 @@ export default function CategoryGridClient({
             const a = r?.attributes ?? r ?? {};
             if (a.material && String(a.material).trim()) m.add(String(a.material).trim());
             if (a.size && String(a.size).trim()) s.add(String(a.size).trim());
-            if (a.color && String(a.color).trim()) c.add(String(a.color).trim());
+            if (a.color && String(a.color).trim()) c.add(normalizeColor(a.color));
           }
           setFacetMaterials(Array.from(m).sort((a, b) => a.localeCompare(b)));
           setFacetSizes(Array.from(s).sort((a, b) => a.localeCompare(b)));
@@ -472,12 +607,14 @@ export default function CategoryGridClient({
           if (appliedColors.length) pushIN("color", appliedColors);
         }
 
-        // 关键：把需要显示的字段与 variants.color 一起取回
+        // 关键：把需要显示的字段与 color_galleries（含 images）、variants.color 一起取回
         const qs =
           `/api/products?${parts.join("&")}` +
           `&fields[0]=title&fields[1]=slug&fields[2]=base_price_cents&fields[3]=currency` +
           `&fields[4]=discount_percent_off&fields[5]=sale_starts_at&fields[6]=sale_ends_at&fields[7]=hot_score&fields[8]=priority` +
-          `&populate[gallery]=true&populate[variants][fields][0]=color` +
+          `&populate[color_galleries][fields][0]=color` +
+          `&populate[color_galleries][populate][images]=true` +
+          `&populate[variants][fields][0]=color` +
           `&pagination[page]=${page}&pagination[pageSize]=${pageSize}` +
           `&sort[0]=priority:asc&sort[1]=updatedAt:desc&publicationState=live`;
 
@@ -609,15 +746,11 @@ export default function CategoryGridClient({
 
       {/* === 左侧抽屉 === */}
       <div
-        className={`fixed inset-0 z-50 transition ${
-          open ? "pointer-events-auto" : "pointer-events-none"
-        }`}
+        className={`fixed inset-0 z-50 transition ${open ? "pointer-events-auto" : "pointer-events-none"}`}
       >
         {/* 背景遮罩 */}
         <div
-          className={`absolute inset-0 bg-black/30 transition-opacity ${
-            open ? "opacity-100" : "opacity-0"
-          }`}
+          className={`absolute inset-0 bg-black/30 transition-opacity ${open ? "opacity-100" : "opacity-0"}`}
           onClick={closeDrawer}
         />
         {/* 面板 */}
@@ -645,9 +778,7 @@ export default function CategoryGridClient({
             {/* Gender（Product 级） */}
             {productGenderSupported && facetGenders.length > 0 && (
               <details className="mb-4" open>
-                <summary className="cursor-pointer select-none py-2 font-medium">
-                  Gender
-                </summary>
+                <summary className="cursor-pointer select-none py-2 font-medium">Gender</summary>
                 <div className="mt-2 space-y-2">
                   {facetGenders.map((v) => (
                     <label key={v} className="flex items-center gap-2 text-sm">
@@ -671,9 +802,7 @@ export default function CategoryGridClient({
             {/* Size（Variant 级） */}
             {variantFiltersSupported && facetSizes.length > 0 && (
               <details className="mb-4" open>
-                <summary className="cursor-pointer select-none py-2 font-medium">
-                  Size
-                </summary>
+                <summary className="cursor-pointer select-none py-2 font-medium">Size</summary>
                 <div className="mt-2 space-y-2">
                   {facetSizes.map((v) => (
                     <label key={v} className="flex items-center gap-2 text-sm">
@@ -694,12 +823,10 @@ export default function CategoryGridClient({
               </details>
             )}
 
-            {/* Colour（Variant 级） */}
+            {/* Colour（Variant 级：用于过滤） */}
             {variantFiltersSupported && facetColors.length > 0 && (
               <details className="mb-4" open>
-                <summary className="cursor-pointer select-none py-2 font-medium">
-                  Colour
-                </summary>
+                <summary className="cursor-pointer select-none py-2 font-medium">Colour</summary>
                 <div className="mt-2 space-y-2">
                   {facetColors.map((v) => (
                     <label key={v} className="flex items-center gap-2 text-sm">
@@ -723,9 +850,7 @@ export default function CategoryGridClient({
             {/* Material（Variant 级） */}
             {variantFiltersSupported && facetMaterials.length > 0 && (
               <details className="mb-4" open>
-                <summary className="cursor-pointer select-none py-2 font-medium">
-                  Material
-                </summary>
+                <summary className="cursor-pointer select-none py-2 font-medium">Material</summary>
                 <div className="mt-2 space-y-2">
                   {facetMaterials.map((v) => (
                     <label key={v} className="flex items-center gap-2 text-sm">
@@ -748,9 +873,7 @@ export default function CategoryGridClient({
 
             {/* Price */}
             <details className="mb-2" open>
-              <summary className="cursor-pointer select-none py-2 font-medium">
-                Price
-              </summary>
+              <summary className="cursor-pointer select-none py-2 font-medium">Price</summary>
               <div className="mt-2 flex items-end gap-3">
                 <div className="flex-1">
                   <div className="text-xs text-neutral-500 mb-1">Min</div>
@@ -805,11 +928,9 @@ export default function CategoryGridClient({
       ) : loading ? (
         <section>
           <div className="grid gap-7 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-4">
-            {Array.from({ length: Math.min(pageSize, filteredTotal - start) || 8 }).map(
-              (_, i) => (
-                <CardSkeleton key={i} />
-              )
-            )}
+            {Array.from({ length: Math.min(pageSize, filteredTotal - start) || 8 }).map((_, i) => (
+              <CardSkeleton key={i} />
+            ))}
           </div>
         </section>
       ) : list.length === 0 ? (
@@ -817,102 +938,9 @@ export default function CategoryGridClient({
       ) : (
         <section>
           <div className="grid gap-7 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-4">
-            {list.map((p, idx) => {
-              const onSale = isSaleActive(p);
-              const finalPrice = onSale ? salePrice(p) : p.price ?? 0;
-
-              // 折扣是否快结束（≤7天）
-              const endsSoon =
-                onSale &&
-                p.saleEndsAt &&
-                !Number.isNaN(Date.parse(p.saleEndsAt)) &&
-                Date.parse(p.saleEndsAt) - Date.now() <= 7 * 24 * 3600 * 1000;
-
-              // 热度星级（0~5）
-              let stars = p.hotScore ?? 0;
-              if (stars > 5) stars = Math.round(clamp(stars, 0, 100) / 20);
-              stars = clamp(Math.round(stars), 0, 5);
-
-              const urls = p.galleryUrls?.length ? p.galleryUrls : (p.imageUrl ? [p.imageUrl] : []);
-
-              return (
-                <article
-                  key={p.key}
-                  className="group overflow-hidden rounded-3xl border bg-card shadow-sm transition-shadow hover:shadow-md"
-                >
-                  {/* 轮播图片区 */}
-                  <ImageCarousel urls={urls} alt={p.name || `Image #${start + idx + 1}`} />
-
-                  <div className="p-6 md:p-8">
-                    {/* 1. 名称 */}
-                    <h3 className="text-lg md:text-xl font-semibold line-clamp-1">
-                      {p.name || `Product #${start + idx + 1}`}
-                    </h3>
-
-                    {/* 2. 折扣文案（统一字号） */}
-                    {onSale && (
-                      <p className="mt-1 text-base font-semibold text-emerald-700 uppercase tracking-wide">
-                        {p.discountPercent}% OFF {endsSoon ? "ENDS SOON" : ""}
-                      </p>
-                    )}
-
-                    {/* 3. 价格区（统一字号） */}
-                    <div className="mt-2">
-                      {onSale ? (
-                        <div className="flex items-baseline gap-2">
-                          <span className="text-base text-neutral-400 line-through">
-                            {formatPriceVal(p.price, p.currency)}
-                          </span>
-                          <span className="text-neutral-300">|</span>
-                          <span className="text-base font-bold text-emerald-700">
-                            {formatPriceVal(finalPrice, p.currency)}
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="text-base font-bold">
-                          {formatPriceVal(finalPrice, p.currency)}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* 4. 颜色（小圆点） */}
-                    {p.colors && p.colors.length > 0 && (
-                      <div className="mt-3 flex items-center gap-2">
-                        {p.colors.slice(0, 6).map((c, i2) => (
-                          <span
-                            key={c + i2}
-                            title={c}
-                            className="inline-block h-4 w-4 rounded-full ring-1 ring-black/10"
-                            style={{ backgroundColor: colorToBg(c) }}
-                          />
-                        ))}
-                        {p.colors.length > 6 && (
-                          <span className="text-xs text-neutral-500">
-                            +{p.colors.length - 6}
-                          </span>
-                        )}
-                      </div>
-                    )}
-
-                    {/* 5. 热度（星级） */}
-                    <div className="mt-3 flex items-center gap-1">
-                      {Array.from({ length: 5 }).map((_, i3) => (
-                        <Star
-                          key={i3}
-                          className={
-                            i3 < (stars as number)
-                              ? "h-4 w-4 fill-black text-black"
-                              : "h-4 w-4 text-neutral-300"
-                          }
-                        />
-                      ))}
-                    </div>
-
-                    {/* 已按你的要求移除 “Add” 按钮 */}
-                  </div>
-                </article>
-              );
-            })}
+            {list.map((p, idx) => (
+              <ProductCard key={p.key} p={p} idx={idx} start={start} />
+            ))}
           </div>
         </section>
       )}
