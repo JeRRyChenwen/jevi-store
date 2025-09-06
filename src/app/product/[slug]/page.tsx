@@ -16,7 +16,7 @@ export async function generateMetadata({ params }: PageProps) {
   return { title: `Product – ${slug}` };
 }
 
-/** 与列表页一致的工具：标准化颜色字符串 */
+/** 标准化颜色字符串 */
 function normalizeColor(s: any) {
   const v = String(s ?? "").trim().toLowerCase().replace(/\s+/g, "-");
   if (v === "gray") return "grey";
@@ -94,10 +94,18 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const price = Number.isFinite(cents) ? cents / 100 : null;
   const currency = (attrs.currency ?? "AUD") as string;
 
-  // 展平所有颜色下的图片
+  // 展平所有颜色下的图片（去重，保持顺序）
   const byColor = getImagesByColorFromProduct(attrs);
+  const seen = new Set<string>();
   const images: string[] = [];
-  for (const k of Object.keys(byColor)) for (const u of byColor[k]) images.push(u);
+  for (const k of Object.keys(byColor)) {
+    for (const u of byColor[k]) {
+      if (!seen.has(u)) {
+        seen.add(u);
+        images.push(u);
+      }
+    }
+  }
   const total = images.length;
 
   // 当前选中索引（?img=）
@@ -110,10 +118,10 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     <main className="mx-auto max-w-6xl px-4 md:px-6 lg:px-8 py-8">
       <h1 className="sr-only">{title}</h1>
 
-      {/* ⬇ 左 320/360 固定宽度 + 右自适应 */}
-      <div className="grid grid-cols-1 md:grid-cols-[320px_1fr] xl:grid-cols-[360px_1fr] gap-8">
-        {/* 左侧小画廊（更宽，并固定在视口） */}
-        <aside className="md:sticky md:top-24 md:pr-6">
+      {/* 左侧固定宽度（更宽）+ 右侧自适应 */}
+      <div className="grid grid-cols-1 md:grid-cols-[380px_1fr] xl:grid-cols-[440px_1fr] gap-10">
+        {/* 左侧小画廊：固定在视口顶部下方，避免被遮挡 */}
+        <aside className="md:sticky md:top-24 self-start md:pr-6">
           <GalleryClient
             images={images}
             title={title}
@@ -140,7 +148,9 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
 
           <div className="mt-6">
             <h2 className="text-2xl font-bold">{title}</h2>
-            <p className="mt-2 text-xl font-semibold">{formatPriceVal(price, currency)}</p>
+            <p className="mt-2 text-xl font-semibold">
+              {formatPriceVal(price, currency)}
+            </p>
           </div>
         </section>
       </div>

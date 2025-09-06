@@ -8,6 +8,7 @@ type Props = {
   images: string[];
   title: string;
   slug: string;
+  /** 当前选中的大图索引（来自 ?img=） */
   selectedIndex?: number;
 };
 
@@ -19,6 +20,7 @@ export default function GalleryClient({
 }: Props) {
   const activeRef = useRef<HTMLAnchorElement | null>(null);
 
+  // 选中缩略图自动滚动到可见区域
   useEffect(() => {
     activeRef.current?.scrollIntoView({
       behavior: "smooth",
@@ -38,16 +40,17 @@ export default function GalleryClient({
   return (
     <div
       aria-label="Product image thumbnails"
+      role="list"
       className="
         relative
         max-h-[70vh] md:max-h-[76vh]
         overflow-y-auto
-        pr-2 md:pr-3 py-1 md:py-2
-
-        /* 关键：始终用 flex；移动端横排，桌面竖排 */
+        pl-4 pr-4 md:pl-6 md:pr-5 py-1 md:py-2
         flex md:flex-col
         gap-5 md:gap-6
       "
+      // 让滚动条预留空间，避免出现/隐藏时布局抖动（支持现代浏览器）
+      style={{ scrollbarGutter: "stable both-edges" as any }}
     >
       {images.map((u, i) => {
         const active = i === selectedIndex;
@@ -58,6 +61,8 @@ export default function GalleryClient({
             prefetch
             aria-current={active ? "true" : undefined}
             aria-label={`Preview ${i + 1}`}
+            aria-selected={active}
+            role="listitem"
             ref={active ? activeRef : null}
             className={[
               "group block select-none",
