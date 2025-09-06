@@ -1,7 +1,7 @@
 // src/app/product/[slug]/page.tsx
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { api, mediaUrl } from "@/lib/strapi";
+import GalleryClient from "../_components/GalleryClient";
 
 /** Next.js 15: params / searchParams 是 Promise，需要 await */
 type PageProps = {
@@ -16,14 +16,14 @@ export async function generateMetadata({ params }: PageProps) {
   return { title: `Product – ${slug}` };
 }
 
-/** 与列表页一致：标准化颜色字符串 */
+/** 与列表页一致的工具：标准化颜色字符串 */
 function normalizeColor(s: any) {
   const v = String(s ?? "").trim().toLowerCase().replace(/\s+/g, "-");
   if (v === "gray") return "grey";
   return v;
 }
 
-/** 从 product.color_galleries 提取 “颜色 -> 图片数组” */
+/** 从 product.color_galleries 里取 “颜色 -> 图片数组” */
 function getImagesByColorFromProduct(attrs: any): Record<string, string[]> {
   const arr: any[] = Array.isArray(attrs?.color_galleries)
     ? attrs.color_galleries
@@ -74,7 +74,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
   const sp = await searchParams;
 
-  // 只深度 populate color_galleries.images
+  // 取当前商品（仅展开 color_galleries.images）
   const qs =
     `/api/products?filters[slug][$eq]=${encodeURIComponent(slug)}` +
     `&fields[0]=title&fields[1]=slug&fields[2]=base_price_cents&fields[3]=currency` +
@@ -87,7 +87,6 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const row = json?.data?.[0];
   if (!row) notFound();
 
-  // 兼容被拍平的 attributes
   const attrs = row?.attributes ?? row ?? {};
 
   const title: string = attrs.title ?? attrs.name ?? "Product";
@@ -95,91 +94,53 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const price = Number.isFinite(cents) ? cents / 100 : null;
   const currency = (attrs.currency ?? "AUD") as string;
 
-  // 拍平所有图片（保持顺序、去重）
+  // 展平所有颜色下的图片
   const byColor = getImagesByColorFromProduct(attrs);
-  const seen = new Set<string>();
   const images: string[] = [];
-  for (const k of Object.keys(byColor)) {
-    for (const u of byColor[k]) {
-      if (!seen.has(u)) {
-        images.push(u);
-        seen.add(u);
-      }
-    }
-  }
+  for (const k of Object.keys(byColor)) for (const u of byColor[k]) images.push(u);
+  const total = images.length;
 
   // 当前选中索引（?img=）
-  const rawIdx = Array.isArray(sp?.img) ? sp!.img[0] : sp?.img;
-  const imgIdx = Math.max(
-    0,
-    Math.min(images.length - 1, Number.isFinite(Number(rawIdx)) ? Number(rawIdx) : 0)
-  );
+  let selected = 0;
+  const rawIdx = Array.isArray(sp.img) ? sp.img[0] : sp.img;
+  const n = Number(rawIdx);
+  if (Number.isFinite(n) && n >= 0 && n < total) selected = n;
 
   return (
     <main className="mx-auto max-w-6xl px-4 md:px-6 lg:px-8 py-8">
       <h1 className="sr-only">{title}</h1>
 
-      {/* 画廊：左侧竖向缩略图 + 右侧大图（纯服务端版，无需 hooks） */}
-      <div className="grid gap-6 md:grid-cols-[106px,1fr]">
-        {/* 左：缩略图列（sticky + 独立滚动，不重叠） */}
-        <aside>
-          <div className="md:sticky md:top-24 md:max-h-[72vh] overflow-y-auto pr-1">
-            <div className="flex md:flex-col gap-3">
-              {images.length > 0 ? (
-                images.map((src, i) => {
-                  const selected = i === imgIdx;
-                  return (
-                    <Link
-                      key={src + i}
-                      href={`/product/${slug}?img=${i}`}
-                      prefetch
-                      aria-label={`Preview ${i + 1}`}
-                      aria-current={selected ? "true" : undefined}
-                      className={[
-                        "relative w-20 h-20 md:w-[96px] md:h-[96px] shrink-0 rounded-xl overflow-hidden",
-                        "border bg-white hover:shadow-sm transition",
-                        selected
-                          ? "ring-2 ring-black"
-                          : "ring-1 ring-transparent hover:ring-black/20",
-                      ].join(" ")}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={src} alt={`${title} thumbnail ${i + 1}`} className="h-full w-full object-cover" />
-                    </Link>
-                  );
-                })
-              ) : (
-                <div className="w-20 h-20 md:w-[96px] md:h-[96px] rounded-xl border bg-neutral-100 flex items-center justify-center text-xs text-neutral-500">
-                  No Image
-                </div>
-              )}
-            </div>
-          </div>
+      {/* ⬇ 左 320/360 固定宽度 + 右自适应 */}
+      <div className="grid grid-cols-1 md:grid-cols-[320px_1fr] xl:grid-cols-[360px_1fr] gap-8">
+        {/* 左侧小画廊（更宽，并固定在视口） */}
+        <aside className="md:sticky md:top-24 md:pr-6">
+          <GalleryClient
+            images={images}
+            title={title}
+            slug={slug}
+            selectedIndex={selected}
+          />
         </aside>
 
-        {/* 右：主图卡片 + 基本信息 */}
+        {/* 右侧大图 + 信息 */}
         <section>
-          <div className="relative rounded-3xl border bg-neutral-100 aspect-[4/5] md:aspect-[5/4] overflow-hidden group">
-            {images.length > 0 ? (
+          <div className="rounded-3xl border bg-white aspect-[4/3] md:aspect-[5/3] overflow-hidden flex items-center justify-center">
+            {total > 0 ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                key={images[imgIdx]}
-                src={images[imgIdx]}
+                key={images[selected]}
+                src={images[selected]}
                 alt={title}
-                className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-[1.02]"
+                className="w-full h-full object-contain"
               />
             ) : (
-              <div className="absolute inset-0 flex items-center justify-center text-neutral-500">
-                No Image
-              </div>
+              <div className="text-neutral-500">No Image</div>
             )}
           </div>
 
           <div className="mt-6">
-            <h2 className="text-2xl md:text-3xl font-bold tracking-tight">{title}</h2>
-            <p className="mt-2 text-lg md:text-xl font-semibold text-neutral-800">
-              {formatPriceVal(price, currency)}
-            </p>
+            <h2 className="text-2xl font-bold">{title}</h2>
+            <p className="mt-2 text-xl font-semibold">{formatPriceVal(price, currency)}</p>
           </div>
         </section>
       </div>
