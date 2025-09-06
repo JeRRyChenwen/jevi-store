@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Pagination from "@/components/pagination/Pagination";
 import { api, mediaUrl } from "@/lib/strapi";
 import { Button } from "@/components/ui/button";
-import { X } from "lucide-react";
+import { X, Star } from "lucide-react";
 
 type Props = {
   slug: string;
@@ -24,6 +24,12 @@ type ProductLite = {
   price: number | null;
   currency?: string | null;
   imageUrl?: string;
+  /** 新增：折扣与时间窗/热度/颜色 */
+  discountPercent?: number;
+  saleStartsAt?: string | null;
+  saleEndsAt?: string | null;
+  hotScore?: number | null;
+  colors?: string[];
 };
 
 const DEV = process.env.NODE_ENV !== "production";
@@ -56,19 +62,109 @@ function getFirstGalleryUrl(attrs: any): string | undefined {
   return typeof u === "string" ? mediaUrl(u) : undefined;
 }
 
+/** 解析 variants 下的 color 列表（兼容 v5 / v4 返回形态） */
+function getVariantColors(attrs: any): string[] {
+  const arr: any[] = Array.isArray(attrs?.variants?.data)
+    ? attrs.variants.data
+    : Array.isArray(attrs?.variants)
+    ? attrs.variants
+    : [];
+
+  const set = new Set<string>();
+  for (const r of arr) {
+    const a = r?.attributes ?? r ?? {};
+    const c = (a.color ?? "").toString().trim();
+    if (c) set.add(c);
+  }
+  return Array.from(set);
+}
+
+// 价格/折扣/热度/颜色工具
+function formatPriceVal(n: number | null, currency?: string | null) {
+  if (n == null) return "—";
+  const cur = (currency || "AUD").toUpperCase();
+  const value = Number(n);
+
+  // 对 CNY 用货币代码显示，避免出现 “CN¥”
+  if (cur === "CNY") {
+    return `CNY ${value.toFixed(2)}`;
+  }
+
+  // 其他币种保持原有格式化
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: cur,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+function clamp(n: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, n));
+}
+function isSaleActive(p: ProductLite) {
+  const pct = p.discountPercent ?? 0;
+  if (!pct || pct <= 0) return false;
+  const now = Date.now();
+  const s = p.saleStartsAt ? Date.parse(p.saleStartsAt) : Number.NaN;
+  const e = p.saleEndsAt ? Date.parse(p.saleEndsAt) : Number.NaN;
+  const started = Number.isNaN(s) ? true : now >= s;
+  const notEnded = Number.isNaN(e) ? true : now <= e;
+  return started && notEnded;
+}
+function salePrice(p: ProductLite) {
+  const base = p.price ?? 0;
+  const pct = p.discountPercent ?? 0;
+  return Math.max(0, base * (1 - pct / 100));
+}
+const COLOR_MAP: Record<string, string> = {
+  black: "#000",
+  white: "#fff",
+  brown: "#6b4f4f",
+  chocolate: "#4E342E",
+  navy: "#001F3F",
+  grey: "#9e9e9e",
+  gray: "#9e9e9e",
+};
+function colorToBg(colorRaw: string) {
+  const key = colorRaw.trim().toLowerCase();
+  if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/.test(key)) return key;
+  if (COLOR_MAP[key]) return COLOR_MAP[key];
+  return key; // 允许 CSS 命名色
+}
+
 function normalizeProduct(row: any): ProductLite {
   const attrs = row?.attributes ?? row ?? {};
   const name: string = attrs.title ?? attrs.name ?? attrs.slug ?? "Product";
+
+  // base_price_cents → 元
   const cents = Number(attrs.base_price_cents);
   const price = Number.isFinite(cents) ? Math.max(0, cents) / 100 : null;
-  const currency: string | undefined = (attrs.currency ?? "USD") as string;
+
+  const currency: string | undefined = (attrs.currency ?? "AUD") as string;
   const imageUrl = getFirstGalleryUrl(attrs);
+
   const key =
     String(row?.id ?? "") ||
     String(attrs.documentId ?? "") ||
     String(attrs.slug ?? "") ||
     `${name}-${Math.random().toString(36).slice(2)}`;
-  return { key, name, price, currency, imageUrl };
+
+  const discountPercent: number | undefined =
+    typeof attrs.discount_percent_off === "number" ? attrs.discount_percent_off : undefined;
+
+  const colors = getVariantColors(attrs);
+
+  return {
+    key,
+    name,
+    price,
+    currency,
+    imageUrl,
+    discountPercent,
+    saleStartsAt: attrs.sale_starts_at ?? null,
+    saleEndsAt: attrs.sale_ends_at ?? null,
+    hotScore: typeof attrs.hot_score === "number" ? attrs.hot_score : null,
+    colors,
+  };
 }
 
 function CardSkeleton() {
@@ -308,9 +404,12 @@ export default function CategoryGridClient({
           if (appliedColors.length) pushIN("color", appliedColors);
         }
 
+        // 关键：把需要显示的字段与 variants.color 一起取回
         const qs =
           `/api/products?${parts.join("&")}` +
-          `&populate[gallery]=true` +
+          `&fields[0]=title&fields[1]=slug&fields[2]=base_price_cents&fields[3]=currency` +
+          `&fields[4]=discount_percent_off&fields[5]=sale_starts_at&fields[6]=sale_ends_at&fields[7]=hot_score` +
+          `&populate[gallery]=true&populate[variants][fields][0]=color` +
           `&pagination[page]=${page}&pagination[pageSize]=${pageSize}` +
           `&sort[0]=updatedAt:desc&publicationState=live`;
 
@@ -364,12 +463,6 @@ export default function CategoryGridClient({
     [slug]
   );
 
-  const formatPrice = (price: number | null, currency?: string | null) => {
-    if (price == null) return "$129";
-    const cur = (currency || "USD").toUpperCase();
-    return cur === "USD" ? `$${price}` : `${price} ${cur}`;
-  };
-
   const resultLabel = `${filteredTotal} ${filteredTotal === 1 ? "result" : "results"}`;
 
   // 统一关闭抽屉（焦点回退）
@@ -416,13 +509,6 @@ export default function CategoryGridClient({
     setDraftSizes(new Set());
     setDraftColors(new Set());
     setDraftGenders(new Set());
-  };
-
-  const toggleInSet = (set: Set<string>, v: string, next: boolean) => {
-    const n = new Set(set);
-    if (next) n.add(v);
-    else n.delete(v);
-    return n;
   };
 
   return (
@@ -500,10 +586,11 @@ export default function CategoryGridClient({
                       <input
                         type="checkbox"
                         className="h-4 w-4"
-                        checked={draftGenders.has(v)}
+                        checked={Array.from(draftGenders).includes(v)}
                         onChange={(e) => {
-                          const { checked } = e.currentTarget;
-                          setDraftGenders((s) => toggleInSet(s, v, checked));
+                          const set = new Set(draftGenders);
+                          e.currentTarget.checked ? set.add(v) : set.delete(v);
+                          setDraftGenders(set);
                         }}
                       />
                       <span>{v}</span>
@@ -525,10 +612,11 @@ export default function CategoryGridClient({
                       <input
                         type="checkbox"
                         className="h-4 w-4"
-                        checked={draftSizes.has(v)}
+                        checked={Array.from(draftSizes).includes(v)}
                         onChange={(e) => {
-                          const { checked } = e.currentTarget;
-                          setDraftSizes((s) => toggleInSet(s, v, checked));
+                          const set = new Set(draftSizes);
+                          e.currentTarget.checked ? set.add(v) : set.delete(v);
+                          setDraftSizes(set);
                         }}
                       />
                       <span>{v}</span>
@@ -550,10 +638,11 @@ export default function CategoryGridClient({
                       <input
                         type="checkbox"
                         className="h-4 w-4"
-                        checked={draftColors.has(v)}
+                        checked={Array.from(draftColors).includes(v)}
                         onChange={(e) => {
-                          const { checked } = e.currentTarget;
-                          setDraftColors((s) => toggleInSet(s, v, checked));
+                          const set = new Set(draftColors);
+                          e.currentTarget.checked ? set.add(v) : set.delete(v);
+                          setDraftColors(set);
                         }}
                       />
                       <span>{v}</span>
@@ -575,10 +664,11 @@ export default function CategoryGridClient({
                       <input
                         type="checkbox"
                         className="h-4 w-4"
-                        checked={draftMaterials.has(v)}
+                        checked={Array.from(draftMaterials).includes(v)}
                         onChange={(e) => {
-                          const { checked } = e.currentTarget;
-                          setDraftMaterials((s) => toggleInSet(s, v, checked));
+                          const set = new Set(draftMaterials);
+                          e.currentTarget.checked ? set.add(v) : set.delete(v);
+                          setDraftMaterials(set);
                         }}
                       />
                       <span>{v}</span>
@@ -659,46 +749,117 @@ export default function CategoryGridClient({
       ) : (
         <section>
           <div className="grid gap-7 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-4">
-            {list.map((p, idx) => (
-              <article
-                key={p.key}
-                className="group overflow-hidden rounded-3xl border bg-card shadow-sm transition-shadow hover:shadow-md"
-              >
-                <div className="aspect-[4/3] bg-muted">
-                  {p.imageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      alt={p.name}
-                      src={p.imageUrl}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <div className="h-full w-full flex items-center justify-center text-muted-foreground">
-                      Image #{start + idx + 1}
-                    </div>
-                  )}
-                </div>
+            {list.map((p, idx) => {
+              const onSale = isSaleActive(p);
+              const finalPrice = onSale ? salePrice(p) : p.price ?? 0;
 
-                <div className="p-6 md:p-8">
-                  <h3 className="text-lg md:text-xl font-semibold line-clamp-1">
-                    {p.name || `Product #${start + idx + 1}`}
-                  </h3>
-                  <p className="mt-1 text-sm md:text-base text-muted-foreground line-clamp-2">
-                    Short description goes here…
-                  </p>
+              // 折扣是否快结束（≤7天）
+              const endsSoon =
+                onSale &&
+                p.saleEndsAt &&
+                !Number.isNaN(Date.parse(p.saleEndsAt)) &&
+                Date.parse(p.saleEndsAt) - Date.now() <= 7 * 24 * 3600 * 1000;
 
-                <div className="mt-5 flex items-center justify-between">
-                    <span className="text-xl md:text-2xl font-bold">
-                      {formatPrice(p.price, p.currency)}
-                    </span>
-                    <Button className="rounded-full px-5" size="sm">
-                      Add
-                    </Button>
+              // 热度星级（0~5）
+              let stars = p.hotScore ?? 0;
+              if (stars > 5) stars = Math.round(clamp(stars, 0, 100) / 20);
+              stars = clamp(Math.round(stars), 0, 5);
+
+              return (
+                <article
+                  key={p.key}
+                  className="group overflow-hidden rounded-3xl border bg-card shadow-sm transition-shadow hover:shadow-md"
+                >
+                  <div className="relative aspect-[4/3] bg-muted">
+                    {p.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        alt={p.name}
+                        src={p.imageUrl}
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="h-full w-full flex items-center justify-center text-muted-foreground">
+                        Image #{start + idx + 1}
+                      </div>
+                    )}
+                    {/* 你也可以把折扣徽标放到图片左上角（像示例1一样） */}
+                    {/* {onSale && (
+                      <span className="absolute left-3 top-3 rounded bg-emerald-600 px-2 py-1 text-xs font-semibold text-white">
+                        {p.discountPercent}% OFF {endsSoon ? "ENDS SOON" : ""}
+                      </span>
+                    )} */}
                   </div>
-                </div>
-              </article>
-            ))}
+
+                  <div className="p-6 md:p-8">
+                    {/* 1. 名称 */}
+                    <h3 className="text-lg md:text-xl font-semibold line-clamp-1">
+                      {p.name || `Product #${start + idx + 1}`}
+                    </h3>
+
+                    {/* 2. 折扣文案（仅在有折扣且有效期内显示） */}
+                    {onSale && (
+                      <p className="mt-1 text-base font-semibold text-emerald-700 uppercase tracking-wide">
+                        {p.discountPercent}% OFF {endsSoon ? "ENDS SOON" : ""}
+                      </p>
+                    )}
+
+                    {/* 3. 价格区 */}
+                    <div className="mt-2">
+                      {onSale ? (
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-base text-neutral-400 line-through">
+                            {formatPriceVal(p.price, p.currency)}
+                          </span>
+                          <span className="text-neutral-300">|</span>
+                          <span className="text-base font-bold text-emerald-700">
+                            {formatPriceVal(finalPrice, p.currency)}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="text-base font-bold">
+                          {formatPriceVal(finalPrice, p.currency)}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 4. 颜色（小圆点） */}
+                    {p.colors && p.colors.length > 0 && (
+                      <div className="mt-3 flex items-center gap-2">
+                        {p.colors.slice(0, 6).map((c, i2) => (
+                          <span
+                            key={c + i2}
+                            title={c}
+                            className="inline-block h-4 w-4 rounded-full ring-1 ring-black/10"
+                            style={{ backgroundColor: colorToBg(c) }}
+                          />
+                        ))}
+                        {p.colors.length > 6 && (
+                          <span className="text-xs text-neutral-500">
+                            +{p.colors.length - 6}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 5. 热度（星级） */}
+                    <div className="mt-3 flex items-center gap-1">
+                      {Array.from({ length: 5 }).map((_, i3) => (
+                        <Star
+                          key={i3}
+                          className={
+                            i3 < (stars as number)
+                              ? "h-4 w-4 fill-black text-black"
+                              : "h-4 w-4 text-neutral-300"
+                          }
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         </section>
       )}
