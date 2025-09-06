@@ -7,6 +7,14 @@ import Pagination from "@/components/pagination/Pagination";
 import { api, mediaUrl } from "@/lib/strapi";
 import { Button } from "@/components/ui/button";
 import { X, Star, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+} from "@/components/ui/select";
 
 type Props = {
   slug: string;
@@ -24,7 +32,7 @@ type ProductLite = {
   price: number | null;
   currency?: string | null;
 
-  /** 折扣与时间窗/热度 */
+  /** 折扣与时间窗/Popularity */
   discountPercent?: number;
   saleStartsAt?: string | null;
   saleEndsAt?: string | null;
@@ -38,6 +46,17 @@ type ProductLite = {
 
   /** 兜底首图（从 variantsByColor 中取第一张） */
   imageUrl?: string;
+};
+
+// ============ 排序键 & 标签 ============
+//（提前放在顶部，便于下方使用）
+export type SortKey = "default" | "price-desc" | "price-asc" | "hot";
+
+const SORT_LABELS: Record<SortKey, string> = {
+  default: "Default",
+  "price-desc": "Price: High → Low",
+  "price-asc": "Price: Low → High",
+  hot: "Popularity",
 };
 
 const DEV = process.env.NODE_ENV !== "production";
@@ -109,14 +128,14 @@ function getVariantColors(attrs: any): string[] {
   return Array.from(set);
 }
 
-// 价格/折扣/热度/颜色工具
+// 价格/折扣/Popularity/颜色工具
 function formatPriceVal(n: number | null, currency?: string | null, locale?: string) {
   if (n == null) return "—";
   const cur = (currency || "AUD").toUpperCase();
   return new Intl.NumberFormat(locale, {
     style: "currency",
     currency: cur,
-    currencyDisplay: "code",   // 始终显示 USD / CNY / AUD ...
+    currencyDisplay: "code", // 始终显示 USD / CNY / AUD ...
     maximumFractionDigits: 2,
   }).format(Number(n));
 }
@@ -396,6 +415,16 @@ export default function CategoryGridClient({
   const triggerBtnRef = useRef<HTMLButtonElement | null>(null);
   const closeBtnRef = useRef<HTMLButtonElement | null>(null);
 
+  // === Sort（来自 URL） ===
+  const sortKey = (sp.get("sort") as SortKey) || "default";
+  const setSortInUrl = (next: SortKey) => {
+    const u = new URL(window.location.href);
+    if (next === "default") u.searchParams.delete("sort");
+    else u.searchParams.set("sort", next);
+    u.searchParams.set("page", "1");
+    router.replace(`/category/${slug}${u.search}`);
+  };
+
   // 已应用的筛选（来自 URL）
   const minParam = sp.get("min");
   const maxParam = sp.get("max");
@@ -558,7 +587,21 @@ export default function CategoryGridClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug, JSON.stringify(categoryDocIds)]);
 
-  // 拉取产品（按筛选+分页）
+  // ===== 排序串：把 sortKey 转为 Strapi 的 sort[...] 查询参数 =====
+  const sortQueryString = useMemo(() => {
+    switch (sortKey) {
+      case "price-desc":
+        return `&sort[0]=base_price_cents:desc&sort[1]=priority:asc`;
+      case "price-asc":
+        return `&sort[0]=base_price_cents:asc&sort[1]=priority:asc`;
+      case "hot":
+        return `&sort[0]=hot_score:desc&sort[1]=priority:asc`;
+      default:
+        return `&sort[0]=priority:asc&sort[1]=updatedAt:desc`;
+    }
+  }, [sortKey]);
+
+  // 拉取产品（按筛选+分页+排序）
   useEffect(() => {
     let aborted = false;
     async function run() {
@@ -614,7 +657,7 @@ export default function CategoryGridClient({
           `&populate[color_galleries][populate][images]=true` +
           `&populate[variants][fields][0]=color` +
           `&pagination[page]=${page}&pagination[pageSize]=${pageSize}` +
-          `&sort[0]=priority:asc&sort[1]=updatedAt:desc&publicationState=live`;
+          `${sortQueryString}&publicationState=live`;
 
         dbg("products:GET", qs);
 
@@ -653,6 +696,7 @@ export default function CategoryGridClient({
     appliedMaterials.join(","),
     appliedSizes.join(","),
     appliedColors.join(","),
+    sortQueryString, // 排序变化时重新拉取
   ]);
 
   const start = (page - 1) * pageSize;
@@ -728,6 +772,31 @@ export default function CategoryGridClient({
           <div className="flex items-center gap-3">
             <div className="text-sm md:text-base text-neutral-600 whitespace-nowrap">
               {resultLabel}
+            </div>
+
+            {/* Sort（统一 UI 的下拉菜单） */}
+            <div className="hidden sm:flex">
+              <Select value={sortKey} onValueChange={(v) => setSortInUrl(v as SortKey)}>
+                <SelectTrigger
+                  className="rounded-full w-[190px] border px-3 py-2 text-sm focus:ring-2 focus:ring-black/10"
+                  aria-label="Sort products"
+                >
+                  <SelectValue placeholder="Sort">
+                    {SORT_LABELS[sortKey] ?? "Sort"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent
+                  align="end"
+                  className="z-50 rounded-xl border shadow-lg"
+                >
+                  <SelectGroup>
+                    <SelectItem value="default">Default</SelectItem>
+                    <SelectItem value="price-desc">Price: High → Low</SelectItem>
+                    <SelectItem value="price-asc">Price: Low → High</SelectItem>
+                    <SelectItem value="hot">Popularity</SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
             </div>
 
             <Button
