@@ -110,17 +110,15 @@ function getVariantColors(attrs: any): string[] {
 }
 
 // 价格/折扣/热度/颜色工具
-function formatPriceVal(n: number | null, currency?: string | null) {
+function formatPriceVal(n: number | null, currency?: string | null, locale?: string) {
   if (n == null) return "—";
   const cur = (currency || "AUD").toUpperCase();
-  const value = Number(n);
-  // CNY 用代码显示，避免 CN¥
-  if (cur === "CNY") return `CNY ${value.toFixed(2)}`;
-  return new Intl.NumberFormat(undefined, {
+  return new Intl.NumberFormat(locale, {
     style: "currency",
     currency: cur,
+    currencyDisplay: "code",   // 始终显示 USD / CNY / AUD ...
     maximumFractionDigits: 2,
-  }).format(value);
+  }).format(Number(n));
 }
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
