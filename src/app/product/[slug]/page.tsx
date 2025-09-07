@@ -121,10 +121,18 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     <main className="w-full px-2 sm:px-4 md:px-6 lg:px-0 py-8">
       <h1 className="sr-only">{title}</h1>
 
-      {/* 左侧固定宽度（更宽）+ 右侧自适应 */}
-      <div className="grid grid-cols-1 md:grid-cols-[380px_1fr] xl:grid-cols-[440px_1fr] gap-10">
-        {/* 左侧小画廊：固定在视口顶部下方，避免被遮挡 */}
-        <aside className="md:sticky md:top-24 self-start md:pr-6">
+      {/* 3 列：左缩略图 / 中放大图 / 右信息（小屏堆叠） */}
+      <div
+        className="
+          grid grid-cols-1
+          md:[grid-template-columns:max-content_minmax(0,1fr)]
+          lg:[grid-template-columns:max-content_minmax(0,1fr)_360px]
+          xl:[grid-template-columns:max-content_minmax(0,1fr)_420px]
+          gap-y-10 gap-x-0
+        "
+      >
+        {/* 1) 小画廊（左） */}
+        <aside className="order-2 lg:order-1 md:sticky md:top-24 self-start md:pr-0">
           <GalleryClient
             images={images}
             title={title}
@@ -133,8 +141,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
           />
         </aside>
 
-        {/* 右侧大图 + 信息 */}
-        <section>
+        {/* 2) 放大图（中） */}
+        <section className="order-1 lg:order-2">
           <div className="rounded-3xl border bg-white aspect-[4/3] md:aspect-[5/3] overflow-hidden flex items-center justify-center">
             {total > 0 ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -148,12 +156,16 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
               <div className="text-neutral-500">No Image</div>
             )}
           </div>
+        </section>
 
-          <div className="mt-6">
-            <h2 className="text-2xl font-bold">{title}</h2>
-            <p className="mt-2 text-xl font-semibold">
+        {/* 3) 信息栏（右） */}
+        <section className="order-3 lg:order-3 lg:pl-6 xl:pl-8 lg:sticky lg:top-24 self-start">
+          <div className="space-y-3">
+            <h2 className="text-2xl font-bold leading-tight">{title}</h2>
+            <p className="text-xl font-semibold">
               {formatPriceVal(price, currency)}
             </p>
+            {/* 这里之后可以放 变体选择 / 加入购物车等 */}
           </div>
         </section>
       </div>
