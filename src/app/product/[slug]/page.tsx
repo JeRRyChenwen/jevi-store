@@ -203,10 +203,10 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
       <div
         className="
           grid grid-cols-1
-          md:[grid-template-columns:max-content_840px]
-          lg:[grid-template-columns:max-content_1000px_560px]
-          xl:[grid-template-columns:max-content_1120px_640px]
-          2xl:[grid-template-columns:max-content_1280px_680px]
+          md:[grid-template-columns:max-content_780px]
+          lg:[grid-template-columns:max-content_940px_560px]
+          xl:[grid-template-columns:max-content_1060px_640px]
+          2xl:[grid-template-columns:max-content_1220px_680px]
           gap-y-10 md:gap-x-8 lg:gap-x-10 xl:gap-x-12 2xl:gap-x-16
         "
       >
@@ -240,7 +240,13 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
         </section>
 
         {/* 右：信息栏 */}
-        <section className="order-3 lg:order-3 lg:pl-8 xl:pl-10 lg:sticky lg:top-24 self-start">
+        <section
+          className="
+            order-3 lg:order-3
+            lg:pl-14 xl:pl-16 2xl:pl-20   // ⬅️ 加大仅右侧与大图之间的间隔
+            lg:sticky lg:top-24 self-start
+          "
+        >
           <div className="space-y-5">
             <h2 className="text-2xl font-bold leading-tight">{title}</h2>
 
