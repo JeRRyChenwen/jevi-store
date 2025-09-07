@@ -65,7 +65,7 @@ function Swatch({
       aria-checked={active}
       role="radio"
       className={[
-        "h-5 w-5 rounded-full ring-1 ring-neutral-300",
+        "h-12 w-12 rounded-full ring-1 ring-neutral-300",
         "transition outline-none focus-visible:ring-2 focus-visible:ring-black/70",
         active ? "ring-2 ring-neutral-900 ring-offset-2 ring-offset-white" : "",
       ].join(" ")}

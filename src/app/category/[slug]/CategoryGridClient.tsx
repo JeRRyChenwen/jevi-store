@@ -367,29 +367,41 @@ function ProductCard({ p, idx, start }: { p: ProductLite; idx: number; start: nu
 
         {/* 4. 颜色（可点击切图） */}
         {p.colors && p.colors.length > 0 && (
-          <div className="mt-3 flex items-center gap-2">
-            {p.colors.slice(0, 8).map((c) => {
-              const normalized = normalizeColorName(c);
-              const active = normalizeColorName(selectedColor) === normalized;
-              return (
-                <button
-                  key={normalized}
-                  type="button"
-                  title={c}
-                  aria-pressed={active}
-                  onClick={() => setSelectedColor(normalized)}
-                  className={`h-4 w-4 rounded-full ring-1 ring-black/10 transition ${
-                    active ? "outline outline-2 outline-black/60" : "hover:scale-110"
-                  }`}
-                  style={{ backgroundColor: colorNameToCss(normalized) ?? "#ddd" }}
+        <div className="mt-3 flex items-center gap-2.5">
+          {p.colors.slice(0, 8).map((c) => {
+            const normalized = normalizeColorName(c);
+            const active = normalizeColorName(selectedColor) === normalized;
+            return (
+              <button
+                key={normalized}
+                type="button"
+                title={c}
+                aria-pressed={active}
+                onClick={() => setSelectedColor(normalized)}
+                className={[
+                  // 更大的点击热区（32px）
+                  "relative inline-flex h-6 w-6 items-center justify-center rounded-full",
+                  // 选中 & hover 的边框效果
+                  active
+                    ? "ring-2 ring-neutral-900 ring-offset-2 ring-offset-white"
+                    : "ring-1 ring-black/10 hover:ring-black/30",
+                  // 无障碍焦点可见
+                  "transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30",
+                ].join(" ")}
+              >
+                {/* 实际可见的色点（20px） */}
+                <span
+                  className="block h-6 w-6 rounded-full"
+                  style={{ backgroundColor: colorNameToCss(normalized) }}
                 />
-              );
-            })}
-            {p.colors.length > 8 && (
-              <span className="text-xs text-neutral-500">+{p.colors.length - 8}</span>
-            )}
-          </div>
-        )}
+              </button>
+            );
+          })}
+          {p.colors.length > 8 && (
+            <span className="text-xs text-neutral-500">+{p.colors.length - 8}</span>
+          )}
+        </div>
+      )}
 
         {/* 5. 热度（星级） */}
         <div className="mt-3 flex items-center gap-1">
