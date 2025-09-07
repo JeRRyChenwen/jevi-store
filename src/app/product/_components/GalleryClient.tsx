@@ -10,6 +10,8 @@ type Props = {
   slug: string;
   /** 当前选中的大图索引（来自 ?img=） */
   selectedIndex?: number;
+  /** 当前颜色（用于把 color 透传到缩略图链接） */
+  color?: string;
 };
 
 export default function GalleryClient({
@@ -17,6 +19,7 @@ export default function GalleryClient({
   title,
   slug,
   selectedIndex = 0,
+  color,
 }: Props) {
   const N = images?.length ?? 0;
   const selected = Math.max(0, Math.min(selectedIndex, Math.max(0, N - 1)));
@@ -25,19 +28,21 @@ export default function GalleryClient({
   const activeRef = useRef<HTMLAnchorElement | null>(null);
   const firstItemRef = useRef<HTMLAnchorElement | null>(null);
 
-  // 三份虚拟数据（用于无限循环）
+  // 当图片较少时关闭无限循环复制，避免同时看到重复项
+  const COPIES = N >= 5 ? 3 : 1;
+
+  // 虚拟数据
   const virtual = useMemo(() => {
     if (!N) return [] as Array<{ url: string; orig: number; vIndex: number }>;
-    return Array.from({ length: N * 3 }, (_, i) => ({
+    return Array.from({ length: N * COPIES }, (_, i) => ({
       url: images[i % N],
       orig: i % N,
       vIndex: i,
     }));
-  }, [N, images]);
+  }, [N, images, COPIES]);
 
-  const middleStart = N;
+  const middleStart = COPIES > 1 ? N : 0;
 
-  /** 计算一个缩略图的垂直“步长”，用相邻项 offsetTop 差，最稳 */
   const getUnit = () => {
     const first = firstItemRef.current as HTMLElement | null;
     if (!first) return 0;
@@ -46,8 +51,9 @@ export default function GalleryClient({
     return Math.max(1, first.offsetHeight);
   };
 
-  // 初始定位到中间那份（依赖数组长度固定为 1）
+  // 初始定位到中间那份（仅在 COPIES>1 时需要）
   useEffect(() => {
+    if (COPIES <= 1) return;
     const c = containerRef.current;
     if (!c) return;
     const id = requestAnimationFrame(() => {
@@ -55,10 +61,9 @@ export default function GalleryClient({
       if (unit > 0) c.scrollTop = unit * middleStart;
     });
     return () => cancelAnimationFrame(id);
-    // ✅ 依赖数组长度固定为 1（N 与 middleStart 恒等，这里只放 N）
-  }, [N]);
+  }, [N, COPIES, middleStart]);
 
-  // 选中项滚动到可见（依赖长度固定为 1）
+  // 选中项滚动到可见
   useEffect(() => {
     activeRef.current?.scrollIntoView({
       behavior: "smooth",
@@ -67,8 +72,9 @@ export default function GalleryClient({
     });
   }, [selected]);
 
-  // 无限回卷（上下都能回卷；依赖长度固定为 1）
+  // 无限回卷（仅在 COPIES>1 时启用）
   useEffect(() => {
+    if (COPIES <= 1) return;
     const c = containerRef.current;
     if (!c || !firstItemRef.current || N === 0) return;
 
@@ -76,21 +82,18 @@ export default function GalleryClient({
       const unit = getUnit();
       if (unit <= 0) return;
 
-      const copyH = unit * N;                 // 一份数据块的总高度
-      const total = copyH * 3;                // 三份总高度
-      const topBoundary = copyH * 0.5;        // 顶部缓冲
-      const bottomBoundary = total - c.clientHeight - topBoundary; // 底部缓冲
+      const copyH = unit * N;
+      const total = copyH * COPIES;
+      const topBoundary = copyH * 0.5;
+      const bottomBoundary = total - c.clientHeight - topBoundary;
 
-      if (c.scrollTop <= topBoundary) {
-        c.scrollTop += copyH;                 // 向上滚过头 → 跳到中份
-      } else if (c.scrollTop >= bottomBoundary) {
-        c.scrollTop -= copyH;                 // 向下滚过头 → 跳回中份
-      }
+      if (c.scrollTop <= topBoundary) c.scrollTop += copyH;
+      else if (c.scrollTop >= bottomBoundary) c.scrollTop -= copyH;
     };
 
     c.addEventListener("scroll", onScroll, { passive: true });
     return () => c.removeEventListener("scroll", onScroll);
-  }, [N]);
+  }, [N, COPIES]);
 
   if (!N) {
     return (
@@ -99,6 +102,13 @@ export default function GalleryClient({
       </div>
     );
   }
+
+  const hrefFor = (orig: number) => {
+    const q = new URLSearchParams();
+    if (color) q.set("color", color);
+    q.set("img", String(orig));
+    return `/product/${slug}?${q.toString()}`;
+  };
 
   return (
     <div
@@ -114,8 +124,8 @@ export default function GalleryClient({
       ].join(" ")}
     >
       {virtual.map(({ url, orig, vIndex }) => {
-        const isMiddle = vIndex >= middleStart && vIndex < middleStart + N;
-        const active = isMiddle && orig === selected;
+        const isMiddle = COPIES > 1 && vIndex >= middleStart && vIndex < middleStart + N;
+        const active = (COPIES > 1 ? isMiddle : true) && orig === selected;
 
         const ref =
           vIndex === middleStart
@@ -127,7 +137,7 @@ export default function GalleryClient({
         return (
           <Link
             key={`${vIndex}-${orig}`}
-            href={`/product/${slug}?img=${orig}`}
+            href={hrefFor(orig)}
             prefetch
             aria-current={active ? "true" : undefined}
             aria-label={`Preview ${orig + 1}`}

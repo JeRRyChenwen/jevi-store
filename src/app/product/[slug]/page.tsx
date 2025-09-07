@@ -2,6 +2,7 @@
 import { notFound } from "next/navigation";
 import { api, mediaUrl } from "@/lib/strapi";
 import GalleryClient from "../_components/GalleryClient";
+import ColorDotsClient from "../_components/ColorDotsClient";
 
 /** Next.js 15: params / searchParams 是 Promise，需要 await */
 type PageProps = {
@@ -157,7 +158,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const price = Number.isFinite(cents) ? cents / 100 : null;
   const currency = (attrs.currency ?? "AUD") as string;
 
-  // 促销计算（与卡片一致）
+  // 促销计算
   const discount = Number(attrs.discount_percent_off) || 0;
   const saleActive = isSaleActive(
     discount,
@@ -167,19 +168,26 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const salePrice =
     saleActive && price != null ? price * (1 - discount / 100) : null;
 
-  // 颜色 & 图片
+  // 颜色 -> 图片
   const byColor = getImagesByColorFromProduct(attrs);
-  const colors = Object.keys(byColor);
-  // 展平所有颜色下的图片（去重，保持顺序）
-  const seen = new Set<string>();
-  const images: string[] = [];
-  for (const k of colors) {
-    for (const u of byColor[k]) {
-      if (!seen.has(u)) {
-        seen.add(u);
-        images.push(u);
-      }
+  const colorKeys = Object.keys(byColor);
+
+  // URL color
+  const colorParamRaw = Array.isArray(sp.color) ? sp.color[0] : sp.color;
+  const colorParam = normalizeColor(colorParamRaw);
+  const currentColor =
+    colorKeys.find((k) => k === colorParam) ?? colorKeys[0] ?? undefined;
+
+  // 当前颜色的图片（没有颜色则扁平化所有图）
+  let images: string[] = [];
+  if (currentColor) {
+    images = byColor[currentColor] ?? [];
+  } else {
+    const seen = new Set<string>();
+    for (const k of colorKeys) {
+      for (const u of byColor[k]) if (!seen.has(u)) seen.add(u);
     }
+    images = Array.from(seen);
   }
   const total = images.length;
 
@@ -192,31 +200,38 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   // 评分（用 hot_score 0~5）
   const rating = Math.max(0, Math.min(5, Number(attrs.hot_score) || 0));
 
+  // 颜色圆点数据（提供首图做兜底预览）
+  const colorOptions = colorKeys.map((name) => ({
+    name,
+    preview: byColor[name]?.[0],
+  }));
+
   return (
     <main className="w-full px-2 sm:px-4 md:px-6 lg:px-0 py-8">
       <h1 className="sr-only">{title}</h1>
 
-      {/* 3 列：左缩略图 / 中放大图 / 右信息（小屏堆叠） */}
+      {/* 3 列：左缩略图 / 中放大图 / 右信息 */}
       <div
         className="
           grid grid-cols-1
           md:[grid-template-columns:max-content_minmax(0,1fr)]
-          lg:[grid-template-columns:max-content_minmax(0,1fr)_520px]  /* 右栏放大 */
-          xl:[grid-template-columns:max-content_minmax(0,1fr)_600px]  /* 右栏更大 */
+          lg:[grid-template-columns:max-content_minmax(0,1fr)_520px]
+          xl:[grid-template-columns:max-content_minmax(0,1fr)_600px]
           gap-y-10 gap-x-0
         "
       >
-        {/* 1) 小画廊（左） */}
+        {/* 左：小画廊 */}
         <aside className="order-2 lg:order-1 md:sticky md:top-24 self-start md:pr-0">
           <GalleryClient
             images={images}
             title={title}
             slug={slug}
             selectedIndex={selected}
+            color={currentColor}
           />
         </aside>
 
-        {/* 2) 放大图（中） */}
+        {/* 中：大图 */}
         <section className="order-1 lg:order-2 min-w-0">
           <div className="rounded-3xl border bg-white aspect-[4/3] md:aspect-[5/3] overflow-hidden flex items-center justify-center">
             {total > 0 ? (
@@ -233,7 +248,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
           </div>
         </section>
 
-        {/* 3) 信息栏（右） —— 把 Category 卡片里的元素搬过来 */}
+        {/* 右：信息栏（含可点击颜色） */}
         <section className="order-3 lg:order-3 lg:pl-8 xl:pl-10 lg:sticky lg:top-24 self-start">
           <div className="space-y-5">
             <h2 className="text-2xl font-bold leading-tight">{title}</h2>
@@ -257,27 +272,22 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
               </div>
             )}
 
-            {/* 颜色点（按每个颜色画廊的首图生成小圆点） */}
-            {colors.length > 0 && (
+            {/* 颜色（可点击切换） */}
+            {colorOptions.length > 0 && (
               <div className="space-y-2">
-                <div className="text-sm text-neutral-600">Colors</div>
-                <div className="flex items-center gap-2">
-                  {colors.map((c) => {
-                    const first = byColor[c]?.[0];
-                    return (
-                      <span
-                        key={c}
-                        title={c}
-                        className="h-4 w-4 rounded-full ring-1 ring-neutral-300 overflow-hidden inline-block"
-                        style={
-                          first
-                            ? { backgroundImage: `url(${first})`, backgroundSize: "cover", backgroundPosition: "center" }
-                            : { backgroundColor: c }
-                        }
-                      />
-                    );
-                  })}
+                <div className="text-sm text-neutral-600 flex items-center gap-2">
+                  Colors
+                  {currentColor && (
+                    <span className="text-neutral-800 font-medium">
+                      {currentColor}
+                    </span>
+                  )}
                 </div>
+                <ColorDotsClient
+                  options={colorOptions}
+                  current={currentColor}
+                  slug={slug}
+                />
               </div>
             )}
 
@@ -285,8 +295,6 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
             <div className="text-neutral-800">
               <Stars value={rating} />
             </div>
-
-            {/* TODO: 这里可以继续扩展：尺码选择 / 加入购物车 / 运费说明等 */}
           </div>
         </section>
       </div>
