@@ -118,7 +118,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   if (Number.isFinite(n) && n >= 0 && n < total) selected = n;
 
   return (
-    <main className="mx-auto max-w-6xl px-4 md:px-6 lg:px-8 py-8">
+    <main className="w-full px-2 sm:px-4 md:px-6 lg:px-0 py-8">
       <h1 className="sr-only">{title}</h1>
 
       {/* 左侧固定宽度（更宽）+ 右侧自适应 */}
