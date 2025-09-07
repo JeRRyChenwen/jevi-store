@@ -203,9 +203,9 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
       <div
         className="
           grid grid-cols-1
-          md:[grid-template-columns:max-content_minmax(0,1fr)]
-          lg:[grid-template-columns:max-content_minmax(0,1fr)_520px]
-          xl:[grid-template-columns:max-content_minmax(0,1fr)_600px]
+          lg:[grid-template-columns:max-content_minmax(0,1fr)_640px]
+          xl:[grid-template-columns:max-content_minmax(0,1fr)_720px]
+          2xl:[grid-template-columns:max-content_minmax(0,1fr)_820px]
           gap-y-10 gap-x-0
         "
       >
