@@ -74,6 +74,66 @@ function formatPriceVal(
   }).format(Number(n));
 }
 
+/** 是否在促销窗口内 */
+function isSaleActive(
+  discountPercent?: number | null,
+  startsAt?: string | null,
+  endsAt?: string | null
+) {
+  const d = Number(discountPercent) || 0;
+  if (d <= 0) return false;
+  const now = Date.now();
+  const startOk = !startsAt || now >= new Date(startsAt).getTime();
+  const endOk = !endsAt || now <= new Date(endsAt).getTime();
+  return startOk && endOk;
+}
+
+/** 评分星星（0~5，支持半星） */
+function Stars({ value = 0 }: { value?: number }) {
+  const v = Math.max(0, Math.min(5, Number(value) || 0));
+  const full = Math.floor(v);
+  const half = v - full >= 0.5;
+  return (
+    <div className="flex items-center gap-1" aria-label={`Rating ${v} of 5`}>
+      {Array.from({ length: 5 }).map((_, i) => {
+        const state = i < full ? "full" : i === full && half ? "half" : "empty";
+        return (
+          <svg
+            key={i}
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            className="h-4 w-4"
+            role="img"
+          >
+            {state === "half" ? (
+              <>
+                <defs>
+                  <linearGradient id={`half-${i}`} x1="0" x2="1">
+                    <stop offset="50%" stopColor="currentColor" />
+                    <stop offset="50%" stopColor="transparent" />
+                  </linearGradient>
+                </defs>
+                <path
+                  d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"
+                  fill={`url(#half-${i})`}
+                  stroke="currentColor"
+                />
+              </>
+            ) : (
+              <path
+                d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"
+                fill={state === "full" ? "currentColor" : "none"}
+                stroke="currentColor"
+              />
+            )}
+          </svg>
+        );
+      })}
+      <span className="ml-1 text-sm text-neutral-600">{v.toFixed(1)}</span>
+    </div>
+  );
+}
+
 export default async function ProductPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
   const sp = await searchParams;
@@ -97,11 +157,23 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const price = Number.isFinite(cents) ? cents / 100 : null;
   const currency = (attrs.currency ?? "AUD") as string;
 
-  // 展平所有颜色下的图片（去重，保持顺序）
+  // 促销计算（与卡片一致）
+  const discount = Number(attrs.discount_percent_off) || 0;
+  const saleActive = isSaleActive(
+    discount,
+    attrs.sale_starts_at,
+    attrs.sale_ends_at
+  );
+  const salePrice =
+    saleActive && price != null ? price * (1 - discount / 100) : null;
+
+  // 颜色 & 图片
   const byColor = getImagesByColorFromProduct(attrs);
+  const colors = Object.keys(byColor);
+  // 展平所有颜色下的图片（去重，保持顺序）
   const seen = new Set<string>();
   const images: string[] = [];
-  for (const k of Object.keys(byColor)) {
+  for (const k of colors) {
     for (const u of byColor[k]) {
       if (!seen.has(u)) {
         seen.add(u);
@@ -117,6 +189,9 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const n = Number(rawIdx);
   if (Number.isFinite(n) && n >= 0 && n < total) selected = n;
 
+  // 评分（用 hot_score 0~5）
+  const rating = Math.max(0, Math.min(5, Number(attrs.hot_score) || 0));
+
   return (
     <main className="w-full px-2 sm:px-4 md:px-6 lg:px-0 py-8">
       <h1 className="sr-only">{title}</h1>
@@ -126,8 +201,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
         className="
           grid grid-cols-1
           md:[grid-template-columns:max-content_minmax(0,1fr)]
-          lg:[grid-template-columns:max-content_minmax(0,1fr)_480px]
-          xl:[grid-template-columns:max-content_minmax(0,1fr)_800px]
+          lg:[grid-template-columns:max-content_minmax(0,1fr)_520px]  /* 右栏放大 */
+          xl:[grid-template-columns:max-content_minmax(0,1fr)_600px]  /* 右栏更大 */
           gap-y-10 gap-x-0
         "
       >
@@ -142,7 +217,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
         </aside>
 
         {/* 2) 放大图（中） */}
-        <section className="order-1 lg:order-2">
+        <section className="order-1 lg:order-2 min-w-0">
           <div className="rounded-3xl border bg-white aspect-[4/3] md:aspect-[5/3] overflow-hidden flex items-center justify-center">
             {total > 0 ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -158,14 +233,60 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
           </div>
         </section>
 
-        {/* 3) 信息栏（右） */}
-        <section className="order-3 lg:order-3 lg:pl-6 xl:pl-8 lg:sticky lg:top-24 self-start">
-          <div className="space-y-3">
+        {/* 3) 信息栏（右） —— 把 Category 卡片里的元素搬过来 */}
+        <section className="order-3 lg:order-3 lg:pl-8 xl:pl-10 lg:sticky lg:top-24 self-start">
+          <div className="space-y-5">
             <h2 className="text-2xl font-bold leading-tight">{title}</h2>
-            <p className="text-xl font-semibold">
-              {formatPriceVal(price, currency)}
-            </p>
-            {/* 这里之后可以放 变体选择 / 加入购物车等 */}
+
+            {/* 价格区：折扣标签 + 原价删除线 + 现价 */}
+            {saleActive && salePrice != null ? (
+              <div className="space-y-2">
+                <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 text-xs font-semibold px-2 py-1">
+                  {discount}% OFF
+                </span>
+                <div className="text-sm text-neutral-500 line-through">
+                  {formatPriceVal(price, currency)}
+                </div>
+                <div className="text-xl font-semibold text-emerald-700">
+                  {formatPriceVal(salePrice, currency)}
+                </div>
+              </div>
+            ) : (
+              <div className="text-xl font-semibold">
+                {formatPriceVal(price, currency)}
+              </div>
+            )}
+
+            {/* 颜色点（按每个颜色画廊的首图生成小圆点） */}
+            {colors.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-sm text-neutral-600">Colors</div>
+                <div className="flex items-center gap-2">
+                  {colors.map((c) => {
+                    const first = byColor[c]?.[0];
+                    return (
+                      <span
+                        key={c}
+                        title={c}
+                        className="h-4 w-4 rounded-full ring-1 ring-neutral-300 overflow-hidden inline-block"
+                        style={
+                          first
+                            ? { backgroundImage: `url(${first})`, backgroundSize: "cover", backgroundPosition: "center" }
+                            : { backgroundColor: c }
+                        }
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* 评分 */}
+            <div className="text-neutral-800">
+              <Stars value={rating} />
+            </div>
+
+            {/* TODO: 这里可以继续扩展：尺码选择 / 加入购物车 / 运费说明等 */}
           </div>
         </section>
       </div>
