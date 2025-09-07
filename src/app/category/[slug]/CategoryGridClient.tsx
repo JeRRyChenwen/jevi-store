@@ -19,8 +19,6 @@ import {
 // ✅ 统一颜色工具（与详情页共用）
 import { normalizeColorName, colorNameToCss } from "@/lib/colors";
 
-
-
 type Props = {
   slug: string;
   title: string;
@@ -46,6 +44,8 @@ type ProductLite = {
 
   /** 可选颜色（来自 variants.color 与/或 color_galleries.color） */
   colors?: string[];
+  /** ✅ 可选尺码（来自 variants.size） */
+  sizes?: string[];
 
   /** 颜色 -> 该颜色的图片数组（来自 product.color_galleries） */
   variantsByColor: Record<string, string[]>;
@@ -87,9 +87,7 @@ function getImagesByColorFromProduct(attrs: any): Record<string, string[]> {
     : [];
   const out: Record<string, string[]> = {};
   for (const cg of arr) {
-    const colorRaw = (cg?.color ?? cg?.attributes?.color) as
-      | string
-      | undefined;
+    const colorRaw = (cg?.color ?? cg?.attributes?.color) as string | undefined;
     const color = normalizeColorName(colorRaw);
     if (!color) continue;
 
@@ -128,6 +126,46 @@ function getVariantColors(attrs: any): string[] {
     if (c) set.add(c);
   }
   return Array.from(set);
+}
+
+/** ✅ 常见字母尺码顺序；数字尺码按数值升序；其他按字母序 */
+const SIZE_ORDER: Record<string, number> = {
+  xxs: 0,
+  xs: 1,
+  s: 2,
+  m: 3,
+  l: 4,
+  xl: 5,
+  xxl: 6,
+  xxxl: 7,
+};
+function sortSizes(arr: string[]) {
+  return arr.slice().sort((a, b) => {
+    const aa = a.trim().toLowerCase();
+    const bb = b.trim().toLowerCase();
+    const oa = SIZE_ORDER[aa];
+    const ob = SIZE_ORDER[bb];
+    if (oa != null && ob != null) return oa - ob;
+    const na = parseFloat(aa);
+    const nb = parseFloat(bb);
+    if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+    return aa.localeCompare(bb);
+  });
+}
+/** ✅ 解析 variants 下的 size 列表（用于卡片展示） */
+function getVariantSizes(attrs: any): string[] {
+  const arr: any[] = Array.isArray(attrs?.variants?.data)
+    ? attrs.variants.data
+    : Array.isArray(attrs?.variants)
+    ? attrs.variants
+    : [];
+  const set = new Set<string>();
+  for (const r of arr) {
+    const a = r?.attributes ?? r ?? {};
+    const s = String(a.size ?? "").trim();
+    if (s) set.add(s);
+  }
+  return sortSizes(Array.from(set));
 }
 
 // 价格/折扣/Popularity
@@ -182,6 +220,9 @@ function normalizeProduct(row: any): ProductLite {
   for (const c of getVariantColors(attrs)) set.add(c);
   const colors = Array.from(set);
 
+  // ✅ 尺码集合：variants.size
+  const sizes = getVariantSizes(attrs);
+
   // 任意首图（兜底）：取映射里的第一张
   let imageUrl: string | undefined;
   for (const k of Object.keys(variantsByColor)) {
@@ -214,6 +255,7 @@ function normalizeProduct(row: any): ProductLite {
     saleEndsAt: attrs.sale_ends_at ?? null,
     hotScore: typeof attrs.hot_score === "number" ? attrs.hot_score : null,
     colors,
+    sizes, // ✅
     variantsByColor,
   };
 }
@@ -282,9 +324,7 @@ function ImageCarousel({ urls, alt }: { urls: string[]; alt: string }) {
 
 /** 单个卡片：点击图片或标题跳到详情页 */
 function ProductCard({ p, idx, start }: { p: ProductLite; idx: number; start: number }) {
-  const [selectedColor, setSelectedColor] = useState<string | null>(
-    p.colors?.[0] ?? null
-  );
+  const [selectedColor, setSelectedColor] = useState<string | null>(p.colors?.[0] ?? null);
 
   const onSale = isSaleActive(p);
   const finalPrice = onSale ? salePrice(p) : p.price ?? 0;
@@ -314,8 +354,7 @@ function ProductCard({ p, idx, start }: { p: ProductLite; idx: number; start: nu
           return [];
         })();
 
-  const urls =
-    (byColor && byColor.length ? byColor : anyColor) || (p.imageUrl ? [p.imageUrl] : []);
+  const urls = (byColor && byColor.length ? byColor : anyColor) || (p.imageUrl ? [p.imageUrl] : []);
 
   return (
     <article className="group overflow-hidden rounded-3xl border bg-card shadow-sm transition-shadow hover:shadow-md">
@@ -359,60 +398,71 @@ function ProductCard({ p, idx, start }: { p: ProductLite; idx: number; start: nu
               </span>
             </div>
           ) : (
-            <div className="text-base font-bold">
-              {formatPriceVal(finalPrice, p.currency)}
-            </div>
+            <div className="text-base font-bold">{formatPriceVal(finalPrice, p.currency)}</div>
           )}
         </div>
 
         {/* 4. 颜色（可点击切图） */}
         {p.colors && p.colors.length > 0 && (
-        <div className="mt-3 flex items-center gap-2.5">
-          {p.colors.slice(0, 8).map((c) => {
-            const normalized = normalizeColorName(c);
-            const active = normalizeColorName(selectedColor) === normalized;
-            return (
-              <button
-                key={normalized}
-                type="button"
-                title={c}
-                aria-pressed={active}
-                onClick={() => setSelectedColor(normalized)}
-                className={[
-                  // 更大的点击热区（32px）
-                  "relative inline-flex h-6 w-6 items-center justify-center rounded-full",
-                  // 选中 & hover 的边框效果
-                  active
-                    ? "ring-2 ring-neutral-900 ring-offset-2 ring-offset-white"
-                    : "ring-1 ring-black/10 hover:ring-black/30",
-                  // 无障碍焦点可见
-                  "transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30",
-                ].join(" ")}
-              >
-                {/* 实际可见的色点（20px） */}
-                <span
-                  className="block h-6 w-6 rounded-full"
-                  style={{ backgroundColor: colorNameToCss(normalized) }}
-                />
-              </button>
-            );
-          })}
-          {p.colors.length > 8 && (
-            <span className="text-xs text-neutral-500">+{p.colors.length - 8}</span>
-          )}
-        </div>
-      )}
+          <div className="mt-3 flex items-center gap-2.5">
+            {p.colors.slice(0, 8).map((c) => {
+              const normalized = normalizeColorName(c);
+              const active = normalizeColorName(selectedColor) === normalized;
+              return (
+                <button
+                  key={normalized}
+                  type="button"
+                  title={c}
+                  aria-pressed={active}
+                  onClick={() => setSelectedColor(normalized)}
+                  className={[
+                    // 更大的点击热区（24px+）
+                    "relative inline-flex h-6 w-6 items-center justify-center rounded-full",
+                    // 选中 & hover 的边框效果
+                    active
+                      ? "ring-2 ring-neutral-900 ring-offset-2 ring-offset-white"
+                      : "ring-1 ring-black/10 hover:ring-black/30",
+                    // 无障碍焦点可见
+                    "transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30",
+                  ].join(" ")}
+                >
+                  <span
+                    className="block h-6 w-6 rounded-full"
+                    style={{ backgroundColor: colorNameToCss(normalized) }}
+                  />
+                </button>
+              );
+            })}
+            {p.colors.length > 8 && (
+              <span className="text-xs text-neutral-500">+{p.colors.length - 8}</span>
+            )}
+          </div>
+        )}
 
-        {/* 5. 热度（星级） */}
+        {/* ✅ 5. 尺码（显示在颜色下方、星级上方） */}
+        {p.sizes && p.sizes.length > 0 && (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {p.sizes.slice(0, 10).map((sz) => (
+              <span
+                key={sz}
+                className="px-2 py-0.5 rounded-full border text-xs leading-5 bg-white"
+                title={`Size ${sz}`}
+              >
+                {sz}
+              </span>
+            ))}
+            {p.sizes.length > 10 && (
+              <span className="text-xs text-neutral-500">+{p.sizes.length - 10}</span>
+            )}
+          </div>
+        )}
+
+        {/* 6. 热度（星级） */}
         <div className="mt-3 flex items-center gap-1">
           {Array.from({ length: 5 }).map((_, i3) => (
             <Star
               key={i3}
-              className={
-                i3 < (stars as number)
-                  ? "h-4 w-4 fill-black text-black"
-                  : "h-4 w-4 text-neutral-300"
-              }
+              className={i3 < (stars as number) ? "h-4 w-4 fill-black text-black" : "h-4 w-4 text-neutral-300"}
             />
           ))}
         </div>
@@ -449,14 +499,8 @@ export default function CategoryGridClient({
   // 已应用的筛选（来自 URL）
   const minParam = sp.get("min");
   const maxParam = sp.get("max");
-  const appliedMin = useMemo(
-    () => (minParam ? Math.max(0, Number(minParam)) : undefined),
-    [minParam]
-  );
-  const appliedMax = useMemo(
-    () => (maxParam ? Math.max(0, Number(maxParam)) : undefined),
-    [maxParam]
-  );
+  const appliedMin = useMemo(() => (minParam ? Math.max(0, Number(minParam)) : undefined), [minParam]);
+  const appliedMax = useMemo(() => (maxParam ? Math.max(0, Number(maxParam)) : undefined), [maxParam]);
   const appliedMaterials = useMemo(() => parseCSV(sp, "material"), [sp]);
   const appliedSizes = useMemo(() => parseCSV(sp, "size"), [sp]);
   const appliedColors = useMemo(() => parseCSV(sp, "color"), [sp]);
@@ -482,25 +526,16 @@ export default function CategoryGridClient({
   const [facetColors, setFacetColors] = useState<string[]>([]);
   const [facetGenders, setFacetGenders] = useState<string[]>([]);
   const [variantFiltersSupported, setVariantFiltersSupported] = useState(true);
-  const [productGenderSupported, setProductGenderSupported] =
-    useState(true);
+  const [productGenderSupported, setProductGenderSupported] = useState(true);
 
   // Drawer 草稿值
   const [open, setOpen] = useState(false);
   const [draftMin, setDraftMin] = useState<number | undefined>(appliedMin);
   const [draftMax, setDraftMax] = useState<number | undefined>(appliedMax);
-  const [draftMaterials, setDraftMaterials] = useState<Set<string>>(
-    new Set(appliedMaterials)
-  );
-  const [draftSizes, setDraftSizes] = useState<Set<string>>(
-    new Set(appliedSizes)
-  );
-  const [draftColors, setDraftColors] = useState<Set<string>>(
-    new Set(appliedColors)
-  );
-  const [draftGenders, setDraftGenders] = useState<Set<string>>(
-    new Set(appliedGenders)
-  );
+  const [draftMaterials, setDraftMaterials] = useState<Set<string>>(new Set(appliedMaterials));
+  const [draftSizes, setDraftSizes] = useState<Set<string>>(new Set(appliedSizes));
+  const [draftColors, setDraftColors] = useState<Set<string>>(new Set(appliedColors));
+  const [draftGenders, setDraftGenders] = useState<Set<string>>(new Set(appliedGenders));
 
   // 打开抽屉时，用已应用的筛选值重置草稿
   useEffect(() => {
@@ -539,19 +574,13 @@ export default function CategoryGridClient({
       if (categoryDocIds?.length) {
         categoryDocIds.forEach((id, i) => {
           const enc = encodeURIComponent(id);
-          partsForProducts.push(
-            `filters[category][documentId][$in][${i}]=${enc}`
-          );
-          partsForVariants.push(
-            `filters[product][category][documentId][$in][${i}]=${enc}`
-          );
+          partsForProducts.push(`filters[category][documentId][$in][${i}]=${enc}`);
+          partsForVariants.push(`filters[product][category][documentId][$in][${i}]=${enc}`);
         });
       } else {
         const enc = encodeURIComponent(slug);
         partsForProducts.push(`filters[category][slug][$eq]=${enc}`);
-        partsForVariants.push(
-            `filters[product][category][slug][$eq]=${enc}`
-        );
+        partsForVariants.push(`filters[product][category][slug][$eq]=${enc}`);
       }
       // 仅统计/展示「被上架显示」的商品
       partsForProducts.push(`filters[is_showed][$eq]=true`);
@@ -592,15 +621,12 @@ export default function CategoryGridClient({
           const c = new Set<string>();
           for (const r of rows) {
             const a = r?.attributes ?? r ?? {};
-            if (a.material && String(a.material).trim())
-              m.add(String(a.material).trim());
-            if (a.size && String(a.size).trim())
-              s.add(String(a.size).trim());
-            if (a.color && String(a.color).trim())
-              c.add(normalizeColorName(a.color));
+            if (a.material && String(a.material).trim()) m.add(String(a.material).trim());
+            if (a.size && String(a.size).trim()) s.add(String(a.size).trim());
+            if (a.color && String(a.color).trim()) c.add(normalizeColorName(a.color));
           }
           setFacetMaterials(Array.from(m).sort((a, b) => a.localeCompare(b)));
-          setFacetSizes(Array.from(s).sort((a, b) => a.localeCompare(b)));
+          setFacetSizes(sortSizes(Array.from(s))); // ✅ 用更合理的尺寸排序
           setFacetColors(Array.from(c).sort((a, b) => a.localeCompare(b)));
         }
 
@@ -649,11 +675,7 @@ export default function CategoryGridClient({
         // 分类
         if (categoryDocIds?.length) {
           categoryDocIds.forEach((id, i) =>
-            parts.push(
-              `filters[category][documentId][$in][${i}]=${encodeURIComponent(
-                id
-              )}`
-            )
+            parts.push(`filters[category][documentId][$in][${i}]=${encodeURIComponent(id)}`)
           );
         } else {
           parts.push(`filters[category][slug][$eq]=${encodeURIComponent(slug)}`);
@@ -673,9 +695,7 @@ export default function CategoryGridClient({
         // product 级（gender）
         if (productGenderSupported && appliedGenders.length) {
           appliedGenders.forEach((v, i) =>
-            parts.push(
-              `filters[gender][$in][${i}]=${encodeURIComponent(v)}`
-            )
+            parts.push(`filters[gender][$in][${i}]=${encodeURIComponent(v)}`)
           );
         }
 
@@ -683,9 +703,7 @@ export default function CategoryGridClient({
         if (variantFiltersSupported) {
           const pushIN = (key: string, arr: string[]) => {
             arr.forEach((v, i) =>
-              parts.push(
-                `filters[variants][${key}][$in][${i}]=${encodeURIComponent(v)}`
-              )
+              parts.push(`filters[variants][${key}][$in][${i}]=${encodeURIComponent(v)}`)
             );
           };
           if (appliedMaterials.length) pushIN("material", appliedMaterials);
@@ -693,14 +711,14 @@ export default function CategoryGridClient({
           if (appliedColors.length) pushIN("color", appliedColors);
         }
 
-        // 关键：把需要显示的字段与 color_galleries（含 images）、variants.color 一起取回
+        // ✅ 关键：把 variants.size 一起取回
         const qs =
           `/api/products?${parts.join("&")}` +
           `&fields[0]=title&fields[1]=slug&fields[2]=base_price_cents&fields[3]=currency` +
           `&fields[4]=discount_percent_off&fields[5]=sale_starts_at&fields[6]=sale_ends_at&fields[7]=hot_score&fields[8]=priority` +
           `&populate[color_galleries][fields][0]=color` +
           `&populate[color_galleries][populate][images]=true` +
-          `&populate[variants][fields][0]=color` +
+          `&populate[variants][fields][0]=color&populate[variants][fields][1]=size` + // ← 新增 size
           `&pagination[page]=${page}&pagination[pageSize]=${pageSize}` +
           `${sortQueryString}&publicationState=live`;
 
@@ -755,9 +773,7 @@ export default function CategoryGridClient({
     [slug]
   );
 
-  const resultLabel = `${filteredTotal} ${
-    filteredTotal === 1 ? "result" : "results"
-  }`;
+  const resultLabel = `${filteredTotal} ${filteredTotal === 1 ? "result" : "results"}`;
 
   // 统一关闭抽屉（焦点回退）
   const closeDrawer = () => {
@@ -770,12 +786,10 @@ export default function CategoryGridClient({
   const applyDraft = () => {
     const u = new URL(window.location.href);
 
-    if (typeof draftMin === "number" && draftMin >= 0)
-      u.searchParams.set("min", String(draftMin));
+    if (typeof draftMin === "number" && draftMin >= 0) u.searchParams.set("min", String(draftMin));
     else u.searchParams.delete("min");
 
-    if (typeof draftMax === "number" && draftMax >= 0)
-      u.searchParams.set("max", String(draftMax));
+    if (typeof draftMax === "number" && draftMax >= 0) u.searchParams.set("max", String(draftMax));
     else u.searchParams.delete("max");
 
     const setCSV = (key: string, set: Set<string>) => {
@@ -816,24 +830,19 @@ export default function CategoryGridClient({
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3">
             <div className="text-sm md:text-base text-neutral-600 whitespace-nowrap">
               {resultLabel}
             </div>
 
             {/* Sort */}
             <div className="hidden sm:flex">
-              <Select
-                value={sortKey}
-                onValueChange={(v) => setSortInUrl(v as SortKey)}
-              >
+              <Select value={sortKey} onValueChange={(v) => setSortInUrl(v as SortKey)}>
                 <SelectTrigger
                   className="rounded-full w-[190px] border px-3 py-2 text-sm focus:ring-2 focus:ring-black/10"
                   aria-label="Sort products"
                 >
-                  <SelectValue placeholder="Sort">
-                    {SORT_LABELS[sortKey] ?? "Sort"}
-                  </SelectValue>
+                  <SelectValue placeholder="Sort">{SORT_LABELS[sortKey] ?? "Sort"}</SelectValue>
                 </SelectTrigger>
                 <SelectContent align="end" className="z-50 rounded-xl border shadow-lg">
                   <SelectGroup>
@@ -846,12 +855,7 @@ export default function CategoryGridClient({
               </Select>
             </div>
 
-            <Button
-              ref={triggerBtnRef}
-              variant="outline"
-              className="rounded-full px-5"
-              onClick={() => setOpen(true)}
-            >
+            <Button ref={triggerBtnRef} variant="outline" className="rounded-full px-5" onClick={() => setOpen(true)}>
               Filter
             </Button>
           </div>
@@ -859,16 +863,10 @@ export default function CategoryGridClient({
       </header>
 
       {/* === 左侧抽屉 === */}
-      <div
-        className={`fixed inset-0 z-50 transition ${
-          open ? "pointer-events-auto" : "pointer-events-none"
-        }`}
-      >
+      <div className={`fixed inset-0 z-50 transition ${open ? "pointer-events-auto" : "pointer-events-none"}`}>
         {/* 背景遮罩 */}
         <div
-          className={`absolute inset-0 bg-black/30 transition-opacity ${
-            open ? "opacity-100" : "opacity-0"
-          }`}
+          className={`absolute inset-0 bg-black/30 transition-opacity ${open ? "opacity-100" : "opacity-0"}`}
           onClick={closeDrawer}
         />
         {/* 面板 */}
@@ -896,9 +894,7 @@ export default function CategoryGridClient({
             {/* Gender（Product 级） */}
             {productGenderSupported && facetGenders.length > 0 && (
               <details className="mb-4" open>
-                <summary className="cursor-pointer select-none py-2 font-medium">
-                  Gender
-                </summary>
+                <summary className="cursor-pointer select-none py-2 font-medium">Gender</summary>
                 <div className="mt-2 space-y-2">
                   {facetGenders.map((v) => (
                     <label key={v} className="flex items-center gap-2 text-sm">
@@ -922,9 +918,7 @@ export default function CategoryGridClient({
             {/* Size（Variant 级） */}
             {variantFiltersSupported && facetSizes.length > 0 && (
               <details className="mb-4" open>
-                <summary className="cursor-pointer select-none py-2 font-medium">
-                  Size
-                </summary>
+                <summary className="cursor-pointer select-none py-2 font-medium">Size</summary>
                 <div className="mt-2 space-y-2">
                   {facetSizes.map((v) => (
                     <label key={v} className="flex items-center gap-2 text-sm">
@@ -948,9 +942,7 @@ export default function CategoryGridClient({
             {/* Colour（Variant 级：用于过滤） */}
             {variantFiltersSupported && facetColors.length > 0 && (
               <details className="mb-4" open>
-                <summary className="cursor-pointer select-none py-2 font-medium">
-                  Colour
-                </summary>
+                <summary className="cursor-pointer select-none py-2 font-medium">Colour</summary>
                 <div className="mt-2 space-y-2">
                   {facetColors.map((v) => (
                     <label key={v} className="flex items-center gap-2 text-sm">
@@ -974,9 +966,7 @@ export default function CategoryGridClient({
             {/* Material（Variant 级） */}
             {variantFiltersSupported && facetMaterials.length > 0 && (
               <details className="mb-4" open>
-                <summary className="cursor-pointer select-none py-2 font-medium">
-                  Material
-                </summary>
+                <summary className="cursor-pointer select-none py-2 font-medium">Material</summary>
                 <div className="mt-2 space-y-2">
                   {facetMaterials.map((v) => (
                     <label key={v} className="flex items-center gap-2 text-sm">
@@ -999,9 +989,7 @@ export default function CategoryGridClient({
 
             {/* Price */}
             <details className="mb-2" open>
-              <summary className="cursor-pointer select-none py-2 font-medium">
-                Price
-              </summary>
+              <summary className="cursor-pointer select-none py-2 font-medium">Price</summary>
               <div className="mt-2 flex items-end gap-3">
                 <div className="flex-1">
                   <div className="text-xs text-neutral-500 mb-1">Min</div>
@@ -1013,9 +1001,7 @@ export default function CategoryGridClient({
                     value={draftMin ?? ""}
                     onChange={(e) =>
                       setDraftMin(
-                        e.currentTarget.value === ""
-                          ? undefined
-                          : Math.max(0, Number(e.currentTarget.value))
+                        e.currentTarget.value === "" ? undefined : Math.max(0, Number(e.currentTarget.value))
                       )
                     }
                   />
@@ -1030,9 +1016,7 @@ export default function CategoryGridClient({
                     value={draftMax ?? ""}
                     onChange={(e) =>
                       setDraftMax(
-                        e.currentTarget.value === ""
-                          ? undefined
-                          : Math.max(0, Number(e.currentTarget.value))
+                        e.currentTarget.value === "" ? undefined : Math.max(0, Number(e.currentTarget.value))
                       )
                     }
                   />
@@ -1056,17 +1040,13 @@ export default function CategoryGridClient({
       ) : loading ? (
         <section>
           <div className="grid gap-7 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-4">
-            {Array.from({
-              length: Math.min(pageSize, filteredTotal - start) || 8,
-            }).map((_, i) => (
+            {Array.from({ length: Math.min(pageSize, filteredTotal - start) || 8 }).map((_, i) => (
               <CardSkeleton key={i} />
             ))}
           </div>
         </section>
       ) : list.length === 0 ? (
-        <div className="py-20 text-center text-muted-foreground">
-          No products yet.
-        </div>
+        <div className="py-20 text-center text-muted-foreground">No products yet.</div>
       ) : (
         <section>
           <div className="grid gap-7 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-4">
@@ -1077,12 +1057,7 @@ export default function CategoryGridClient({
         </section>
       )}
 
-      <Pagination
-        page={page}
-        pageCount={pageCount}
-        hrefForPage={hrefForPage}
-        className="mb-10"
-      />
+      <Pagination page={page} pageCount={pageCount} hrefForPage={hrefForPage} className="mb-10" />
     </>
   );
 }
