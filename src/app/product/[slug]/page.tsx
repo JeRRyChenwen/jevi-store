@@ -126,8 +126,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
         className="
           grid grid-cols-1
           md:[grid-template-columns:max-content_minmax(0,1fr)]
-          lg:[grid-template-columns:max-content_minmax(0,1fr)_360px]
-          xl:[grid-template-columns:max-content_minmax(0,1fr)_420px]
+          lg:[grid-template-columns:max-content_minmax(0,1fr)_480px]
+          xl:[grid-template-columns:max-content_minmax(0,1fr)_800px]
           gap-y-10 gap-x-0
         "
       >
