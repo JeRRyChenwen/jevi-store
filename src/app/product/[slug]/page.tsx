@@ -3,10 +3,8 @@ import { notFound } from "next/navigation";
 import { api, mediaUrl } from "@/lib/strapi";
 import GalleryClient from "../_components/GalleryClient";
 import ColorDotsClient from "../_components/ColorDotsClient";
-import {
-  normalizeColorName as normalizeColor,
-  colorNameToCss,
-} from "@/lib/colors";
+import SizeClient from "../_components/SizeClient";
+import { normalizeColorName } from "@/lib/colors";
 
 /** Next.js 15: params / searchParams 是 Promise，需要 await */
 type PageProps = {
@@ -16,9 +14,9 @@ type PageProps = {
 
 export const revalidate = 0;
 
-export async function generateMetadata({ params }: PageProps) {
-  const { slug } = await params;
-  return { title: `Product – ${slug}` };
+/** 标准化颜色字符串（沿用你已有规则） */
+function normalizeColor(s: any) {
+  return normalizeColorName(s);
 }
 
 /** 从 product.color_galleries 里取 “颜色 -> 图片数组” */
@@ -53,6 +51,27 @@ function getImagesByColorFromProduct(attrs: any): Record<string, string[]> {
       if (typeof u === "string") urls.push(mediaUrl(u));
     }
     if (urls.length) out[color] = urls;
+  }
+  return out;
+}
+
+/** 颜色+尺码 → 库存 */
+function getStockByColorSize(attrs: any): Record<string, Record<string, number>> {
+  const arr: any[] = Array.isArray(attrs?.variants?.data)
+    ? attrs.variants.data
+    : Array.isArray(attrs?.variants)
+    ? attrs.variants
+    : [];
+  const out: Record<string, Record<string, number>> = {};
+  for (const v of arr) {
+    const a = v?.attributes ?? v ?? {};
+    const color = normalizeColor(a.color ?? "");
+    const size = String(a.size ?? "").trim();
+    if (!color || !size) continue;
+    const stock = Number(a.stock) || 0;
+    out[color] ??= {};
+    // 如果有重复组合，累加库存
+    out[color][size] = (out[color][size] ?? 0) + stock;
   }
   return out;
 }
@@ -96,7 +115,13 @@ function Stars({ value = 0 }: { value?: number }) {
       {Array.from({ length: 5 }).map((_, i) => {
         const state = i < full ? "full" : i === full && half ? "half" : "empty";
         return (
-          <svg key={i} viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4" role="img">
+          <svg
+            key={i}
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            className="h-4 w-4"
+            role="img"
+          >
             {state === "half" ? (
               <>
                 <defs>
@@ -126,6 +151,11 @@ function Stars({ value = 0 }: { value?: number }) {
   );
 }
 
+export async function generateMetadata({ params }: PageProps) {
+  const { slug } = await params;
+  return { title: `Product – ${slug}` };
+}
+
 export default async function ProductPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
   const sp = await searchParams;
@@ -136,6 +166,10 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     `&fields[4]=discount_percent_off&fields[5]=sale_starts_at&fields[6]=sale_ends_at&fields[7]=hot_score` +
     `&populate[color_galleries][fields][0]=color` +
     `&populate[color_galleries][populate][images]=true` +
+    // ❗ 关键：把 variants 的 color/size/stock 一起取回
+    `&populate[variants][fields][0]=color` +
+    `&populate[variants][fields][1]=size` +
+    `&populate[variants][fields][2]=stock` +
     `&publicationState=live`;
 
   const json = await api(qs, { noCache: true });
@@ -149,7 +183,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const price = Number.isFinite(cents) ? cents / 100 : null;
   const currency = (attrs.currency ?? "AUD") as string;
 
-  // 促销
+  // 促销计算
   const discount = Number(attrs.discount_percent_off) || 0;
   const saleActive = isSaleActive(
     discount,
@@ -163,6 +197,9 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const byColor = getImagesByColorFromProduct(attrs);
   const colorKeys = Object.keys(byColor);
 
+  // 颜色+尺码 -> 库存
+  const stockMap = getStockByColorSize(attrs);
+
   // URL color
   const colorParamRaw = Array.isArray(sp.color) ? sp.color[0] : sp.color;
   const colorParam = normalizeColor(colorParamRaw);
@@ -175,7 +212,9 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     images = byColor[currentColor] ?? [];
   } else {
     const seen = new Set<string>();
-    for (const k of colorKeys) for (const u of byColor[k]) if (!seen.has(u)) seen.add(u);
+    for (const k of colorKeys) {
+      for (const u of byColor[k]) if (!seen.has(u)) seen.add(u);
+    }
     images = Array.from(seen);
   }
   const total = images.length;
@@ -189,25 +228,53 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   // 评分（用 hot_score 0~5）
   const rating = Math.max(0, Math.min(5, Number(attrs.hot_score) || 0));
 
-  // 颜色圆点：用公共 colorNameToCss，确保和分类页一致
+  // 颜色圆点数据（提供首图做兜底预览）
   const colorOptions = colorKeys.map((name) => ({
     name,
-    css: colorNameToCss(name) || "#ddd",
+    preview: byColor[name]?.[0],
   }));
+
+  // ====== 基于当前颜色计算尺码 & 库存 ======
+  const sizesForColor = currentColor
+    ? Object.keys(stockMap[currentColor] ?? {})
+    : [];
+
+  const sizeParamRaw = Array.isArray(sp.size) ? sp.size[0] : sp.size;
+  let currentSize =
+    typeof sizeParamRaw === "string" && sizesForColor.includes(sizeParamRaw)
+      ? sizeParamRaw
+      : undefined;
+
+  // 没有合法 URL 尺码时，默认选第一个（尽量选有库存的）
+  if (!currentSize && sizesForColor.length) {
+    const firstInStock = sizesForColor.find(
+      (s) => (stockMap[currentColor!]?.[s] ?? 0) > 0
+    );
+    currentSize = firstInStock ?? sizesForColor[0];
+  }
+
+  const sizeOptions = sizesForColor.map((s) => ({
+    value: s,
+    stock: stockMap[currentColor!]?.[s] ?? 0,
+  }));
+
+  const stockForCurrent =
+    currentColor && currentSize
+      ? stockMap[currentColor]?.[currentSize] ?? 0
+      : 0;
 
   return (
     <main className="w-full px-2 sm:px-4 md:px-6 lg:px-0 py-8">
       <h1 className="sr-only">{title}</h1>
 
-      {/* 3 列：左缩略图 / 中放大图 / 右信息（小屏堆叠） */}
+      {/* 3 列：左缩略图 / 中放大图 / 右信息 */}
       <div
         className="
           grid grid-cols-1
-          md:[grid-template-columns:max-content_780px]
-          lg:[grid-template-columns:max-content_940px_560px]
-          xl:[grid-template-columns:max-content_1060px_640px]
-          2xl:[grid-template-columns:max-content_1220px_680px]
-          gap-y-10 md:gap-x-8 lg:gap-x-10 xl:gap-x-12 2xl:gap-x-16
+          md:[grid-template-columns:max-content_minmax(0,1fr)]
+          lg:[grid-template-columns:max-content_minmax(0,1fr)_560px]
+          xl:[grid-template-columns:max-content_minmax(0,1fr)_640px]
+          gap-y-10 md:gap-x-6 lg:gap-x-10 xl:gap-x-12 2xl:gap-x-16
         "
       >
         {/* 左：小画廊 */}
@@ -217,7 +284,6 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
             title={title}
             slug={slug}
             selectedIndex={selected}
-            // ✅ 保留当前颜色，切换缩略图不会丢 color
             color={currentColor}
           />
         </aside>
@@ -239,14 +305,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
           </div>
         </section>
 
-        {/* 右：信息栏 */}
-        <section
-          className="
-            order-3 lg:order-3
-            lg:pl-14 xl:pl-16 2xl:pl-20   // ⬅️ 加大仅右侧与大图之间的间隔
-            lg:sticky lg:top-24 self-start
-          "
-        >
+        {/* 右：信息栏（颜色 + 尺码 + 库存） */}
+        <section className="order-3 lg:order-3 lg:pl-8 xl:pl-10 lg:sticky lg:top-24 self-start">
           <div className="space-y-5">
             <h2 className="text-2xl font-bold leading-tight">{title}</h2>
 
@@ -275,7 +335,9 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                 <div className="text-sm text-neutral-600 flex items-center gap-2">
                   Colors
                   {currentColor && (
-                    <span className="text-neutral-800 font-medium">{currentColor}</span>
+                    <span className="text-neutral-800 font-medium">
+                      {currentColor}
+                    </span>
                   )}
                 </div>
                 <ColorDotsClient
@@ -283,6 +345,28 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                   current={currentColor}
                   slug={slug}
                 />
+              </div>
+            )}
+
+            {/* 尺码（随颜色变化） */}
+            {sizeOptions.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-sm text-neutral-600 flex items-center gap-2">
+                  Sizes
+                  {currentSize && (
+                    <span className="text-neutral-800 font-medium">
+                      {currentSize}
+                    </span>
+                  )}
+                </div>
+                <SizeClient options={sizeOptions} current={currentSize} slug={slug} />
+                <div className="text-xs text-neutral-500 mt-1">
+                  {stockForCurrent > 0 ? (
+                    <>In stock: <span className="font-medium">{stockForCurrent}</span></>
+                  ) : (
+                    <span className="text-rose-600">Out of stock</span>
+                  )}
+                </div>
               </div>
             )}
 
