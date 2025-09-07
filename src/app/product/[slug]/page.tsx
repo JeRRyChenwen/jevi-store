@@ -59,7 +59,11 @@ function getImagesByColorFromProduct(attrs: any): Record<string, string[]> {
   return out;
 }
 
-function formatPriceVal(n: number | null, currency?: string | null, locale?: string) {
+function formatPriceVal(
+  n: number | null,
+  currency?: string | null,
+  locale?: string
+) {
   if (n == null) return "—";
   const cur = (currency || "AUD").toUpperCase();
   return new Intl.NumberFormat(locale, {
@@ -74,7 +78,6 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
   const sp = await searchParams;
 
-  // 取当前商品（仅展开 color_galleries.images）
   const qs =
     `/api/products?filters[slug][$eq]=${encodeURIComponent(slug)}` +
     `&fields[0]=title&fields[1]=slug&fields[2]=base_price_cents&fields[3]=currency` +
