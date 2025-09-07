@@ -8,9 +8,8 @@ type Props = {
   images: string[];
   title: string;
   slug: string;
-  /** 当前选中的大图索引（来自 ?img=） */
   selectedIndex?: number;
-  /** 当前颜色（用于把 color 透传到缩略图链接） */
+  /** 当前选中的颜色（来自 ?color=），用于在切换缩略图时保留这个参数 */
   color?: string;
 };
 
@@ -28,21 +27,28 @@ export default function GalleryClient({
   const activeRef = useRef<HTMLAnchorElement | null>(null);
   const firstItemRef = useRef<HTMLAnchorElement | null>(null);
 
-  // 当图片较少时关闭无限循环复制，避免同时看到重复项
-  const COPIES = N >= 5 ? 3 : 1;
+  /** 图片较少时（<4）不做虚拟循环，避免“重复很多张”的观感 */
+  const USE_VIRTUAL = N >= 4;
 
-  // 虚拟数据
-  const virtual = useMemo(() => {
+  /** 列表数据：虚拟循环用 3 份，普通模式用 1 份 */
+  const list = useMemo(() => {
     if (!N) return [] as Array<{ url: string; orig: number; vIndex: number }>;
-    return Array.from({ length: N * COPIES }, (_, i) => ({
+    if (!USE_VIRTUAL) {
+      // 普通模式：不复制
+      return images.map((url, i) => ({ url, orig: i, vIndex: i }));
+    }
+    // 虚拟模式：复制 3 份
+    return Array.from({ length: N * 3 }, (_, i) => ({
       url: images[i % N],
       orig: i % N,
       vIndex: i,
     }));
-  }, [N, images, COPIES]);
+  }, [N, images, USE_VIRTUAL]);
 
-  const middleStart = COPIES > 1 ? N : 0;
+  /** 中间那份的起始下标（仅虚拟模式有效） */
+  const middleStart = USE_VIRTUAL ? N : 0;
 
+  /** 计算单步高度：用相邻两项的 offsetTop 差，最稳（无需访问 document） */
   const getUnit = () => {
     const first = firstItemRef.current as HTMLElement | null;
     if (!first) return 0;
@@ -51,9 +57,9 @@ export default function GalleryClient({
     return Math.max(1, first.offsetHeight);
   };
 
-  // 初始定位到中间那份（仅在 COPIES>1 时需要）
+  /** 首次定位到中间副本（只在虚拟模式下执行） */
   useEffect(() => {
-    if (COPIES <= 1) return;
+    if (!USE_VIRTUAL) return;
     const c = containerRef.current;
     if (!c) return;
     const id = requestAnimationFrame(() => {
@@ -61,9 +67,9 @@ export default function GalleryClient({
       if (unit > 0) c.scrollTop = unit * middleStart;
     });
     return () => cancelAnimationFrame(id);
-  }, [N, COPIES, middleStart]);
+  }, [USE_VIRTUAL, N, middleStart]);
 
-  // 选中项滚动到可见
+  /** 选中项滚动到可见 */
   useEffect(() => {
     activeRef.current?.scrollIntoView({
       behavior: "smooth",
@@ -72,9 +78,10 @@ export default function GalleryClient({
     });
   }, [selected]);
 
-  // 无限回卷（仅在 COPIES>1 时启用）
+  /** 无限回卷（仅虚拟模式下绑定） */
   useEffect(() => {
-    if (COPIES <= 1) return;
+    if (!USE_VIRTUAL) return;
+
     const c = containerRef.current;
     if (!c || !firstItemRef.current || N === 0) return;
 
@@ -82,18 +89,23 @@ export default function GalleryClient({
       const unit = getUnit();
       if (unit <= 0) return;
 
-      const copyH = unit * N;
-      const total = copyH * COPIES;
-      const topBoundary = copyH * 0.5;
-      const bottomBoundary = total - c.clientHeight - topBoundary;
+      const copyH = unit * N; // 一份数据块高度
+      const total = copyH * 3; // 三份总高度
+      const topBoundary = copyH * 0.5; // 顶部缓冲
+      const bottomBoundary = total - c.clientHeight - topBoundary; // 底部缓冲
 
-      if (c.scrollTop <= topBoundary) c.scrollTop += copyH;
-      else if (c.scrollTop >= bottomBoundary) c.scrollTop -= copyH;
+      if (c.scrollTop <= topBoundary) {
+        // 向上滚过头 → 跳到中份
+        c.scrollTop += copyH;
+      } else if (c.scrollTop >= bottomBoundary) {
+        // 向下滚过头 → 跳回中份
+        c.scrollTop -= copyH;
+      }
     };
 
     c.addEventListener("scroll", onScroll, { passive: true });
     return () => c.removeEventListener("scroll", onScroll);
-  }, [N, COPIES]);
+  }, [USE_VIRTUAL, N]);
 
   if (!N) {
     return (
@@ -102,13 +114,6 @@ export default function GalleryClient({
       </div>
     );
   }
-
-  const hrefFor = (orig: number) => {
-    const q = new URLSearchParams();
-    if (color) q.set("color", color);
-    q.set("img", String(orig));
-    return `/product/${slug}?${q.toString()}`;
-  };
 
   return (
     <div
@@ -119,25 +124,32 @@ export default function GalleryClient({
         "relative max-h-[70vh] md:max-h-[76vh] overflow-y-auto",
         "pl-4 pr-4 md:pl-6 md:pr-5 py-1 md:py-2",
         "flex md:flex-col gap-5 md:gap-6",
+        // 隐藏滚动条
         "[scrollbar-width:none] [-ms-overflow-style:none]",
         "[&::-webkit-scrollbar]:w-0 [&::-webkit-scrollbar]:h-0 [&::-webkit-scrollbar]:bg-transparent",
       ].join(" ")}
     >
-      {virtual.map(({ url, orig, vIndex }) => {
-        const isMiddle = COPIES > 1 && vIndex >= middleStart && vIndex < middleStart + N;
-        const active = (COPIES > 1 ? isMiddle : true) && orig === selected;
+      {list.map(({ url, orig, vIndex }) => {
+        const isMiddle =
+          USE_VIRTUAL ? vIndex >= middleStart && vIndex < middleStart + N : true;
+        const active = isMiddle && orig === selected;
 
         const ref =
-          vIndex === middleStart
+          (!USE_VIRTUAL && vIndex === 0) || (USE_VIRTUAL && vIndex === middleStart)
             ? firstItemRef
             : active
             ? activeRef
             : undefined;
 
+        // 保留 color 参数，切缩略图不会丢颜色
+        const qs = new URLSearchParams();
+        qs.set("img", String(orig));
+        if (color) qs.set("color", color);
+
         return (
           <Link
             key={`${vIndex}-${orig}`}
-            href={hrefFor(orig)}
+            href={`/product/${slug}?${qs.toString()}`}
             prefetch
             aria-current={active ? "true" : undefined}
             aria-label={`Preview ${orig + 1}`}

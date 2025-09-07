@@ -3,6 +3,10 @@ import { notFound } from "next/navigation";
 import { api, mediaUrl } from "@/lib/strapi";
 import GalleryClient from "../_components/GalleryClient";
 import ColorDotsClient from "../_components/ColorDotsClient";
+import {
+  normalizeColorName as normalizeColor,
+  colorNameToCss,
+} from "@/lib/colors";
 
 /** Next.js 15: params / searchParams 是 Promise，需要 await */
 type PageProps = {
@@ -15,13 +19,6 @@ export const revalidate = 0;
 export async function generateMetadata({ params }: PageProps) {
   const { slug } = await params;
   return { title: `Product – ${slug}` };
-}
-
-/** 标准化颜色字符串 */
-function normalizeColor(s: any) {
-  const v = String(s ?? "").trim().toLowerCase().replace(/\s+/g, "-");
-  if (v === "gray") return "grey";
-  return v;
 }
 
 /** 从 product.color_galleries 里取 “颜色 -> 图片数组” */
@@ -99,13 +96,7 @@ function Stars({ value = 0 }: { value?: number }) {
       {Array.from({ length: 5 }).map((_, i) => {
         const state = i < full ? "full" : i === full && half ? "half" : "empty";
         return (
-          <svg
-            key={i}
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-            className="h-4 w-4"
-            role="img"
-          >
+          <svg key={i} viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4" role="img">
             {state === "half" ? (
               <>
                 <defs>
@@ -158,7 +149,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const price = Number.isFinite(cents) ? cents / 100 : null;
   const currency = (attrs.currency ?? "AUD") as string;
 
-  // 促销计算
+  // 促销
   const discount = Number(attrs.discount_percent_off) || 0;
   const saleActive = isSaleActive(
     discount,
@@ -184,9 +175,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     images = byColor[currentColor] ?? [];
   } else {
     const seen = new Set<string>();
-    for (const k of colorKeys) {
-      for (const u of byColor[k]) if (!seen.has(u)) seen.add(u);
-    }
+    for (const k of colorKeys) for (const u of byColor[k]) if (!seen.has(u)) seen.add(u);
     images = Array.from(seen);
   }
   const total = images.length;
@@ -200,17 +189,17 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   // 评分（用 hot_score 0~5）
   const rating = Math.max(0, Math.min(5, Number(attrs.hot_score) || 0));
 
-  // 颜色圆点数据（提供首图做兜底预览）
+  // 颜色圆点：用公共 colorNameToCss，确保和分类页一致
   const colorOptions = colorKeys.map((name) => ({
     name,
-    preview: byColor[name]?.[0],
+    css: colorNameToCss(name) || "#ddd",
   }));
 
   return (
     <main className="w-full px-2 sm:px-4 md:px-6 lg:px-0 py-8">
       <h1 className="sr-only">{title}</h1>
 
-      {/* 3 列：左缩略图 / 中放大图 / 右信息 */}
+      {/* 3 列：左缩略图 / 中放大图 / 右信息（小屏堆叠） */}
       <div
         className="
           grid grid-cols-1
@@ -227,6 +216,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
             title={title}
             slug={slug}
             selectedIndex={selected}
+            // ✅ 保留当前颜色，切换缩略图不会丢 color
             color={currentColor}
           />
         </aside>
@@ -248,12 +238,12 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
           </div>
         </section>
 
-        {/* 右：信息栏（含可点击颜色） */}
+        {/* 右：信息栏 */}
         <section className="order-3 lg:order-3 lg:pl-8 xl:pl-10 lg:sticky lg:top-24 self-start">
           <div className="space-y-5">
             <h2 className="text-2xl font-bold leading-tight">{title}</h2>
 
-            {/* 价格区：折扣标签 + 原价删除线 + 现价 */}
+            {/* 价格区 */}
             {saleActive && salePrice != null ? (
               <div className="space-y-2">
                 <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 text-xs font-semibold px-2 py-1">
@@ -278,9 +268,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                 <div className="text-sm text-neutral-600 flex items-center gap-2">
                   Colors
                   {currentColor && (
-                    <span className="text-neutral-800 font-medium">
-                      {currentColor}
-                    </span>
+                    <span className="text-neutral-800 font-medium">{currentColor}</span>
                   )}
                 </div>
                 <ColorDotsClient

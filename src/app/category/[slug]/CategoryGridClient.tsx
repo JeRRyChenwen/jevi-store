@@ -16,6 +16,10 @@ import {
   SelectGroup,
   SelectItem,
 } from "@/components/ui/select";
+// ✅ 统一颜色工具（与详情页共用）
+import { normalizeColorName, colorNameToCss } from "@/lib/colors";
+
+
 
 type Props = {
   slug: string;
@@ -29,7 +33,7 @@ type Props = {
 
 type ProductLite = {
   key: string;
-  slug?: string;            // ★ 新增：用于详情页路由
+  slug?: string; // 用于详情页路由
   name: string;
   price: number | null;
   currency?: string | null;
@@ -76,20 +80,17 @@ function parseCSV(sp: URLSearchParams, key: string): string[] {
     .filter(Boolean);
 }
 
-/** 统一颜色字符串：小写、空格→-、gray→grey */
-function normalizeColor(s: any) {
-  const v = String(s ?? "").trim().toLowerCase().replace(/\s+/g, "-");
-  if (v === "gray") return "grey";
-  return v;
-}
-
 /** 解析 product.color_galleries：颜色 -> 图片数组 */
 function getImagesByColorFromProduct(attrs: any): Record<string, string[]> {
-  const arr: any[] = Array.isArray(attrs?.color_galleries) ? attrs.color_galleries : [];
+  const arr: any[] = Array.isArray(attrs?.color_galleries)
+    ? attrs.color_galleries
+    : [];
   const out: Record<string, string[]> = {};
   for (const cg of arr) {
-    const colorRaw = (cg?.color ?? cg?.attributes?.color) as string | undefined;
-    const color = normalizeColor(colorRaw);
+    const colorRaw = (cg?.color ?? cg?.attributes?.color) as
+      | string
+      | undefined;
+    const color = normalizeColorName(colorRaw);
     if (!color) continue;
 
     const imgs: any[] = Array.isArray(cg?.images?.data)
@@ -123,20 +124,24 @@ function getVariantColors(attrs: any): string[] {
   const set = new Set<string>();
   for (const r of arr) {
     const a = r?.attributes ?? r ?? {};
-    const c = normalizeColor(a.color ?? "");
+    const c = normalizeColorName(a.color ?? "");
     if (c) set.add(c);
   }
   return Array.from(set);
 }
 
-// 价格/折扣/Popularity/颜色工具
-function formatPriceVal(n: number | null, currency?: string | null, locale?: string) {
+// 价格/折扣/Popularity
+function formatPriceVal(
+  n: number | null,
+  currency?: string | null,
+  locale?: string
+) {
   if (n == null) return "—";
   const cur = (currency || "AUD").toUpperCase();
   return new Intl.NumberFormat(locale, {
     style: "currency",
     currency: cur,
-    currencyDisplay: "code", // 修复 USD 少 D：用货币代码
+    currencyDisplay: "code",
     maximumFractionDigits: 2,
   }).format(Number(n));
 }
@@ -157,21 +162,6 @@ function salePrice(p: ProductLite) {
   const base = p.price ?? 0;
   const pct = p.discountPercent ?? 0;
   return Math.max(0, base * (1 - pct / 100));
-}
-const COLOR_MAP: Record<string, string> = {
-  black: "#000",
-  white: "#fff",
-  brown: "#6b4f4f",
-  chocolate: "#4E342E",
-  navy: "#001F3F",
-  grey: "#9e9e9e",
-  gray: "#9e9e9e",
-};
-function colorToBg(colorRaw: string) {
-  const key = colorRaw.trim().toLowerCase();
-  if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/.test(key)) return key;
-  if (COLOR_MAP[key]) return COLOR_MAP[key];
-  return key; // 允许 CSS 命名色
 }
 
 function normalizeProduct(row: any): ProductLite {
@@ -208,11 +198,13 @@ function normalizeProduct(row: any): ProductLite {
     `${name}-${Math.random().toString(36).slice(2)}`;
 
   const discountPercent: number | undefined =
-    typeof attrs.discount_percent_off === "number" ? attrs.discount_percent_off : undefined;
+    typeof attrs.discount_percent_off === "number"
+      ? attrs.discount_percent_off
+      : undefined;
 
   return {
     key,
-    slug: attrs.slug, // ★ 保存 slug
+    slug: attrs.slug,
     name,
     price,
     currency,
@@ -262,19 +254,14 @@ function ImageCarousel({ urls, alt }: { urls: string[]; alt: string }) {
   return (
     <div className="relative aspect-[4/3] bg-muted">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        alt={alt}
-        src={urls[idx]}
-        className="h-full w-full object-cover"
-        loading="lazy"
-      />
+      <img alt={alt} src={urls[idx]} className="h-full w-full object-cover" loading="lazy" />
 
       {count > 1 && (
         <>
           <button
             type="button"
             aria-label="Previous image"
-            className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-white/80 hover:bg-white shadow p-1 z-20" // ★ 提高层级，避免被覆盖链接挡住
+            className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-white/80 hover:bg-white shadow p-1 z-20"
             onClick={() => go(-1)}
           >
             <ChevronLeft className="h-5 w-5 text-neutral-800" />
@@ -282,7 +269,7 @@ function ImageCarousel({ urls, alt }: { urls: string[]; alt: string }) {
           <button
             type="button"
             aria-label="Next image"
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-white/80 hover:bg-white shadow p-1 z-20" // ★
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-white/80 hover:bg-white shadow p-1 z-20"
             onClick={() => go(1)}
           >
             <ChevronRight className="h-5 w-5 text-neutral-800" />
@@ -295,7 +282,9 @@ function ImageCarousel({ urls, alt }: { urls: string[]; alt: string }) {
 
 /** 单个卡片：点击图片或标题跳到详情页 */
 function ProductCard({ p, idx, start }: { p: ProductLite; idx: number; start: number }) {
-  const [selectedColor, setSelectedColor] = useState<string | null>(p.colors?.[0] ?? null);
+  const [selectedColor, setSelectedColor] = useState<string | null>(
+    p.colors?.[0] ?? null
+  );
 
   const onSale = isSaleActive(p);
   const finalPrice = onSale ? salePrice(p) : p.price ?? 0;
@@ -313,7 +302,7 @@ function ProductCard({ p, idx, start }: { p: ProductLite; idx: number; start: nu
   stars = clamp(Math.round(stars), 0, 5);
 
   // 优先用选中颜色的图片；否则取任意颜色；再否则用兜底首图
-  const colorKey = selectedColor ? normalizeColor(selectedColor) : null;
+  const colorKey = selectedColor ? normalizeColorName(selectedColor) : null;
   const byColor = colorKey && p.variantsByColor[colorKey];
   const anyColor =
     byColor && byColor.length
@@ -325,7 +314,8 @@ function ProductCard({ p, idx, start }: { p: ProductLite; idx: number; start: nu
           return [];
         })();
 
-  const urls = (byColor && byColor.length ? byColor : anyColor) || (p.imageUrl ? [p.imageUrl] : []);
+  const urls =
+    (byColor && byColor.length ? byColor : anyColor) || (p.imageUrl ? [p.imageUrl] : []);
 
   return (
     <article className="group overflow-hidden rounded-3xl border bg-card shadow-sm transition-shadow hover:shadow-md">
@@ -333,11 +323,7 @@ function ProductCard({ p, idx, start }: { p: ProductLite; idx: number; start: nu
       <div className="relative">
         <ImageCarousel urls={urls} alt={p.name || `Image #${start + idx + 1}`} />
         {p.slug && (
-          <Link
-            href={`/product/${p.slug}`}
-            aria-label={`View ${p.name}`}
-            className="absolute inset-0 z-10"
-          />
+          <Link href={`/product/${p.slug}`} aria-label={`View ${p.name}`} className="absolute inset-0 z-10" />
         )}
       </div>
 
@@ -353,14 +339,14 @@ function ProductCard({ p, idx, start }: { p: ProductLite; idx: number; start: nu
           )}
         </h3>
 
-        {/* 2. 折扣文案（统一字号） */}
+        {/* 2. 折扣文案 */}
         {onSale && (
           <p className="mt-1 text-base font-semibold text-emerald-700 uppercase tracking-wide">
             {p.discountPercent}% OFF {endsSoon ? "ENDS SOON" : ""}
           </p>
         )}
 
-        {/* 3. 价格区（统一字号） */}
+        {/* 3. 价格区 */}
         <div className="mt-2">
           {onSale ? (
             <div className="flex items-baseline gap-2">
@@ -373,7 +359,9 @@ function ProductCard({ p, idx, start }: { p: ProductLite; idx: number; start: nu
               </span>
             </div>
           ) : (
-            <div className="text-base font-bold">{formatPriceVal(finalPrice, p.currency)}</div>
+            <div className="text-base font-bold">
+              {formatPriceVal(finalPrice, p.currency)}
+            </div>
           )}
         </div>
 
@@ -381,8 +369,8 @@ function ProductCard({ p, idx, start }: { p: ProductLite; idx: number; start: nu
         {p.colors && p.colors.length > 0 && (
           <div className="mt-3 flex items-center gap-2">
             {p.colors.slice(0, 8).map((c) => {
-              const normalized = normalizeColor(c);
-              const active = normalizeColor(selectedColor) === normalized;
+              const normalized = normalizeColorName(c);
+              const active = normalizeColorName(selectedColor) === normalized;
               return (
                 <button
                   key={normalized}
@@ -393,7 +381,7 @@ function ProductCard({ p, idx, start }: { p: ProductLite; idx: number; start: nu
                   className={`h-4 w-4 rounded-full ring-1 ring-black/10 transition ${
                     active ? "outline outline-2 outline-black/60" : "hover:scale-110"
                   }`}
-                  style={{ backgroundColor: colorToBg(normalized) }}
+                  style={{ backgroundColor: colorNameToCss(normalized) ?? "#ddd" }}
                 />
               );
             })}
@@ -408,7 +396,11 @@ function ProductCard({ p, idx, start }: { p: ProductLite; idx: number; start: nu
           {Array.from({ length: 5 }).map((_, i3) => (
             <Star
               key={i3}
-              className={i3 < (stars as number) ? "h-4 w-4 fill-black text-black" : "h-4 w-4 text-neutral-300"}
+              className={
+                i3 < (stars as number)
+                  ? "h-4 w-4 fill-black text-black"
+                  : "h-4 w-4 text-neutral-300"
+              }
             />
           ))}
         </div>
@@ -478,16 +470,25 @@ export default function CategoryGridClient({
   const [facetColors, setFacetColors] = useState<string[]>([]);
   const [facetGenders, setFacetGenders] = useState<string[]>([]);
   const [variantFiltersSupported, setVariantFiltersSupported] = useState(true);
-  const [productGenderSupported, setProductGenderSupported] = useState(true);
+  const [productGenderSupported, setProductGenderSupported] =
+    useState(true);
 
   // Drawer 草稿值
   const [open, setOpen] = useState(false);
   const [draftMin, setDraftMin] = useState<number | undefined>(appliedMin);
   const [draftMax, setDraftMax] = useState<number | undefined>(appliedMax);
-  const [draftMaterials, setDraftMaterials] = useState<Set<string>>(new Set(appliedMaterials));
-  const [draftSizes, setDraftSizes] = useState<Set<string>>(new Set(appliedSizes));
-  const [draftColors, setDraftColors] = useState<Set<string>>(new Set(appliedColors));
-  const [draftGenders, setDraftGenders] = useState<Set<string>>(new Set(appliedGenders));
+  const [draftMaterials, setDraftMaterials] = useState<Set<string>>(
+    new Set(appliedMaterials)
+  );
+  const [draftSizes, setDraftSizes] = useState<Set<string>>(
+    new Set(appliedSizes)
+  );
+  const [draftColors, setDraftColors] = useState<Set<string>>(
+    new Set(appliedColors)
+  );
+  const [draftGenders, setDraftGenders] = useState<Set<string>>(
+    new Set(appliedGenders)
+  );
 
   // 打开抽屉时，用已应用的筛选值重置草稿
   useEffect(() => {
@@ -526,13 +527,19 @@ export default function CategoryGridClient({
       if (categoryDocIds?.length) {
         categoryDocIds.forEach((id, i) => {
           const enc = encodeURIComponent(id);
-          partsForProducts.push(`filters[category][documentId][$in][${i}]=${enc}`);
-          partsForVariants.push(`filters[product][category][documentId][$in][${i}]=${enc}`);
+          partsForProducts.push(
+            `filters[category][documentId][$in][${i}]=${enc}`
+          );
+          partsForVariants.push(
+            `filters[product][category][documentId][$in][${i}]=${enc}`
+          );
         });
       } else {
         const enc = encodeURIComponent(slug);
         partsForProducts.push(`filters[category][slug][$eq]=${enc}`);
-        partsForVariants.push(`filters[product][category][slug][$eq]=${enc}`);
+        partsForVariants.push(
+            `filters[product][category][slug][$eq]=${enc}`
+        );
       }
       // 仅统计/展示「被上架显示」的商品
       partsForProducts.push(`filters[is_showed][$eq]=true`);
@@ -573,9 +580,12 @@ export default function CategoryGridClient({
           const c = new Set<string>();
           for (const r of rows) {
             const a = r?.attributes ?? r ?? {};
-            if (a.material && String(a.material).trim()) m.add(String(a.material).trim());
-            if (a.size && String(a.size).trim()) s.add(String(a.size).trim());
-            if (a.color && String(a.color).trim()) c.add(normalizeColor(a.color));
+            if (a.material && String(a.material).trim())
+              m.add(String(a.material).trim());
+            if (a.size && String(a.size).trim())
+              s.add(String(a.size).trim());
+            if (a.color && String(a.color).trim())
+              c.add(normalizeColorName(a.color));
           }
           setFacetMaterials(Array.from(m).sort((a, b) => a.localeCompare(b)));
           setFacetSizes(Array.from(s).sort((a, b) => a.localeCompare(b)));
@@ -627,7 +637,11 @@ export default function CategoryGridClient({
         // 分类
         if (categoryDocIds?.length) {
           categoryDocIds.forEach((id, i) =>
-            parts.push(`filters[category][documentId][$in][${i}]=${encodeURIComponent(id)}`)
+            parts.push(
+              `filters[category][documentId][$in][${i}]=${encodeURIComponent(
+                id
+              )}`
+            )
           );
         } else {
           parts.push(`filters[category][slug][$eq]=${encodeURIComponent(slug)}`);
@@ -647,7 +661,9 @@ export default function CategoryGridClient({
         // product 级（gender）
         if (productGenderSupported && appliedGenders.length) {
           appliedGenders.forEach((v, i) =>
-            parts.push(`filters[gender][$in][${i}]=${encodeURIComponent(v)}`)
+            parts.push(
+              `filters[gender][$in][${i}]=${encodeURIComponent(v)}`
+            )
           );
         }
 
@@ -655,7 +671,9 @@ export default function CategoryGridClient({
         if (variantFiltersSupported) {
           const pushIN = (key: string, arr: string[]) => {
             arr.forEach((v, i) =>
-              parts.push(`filters[variants][${key}][$in][${i}]=${encodeURIComponent(v)}`)
+              parts.push(
+                `filters[variants][${key}][$in][${i}]=${encodeURIComponent(v)}`
+              )
             );
           };
           if (appliedMaterials.length) pushIN("material", appliedMaterials);
@@ -725,7 +743,9 @@ export default function CategoryGridClient({
     [slug]
   );
 
-  const resultLabel = `${filteredTotal} ${filteredTotal === 1 ? "result" : "results"}`;
+  const resultLabel = `${filteredTotal} ${
+    filteredTotal === 1 ? "result" : "results"
+  }`;
 
   // 统一关闭抽屉（焦点回退）
   const closeDrawer = () => {
@@ -789,9 +809,12 @@ export default function CategoryGridClient({
               {resultLabel}
             </div>
 
-            {/* Sort（统一 UI 的下拉菜单） */}
+            {/* Sort */}
             <div className="hidden sm:flex">
-              <Select value={sortKey} onValueChange={(v) => setSortInUrl(v as SortKey)}>
+              <Select
+                value={sortKey}
+                onValueChange={(v) => setSortInUrl(v as SortKey)}
+              >
                 <SelectTrigger
                   className="rounded-full w-[190px] border px-3 py-2 text-sm focus:ring-2 focus:ring-black/10"
                   aria-label="Sort products"
@@ -825,11 +848,15 @@ export default function CategoryGridClient({
 
       {/* === 左侧抽屉 === */}
       <div
-        className={`fixed inset-0 z-50 transition ${open ? "pointer-events-auto" : "pointer-events-none"}`}
+        className={`fixed inset-0 z-50 transition ${
+          open ? "pointer-events-auto" : "pointer-events-none"
+        }`}
       >
         {/* 背景遮罩 */}
         <div
-          className={`absolute inset-0 bg-black/30 transition-opacity ${open ? "opacity-100" : "opacity-0"}`}
+          className={`absolute inset-0 bg-black/30 transition-opacity ${
+            open ? "opacity-100" : "opacity-0"
+          }`}
           onClick={closeDrawer}
         />
         {/* 面板 */}
@@ -857,7 +884,9 @@ export default function CategoryGridClient({
             {/* Gender（Product 级） */}
             {productGenderSupported && facetGenders.length > 0 && (
               <details className="mb-4" open>
-                <summary className="cursor-pointer select-none py-2 font-medium">Gender</summary>
+                <summary className="cursor-pointer select-none py-2 font-medium">
+                  Gender
+                </summary>
                 <div className="mt-2 space-y-2">
                   {facetGenders.map((v) => (
                     <label key={v} className="flex items-center gap-2 text-sm">
@@ -881,7 +910,9 @@ export default function CategoryGridClient({
             {/* Size（Variant 级） */}
             {variantFiltersSupported && facetSizes.length > 0 && (
               <details className="mb-4" open>
-                <summary className="cursor-pointer select-none py-2 font-medium">Size</summary>
+                <summary className="cursor-pointer select-none py-2 font-medium">
+                  Size
+                </summary>
                 <div className="mt-2 space-y-2">
                   {facetSizes.map((v) => (
                     <label key={v} className="flex items-center gap-2 text-sm">
@@ -905,7 +936,9 @@ export default function CategoryGridClient({
             {/* Colour（Variant 级：用于过滤） */}
             {variantFiltersSupported && facetColors.length > 0 && (
               <details className="mb-4" open>
-                <summary className="cursor-pointer select-none py-2 font-medium">Colour</summary>
+                <summary className="cursor-pointer select-none py-2 font-medium">
+                  Colour
+                </summary>
                 <div className="mt-2 space-y-2">
                   {facetColors.map((v) => (
                     <label key={v} className="flex items-center gap-2 text-sm">
@@ -929,7 +962,9 @@ export default function CategoryGridClient({
             {/* Material（Variant 级） */}
             {variantFiltersSupported && facetMaterials.length > 0 && (
               <details className="mb-4" open>
-                <summary className="cursor-pointer select-none py-2 font-medium">Material</summary>
+                <summary className="cursor-pointer select-none py-2 font-medium">
+                  Material
+                </summary>
                 <div className="mt-2 space-y-2">
                   {facetMaterials.map((v) => (
                     <label key={v} className="flex items-center gap-2 text-sm">
@@ -952,7 +987,9 @@ export default function CategoryGridClient({
 
             {/* Price */}
             <details className="mb-2" open>
-              <summary className="cursor-pointer select-none py-2 font-medium">Price</summary>
+              <summary className="cursor-pointer select-none py-2 font-medium">
+                Price
+              </summary>
               <div className="mt-2 flex items-end gap-3">
                 <div className="flex-1">
                   <div className="text-xs text-neutral-500 mb-1">Min</div>
@@ -1007,13 +1044,17 @@ export default function CategoryGridClient({
       ) : loading ? (
         <section>
           <div className="grid gap-7 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-4">
-            {Array.from({ length: Math.min(pageSize, filteredTotal - start) || 8 }).map((_, i) => (
+            {Array.from({
+              length: Math.min(pageSize, filteredTotal - start) || 8,
+            }).map((_, i) => (
               <CardSkeleton key={i} />
             ))}
           </div>
         </section>
       ) : list.length === 0 ? (
-        <div className="py-20 text-center text-muted-foreground">No products yet.</div>
+        <div className="py-20 text-center text-muted-foreground">
+          No products yet.
+        </div>
       ) : (
         <section>
           <div className="grid gap-7 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-4">

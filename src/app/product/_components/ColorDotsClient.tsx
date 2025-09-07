@@ -4,10 +4,10 @@
 import { useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-type ColorOption = { name: string; preview?: string };
+type ColorOption = { name: string; css?: string };
 
 type Props = {
-  options: ColorOption[];
+  options: ColorOption[]; // 注意：父组件要传 css 好了的颜色值
   current?: string;
   slug: string;
 };
@@ -31,11 +31,11 @@ export default function ColorDotsClient({ options, current, slug }: Props) {
 
   return (
     <div className="flex items-center gap-2" role="radiogroup" aria-label="Select color">
-      {options.map(({ name, preview }) => (
+      {options.map(({ name, css }) => (
         <Swatch
           key={name}
           name={name}
-          preview={preview}
+          css={css}
           active={name === current}
           onClick={() => go(name)}
         />
@@ -44,39 +44,18 @@ export default function ColorDotsClient({ options, current, slug }: Props) {
   );
 }
 
-/** 不使用 document 的简易 CSS 颜色判断 */
-function looksLikeCssColor(s: string) {
-  const v = (s || "").trim().toLowerCase();
-  if (!v) return false;
-  // #rgb/#rgba/#rrggbb/#rrggbbaa
-  if (/^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/.test(v)) return true;
-  // rgb()/rgba()/hsl()/hsla()
-  if (/^(?:rgb|hsl)a?\(/.test(v)) return true;
-  // 纯单词（命名色），带连字符的一律当作非命名色
-  if (/^[a-z]+$/.test(v) && !v.includes("-")) return true;
-  return false;
-}
-
 function Swatch({
   name,
-  preview,
+  css,
   active,
   onClick,
 }: {
   name: string;
-  preview?: string;
+  css?: string;
   active?: boolean;
   onClick: () => void;
 }) {
-  const style: React.CSSProperties = looksLikeCssColor(name)
-    ? { backgroundColor: name }
-    : preview
-    ? {
-        backgroundImage: `url(${preview})`,
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-      }
-    : { backgroundColor: "#ddd" };
+  const style: React.CSSProperties = { backgroundColor: css || "#ddd" };
 
   return (
     <button
