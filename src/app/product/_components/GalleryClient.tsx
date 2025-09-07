@@ -25,7 +25,7 @@ export default function GalleryClient({
   const activeRef = useRef<HTMLAnchorElement | null>(null);
   const firstItemRef = useRef<HTMLAnchorElement | null>(null);
 
-  // 三份虚拟数据：中间这份用于“主视图”，滚到头/尾时无缝回卷
+  // 三份虚拟数据（用于无限循环）
   const virtual = useMemo(() => {
     if (!N) return [] as Array<{ url: string; orig: number; vIndex: number }>;
     return Array.from({ length: N * 3 }, (_, i) => ({
@@ -34,19 +34,31 @@ export default function GalleryClient({
       vIndex: i,
     }));
   }, [N, images]);
+
   const middleStart = N;
 
-  // 初始定位到中间那份
+  /** 计算一个缩略图的垂直“步长”，用相邻项 offsetTop 差，最稳 */
+  const getUnit = () => {
+    const first = firstItemRef.current as HTMLElement | null;
+    if (!first) return 0;
+    const next = first.nextElementSibling as HTMLElement | null;
+    if (next) return Math.max(1, next.offsetTop - first.offsetTop);
+    return Math.max(1, first.offsetHeight);
+  };
+
+  // 初始定位到中间那份（依赖数组长度固定为 1）
   useEffect(() => {
     const c = containerRef.current;
-    const item = firstItemRef.current;
-    if (!c || !item) return;
-    const gap = parseFloat(getComputedStyle(c).rowGap || "0");
-    const unit = item.offsetHeight + gap;
-    c.scrollTop = unit * middleStart;
-  }, [middleStart]);
+    if (!c) return;
+    const id = requestAnimationFrame(() => {
+      const unit = getUnit();
+      if (unit > 0) c.scrollTop = unit * middleStart;
+    });
+    return () => cancelAnimationFrame(id);
+    // ✅ 依赖数组长度固定为 1（N 与 middleStart 恒等，这里只放 N）
+  }, [N]);
 
-  // 选中项滚动到可见
+  // 选中项滚动到可见（依赖长度固定为 1）
   useEffect(() => {
     activeRef.current?.scrollIntoView({
       behavior: "smooth",
@@ -55,20 +67,25 @@ export default function GalleryClient({
     });
   }, [selected]);
 
-  // 循环回卷
+  // 无限回卷（上下都能回卷；依赖长度固定为 1）
   useEffect(() => {
     const c = containerRef.current;
     if (!c || !firstItemRef.current || N === 0) return;
 
     const onScroll = () => {
-      const gap = parseFloat(getComputedStyle(c).rowGap || "0");
-      const unit = (firstItemRef.current as HTMLElement).offsetHeight + gap;
-      const copyH = unit * N;
-      const threshold = copyH * 0.25;
-      const max = copyH * (3 - 1) - c.clientHeight - threshold;
+      const unit = getUnit();
+      if (unit <= 0) return;
 
-      if (c.scrollTop < threshold) c.scrollTop += copyH;
-      else if (c.scrollTop > max) c.scrollTop -= copyH;
+      const copyH = unit * N;                 // 一份数据块的总高度
+      const total = copyH * 3;                // 三份总高度
+      const topBoundary = copyH * 0.5;        // 顶部缓冲
+      const bottomBoundary = total - c.clientHeight - topBoundary; // 底部缓冲
+
+      if (c.scrollTop <= topBoundary) {
+        c.scrollTop += copyH;                 // 向上滚过头 → 跳到中份
+      } else if (c.scrollTop >= bottomBoundary) {
+        c.scrollTop -= copyH;                 // 向下滚过头 → 跳回中份
+      }
     };
 
     c.addEventListener("scroll", onScroll, { passive: true });
@@ -89,13 +106,10 @@ export default function GalleryClient({
       aria-label="Product image thumbnails"
       role="list"
       className={[
-        // 容器尺寸/布局
         "relative max-h-[70vh] md:max-h-[76vh] overflow-y-auto",
         "pl-4 pr-4 md:pl-6 md:pr-5 py-1 md:py-2",
         "flex md:flex-col gap-5 md:gap-6",
-        // 隐藏滚动条：Firefox/Edge
         "[scrollbar-width:none] [-ms-overflow-style:none]",
-        // 隐藏滚动条：WebKit
         "[&::-webkit-scrollbar]:w-0 [&::-webkit-scrollbar]:h-0 [&::-webkit-scrollbar]:bg-transparent",
       ].join(" ")}
     >
