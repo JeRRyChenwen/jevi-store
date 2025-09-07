@@ -4,7 +4,8 @@ import { api, mediaUrl } from "@/lib/strapi";
 import GalleryClient from "../_components/GalleryClient";
 import ColorDotsClient from "../_components/ColorDotsClient";
 import SizeClient from "../_components/SizeClient";
-import { normalizeColorName } from "@/lib/colors";
+import AddToBagClient from "../_components/AddToBagClient"; // ✅ 新增
+import { normalizeColorName, colorNameToCss } from "@/lib/colors";
 
 /** Next.js 15: params / searchParams 是 Promise，需要 await */
 type PageProps = {
@@ -76,11 +77,7 @@ function getStockByColorSize(attrs: any): Record<string, Record<string, number>>
   return out;
 }
 
-function formatPriceVal(
-  n: number | null,
-  currency?: string | null,
-  locale?: string
-) {
+function formatPriceVal(n: number | null, currency?: string | null, locale?: string) {
   if (n == null) return "—";
   const cur = (currency || "AUD").toUpperCase();
   return new Intl.NumberFormat(locale, {
@@ -115,13 +112,7 @@ function Stars({ value = 0 }: { value?: number }) {
       {Array.from({ length: 5 }).map((_, i) => {
         const state = i < full ? "full" : i === full && half ? "half" : "empty";
         return (
-          <svg
-            key={i}
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-            className="h-4 w-4"
-            role="img"
-          >
+          <svg key={i} viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4" role="img">
             {state === "half" ? (
               <>
                 <defs>
@@ -185,13 +176,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
 
   // 促销计算
   const discount = Number(attrs.discount_percent_off) || 0;
-  const saleActive = isSaleActive(
-    discount,
-    attrs.sale_starts_at,
-    attrs.sale_ends_at
-  );
-  const salePrice =
-    saleActive && price != null ? price * (1 - discount / 100) : null;
+  const saleActive = isSaleActive(discount, attrs.sale_starts_at, attrs.sale_ends_at);
+  const salePrice = saleActive && price != null ? price * (1 - discount / 100) : null;
 
   // 颜色 -> 图片
   const byColor = getImagesByColorFromProduct(attrs);
@@ -203,8 +189,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   // URL color
   const colorParamRaw = Array.isArray(sp.color) ? sp.color[0] : sp.color;
   const colorParam = normalizeColor(colorParamRaw);
-  const currentColor =
-    colorKeys.find((k) => k === colorParam) ?? colorKeys[0] ?? undefined;
+  const currentColor = colorKeys.find((k) => k === colorParam) ?? colorKeys[0] ?? undefined;
 
   // 当前颜色的图片（没有颜色则扁平化所有图）
   let images: string[] = [];
@@ -228,16 +213,14 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   // 评分（用 hot_score 0~5）
   const rating = Math.max(0, Math.min(5, Number(attrs.hot_score) || 0));
 
-  // 颜色圆点数据（提供首图做兜底预览）
+  // 颜色圆点数据（给 ColorDotsClient 传 css，修复颜色不显示）
   const colorOptions = colorKeys.map((name) => ({
     name,
-    preview: byColor[name]?.[0],
+    css: colorNameToCss(name),
   }));
 
   // ====== 基于当前颜色计算尺码 & 库存 ======
-  const sizesForColor = currentColor
-    ? Object.keys(stockMap[currentColor] ?? {})
-    : [];
+  const sizesForColor = currentColor ? Object.keys(stockMap[currentColor] ?? {}) : [];
 
   const sizeParamRaw = Array.isArray(sp.size) ? sp.size[0] : sp.size;
   let currentSize =
@@ -247,9 +230,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
 
   // 没有合法 URL 尺码时，默认选第一个（尽量选有库存的）
   if (!currentSize && sizesForColor.length) {
-    const firstInStock = sizesForColor.find(
-      (s) => (stockMap[currentColor!]?.[s] ?? 0) > 0
-    );
+    const firstInStock = sizesForColor.find((s) => (stockMap[currentColor!]?.[s] ?? 0) > 0);
     currentSize = firstInStock ?? sizesForColor[0];
   }
 
@@ -259,9 +240,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   }));
 
   const stockForCurrent =
-    currentColor && currentSize
-      ? stockMap[currentColor]?.[currentSize] ?? 0
-      : 0;
+    currentColor && currentSize ? stockMap[currentColor]?.[currentSize] ?? 0 : 0;
 
   return (
     <main className="w-full px-2 sm:px-4 md:px-6 lg:px-0 py-8">
@@ -305,7 +284,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
           </div>
         </section>
 
-        {/* 右：信息栏（颜色 + 尺码 + 库存） */}
+        {/* 右：信息栏（颜色 + 评分 + 尺码/库存 + AddToBag） */}
         <section className="order-3 lg:order-3 lg:pl-8 xl:pl-10 lg:sticky lg:top-24 self-start">
           <div className="space-y-5">
             <h2 className="text-2xl font-bold leading-tight">{title}</h2>
@@ -324,9 +303,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                 </div>
               </div>
             ) : (
-              <div className="text-xl font-semibold">
-                {formatPriceVal(price, currency)}
-              </div>
+              <div className="text-xl font-semibold">{formatPriceVal(price, currency)}</div>
             )}
 
             {/* 颜色（可点击切换） */}
@@ -335,45 +312,53 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                 <div className="text-sm text-neutral-600 flex items-center gap-2">
                   Colors
                   {currentColor && (
-                    <span className="text-neutral-800 font-medium">
-                      {currentColor}
-                    </span>
+                    <span className="text-neutral-800 font-medium">{currentColor}</span>
                   )}
                 </div>
-                <ColorDotsClient
-                  options={colorOptions}
-                  current={currentColor}
-                  slug={slug}
-                />
+                <ColorDotsClient options={colorOptions} current={currentColor} slug={slug} />
               </div>
             )}
 
-            {/* 尺码（随颜色变化） */}
+            {/* 评分（Popularity） */}
+            <div className="text-neutral-800">
+              <Stars value={rating} />
+            </div>
+
+            {/* 尺码（放到评分下面；用 scale 放大按钮，不改 SizeClient） */}
             {sizeOptions.length > 0 && (
               <div className="space-y-2">
                 <div className="text-sm text-neutral-600 flex items-center gap-2">
                   Sizes
                   {currentSize && (
-                    <span className="text-neutral-800 font-medium">
-                      {currentSize}
-                    </span>
+                    <span className="text-neutral-800 font-medium">{currentSize}</span>
                   )}
                 </div>
-                <SizeClient options={sizeOptions} current={currentSize} slug={slug} />
+                {/* 放大 10%~20%：按需调整 */}
+                <div className="origin-left scale-[1.12] md:scale-[1.18]">
+                  <SizeClient options={sizeOptions} current={currentSize} slug={slug} />
+                </div>
                 <div className="text-xs text-neutral-500 mt-1">
                   {stockForCurrent > 0 ? (
-                    <>In stock: <span className="font-medium">{stockForCurrent}</span></>
+                    <>
+                      In stock: <span className="font-medium">{stockForCurrent}</span>
+                    </>
                   ) : (
                     <span className="text-rose-600">Out of stock</span>
                   )}
                 </div>
-              </div>
+            </div>
             )}
 
-            {/* 评分 */}
-            <div className="text-neutral-800">
-              <Stars value={rating} />
-            </div>
+            {/* ADD TO BAG + 右侧抽屉购物袋 */}
+            <AddToBagClient
+              slug={slug}
+              title={title}
+              price={price}
+              salePrice={salePrice}
+              currency={currency}
+              imagesByColor={byColor}
+              stockMap={stockMap}
+            />
           </div>
         </section>
       </div>
