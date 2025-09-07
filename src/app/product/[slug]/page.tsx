@@ -203,10 +203,11 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
       <div
         className="
           grid grid-cols-1
-          lg:[grid-template-columns:max-content_minmax(0,1fr)_640px]
-          xl:[grid-template-columns:max-content_minmax(0,1fr)_720px]
-          2xl:[grid-template-columns:max-content_minmax(0,1fr)_820px]
-          gap-y-10 gap-x-0
+          md:[grid-template-columns:max-content_840px]
+          lg:[grid-template-columns:max-content_1000px_560px]
+          xl:[grid-template-columns:max-content_1120px_640px]
+          2xl:[grid-template-columns:max-content_1280px_680px]
+          gap-y-10 md:gap-x-8 lg:gap-x-10 xl:gap-x-12 2xl:gap-x-16
         "
       >
         {/* 左：小画廊 */}
