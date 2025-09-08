@@ -621,13 +621,7 @@ sort 按钮：
     best seller
     newest
 
-要先点击 size 才能 add to bag
-
-刚进入 product detial 页面不能立即 add to bag
-
 product detial 页面 很大，下和右多出来一部分
-
-需要点击 2 次才能取消掉右侧 bag 栏
 
 “add to bag” 按钮
 

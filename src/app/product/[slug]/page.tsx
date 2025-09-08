@@ -221,7 +221,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const sizesForColor = currentColor ? Object.keys(stockMap[currentColor] ?? {}) : [];
 
   const sizeParamRaw = Array.isArray(sp.size) ? sp.size[0] : sp.size;
-  // ✅ 不再默认选择尺码：如果 URL 没有合法尺码，就保持 undefined
+  // 不默认选择尺码：如果 URL 没有合法尺码，就保持 undefined
   const currentSize =
     typeof sizeParamRaw === "string" && sizesForColor.includes(sizeParamRaw)
       ? sizeParamRaw
@@ -236,7 +236,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     currentColor && currentSize ? stockMap[currentColor]?.[currentSize] ?? 0 : 0;
 
   return (
-    <main className="w-full px-2 sm:px-4 md:px-6 lg:px-0 py-8">
+    // ✅ 关键：剪掉页面横向溢出，避免出现横向滚动条
+    <main className="w-full px-2 sm:px-4 md:px-6 lg:px-0 py-8 overflow-x-hidden">
       <h1 className="sr-only">{title}</h1>
 
       {/* 3 列：左缩略图 / 中放大图 / 右信息 */}
@@ -278,7 +279,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
         </section>
 
         {/* 右：信息栏（颜色 + 评分 + 尺码/库存 + AddToBag） */}
-        <section className="order-3 lg:order-3 lg:pl-8 xl:pl-10 lg:sticky lg:top-24 self-start">
+        {/* ✅ 剪裁右栏的横向溢出，防止 scale 造成的“滑轮” */}
+        <section className="order-3 lg:order-3 lg:pl-8 xl:pl-10 lg:sticky lg:top-24 self-start overflow-x-clip">
           <div className="space-y-5">
             <h2 className="text-2xl font-bold leading-tight">{title}</h2>
 
@@ -320,14 +322,14 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
             {/* 尺码 */}
             {sizeOptions.length > 0 && (
               <div className="space-y-2">
-                <div className="text-sm text-neutral-600 flex items-center gap-2">
+                <div className="text-sm text-neutral-600 flex items一起 gap-2">
                   Sizes
                   {currentSize && (
                     <span className="text-neutral-800 font-medium">{currentSize}</span>
                   )}
                 </div>
-                {/* 放大 10%~20%：按需调整 */}
-                <div className="origin-left scale-[1.12] md:scale-[1.18]">
+                {/* ✅ 放大区域也剪裁横向溢出 */}
+                <div className="origin-left scale-[1.12] md:scale-[1.18] overflow-x-clip">
                   <SizeClient options={sizeOptions} current={currentSize} slug={slug} />
                 </div>
                 <div className="text-xs mt-1">
@@ -346,7 +348,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
               </div>
             )}
 
-            {/* ADD TO BAG + 右侧抽屉购物袋（页面内也保留） */}
+            {/* ADD TO BAG + 右侧抽屉购物袋（如你的 AddToBagClient 支持，可保留 fallbackColor；不支持就删掉这个 prop） */}
             <AddToBagClient
               slug={slug}
               title={title}
@@ -355,7 +357,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
               currency={currency}
               imagesByColor={byColor}
               stockMap={stockMap}
-              fallbackColor={currentColor}   // ✅ 新增这一行
+              // 如果你的 AddToBagClient 没有该 prop，请删除下一行
+              fallbackColor={currentColor}
             />
           </div>
         </section>
