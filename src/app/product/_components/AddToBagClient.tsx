@@ -36,7 +36,7 @@ type CartItem = {
 const LS_KEY = "bag:v1";
 
 // ===== 运费规则 =====
-const DELIVERY_FREE_THRESHOLD = 100; // ✅ 满 100 免运
+const DELIVERY_FREE_THRESHOLD = 100; // 满 100 免运
 const DELIVERY_FLAT = 10;            // 否则 $10
 
 function fmtPrice(n: number, currency: string, locale?: string) {
@@ -62,7 +62,7 @@ export default function AddToBagClient({
 
   // 当前选择（来自 URL）
   const currentColor = useMemo(() => sp.get("color") || undefined, [sp]);
-  const currentSize = useMemo(() => sp.get("size") || undefined, [sp]);
+  const currentSize  = useMemo(() => sp.get("size")  || undefined, [sp]);
 
   const stockForCurrent = useMemo(() => {
     if (!currentColor || !currentSize) return 0;
@@ -80,15 +80,24 @@ export default function AddToBagClient({
   // 购物袋（localStorage 持久化）
   const [open, setOpen] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
+
   useEffect(() => {
     try {
       const raw = localStorage.getItem(LS_KEY);
       if (raw) setCart(JSON.parse(raw));
     } catch {}
   }, []);
+
   useEffect(() => {
     try {
       localStorage.setItem(LS_KEY, JSON.stringify(cart));
+    } catch {}
+    // 广播总数量（给导航栏角标用）
+    try {
+      const count = cart.reduce((acc, it) => acc + (Number(it.qty) || 0), 0);
+      window.dispatchEvent(
+        new CustomEvent("bag:count", { detail: { count } })
+      );
     } catch {}
   }, [cart]);
 
@@ -103,6 +112,21 @@ export default function AddToBagClient({
 
   const deliveryFee = subtotal >= DELIVERY_FREE_THRESHOLD ? 0 : DELIVERY_FLAT;
   const total = subtotal + deliveryFee;
+
+  // 监听全局事件：从任意地方打开/关闭抽屉
+  useEffect(() => {
+    const onOpen   = () => setOpen(true);
+    const onClose  = () => setOpen(false);
+    const onToggle = () => setOpen((v) => !v);
+    (window as any).addEventListener("bag:open",   onOpen as EventListener);
+    (window as any).addEventListener("bag:close",  onClose as EventListener);
+    (window as any).addEventListener("bag:toggle", onToggle as EventListener);
+    return () => {
+      (window as any).removeEventListener("bag:open",   onOpen as EventListener);
+      (window as any).removeEventListener("bag:close",  onClose as EventListener);
+      (window as any).removeEventListener("bag:toggle", onToggle as EventListener);
+    };
+  }, []);
 
   // 操作
   const addCurrentToBag = () => {
@@ -129,7 +153,7 @@ export default function AddToBagClient({
         stock: stockForCurrent,
         image: preview,
       };
-        return [it, ...prev];
+      return [it, ...prev];
     });
     setOpen(true);
   };
@@ -185,7 +209,7 @@ export default function AddToBagClient({
         )}
       </div>
 
-      {/* 抽屉 & 遮罩（通过 Portal 输出到 <body>） */}
+      {/* 抽屉 & 遮罩（Portal 到 <body>） */}
       {mounted &&
         createPortal(
           <>
@@ -328,8 +352,7 @@ export default function AddToBagClient({
                   <div className="text-sm text-neutral-600">Delivery fee</div>
                   <div
                     className={[
-                      // ⬇️ 改这里：text-sm → text-base，让字号与右侧金额一致
-                      "text-base font-semibold",
+                      "text-sm font-semibold",
                       subtotal >= DELIVERY_FREE_THRESHOLD
                         ? "text-emerald-700"
                         : "",

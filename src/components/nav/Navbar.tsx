@@ -4,12 +4,9 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-// ⬇️ 已移除 ModeToggle
 import {
   User as UserIcon,
-  // ⬇️ 已移除 Settings
   Heart,
-  ShoppingBag,
   Search as SearchIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -23,6 +20,7 @@ import {
 
 import CompactSearch from "@/components/search/CompactSearch";
 import SearchOverlay from "@/components/search/SearchOverlay";
+import BagButton from "./BagButton"; // ✅ 新增：背包按钮
 
 type User = { id: string; email: string; name?: string | null };
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE!;
@@ -148,8 +146,6 @@ export default function Navbar() {
           <SearchIcon className={ICON_SIZE} />
         </Button>
 
-        {/* ⬇️ 已移除“设置”图标及其下拉菜单与 ModeToggle */}
-
         {/* 心愿单 */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -166,26 +162,8 @@ export default function Navbar() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* 购物袋 */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className={ICON_BTN} aria-label="cart">
-              <ShoppingBag className={ICON_SIZE} />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-72 p-0">
-            <div className="p-3 text-sm text-muted-foreground">Your bag is empty.</div>
-            <DropdownMenuSeparator />
-            <div className="p-3 flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Subtotal</span>
-              <span className="font-medium">$0.00</span>
-            </div>
-            <div className="p-3 grid grid-cols-2 gap-2">
-              <Link href="/cart"><Button variant="outline" className="w-full">View cart</Button></Link>
-              <Link href="/checkout"><Button className="w-full">Checkout</Button></Link>
-            </div>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {/* ✅ 背包按钮（点击触发右侧购物袋抽屉） */}
+        <BagButton />
 
         {/* 用户 */}
         {loading ? (
