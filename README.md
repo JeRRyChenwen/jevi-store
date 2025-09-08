@@ -621,10 +621,15 @@ sort 按钮：
     best seller
     newest
 
+要先点击 size 才能 add to bag
 
-要先点击size 才能add to bag
+刚进入 product detial 页面不能立即 add to bag
 
+add to bag 之后 如果切回去别的页面，那我包里的东西就没了
 
+product detial 页面 很大，下和右多出来一部分
+
+“add to bag” 按钮
 
 # ============================================================================
 
