@@ -625,9 +625,9 @@ sort 按钮：
 
 刚进入 product detial 页面不能立即 add to bag
 
-add to bag 之后 如果切回去别的页面，那我包里的东西就没了
-
 product detial 页面 很大，下和右多出来一部分
+
+需要点击 2 次才能取消掉右侧 bag 栏
 
 “add to bag” 按钮
 

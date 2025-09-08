@@ -4,7 +4,7 @@ import { api, mediaUrl } from "@/lib/strapi";
 import GalleryClient from "../_components/GalleryClient";
 import ColorDotsClient from "../_components/ColorDotsClient";
 import SizeClient from "../_components/SizeClient";
-import AddToBagClient from "../_components/AddToBagClient"; // ✅ 新增
+import AddToBagClient from "../_components/AddToBagClient";
 import { normalizeColorName, colorNameToCss } from "@/lib/colors";
 
 /** Next.js 15: params / searchParams 是 Promise，需要 await */
@@ -71,8 +71,7 @@ function getStockByColorSize(attrs: any): Record<string, Record<string, number>>
     if (!color || !size) continue;
     const stock = Number(a.stock) || 0;
     out[color] ??= {};
-    // 如果有重复组合，累加库存
-    out[color][size] = (out[color][size] ?? 0) + stock;
+    out[color][size] = (out[color][size] ?? 0) + stock; // 累加同色同码库存
   }
   return out;
 }
@@ -157,7 +156,6 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     `&fields[4]=discount_percent_off&fields[5]=sale_starts_at&fields[6]=sale_ends_at&fields[7]=hot_score` +
     `&populate[color_galleries][fields][0]=color` +
     `&populate[color_galleries][populate][images]=true` +
-    // ❗ 关键：把 variants 的 color/size/stock 一起取回
     `&populate[variants][fields][0]=color` +
     `&populate[variants][fields][1]=size` +
     `&populate[variants][fields][2]=stock` +
@@ -213,7 +211,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   // 评分（用 hot_score 0~5）
   const rating = Math.max(0, Math.min(5, Number(attrs.hot_score) || 0));
 
-  // 颜色圆点数据（给 ColorDotsClient 传 css，修复颜色不显示）
+  // 颜色圆点数据（给 ColorDotsClient 传 css）
   const colorOptions = colorKeys.map((name) => ({
     name,
     css: colorNameToCss(name),
@@ -223,16 +221,11 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const sizesForColor = currentColor ? Object.keys(stockMap[currentColor] ?? {}) : [];
 
   const sizeParamRaw = Array.isArray(sp.size) ? sp.size[0] : sp.size;
-  let currentSize =
+  // ✅ 不再默认选择尺码：如果 URL 没有合法尺码，就保持 undefined
+  const currentSize =
     typeof sizeParamRaw === "string" && sizesForColor.includes(sizeParamRaw)
       ? sizeParamRaw
       : undefined;
-
-  // 没有合法 URL 尺码时，默认选第一个（尽量选有库存的）
-  if (!currentSize && sizesForColor.length) {
-    const firstInStock = sizesForColor.find((s) => (stockMap[currentColor!]?.[s] ?? 0) > 0);
-    currentSize = firstInStock ?? sizesForColor[0];
-  }
 
   const sizeOptions = sizesForColor.map((s) => ({
     value: s,
@@ -324,7 +317,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
               <Stars value={rating} />
             </div>
 
-            {/* 尺码（放到评分下面；用 scale 放大按钮，不改 SizeClient） */}
+            {/* 尺码 */}
             {sizeOptions.length > 0 && (
               <div className="space-y-2">
                 <div className="text-sm text-neutral-600 flex items-center gap-2">
@@ -337,19 +330,23 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                 <div className="origin-left scale-[1.12] md:scale-[1.18]">
                   <SizeClient options={sizeOptions} current={currentSize} slug={slug} />
                 </div>
-                <div className="text-xs text-neutral-500 mt-1">
-                  {stockForCurrent > 0 ? (
-                    <>
-                      In stock: <span className="font-medium">{stockForCurrent}</span>
-                    </>
+                <div className="text-xs mt-1">
+                  {currentSize ? (
+                    stockForCurrent > 0 ? (
+                      <span className="text-neutral-500">
+                        In stock: <span className="font-medium">{stockForCurrent}</span>
+                      </span>
+                    ) : (
+                      <span className="text-rose-600">Out of stock</span>
+                    )
                   ) : (
-                    <span className="text-rose-600">Out of stock</span>
+                    <span className="text-neutral-500">Please select a size</span>
                   )}
                 </div>
-            </div>
+              </div>
             )}
 
-            {/* ADD TO BAG + 右侧抽屉购物袋 */}
+            {/* ADD TO BAG + 右侧抽屉购物袋（页面内也保留） */}
             <AddToBagClient
               slug={slug}
               title={title}
@@ -358,6 +355,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
               currency={currency}
               imagesByColor={byColor}
               stockMap={stockMap}
+              fallbackColor={currentColor}   // ✅ 新增这一行
             />
           </div>
         </section>
