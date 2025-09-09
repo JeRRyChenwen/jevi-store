@@ -2,28 +2,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, Minus, Plus, Trash2 } from "lucide-react";
+import { Check } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import CartList from "@/components/cart/CartList";
+import type { CartItem as CartListItem } from "@/components/cart/CartList";
 
-type CartItem = {
-  key: string;
-  slug: string;
-  title: string;
-  price: number;       // 成交单价
-  basePrice?: number;  // 原价（计算 saved）
-  currency: string;
-  color?: string;
-  size?: string;
-  qty: number;
-  stock: number;
-  image?: string;
-};
+type CartItem = CartListItem;
 
 const LS_KEY = "bag:v1";
-
-// 与右侧抽屉一致的运费规则
-const DELIVERY_FREE_THRESHOLD = 100; // 满 100 免运
+const DELIVERY_FREE_THRESHOLD = 100;
 const DELIVERY_FLAT = 10;
 
 function fmtPrice(n: number, currency: string, locale?: string) {
@@ -35,52 +23,45 @@ function fmtPrice(n: number, currency: string, locale?: string) {
   }).format(n);
 }
 
-/** 顶部可点击步骤条 */
-function CheckoutSteps() {
-  const pathname = usePathname();
+/* ---------------- Stepper ---------------- */
+type StepKey = "bag" | "address" | "delivery" | "payment";
+const STEP_LIST: { key: StepKey; label: string }[] = [
+  { key: "bag", label: "Bag" },
+  { key: "address", label: "Address" },
+  { key: "delivery", label: "Delivery" },
+  { key: "payment", label: "Payment" },
+];
+const isStepKey = (v: any): v is StepKey =>
+  v === "bag" || v === "address" || v === "delivery" || v === "payment";
 
-  // 按你的站点实际路由改这里的 href
-  const steps = [
-    { key: "bag", label: "Bag", href: "/bag" }, // 若没有此页，可改成 '/cart' 或你实际的购物袋页
-    { key: "ship", label: "Deliver/Collect", href: "/checkout" },
-    { key: "address", label: "Address", href: "/checkout/address" },
-    { key: "payment", label: "Payment", href: "/checkout/payment" },
-  ];
-
-  // 根据路径判定当前步骤（包含对 /checkout/confirm 的兼容）
-  const currentIndex = (() => {
-    if (pathname?.startsWith("/checkout/payment") || pathname?.startsWith("/checkout/confirm")) return 3;
-    if (pathname?.startsWith("/checkout/address")) return 2;
-    if (pathname === "/checkout") return 1;
-    if (pathname?.startsWith("/bag") || pathname?.startsWith("/cart")) return 0;
-    // 默认当成 Deliver/Collect
-    return 1;
-  })();
-
-  const progress = (currentIndex / (steps.length - 1)) * 100;
+function CheckoutSteps({
+  step,
+  onChange,
+}: {
+  step: StepKey;
+  onChange: (next: StepKey) => void;
+}) {
+  const currentIndex = STEP_LIST.findIndex((s) => s.key === step);
+  const progress = (currentIndex / (STEP_LIST.length - 1)) * 100;
 
   return (
     <div className="relative pt-8 pb-10">
-      {/* 背景线 */}
       <div className="absolute left-0 right-0 top-6 h-[2px] bg-neutral-200" />
-      {/* 进度线 */}
       <div
         className="absolute left-0 top-6 h-[2px] bg-black transition-all"
         style={{ width: `${progress}%` }}
       />
-
       <div className="relative flex items-center justify-between">
-        {steps.map((s, i) => {
+        {STEP_LIST.map((s, i) => {
           const isActive = i === currentIndex;
           const isDone = i < currentIndex;
           const baseCircle =
             "flex items-center justify-center h-8 w-8 rounded-full border text-sm";
-          const circleClass = isActive
+        const circleClass = isActive
             ? "bg-black text-white border-black"
             : isDone
             ? "bg-white text-black border-black"
             : "bg-white text-neutral-400 border-neutral-300";
-
           const labelClass = isActive
             ? "text-black"
             : isDone
@@ -88,21 +69,18 @@ function CheckoutSteps() {
             : "text-neutral-400";
 
           return (
-            <Link
+            <button
               key={s.key}
-              href={s.href}
+              type="button"
+              onClick={() => onChange(s.key)}
               aria-current={isActive ? "step" : undefined}
-              className="group flex w-1/4 flex-col items-center gap-2"
+              className="group flex w-1/4 flex-col items-center gap-2 focus:outline-none"
             >
               <div className={`${baseCircle} ${circleClass}`}>
-                {isDone ? (
-                  <Check className="h-4 w-4" />
-                ) : (
-                  <span className="leading-none">{i + 1}</span>
-                )}
+                {isDone ? <Check className="h-4 w-4" /> : <span>{i + 1}</span>}
               </div>
               <div className={`text-sm font-medium ${labelClass}`}>{s.label}</div>
-            </Link>
+            </button>
           );
         })}
       </div>
@@ -110,32 +88,249 @@ function CheckoutSteps() {
   );
 }
 
+/* ---------------- 示例表单们（略动） ---------------- */
+function AddressForm() {
+  return (
+    <section className="rounded-xl border">
+      <div className="border-b px-4 py-3 font-semibold">Address</div>
+      <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+        <input className="w-full rounded-md border px-3 py-2 text-sm" placeholder="First Name" />
+        <input className="w-full rounded-md border px-3 py-2 text-sm" placeholder="Last Name" />
+        <input className="md:col-span-2 w-full rounded-md border px-3 py-2 text-sm" placeholder="Phone" />
+        <input className="md:col-span-2 w-full rounded-md border px-3 py-2 text-sm" placeholder="Address Line 1" />
+        <input className="md:col-span-2 w-full rounded-md border px-3 py-2 text-sm" placeholder="Address Line 2 (optional)" />
+        <input className="w-full rounded-md border px-3 py-2 text-sm" placeholder="City" />
+        <input className="w-full rounded-md border px-3 py-2 text-sm" placeholder="State/Region" />
+        <input className="w-full rounded-md border px-3 py-2 text-sm" placeholder="Postcode" />
+        <input className="w-full rounded-md border px-3 py-2 text-sm" placeholder="Country" />
+      </div>
+    </section>
+  );
+}
+
+function DeliverySection({
+  shipMethod,
+  setShipMethod,
+  promoOpen,
+  setPromoOpen,
+  giftOpen,
+  setGiftOpen,
+}: {
+  shipMethod: "delivery" | "collect";
+  setShipMethod: (v: "delivery" | "collect") => void;
+  promoOpen: boolean;
+  setPromoOpen: (v: boolean | ((p: boolean) => boolean)) => void;
+  giftOpen: boolean;
+  setGiftOpen: (v: boolean | ((p: boolean) => boolean)) => void;
+}) {
+  return (
+    <section className="rounded-xl border">
+      <div className="border-b px-4 py-3 font-semibold">Delivery</div>
+
+      <div className="p-4 space-y-3">
+        <label className="flex items-start gap-3 rounded-lg border p-3 has-[:checked]:border-neutral-900 cursor-pointer">
+          <input
+            type="radio"
+            name="ship"
+            className="mt-1"
+            checked={shipMethod === "delivery"}
+            onChange={() => setShipMethod("delivery")}
+          />
+          <div>
+            <div className="font-medium">Delivery</div>
+            <div className="text-sm text-neutral-600">
+              Select this option to have your order delivered to your doorstep
+            </div>
+          </div>
+        </label>
+
+        <label className="flex items-start gap-3 rounded-lg border p-3 has-[:checked]:border-neutral-900 cursor-pointer">
+          <input
+            type="radio"
+            name="ship"
+            className="mt-1"
+            checked={shipMethod === "collect"}
+            onChange={() => setShipMethod("collect")}
+          />
+          <div className="flex-1">
+            <div className="font-medium">Click & Collect</div>
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                type="text"
+                placeholder="Enter postcode"
+                className="w-[220px] rounded-md border px-3 py-2 text-sm"
+              />
+              <button className="rounded-full border px-4 py-2 text-sm hover:bg-neutral-50">
+                Check
+              </button>
+            </div>
+          </div>
+        </label>
+      </div>
+
+      <div className="border-t p-4 space-y-3">
+        <div>
+          <button
+            className="flex w-full items-center justify-between text-sm"
+            onClick={() => setPromoOpen((v: boolean) => !v)}
+          >
+            <span>Enter Promo Code</span>
+            <span className="text-xl leading-none">{promoOpen ? "−" : "+"}</span>
+          </button>
+          {promoOpen && (
+            <div className="mt-3 flex gap-2">
+              <input
+                type="text"
+                placeholder="Promo code"
+                className="flex-1 rounded-md border px-3 py-2 text-sm"
+              />
+              <button className="rounded-full border px-4 py-2 text-sm hover:bg-neutral-50">
+                Apply
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="border-t pt-3">
+          <button
+            className="flex w-full items-center justify-between text-sm"
+            onClick={() => setGiftOpen((v: boolean) => !v)}
+          >
+            <span>Add Gift Card</span>
+            <span className="text-xl leading-none">{giftOpen ? "−" : "+"}</span>
+          </button>
+          {giftOpen && (
+            <div className="mt-3 flex gap-2">
+              <input
+                type="text"
+                placeholder="Gift card code"
+                className="flex-1 rounded-md border px-3 py-2 text-sm"
+              />
+              <button className="rounded-full border px-4 py-2 text-sm hover:bg-neutral-50">
+                Redeem
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function StepActionRail({
+  step,
+  onNext,
+  onCheckout,
+  gotoLogin,
+}: {
+  step: StepKey;
+  onNext: () => void;
+  onCheckout: () => void;
+  gotoLogin: () => void;
+}) {
+  return (
+    <div className="mt-6 flex justify-end">
+      <div className="w-[320px] max-w-full">
+        {step === "bag" && (
+          <button
+            onClick={gotoLogin}
+            className="mb-2 w-full rounded-full border bg-white px-6 py-3 text-sm font-semibold hover:bg-neutral-50"
+          >
+            Log in / Sign in and Continue
+          </button>
+        )}
+
+        {step === "payment" ? (
+          <button
+            onClick={onCheckout}
+            className="w-full rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white hover:bg-neutral-800"
+          >
+            Check out
+          </button>
+        ) : (
+          <button
+            onClick={onNext}
+            className="w-full rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white hover:bg-neutral-800"
+          >
+            Continue
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function CheckoutPage() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
-  // 购物车
+  // 自触发保护 & 首次加载标记
+  const myId = useMemo(() => Math.random().toString(36).slice(2), []);
+  const [loaded, setLoaded] = useState(false);
+
   const [cart, setCart] = useState<CartItem[]>([]);
   const currency = cart[0]?.currency || "USD";
 
+  // 初始 step
+  const initialStepFromURL = (() => {
+    const s = searchParams.get("step");
+    return isStepKey(s) ? (s as StepKey) : ("bag" as StepKey);
+  })();
+  const [step, setStep] = useState<StepKey>(initialStepFromURL);
+
+  const setStepAndURL = (next: StepKey) => {
+    setStep(next);
+    const p = new URLSearchParams(window.location.search);
+    p.set("step", next);
+    router.replace(`${pathname}?${p.toString()}`, { scroll: false });
+  };
+
+  // 第一次只读不写
   useEffect(() => {
     try {
       const raw = localStorage.getItem(LS_KEY);
       if (raw) setCart(JSON.parse(raw));
     } catch {}
+    setLoaded(true);
   }, []);
 
+  // 只有 loaded 才允许写回 & 广播（带 source）
   useEffect(() => {
+    if (!loaded) return;
     try {
       localStorage.setItem(LS_KEY, JSON.stringify(cart));
     } catch {}
-  }, [cart]);
+    try {
+      const count = cart.reduce((acc, it) => acc + (Number(it.qty) || 0), 0);
+      window.dispatchEvent(new CustomEvent("bag:count", { detail: { count } }));
+      window.dispatchEvent(
+        new CustomEvent("bag:updated", { detail: { source: myId } })
+      );
+    } catch {}
+  }, [cart, loaded, myId]);
+
+  // 监听其它来源的变更
+  useEffect(() => {
+    const refresh = (e: Event) => {
+      const ce = e as CustomEvent<any>;
+      if (ce?.detail?.source === myId) return; // 忽略来自自己的广播
+      try {
+        const raw = localStorage.getItem(LS_KEY);
+        if (raw) setCart(JSON.parse(raw));
+      } catch {}
+    };
+    window.addEventListener("bag:updated", refresh as EventListener);
+    return () =>
+      window.removeEventListener("bag:updated", refresh as EventListener);
+  }, [myId]);
 
   // 计算
+  const hasItems = cart.length > 0;
   const subtotal = useMemo(
     () => cart.reduce((acc, it) => acc + it.price * it.qty, 0),
     [cart]
   );
-
   const saved = useMemo(
     () =>
       cart.reduce((acc, it) => {
@@ -145,262 +340,73 @@ export default function CheckoutPage() {
       }, 0),
     [cart]
   );
-
-  const deliveryFee = subtotal >= DELIVERY_FREE_THRESHOLD ? 0 : DELIVERY_FLAT;
-  const total = subtotal + deliveryFee;
+  const deliveryFee =
+    hasItems && subtotal < DELIVERY_FREE_THRESHOLD ? DELIVERY_FLAT : 0;
+  const total = hasItems ? subtotal + deliveryFee : 0;
 
   // 交互
   const removeItem = (key: string) =>
     setCart((prev) => prev.filter((x) => x.key !== key));
-
   const inc = (key: string) =>
     setCart((prev) =>
       prev.map((x) =>
         x.key === key ? { ...x, qty: Math.min(x.qty + 1, x.stock) } : x
       )
     );
-
   const dec = (key: string) =>
     setCart((prev) =>
-      prev
-        .map((x) => (x.key === key ? { ...x, qty: Math.max(1, x.qty - 1) } : x))
-        .filter(Boolean) as CartItem[]
+      prev.map((x) =>
+        x.key === key ? { ...x, qty: Math.max(1, x.qty - 1) } : x
+      )
     );
 
-  // UI 状态
-  const [shipMethod, setShipMethod] = useState<"delivery" | "collect">(
-    "delivery"
-  );
-  const [email, setEmail] = useState("");
+  // 其它状态
+  const [shipMethod, setShipMethod] =
+    useState<"delivery" | "collect">("delivery");
   const [promoOpen, setPromoOpen] = useState(false);
   const [giftOpen, setGiftOpen] = useState(false);
 
+  const nextStep = () => {
+    setStepAndURL(
+      step === "bag"
+        ? "address"
+        : step === "address"
+        ? "delivery"
+        : step === "delivery"
+        ? "payment"
+        : "payment"
+    );
+  };
+  const doCheckout = () => router.push("/checkout/confirm");
+  const gotoLogin = () =>
+    router.push(
+      `/auth/login?next=${encodeURIComponent("/checkout?step=address")}`
+    );
+
   return (
     <main className="w-full px-4 sm:px-6 lg:px-8 2xl:px-12 py-6 md:py-8">
-      {/* 放大容器：最大 1800px（可按需改更大） */}
       <div className="mx-auto w-full max-w-[2300px]">
-        {/* 顶部返回 & 面包屑 */}
         <div className="mb-5 text-sm text-neutral-600">
           <Link href="/" className="hover:underline">
             &larr; Back
           </Link>
         </div>
 
-        {/* 步骤条 */}
-        <CheckoutSteps />
+        <CheckoutSteps step={step} onChange={setStepAndURL} />
 
-        {/* 两列布局：左侧自适应，右侧固定宽度 */}
-        <div className="grid gap-6 2xl:gap-10 lg:grid-cols-[minmax(0,1fr)_440px]">
-          {/* 左列 */}
-          <div className="space-y-6">
-            {/* 已达免运提示 */}
-            {subtotal >= DELIVERY_FREE_THRESHOLD && (
-              <div className="rounded-xl border px-4 py-3 text-sm">
-                <div className="mb-2 font-medium">
-                  Congratulations! You have reached free shipping
-                </div>
-                <div className="h-1 w-full overflow-hidden rounded bg-neutral-200">
-                  <div className="h-full w-full bg-emerald-600" />
-                </div>
-              </div>
-            )}
-
-            {/* Delivery & Collection */}
-            <section className="rounded-xl border">
-              <div className="border-b px-4 py-3 font-semibold">
-                Delivery & Collection
-              </div>
-
-              <div className="p-4 space-y-3">
-                <label className="flex items-start gap-3 rounded-lg border p-3 has-[:checked]:border-neutral-900 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="ship"
-                    className="mt-1"
-                    checked={shipMethod === "delivery"}
-                    onChange={() => setShipMethod("delivery")}
-                  />
-                  <div>
-                    <div className="font-medium">Delivery</div>
-                    <div className="text-sm text-neutral-600">
-                      Select this option to have your order delivered to your
-                      doorstep
-                    </div>
-                  </div>
-                </label>
-
-                <label className="flex items-start gap-3 rounded-lg border p-3 has-[:checked]:border-neutral-900 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="ship"
-                    className="mt-1"
-                    checked={shipMethod === "collect"}
-                    onChange={() => setShipMethod("collect")}
-                  />
-                  <div className="flex-1">
-                    <div className="font-medium">Click & Collect</div>
-                    <div className="mt-2 flex items-center gap-2">
-                      <input
-                        type="text"
-                        placeholder="Enter postcode"
-                        className="w-[220px] rounded-md border px-3 py-2 text-sm"
-                      />
-                      <button className="rounded-full border px-4 py-2 text-sm hover:bg-neutral-50">
-                        Check
-                      </button>
-                    </div>
-                  </div>
-                </label>
-              </div>
-
-              {/* Promo / Gift Card 折叠 */}
-              <div className="border-t p-4 space-y-3">
-                <div>
-                  <button
-                    className="flex w-full items-center justify-between text-sm"
-                    onClick={() => setPromoOpen((v) => !v)}
-                  >
-                    <span>Enter Promo Code</span>
-                    <span className="text-xl leading-none">
-                      {promoOpen ? "−" : "+"}
-                    </span>
-                  </button>
-                  {promoOpen && (
-                    <div className="mt-3 flex gap-2">
-                      <input
-                        type="text"
-                        placeholder="Promo code"
-                        className="flex-1 rounded-md border px-3 py-2 text-sm"
-                      />
-                      <button className="rounded-full border px-4 py-2 text-sm hover:bg-neutral-50">
-                        Apply
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                <div className="border-t pt-3">
-                  <button
-                    className="flex w-full items-center justify-between text-sm"
-                    onClick={() => setGiftOpen((v) => !v)}
-                  >
-                    <span>Add Gift Card</span>
-                    <span className="text-xl leading-none">
-                      {giftOpen ? "−" : "+"}
-                    </span>
-                  </button>
-                  {giftOpen && (
-                    <div className="mt-3 flex gap-2">
-                      <input
-                        type="text"
-                        placeholder="Gift card code"
-                        className="flex-1 rounded-md border px-3 py-2 text-sm"
-                      />
-                      <button className="rounded-full border px-4 py-2 text-sm hover:bg-neutral-50">
-                        Redeem
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </section>
-
-            {/* Your Bag */}
+        <div className="space-y-6">
+          {step === "bag" && (
             <section className="rounded-xl border">
               <div className="border-b px-4 py-3 font-semibold">Your Bag</div>
 
-              <div className="p-4 space-y-3">
-                {cart.length === 0 ? (
-                  <div className="text-sm text-neutral-500">Bag is empty.</div>
-                ) : (
-                  cart.map((it) => (
-                    <div
-                      key={it.key}
-                      className="flex gap-3 rounded-lg border p-3 hover:shadow-sm"
-                    >
-                      <div className="h-20 w-20 overflow-hidden rounded-lg bg-neutral-100">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        {it.image ? (
-                          <img
-                            src={it.image}
-                            alt={it.title}
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <div className="h-full w-full" />
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="line-clamp-1 text-sm font-medium">
-                          {it.title}
-                        </div>
-                        <div className="mt-1 text-xs text-neutral-600">
-                          {it.color && <span>Color: {it.color}</span>}
-                          {it.size && <span className="ml-3">Size: {it.size}</span>}
-                        </div>
-
-                        <div className="mt-2 flex items-center justify-between">
-                          <div className="flex items-baseline gap-2">
-                            <div className="text-sm font-semibold">
-                              {fmtPrice(it.price, it.currency)}
-                            </div>
-                            {typeof it.basePrice === "number" &&
-                              it.basePrice > it.price && (
-                                <div className="text-xs text-neutral-400 line-through">
-                                  {fmtPrice(it.basePrice, it.currency)}
-                                </div>
-                              )}
-                          </div>
-
-                          <div className="flex items-center gap-1 rounded-full border">
-                            <button
-                              className="px-2 py-1 hover:bg-neutral-50"
-                              onClick={() => dec(it.key)}
-                              title="Decrease"
-                            >
-                              <Minus className="h-4 w-4" />
-                            </button>
-                            <span className="min-w-[2rem] text-center text-sm">
-                              {it.qty}
-                            </span>
-                            <button
-                              className="px-2 py-1 hover:bg-neutral-50"
-                              onClick={() => inc(it.key)}
-                              title="Increase"
-                              disabled={it.qty >= it.stock}
-                            >
-                              <Plus className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="mt-1 text-[11px] text-neutral-500">
-                          Max {it.stock} available
-                        </div>
-                      </div>
-
-                      <button
-                        className="self-start rounded-full p-2 text-neutral-500 hover:bg-neutral-100"
-                        onClick={() => removeItem(it.key)}
-                        title="Remove"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ))
-                )}
+              <div className="p-4">
+                <CartList cart={cart} onInc={inc} onDec={dec} onRemove={removeItem} />
               </div>
 
-              {/* Order Summary */}
               <div className="border-t p-4">
                 <div className="mb-2 text-sm font-semibold">Order Summary</div>
-
                 <div className="space-y-2 text-sm">
-                  <Row
-                    label="Subtotal"
-                    value={fmtPrice(subtotal, currency)}
-                    strongRight
-                  />
+                  <Row label="Subtotal" value={fmtPrice(subtotal, currency)} strongRight />
                   {saved > 0 && (
                     <Row
                       label="You saved"
@@ -408,108 +414,67 @@ export default function CheckoutPage() {
                       valueClass="text-rose-600"
                     />
                   )}
-                  <Row
-                    label="Estimated Shipping"
-                    value={
-                      subtotal >= DELIVERY_FREE_THRESHOLD
-                        ? "FREE for over $100"
-                        : fmtPrice(deliveryFee, currency)
-                    }
-                    valueClass={
-                      subtotal >= DELIVERY_FREE_THRESHOLD
-                        ? "text-emerald-700 font-semibold"
-                        : undefined
-                    }
-                  />
-                  <div className="pt-1">
+                  {hasItems && (
                     <Row
-                      label="Total"
-                      value={fmtPrice(total, currency)}
-                      strongLeft
-                      strongRight
-                      bigRight
+                      label="Delivery fee"
+                      value={
+                        subtotal >= DELIVERY_FREE_THRESHOLD
+                          ? "FREE for over $100"
+                          : fmtPrice(DELIVERY_FLAT, currency)
+                      }
+                      valueClass={
+                        subtotal >= DELIVERY_FREE_THRESHOLD
+                          ? "text-emerald-700 font-semibold"
+                          : undefined
+                      }
                     />
-                    <div className="mt-1 text-xs text-neutral-500">
-                      Including GST
-                    </div>
+                  )}
+                  <div className="pt-1">
+                    <Row label="Total" value={fmtPrice(total, currency)} strongLeft strongRight bigRight />
+                    <div className="mt-1 text-xs text-neutral-500">Including GST</div>
                   </div>
                 </div>
               </div>
             </section>
-          </div>
+          )}
 
-          {/* 右列 */}
-          <div className="space-y-6">
-            {/* Express Checkout */}
+          {step === "address" && <AddressForm />}
+
+          {step === "delivery" && (
+            <>
+              {hasItems && subtotal >= DELIVERY_FREE_THRESHOLD && (
+                <div className="rounded-xl border px-4 py-3 text-sm">
+                  <div className="mb-2 font-medium">Congratulations! You have reached free shipping</div>
+                  <div className="h-1 w-full overflow-hidden rounded bg-neutral-200">
+                    <div className="h-full w-full bg-emerald-600" />
+                  </div>
+                </div>
+              )}
+              <DeliverySection
+                shipMethod={shipMethod}
+                setShipMethod={setShipMethod}
+                promoOpen={promoOpen}
+                setPromoOpen={setPromoOpen}
+                giftOpen={giftOpen}
+                setGiftOpen={setGiftOpen}
+              />
+            </>
+          )}
+
+          {step === "payment" && (
             <section className="rounded-xl border">
-              <div className="border-b px-4 py-3 font-semibold">
-                EXPRESS CHECKOUT
-              </div>
-              <div className="p-4">
-                <button className="mb-3 w-full rounded-md bg-[#ffc439] px-4 py-3 text-center text-sm font-semibold text-black hover:brightness-95">
-                  PayPal
-                </button>
-                <button className="w-full rounded-md bg-[#ffd266] px-4 py-3 text-center text-sm font-semibold text-black hover:brightness-95">
-                  Pay in 4
-                </button>
-
-                <div className="mt-4 text-center text-xs text-neutral-500">
-                  ADDITIONAL PAYMENT METHODS BELOW
-                </div>
-              </div>
+              <div className="border-b px-4 py-3 font-semibold">Payment</div>
+              <div className="p-4">/* your payment form here */</div>
             </section>
-
-            {/* Your Details */}
-            <section className="rounded-xl border">
-              <div className="border-b px-4 py-3 font-semibold">Your Details</div>
-              <div className="p-4 space-y-4">
-                <div className="text-sm text-neutral-600">
-                  Please enter your email address, we'll send your order
-                  confirmation here
-                </div>
-                <label className="block text-sm font-medium">Email Address</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.currentTarget.value)}
-                  placeholder="you@example.com"
-                  className="w-full rounded-md border px-3 py-2 text-sm"
-                />
-
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" className="h-4 w-4" />
-                  <span>Email me updates on New Arrivals, Sale and Offers</span>
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" className="h-4 w-4" />
-                  <span>SMS me updates on New Arrivals, Sale and Offers</span>
-                </label>
-
-                <div className="text-xs text-neutral-500">
-                  * We treat your personal data with care, view our{" "}
-                  <a className="underline" href="#">
-                    Privacy Policy
-                  </a>
-                  .
-                </div>
-
-                {/* 这里暂时仍然去 confirm；如果你实现了 Address/Payment 页面，可改为 /checkout/address */}
-                <button
-                  onClick={() => router.push("/checkout/confirm")}
-                  className="w-full rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white hover:bg-neutral-800"
-                >
-                  Continue
-                </button>
-              </div>
-            </section>
-          </div>
+          )}
         </div>
+
+        <StepActionRail step={step} onNext={nextStep} onCheckout={doCheckout} gotoLogin={gotoLogin} />
       </div>
     </main>
   );
 }
 
-/** 左对齐标签 / 右对齐金额的小行组件 */
 function Row({
   label,
   value,
@@ -527,16 +492,8 @@ function Row({
 }) {
   return (
     <div className="flex items-center justify-between">
-      <div className={[strongLeft ? "font-semibold" : "text-neutral-600"].join(" ")}>
-        {label}
-      </div>
-      <div
-        className={[
-          strongRight ? "font-semibold" : "",
-          bigRight ? "text-lg" : "text-base",
-          valueClass || "",
-        ].join(" ")}
-      >
+      <div className={[strongLeft ? "font-semibold" : "text-neutral-600"].join(" ")}>{label}</div>
+      <div className={[strongRight ? "font-semibold" : "", bigRight ? "text-lg" : "text-base", valueClass || ""].join(" ")}>
         {value}
       </div>
     </div>

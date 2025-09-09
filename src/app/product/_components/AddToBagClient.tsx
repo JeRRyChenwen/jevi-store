@@ -109,17 +109,21 @@ export default function AddToBagClient({
     } catch {}
   }, [cart]);
 
+  // 金额计算
+  const hasItems = cart.length > 0;
   const subtotal = cart.reduce((acc, it) => acc + it.price * it.qty, 0);
 
-  // 计算节省金额、运费、总价
   const saved = cart.reduce((acc, it) => {
     const base = typeof it.basePrice === "number" ? it.basePrice : it.price;
     const diff = base - it.price;
     return acc + (diff > 0 ? diff * it.qty : 0);
   }, 0);
 
-  const deliveryFee = subtotal >= DELIVERY_FREE_THRESHOLD ? 0 : DELIVERY_FLAT;
-  const total = subtotal + deliveryFee;
+  // 只有“有商品且未达免运”才显示 10 运费；无商品或达免运 -> 0
+  const deliveryFee =
+    hasItems && subtotal < DELIVERY_FREE_THRESHOLD ? DELIVERY_FLAT : 0;
+
+  const total = hasItems ? subtotal + deliveryFee : 0;
 
   // 监听全局事件：从任意地方打开/关闭抽屉
   useEffect(() => {
@@ -165,6 +169,7 @@ export default function AddToBagClient({
     });
     setOpen(true);
   };
+
   const removeItem = (key: string) =>
     setCart((prev) => prev.filter((x) => x.key !== key));
   const inc = (key: string) =>
@@ -179,9 +184,11 @@ export default function AddToBagClient({
         .map((x) => (x.key === key ? { ...x, qty: Math.max(1, x.qty - 1) } : x))
         .filter(Boolean) as CartItem[]
     );
+
+  // 从第一步开始
   const toCheckout = () => {
     setOpen(false);
-    router.push("/checkout");
+    router.push("/checkout?step=bag");
   };
 
   // portal
@@ -193,7 +200,7 @@ export default function AddToBagClient({
 
   return (
     <>
-      {/* 主按钮（页内）——已去掉按钮下方“Please select …”提示，避免与尺码区重复 */}
+      {/* 主按钮（页内） */}
       <div className="pt-2">
         <button
           type="button"
@@ -276,9 +283,7 @@ export default function AddToBagClient({
                         </div>
                         <div className="mt-0.5 text-xs text-neutral-600">
                           {it.color && <span>Color: {it.color}</span>}
-                          {it.size && (
-                            <span className="ml-3">Size: {it.size}</span>
-                          )}
+                          {it.size && <span className="ml-3">Size: {it.size}</span>}
                         </div>
                         <div className="mt-2 flex items-center justify-between">
                           <div className="text-sm font-semibold">
@@ -346,21 +351,22 @@ export default function AddToBagClient({
                   </div>
                 )}
 
-                <div className="mb-2 flex items-center justify-between">
-                  <div className="text-sm text-neutral-600">Delivery fee</div>
-                  <div
-                    className={[
-                      "text-base font-semibold",
-                      subtotal >= DELIVERY_FREE_THRESHOLD
-                        ? "text-emerald-700"
-                        : "",
-                    ].join(" ")}
-                  >
-                    {subtotal >= DELIVERY_FREE_THRESHOLD
-                      ? "FREE for over $100"
-                      : fmtPrice(deliveryFee, currency)}
+                {/* 仅在有商品时显示运费行；达免运显示 FREE，否则显示 10 美元 */}
+                {hasItems && (
+                  <div className="mb-2 flex items-center justify-between">
+                    <div className="text-sm text-neutral-600">Delivery fee</div>
+                    <div
+                      className={[
+                        "text-base font-semibold",
+                        subtotal >= DELIVERY_FREE_THRESHOLD ? "text-emerald-700" : "",
+                      ].join(" ")}
+                    >
+                      {subtotal >= DELIVERY_FREE_THRESHOLD
+                        ? "FREE for over $100"
+                        : fmtPrice(DELIVERY_FLAT, currency)}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="mb-3 flex items-center justify-between">
                   <div className="text-sm font-semibold">Total</div>
@@ -371,16 +377,18 @@ export default function AddToBagClient({
 
                 <button
                   type="button"
-                  disabled={cart.length === 0}
+                  disabled={!hasItems}
                   onClick={toCheckout}
+                  aria-label="Check out"
                   className={[
                     "w-full inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-semibold",
-                    cart.length === 0
+                    !hasItems
                       ? "bg-neutral-200 text-neutral-500 cursor-not-allowed"
                       : "bg-neutral-900 text-white hover:bg-neutral-800",
                   ].join(" ")}
                 >
-                  Checkout
+                  {/* 始终显示 'Check out' */}
+                  Check out
                   <ChevronRight className="h-4 w-4" />
                 </button>
               </div>
