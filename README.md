@@ -623,6 +623,8 @@ sort 按钮：
 
 小画廊缩略图的边框
 
+delivery 需要多少天才能抵达
+
 “add to bag” 按钮
 “Bag” ，“Address” ，“Delivery” ，以及 “Payment” 的内容区
 

@@ -90,7 +90,7 @@ function CheckoutSteps({
   );
 }
 
-/* ---------------- 示例表单们 ---------------- */
+/* ---------------- 示例地址表单 ---------------- */
 function AddressForm() {
   return (
     <section className="rounded-xl border">
@@ -110,115 +110,49 @@ function AddressForm() {
   );
 }
 
+/* ---------------- 新 Delivery：仅选择配送方式 ---------------- */
+type DeliveryMethod = "standard" | "express";
+const METHOD_META: Record<DeliveryMethod, { label: string; eta: string }> = {
+  standard: { label: "Standard delivery", eta: "Arrives in 3–5 business days" },
+  express: { label: "Express delivery", eta: "Arrives in 1–2 business days" },
+};
+
 function DeliverySection({
-  shipMethod,
-  setShipMethod,
-  promoOpen,
-  setPromoOpen,
-  giftOpen,
-  setGiftOpen,
+  deliveryMethod,
+  setDeliveryMethod,
 }: {
-  shipMethod: "delivery" | "collect";
-  setShipMethod: (v: "delivery" | "collect") => void;
-  promoOpen: boolean;
-  setPromoOpen: (v: boolean | ((p: boolean) => boolean)) => void;
-  giftOpen: boolean;
-  setGiftOpen: (v: boolean | ((p: boolean) => boolean)) => void;
+  deliveryMethod: DeliveryMethod;
+  setDeliveryMethod: (v: DeliveryMethod) => void;
 }) {
   return (
     <section className="rounded-xl border">
       <div className="border-b px-4 py-3 font-semibold">Delivery</div>
 
       <div className="p-4 space-y-3">
-        <label className="flex items-start gap-3 rounded-lg border p-3 has-[:checked]:border-neutral-900 cursor-pointer">
-          <input
-            type="radio"
-            name="ship"
-            className="mt-1"
-            checked={shipMethod === "delivery"}
-            onChange={() => setShipMethod("delivery")}
-          />
-          <div>
-            <div className="font-medium">Delivery</div>
-            <div className="text-sm text-neutral-600">
-              Select this option to have your order delivered to your doorstep
-            </div>
-          </div>
-        </label>
-
-        <label className="flex items-start gap-3 rounded-lg border p-3 has-[:checked]:border-neutral-900 cursor-pointer">
-          <input
-            type="radio"
-            name="ship"
-            className="mt-1"
-            checked={shipMethod === "collect"}
-            onChange={() => setShipMethod("collect")}
-          />
-          <div className="flex-1">
-            <div className="font-medium">Click & Collect</div>
-            <div className="mt-2 flex items-center gap-2">
-              <input
-                type="text"
-                placeholder="Enter postcode"
-                className="w-[220px] rounded-md border px-3 py-2 text-sm"
-              />
-              <button className="rounded-full border px-4 py-2 text-sm hover:bg-neutral-50">
-                Check
-              </button>
-            </div>
-          </div>
-        </label>
-      </div>
-
-      <div className="border-t p-4 space-y-3">
-        <div>
-          <button
-            className="flex w-full items-center justify-between text-sm"
-            onClick={() => setPromoOpen((v: boolean) => !v)}
+        {(["standard", "express"] as DeliveryMethod[]).map((m) => (
+          <label
+            key={m}
+            className="flex items-start gap-3 rounded-lg border p-3 has-[:checked]:border-neutral-900 cursor-pointer"
           >
-            <span>Enter Promo Code</span>
-            <span className="text-xl leading-none">{promoOpen ? "−" : "+"}</span>
-          </button>
-          {promoOpen && (
-            <div className="mt-3 flex gap-2">
-              <input
-                type="text"
-                placeholder="Promo code"
-                className="flex-1 rounded-md border px-3 py-2 text-sm"
-              />
-              <button className="rounded-full border px-4 py-2 text-sm hover:bg-neutral-50">
-                Apply
-              </button>
+            <input
+              type="radio"
+              name="deliveryMethod"
+              className="mt-1"
+              checked={deliveryMethod === m}
+              onChange={() => setDeliveryMethod(m)}
+            />
+            <div className="flex-1">
+              <div className="font-medium">{METHOD_META[m].label}</div>
+              <div className="text-sm text-neutral-600">{METHOD_META[m].eta}</div>
             </div>
-          )}
-        </div>
-
-        <div className="border-t pt-3">
-          <button
-            className="flex w-full items-center justify-between text-sm"
-            onClick={() => setGiftOpen((v: boolean) => !v)}
-          >
-            <span>Add Gift Card</span>
-            <span className="text-xl leading-none">{giftOpen ? "−" : "+"}</span>
-          </button>
-          {giftOpen && (
-            <div className="mt-3 flex gap-2">
-              <input
-                type="text"
-                placeholder="Gift card code"
-                className="flex-1 rounded-md border px-3 py-2 text-sm"
-              />
-              <button className="rounded-full border px-4 py-2 text-sm hover:bg-neutral-50">
-                Redeem
-              </button>
-            </div>
-          )}
-        </div>
+          </label>
+        ))}
       </div>
     </section>
   );
 }
 
+/* ---------------- 右侧按钮栏 ---------------- */
 function StepActionRail({
   step,
   onNext,
@@ -362,11 +296,9 @@ export default function CheckoutPage() {
       )
     );
 
-  // 其它状态
-  const [shipMethod, setShipMethod] =
-    useState<"delivery" | "collect">("delivery");
-  const [promoOpen, setPromoOpen] = useState(false);
-  const [giftOpen, setGiftOpen] = useState(false);
+  // ✅ 仅选择配送方式（默认 standard）
+  const [deliveryMethod, setDeliveryMethod] =
+    useState<DeliveryMethod>("standard");
 
   const nextStep = () => {
     setStepAndURL(
@@ -412,9 +344,8 @@ export default function CheckoutPage() {
                   {saved > 0 && (
                     <Row
                       label="You saved"
-                      /* ✅ 去掉负号，并统一成绿色 */
-                      value={fmtPrice(saved, currency)}
-                      valueClass="text-emerald-700 font-semibold"
+                      value={fmtPrice(saved, currency)}            // 无负号
+                      valueClass="text-emerald-700 font-semibold"  // 绿色
                     />
                   )}
                   {hasItems && (
@@ -447,19 +378,19 @@ export default function CheckoutPage() {
             <>
               {hasItems && subtotal >= DELIVERY_FREE_THRESHOLD && (
                 <div className="rounded-xl border px-4 py-3 text-sm">
-                  <div className="mb-2 font-medium">Congratulations! You have reached free shipping</div>
+                  <div className="mb-2 font-medium">
+                    Congratulations! You have reached free shipping
+                  </div>
                   <div className="h-1 w-full overflow-hidden rounded bg-neutral-200">
                     <div className="h-full w-full bg-emerald-600" />
                   </div>
                 </div>
               )}
+
+              {/* ✅ 新版：仅选择配送方式（标准/加急） */}
               <DeliverySection
-                shipMethod={shipMethod}
-                setShipMethod={setShipMethod}
-                promoOpen={promoOpen}
-                setPromoOpen={setPromoOpen}
-                giftOpen={giftOpen}
-                setGiftOpen={setGiftOpen}
+                deliveryMethod={deliveryMethod}
+                setDeliveryMethod={setDeliveryMethod}
               />
             </>
           )}
