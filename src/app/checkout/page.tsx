@@ -2,9 +2,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Minus, Plus, Trash2 } from "lucide-react";
+import { Check, Minus, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 type CartItem = {
   key: string;
@@ -33,6 +33,81 @@ function fmtPrice(n: number, currency: string, locale?: string) {
     currencyDisplay: "code",
     maximumFractionDigits: 2,
   }).format(n);
+}
+
+/** 顶部可点击步骤条 */
+function CheckoutSteps() {
+  const pathname = usePathname();
+
+  // 按你的站点实际路由改这里的 href
+  const steps = [
+    { key: "bag", label: "Bag", href: "/bag" }, // 若没有此页，可改成 '/cart' 或你实际的购物袋页
+    { key: "ship", label: "Deliver/Collect", href: "/checkout" },
+    { key: "address", label: "Address", href: "/checkout/address" },
+    { key: "payment", label: "Payment", href: "/checkout/payment" },
+  ];
+
+  // 根据路径判定当前步骤（包含对 /checkout/confirm 的兼容）
+  const currentIndex = (() => {
+    if (pathname?.startsWith("/checkout/payment") || pathname?.startsWith("/checkout/confirm")) return 3;
+    if (pathname?.startsWith("/checkout/address")) return 2;
+    if (pathname === "/checkout") return 1;
+    if (pathname?.startsWith("/bag") || pathname?.startsWith("/cart")) return 0;
+    // 默认当成 Deliver/Collect
+    return 1;
+  })();
+
+  const progress = (currentIndex / (steps.length - 1)) * 100;
+
+  return (
+    <div className="relative pt-8 pb-10">
+      {/* 背景线 */}
+      <div className="absolute left-0 right-0 top-6 h-[2px] bg-neutral-200" />
+      {/* 进度线 */}
+      <div
+        className="absolute left-0 top-6 h-[2px] bg-black transition-all"
+        style={{ width: `${progress}%` }}
+      />
+
+      <div className="relative flex items-center justify-between">
+        {steps.map((s, i) => {
+          const isActive = i === currentIndex;
+          const isDone = i < currentIndex;
+          const baseCircle =
+            "flex items-center justify-center h-8 w-8 rounded-full border text-sm";
+          const circleClass = isActive
+            ? "bg-black text-white border-black"
+            : isDone
+            ? "bg-white text-black border-black"
+            : "bg-white text-neutral-400 border-neutral-300";
+
+          const labelClass = isActive
+            ? "text-black"
+            : isDone
+            ? "text-neutral-500"
+            : "text-neutral-400";
+
+          return (
+            <Link
+              key={s.key}
+              href={s.href}
+              aria-current={isActive ? "step" : undefined}
+              className="group flex w-1/4 flex-col items-center gap-2"
+            >
+              <div className={`${baseCircle} ${circleClass}`}>
+                {isDone ? (
+                  <Check className="h-4 w-4" />
+                ) : (
+                  <span className="leading-none">{i + 1}</span>
+                )}
+              </div>
+              <div className={`text-sm font-medium ${labelClass}`}>{s.label}</div>
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export default function CheckoutPage() {
@@ -103,13 +178,16 @@ export default function CheckoutPage() {
   return (
     <main className="w-full px-4 sm:px-6 lg:px-8 2xl:px-12 py-6 md:py-8">
       {/* 放大容器：最大 1800px（可按需改更大） */}
-      <div className="mx-auto w-full max-w-[2020px]">
+      <div className="mx-auto w-full max-w-[2300px]">
         {/* 顶部返回 & 面包屑 */}
         <div className="mb-5 text-sm text-neutral-600">
           <Link href="/" className="hover:underline">
             &larr; Back
           </Link>
         </div>
+
+        {/* 步骤条 */}
+        <CheckoutSteps />
 
         {/* 两列布局：左侧自适应，右侧固定宽度 */}
         <div className="grid gap-6 2xl:gap-10 lg:grid-cols-[minmax(0,1fr)_440px]">
@@ -415,6 +493,7 @@ export default function CheckoutPage() {
                   .
                 </div>
 
+                {/* 这里暂时仍然去 confirm；如果你实现了 Address/Payment 页面，可改为 /checkout/address */}
                 <button
                   onClick={() => router.push("/checkout/confirm")}
                   className="w-full rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white hover:bg-neutral-800"
