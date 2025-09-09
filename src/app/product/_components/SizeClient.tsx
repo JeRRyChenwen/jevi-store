@@ -49,7 +49,8 @@ export default function SizeClient({ options, current, size = "md" }: Props) {
     >
       {options.map((opt) => {
         const active = opt.value === current;
-        const disabled = (opt.stock ?? 0) <= 0;
+        const stock = opt.stock ?? 0;
+        const disabled = stock <= 0;
 
         return (
           <button
@@ -58,11 +59,20 @@ export default function SizeClient({ options, current, size = "md" }: Props) {
             role="radio"
             aria-checked={active}
             aria-disabled={disabled || undefined}
+            aria-label={
+              disabled
+                ? `${opt.value} (Out of stock)`
+                : active
+                ? `${opt.value} selected`
+                : `${opt.value} (In stock: ${stock})`
+            }
+            title={
+              disabled
+                ? `${opt.value} (Out of stock)`
+                : `${opt.value} (In stock: ${stock})`
+            }
             onClick={() => !disabled && go(opt.value)}
             disabled={disabled}
-            title={
-              disabled ? `${opt.value} (Out of stock)` : `${opt.value} (In stock: ${opt.stock ?? 0})`
-            }
             className={[
               "inline-flex items-center justify-center rounded-full border font-medium",
               cfg.btn,
@@ -70,8 +80,12 @@ export default function SizeClient({ options, current, size = "md" }: Props) {
               "border-neutral-300 bg-white",
               // 交互与状态
               "transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30",
-              active ? "border-neutral-900 shadow-sm" : "hover:border-neutral-400",
-              disabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer",
+              active
+                ? "border-neutral-900 shadow-sm"
+                : "hover:border-neutral-400",
+              disabled
+                ? "opacity-40 cursor-not-allowed line-through decoration-neutral-400"
+                : "cursor-pointer",
             ].join(" ")}
           >
             {opt.value}

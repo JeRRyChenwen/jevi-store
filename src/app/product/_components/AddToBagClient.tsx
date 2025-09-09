@@ -17,7 +17,7 @@ type Props = {
   currency: string;
   imagesByColor: ImagesByColor;
   stockMap: StockMap;
-  /** ✅ 新增：当 URL 没有 color 时使用这个颜色作为回退（由 page.tsx 传入当前展示颜色） */
+  /** 当 URL 没有 color 时使用这个颜色作为回退（由 page.tsx 传入当前展示颜色） */
   fallbackColor?: string;
 };
 
@@ -58,7 +58,7 @@ export default function AddToBagClient({
   currency,
   imagesByColor,
   stockMap,
-  fallbackColor, // ✅
+  fallbackColor,
 }: Props) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -101,7 +101,7 @@ export default function AddToBagClient({
     try {
       localStorage.setItem(LS_KEY, JSON.stringify(cart));
     } catch {}
-    // 广播总数量（给导航栏角标用）
+    // 广播总数量（给导航栏角标用）并通知其它页面刷新抽屉
     try {
       const count = cart.reduce((acc, it) => acc + (Number(it.qty) || 0), 0);
       window.dispatchEvent(new CustomEvent("bag:count", { detail: { count } }));
@@ -191,13 +191,9 @@ export default function AddToBagClient({
   const disabledAdd =
     !currentColor || !currentSize || stockForCurrent <= 0 || unitPrice <= 0;
 
-  // 是否需要提示“选颜色”
-  const needChooseColor =
-    !currentColor && Object.keys(imagesByColor).length > 1;
-
   return (
     <>
-      {/* 主按钮（页内） */}
+      {/* 主按钮（页内）——已去掉按钮下方“Please select …”提示，避免与尺码区重复 */}
       <div className="pt-2">
         <button
           type="button"
@@ -212,17 +208,6 @@ export default function AddToBagClient({
         >
           ADD TO BAG
         </button>
-
-        {/* 选择提示：如果已有颜色，只提示选尺码 */}
-        {(!currentSize || needChooseColor) && (
-          <div className="mt-2 text-xs text-neutral-500">
-            {needChooseColor && !currentSize
-              ? "Please select color & size"
-              : !currentSize
-              ? "Please select a size"
-              : "Please select a color"}
-          </div>
-        )}
       </div>
 
       {/* 抽屉 & 遮罩（Portal 到 <body>） */}

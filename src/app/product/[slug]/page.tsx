@@ -319,30 +319,39 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
               <Stars value={rating} />
             </div>
 
-            {/* 尺码 */}
+            {/* 尺码（放到评分下面） */}
             {sizeOptions.length > 0 && (
               <div className="space-y-2">
-                <div className="text-sm text-neutral-600 flex items一起 gap-2">
+                {/* 这里把 Sizes 与当前尺码字号放大 */}
+                <div className="text-base md:text-lg text-neutral-700 flex items-center gap-2">
                   Sizes
                   {currentSize && (
-                    <span className="text-neutral-800 font-medium">{currentSize}</span>
+                    <span className="text-neutral-900 font-semibold text-base md:text-lg">
+                      {currentSize}
+                    </span>
                   )}
                 </div>
-                {/* ✅ 放大区域也剪裁横向溢出 */}
-                <div className="origin-left scale-[1.12] md:scale-[1.18] overflow-x-clip">
+
+                {/* 放大 10%~20%：按需调整 */}
+                <div className="origin-left scale-[1.12] md:scale-[1.18]">
                   <SizeClient options={sizeOptions} current={currentSize} slug={slug} />
                 </div>
-                <div className="text-xs mt-1">
+
+                {/* 这里把 In stock 行字号放大 */}
+                <div className="mt-1 text-sm md:text-base">
                   {currentSize ? (
                     stockForCurrent > 0 ? (
-                      <span className="text-neutral-500">
-                        In stock: <span className="font-medium">{stockForCurrent}</span>
+                      <span className="text-neutral-600">
+                        In stock:{" "}
+                        <span className="font-semibold text-neutral-900">
+                          {stockForCurrent}
+                        </span>
                       </span>
                     ) : (
                       <span className="text-rose-600">Out of stock</span>
                     )
                   ) : (
-                    <span className="text-neutral-500">Please select a size</span>
+                    <span className="text-neutral-600">Please select a size</span>
                   )}
                 </div>
               </div>
