@@ -621,8 +621,6 @@ sort 按钮：
     best seller
     newest
 
-checkout 分开
-显示 order 信息
 小画廊缩略图的边框
 
 “add to bag” 按钮
