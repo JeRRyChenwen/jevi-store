@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import { X, ChevronRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 
-// ✅ 默认导入组件，类型用 type-only 单独导入（最稳妥）
+// 复用通用购物车列表组件
 import CartList from "@/components/cart/CartList";
 import type { CartItem as CartListItem } from "@/components/cart/CartList";
 
@@ -170,8 +170,9 @@ export default function BagDrawer() {
           {saved > 0 && (
             <div className="mb-1 flex items-center justify-between">
               <div className="text-sm text-neutral-600">You saved</div>
+              {/* 去掉负号并保持绿色 */}
               <div className="text-sm font-semibold text-emerald-700">
-                - {fmt(saved, currency)}
+                {fmt(saved, currency)}
               </div>
             </div>
           )}

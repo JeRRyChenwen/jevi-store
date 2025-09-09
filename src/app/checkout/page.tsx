@@ -46,7 +46,9 @@ function CheckoutSteps({
 
   return (
     <div className="relative pt-8 pb-10">
+      {/* 背景线 */}
       <div className="absolute left-0 right-0 top-6 h-[2px] bg-neutral-200" />
+      {/* 进度线 */}
       <div
         className="absolute left-0 top-6 h-[2px] bg-black transition-all"
         style={{ width: `${progress}%` }}
@@ -57,7 +59,7 @@ function CheckoutSteps({
           const isDone = i < currentIndex;
           const baseCircle =
             "flex items-center justify-center h-8 w-8 rounded-full border text-sm";
-        const circleClass = isActive
+          const circleClass = isActive
             ? "bg-black text-white border-black"
             : isDone
             ? "bg-white text-black border-black"
@@ -88,7 +90,7 @@ function CheckoutSteps({
   );
 }
 
-/* ---------------- 示例表单们（略动） ---------------- */
+/* ---------------- 示例表单们 ---------------- */
 function AddressForm() {
   return (
     <section className="rounded-xl border">
@@ -410,8 +412,9 @@ export default function CheckoutPage() {
                   {saved > 0 && (
                     <Row
                       label="You saved"
-                      value={`- ${fmtPrice(saved, currency)}`}
-                      valueClass="text-rose-600"
+                      /* ✅ 去掉负号，并统一成绿色 */
+                      value={fmtPrice(saved, currency)}
+                      valueClass="text-emerald-700 font-semibold"
                     />
                   )}
                   {hasItems && (
