@@ -621,8 +621,6 @@ sort 按钮：
     best seller
     newest
 
-小画廊缩略图的边框
-
 delivery 需要多少天才能抵达
 
 “add to bag” 按钮
@@ -639,3 +637,10 @@ delivery 需要多少天才能抵达
 Standard delivery 是免费的如果消费额度大于或者等于 100
 
 Express delivery 则有更快的速度抵达
+
+1. domain
+2. fornt end
+3. payment
+4. cloud server
+5. supllier
+6. delivery
