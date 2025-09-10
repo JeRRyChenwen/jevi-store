@@ -644,3 +644,6 @@ Express delivery 则有更快的速度抵达
 4. cloud server
 5. supllier
 6. delivery
+7. text size
+8. mobine end
+9. html email css
