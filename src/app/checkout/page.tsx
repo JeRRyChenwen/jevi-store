@@ -7,6 +7,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import CartList from "@/components/cart/CartList";
 import type { CartItem as CartListItem } from "@/components/cart/CartList";
+import StripePayment from "@/app/checkout/_components/StripePayment";
 
 type CartItem = CartListItem;
 
@@ -46,9 +47,7 @@ function CheckoutSteps({
 
   return (
     <div className="relative pt-8 pb-10">
-      {/* 背景线 */}
       <div className="absolute left-0 right-0 top-6 h-[2px] bg-neutral-200" />
-      {/* 进度线 */}
       <div
         className="absolute left-0 top-6 h-[2px] bg-black transition-all"
         style={{ width: `${progress}%` }}
@@ -90,7 +89,7 @@ function CheckoutSteps({
   );
 }
 
-/* ---------------- 示例地址表单 ---------------- */
+/* ---------------- Address ---------------- */
 function AddressForm() {
   return (
     <section className="rounded-xl border">
@@ -110,7 +109,7 @@ function AddressForm() {
   );
 }
 
-/* ---------------- 新 Delivery：仅选择配送方式 ---------------- */
+/* ---------------- Delivery ---------------- */
 type DeliveryMethod = "standard" | "express";
 const METHOD_META: Record<DeliveryMethod, { label: string; eta: string }> = {
   standard: { label: "Standard delivery", eta: "Arrives in 3–5 business days" },
@@ -152,18 +151,19 @@ function DeliverySection({
   );
 }
 
-/* ---------------- 右侧按钮栏 ---------------- */
+/* ---------------- Right rail ---------------- */
 function StepActionRail({
   step,
   onNext,
-  onCheckout,
   gotoLogin,
 }: {
   step: StepKey;
   onNext: () => void;
-  onCheckout: () => void;
   gotoLogin: () => void;
 }) {
+  // Payment 步不显示按钮，避免与 StripePayment 的提交重复
+  if (step === "payment") return null;
+
   return (
     <div className="mt-6 flex justify-end">
       <div className="w-[320px] max-w-full">
@@ -176,21 +176,12 @@ function StepActionRail({
           </button>
         )}
 
-        {step === "payment" ? (
-          <button
-            onClick={onCheckout}
-            className="w-full rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white hover:bg-neutral-800"
-          >
-            Check out
-          </button>
-        ) : (
-          <button
-            onClick={onNext}
-            className="w-full rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white hover:bg-neutral-800"
-          >
-            Continue
-          </button>
-        )}
+        <button
+          onClick={onNext}
+          className="w-full rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white hover:bg-neutral-800"
+        >
+          Continue
+        </button>
       </div>
     </div>
   );
@@ -201,14 +192,12 @@ export default function CheckoutPage() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  // 自触发保护 & 首次加载标记
   const myId = useMemo(() => Math.random().toString(36).slice(2), []);
   const [loaded, setLoaded] = useState(false);
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const currency = cart[0]?.currency || "USD";
 
-  // 初始 step
   const initialStepFromURL = (() => {
     const s = searchParams.get("step");
     return isStepKey(s) ? (s as StepKey) : ("bag" as StepKey);
@@ -222,7 +211,6 @@ export default function CheckoutPage() {
     router.replace(`${pathname}?${p.toString()}`, { scroll: false });
   };
 
-  // 第一次只读不写
   useEffect(() => {
     try {
       const raw = localStorage.getItem(LS_KEY);
@@ -231,7 +219,6 @@ export default function CheckoutPage() {
     setLoaded(true);
   }, []);
 
-  // 只有 loaded 才允许写回 & 广播（带 source）
   useEffect(() => {
     if (!loaded) return;
     try {
@@ -246,11 +233,10 @@ export default function CheckoutPage() {
     } catch {}
   }, [cart, loaded, myId]);
 
-  // 监听其它来源的变更
   useEffect(() => {
     const refresh = (e: Event) => {
       const ce = e as CustomEvent<any>;
-      if (ce?.detail?.source === myId) return; // 忽略来自自己的广播
+      if (ce?.detail?.source === myId) return;
       try {
         const raw = localStorage.getItem(LS_KEY);
         if (raw) setCart(JSON.parse(raw));
@@ -261,7 +247,6 @@ export default function CheckoutPage() {
       window.removeEventListener("bag:updated", refresh as EventListener);
   }, [myId]);
 
-  // 计算
   const hasItems = cart.length > 0;
   const subtotal = useMemo(
     () => cart.reduce((acc, it) => acc + it.price * it.qty, 0),
@@ -280,7 +265,6 @@ export default function CheckoutPage() {
     hasItems && subtotal < DELIVERY_FREE_THRESHOLD ? DELIVERY_FLAT : 0;
   const total = hasItems ? subtotal + deliveryFee : 0;
 
-  // 交互
   const removeItem = (key: string) =>
     setCart((prev) => prev.filter((x) => x.key !== key));
   const inc = (key: string) =>
@@ -296,7 +280,6 @@ export default function CheckoutPage() {
       )
     );
 
-  // ✅ 仅选择配送方式（默认 standard）
   const [deliveryMethod, setDeliveryMethod] =
     useState<DeliveryMethod>("standard");
 
@@ -311,11 +294,12 @@ export default function CheckoutPage() {
         : "payment"
     );
   };
-  const doCheckout = () => router.push("/checkout/confirm");
   const gotoLogin = () =>
     router.push(
       `/auth/login?next=${encodeURIComponent("/checkout?step=address")}`
     );
+
+  const amountInMinorUnit = Math.round(total * 100);
 
   return (
     <main className="w-full px-4 sm:px-6 lg:px-8 2xl:px-12 py-6 md:py-8">
@@ -344,8 +328,8 @@ export default function CheckoutPage() {
                   {saved > 0 && (
                     <Row
                       label="You saved"
-                      value={fmtPrice(saved, currency)}            // 无负号
-                      valueClass="text-emerald-700 font-semibold"  // 绿色
+                      value={fmtPrice(saved, currency)}
+                      valueClass="text-emerald-700 font-semibold"
                     />
                   )}
                   {hasItems && (
@@ -387,7 +371,6 @@ export default function CheckoutPage() {
                 </div>
               )}
 
-              {/* ✅ 新版：仅选择配送方式（标准/加急） */}
               <DeliverySection
                 deliveryMethod={deliveryMethod}
                 setDeliveryMethod={setDeliveryMethod}
@@ -398,12 +381,22 @@ export default function CheckoutPage() {
           {step === "payment" && (
             <section className="rounded-xl border">
               <div className="border-b px-4 py-3 font-semibold">Payment</div>
-              <div className="p-4">/* your payment form here */</div>
+              <div className="p-4">
+                {/* 这里使用 StripePayment 的真实 props：amountInCents + currency */}
+                <StripePayment
+                  amountInCents={amountInMinorUnit}
+                  currency={currency}
+                />
+              </div>
             </section>
           )}
         </div>
 
-        <StepActionRail step={step} onNext={nextStep} onCheckout={doCheckout} gotoLogin={gotoLogin} />
+        <StepActionRail
+          step={step}
+          onNext={nextStep}
+          gotoLogin={gotoLogin}
+        />
       </div>
     </main>
   );

@@ -628,6 +628,10 @@ delivery 需要多少天才能抵达
 
 # ============================================================================
 
+部署到 Vercel（免费 https），再在该预览域名上测试 PaymentElement。
+
+或者用 ngrok 给本地 3000 端口开 https 隧道：
+
 # ============================================================================
 
 很好，然后我想修改 Delivery & Collection 这部分的内容，我希望取消掉 collection，只让用户选择 Standard delivery 或者 Express delivery
@@ -647,3 +651,6 @@ Express delivery 则有更快的速度抵达
 7. text size
 8. mobine end
 9. html email css
+   10，user 注册 协议
+
+生产环境里最好在服务器端根据商品 ID 重新计算总价
