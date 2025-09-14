@@ -4,11 +4,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import {
-  User as UserIcon,
-  Heart,
-  Search as SearchIcon,
-} from "lucide-react";
+import { User as UserIcon, Heart, Search as SearchIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -20,11 +16,68 @@ import {
 
 import CompactSearch from "@/components/search/CompactSearch";
 import SearchOverlay from "@/components/search/SearchOverlay";
-import BagButton from "./BagButton"; // ✅ 新增：背包按钮
+import BagButton from "./BagButton";
 
 type User = { id: string; email: string; name?: string | null };
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE!;
 
+/** ============ API 基址与智能回退 ============ */
+/** 环境可显式指定直连基址；未指定则使用相对路径交给 Next.js rewrites/路由处理 */
+const ENV_BASE = (process.env.NEXT_PUBLIC_API_BASE || "").trim();
+/** 运行时可回退的“当前基址” */
+const ABSOLUTE_RE = /^https?:\/\//i;
+
+function normalizeBase(b: string) {
+  if (!b) return "/api";
+  // 允许传 "/api"、"http://xxx"、"https://xxx"
+  return b.endsWith("/") ? b.slice(0, -1) : b;
+}
+
+const baseRef: { current: string } = {
+  current: normalizeBase(ENV_BASE || "/api"),
+};
+
+/** 统一拼 URL（避免重复斜杠） */
+function buildUrl(path: string, base = baseRef.current) {
+  const p = path.startsWith("/") ? path : `/${path}`;
+  return `${base}${p}`;
+}
+
+/** 智能 fetch：直连失败（网络错误）时自动回退到 /api 重试一次 */
+async function safeFetch(
+  path: string,
+  init?: RequestInit & { retryOnNetworkError?: boolean }
+) {
+  const retryOnNetworkError = init?.retryOnNetworkError ?? true;
+
+  // 第一次按当前 base 请求
+  try {
+    const res = await fetch(buildUrl(path), init);
+    return res;
+  } catch (err: any) {
+    const isNetworkError =
+      err && (err.name === "TypeError" || err.message?.includes("NetworkError"));
+
+    // 仅当当前是“绝对地址”且允许回退时尝试一次回退
+    if (
+      retryOnNetworkError &&
+      ABSOLUTE_RE.test(baseRef.current) &&
+      isNetworkError
+    ) {
+      // 回退到 /api 并重试一次
+      baseRef.current = "/api";
+      try {
+        const res2 = await fetch(buildUrl(path, "/api"), init);
+        return res2;
+      } catch {
+        // 若回退仍失败，则把原错误抛出（但下面会被调用方吞掉）
+        throw err;
+      }
+    }
+    throw err;
+  }
+}
+
+/** ============ 其它工具 ============ */
 function hasSessionCookie() {
   return (
     typeof document !== "undefined" &&
@@ -36,10 +89,10 @@ function displayName(u: User) {
   return u.email.split("@")[0];
 }
 
-// 统一尺寸（按钮与图标）
-const ICON_BTN = "!h-12 !w-12 md:!h-14 md:!w-14"; // 48/56 点击区域
-const ICON_SIZE = "!h-6 !w-6 md:!h-6 md:!w-6";    // 24/24 图标
+const ICON_BTN = "!h-12 !w-12 md:!h-14 md:!w-14";
+const ICON_SIZE = "!h-6 !w-6 md:!h-6 md:!w-6";
 
+/** ============ 组件 ============ */
 export default function Navbar() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -56,22 +109,34 @@ export default function Navbar() {
       setLoading(false);
       return;
     }
-    let lastErr: any = null;
+
+    let lastErr: unknown = null;
     for (let i = 0; i <= retries; i++) {
       try {
-        const r = await fetch(`${API_BASE}/auth/me`, { credentials: "include" });
+        const r = await safeFetch("/auth/me", {
+          credentials: "include",
+          cache: "no-store",
+        });
         if (r.ok) {
-          const u = (await r.json()) as User;
-          setUser(u);
+          // 204 也可能是“本地兜底”，直接视为未登录
+          if (r.status === 204) {
+            setUser(null);
+          } else {
+            const u = (await r.json()) as User;
+            setUser(u);
+          }
           setLoading(false);
           return;
         }
       } catch (e) {
-        lastErr = e;
+        lastErr = e; // 吞掉，让控制台更清净
       }
       if (i < retries) await new Promise((r) => setTimeout(r, i === 0 ? 0 : 100 * i));
     }
-    if (lastErr) console.log("[Navbar] fetchMe:failed lastErr =", lastErr);
+    // 如需调试可打开：
+    // if (process.env.NODE_ENV !== "production" && lastErr) {
+    //   console.warn("[Navbar] fetchMe failed:", lastErr, "base =", baseRef.current);
+    // }
     setUser(null);
     setLoading(false);
   };
@@ -83,7 +148,9 @@ export default function Navbar() {
 
     const onAuthChanged = () => fetchMe({ force: true, retries: 3 });
     const onFocus = () => fetchMe({ force: false });
-    const onVisibility = () => { if (!document.hidden) fetchMe({ force: false }); };
+    const onVisibility = () => {
+      if (!document.hidden) fetchMe({ force: false });
+    };
 
     window.addEventListener("sp-auth-changed", onAuthChanged);
     window.addEventListener("focus", onFocus);
@@ -98,8 +165,12 @@ export default function Navbar() {
   useEffect(() => {
     if (!didInit.current) return;
     if (hasSessionCookie()) fetchMe({ force: true, retries: 2 });
-    else { setUser(null); setLoading(false); }
-  }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+    else {
+      setUser(null);
+      setLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
   // ⌘K / Ctrl+K 打开搜索
   useEffect(() => {
@@ -116,9 +187,13 @@ export default function Navbar() {
 
   const logout = async () => {
     try {
-      await fetch(`${API_BASE}/auth/logout`, { method: "POST", credentials: "include" });
-    } catch {}
-    finally {
+      await safeFetch("/auth/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch {
+      // 忽略网络错误
+    } finally {
       setUser(null);
       window.dispatchEvent(new Event("sp-auth-changed"));
       window.location.href = "/auth/login";
@@ -128,7 +203,9 @@ export default function Navbar() {
   return (
     <nav className="w-full flex items-center h-16 md:h-20 px-4 md:px-8 bg-white border-b border-neutral-200 sticky top-0 z-50">
       {/* 左：Logo */}
-      <Link href="/" className="text-xl font-bold whitespace-nowrap">SocialPlatform</Link>
+      <Link href="/" className="text-xl font-bold whitespace-nowrap">
+        SocialPlatform
+      </Link>
 
       {/* 右侧整体（搜索 + 图标）推到右边 */}
       <div className="ml-auto flex items-center gap-1 md:gap-2">
@@ -186,9 +263,13 @@ export default function Navbar() {
             <DropdownMenuContent align="end">
               <DropdownMenuItem disabled>Signed in as {displayName(user)}</DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem asChild><Link href="/profile">个人资料</Link></DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/profile">个人资料</Link>
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={logout} className="text-red-600">退出登录</DropdownMenuItem>
+              <DropdownMenuItem onClick={logout} className="text-red-600">
+                退出登录
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         ) : (
