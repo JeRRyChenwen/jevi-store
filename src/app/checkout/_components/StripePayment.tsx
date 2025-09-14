@@ -77,7 +77,7 @@ function CheckoutForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="max-w-[520px] space-y-4">
+    <form onSubmit={handleSubmit} className="w-full max-w-[680px] space-y-4">
       <PaymentElement options={{ layout: "tabs" }} />
       {errorMsg && (
         <div className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-600">

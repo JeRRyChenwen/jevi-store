@@ -7,7 +7,10 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import CartList from "@/components/cart/CartList";
 import type { CartItem as CartListItem } from "@/components/cart/CartList";
+
+// 支付组件
 import StripePayment from "@/app/checkout/_components/StripePayment";
+import BraintreeDropIn from "@/app/checkout/_components/BraintreeDropIn";
 
 type CartItem = CartListItem;
 
@@ -161,7 +164,7 @@ function StepActionRail({
   onNext: () => void;
   gotoLogin: () => void;
 }) {
-  // Payment 步不显示按钮，避免与 StripePayment 的提交重复
+  // Payment 步不显示按钮，避免和支付按钮冲突
   if (step === "payment") return null;
 
   return (
@@ -210,6 +213,10 @@ export default function CheckoutPage() {
     p.set("step", next);
     router.replace(`${pathname}?${p.toString()}`, { scroll: false });
   };
+
+  // 支付方式选择：Stripe 卡 / Braintree(PayPal)
+  type PayProvider = "stripe" | "braintree";
+  const [payProvider, setPayProvider] = useState<PayProvider>("stripe");
 
   useEffect(() => {
     try {
@@ -318,13 +325,22 @@ export default function CheckoutPage() {
               <div className="border-b px-4 py-3 font-semibold">Your Bag</div>
 
               <div className="p-4">
-                <CartList cart={cart} onInc={inc} onDec={dec} onRemove={removeItem} />
+                <CartList
+                  cart={cart}
+                  onInc={inc}
+                  onDec={dec}
+                  onRemove={removeItem}
+                />
               </div>
 
               <div className="border-t p-4">
                 <div className="mb-2 text-sm font-semibold">Order Summary</div>
                 <div className="space-y-2 text-sm">
-                  <Row label="Subtotal" value={fmtPrice(subtotal, currency)} strongRight />
+                  <Row
+                    label="Subtotal"
+                    value={fmtPrice(subtotal, currency)}
+                    strongRight
+                  />
                   {saved > 0 && (
                     <Row
                       label="You saved"
@@ -348,8 +364,16 @@ export default function CheckoutPage() {
                     />
                   )}
                   <div className="pt-1">
-                    <Row label="Total" value={fmtPrice(total, currency)} strongLeft strongRight bigRight />
-                    <div className="mt-1 text-xs text-neutral-500">Including GST</div>
+                    <Row
+                      label="Total"
+                      value={fmtPrice(total, currency)}
+                      strongLeft
+                      strongRight
+                      bigRight
+                    />
+                    <div className="mt-1 text-xs text-neutral-500">
+                      Including GST
+                    </div>
                   </div>
                 </div>
               </div>
@@ -381,22 +405,69 @@ export default function CheckoutPage() {
           {step === "payment" && (
             <section className="rounded-xl border">
               <div className="border-b px-4 py-3 font-semibold">Payment</div>
-              <div className="p-4">
-                {/* 这里使用 StripePayment 的真实 props：amountInCents + currency */}
-                <StripePayment
-                  amountInCents={amountInMinorUnit}
-                  currency={currency}
-                />
+              <div className="p-4 space-y-4">
+                {/* 支付方式切换 */}
+                <div className="inline-flex rounded-full border p-1 text-sm">
+                  <button
+                    className={[
+                      "rounded-full px-4 py-2",
+                      payProvider === "stripe"
+                        ? "bg-black text-white"
+                        : "text-neutral-700",
+                    ].join(" ")}
+                    onClick={() => setPayProvider("stripe")}
+                    type="button"
+                  >
+                    Card (Stripe)
+                  </button>
+                  <button
+                    className={[
+                      "rounded-full px-4 py-2",
+                      payProvider === "braintree"
+                        ? "bg-black text-white"
+                        : "text-neutral-700",
+                    ].join(" ")}
+                    onClick={() => setPayProvider("braintree")}
+                    type="button"
+                  >
+                    PayPal (Braintree)
+                  </button>
+                </div>
+
+                {/* 金额为 0 的友好提示 */}
+                {total <= 0 && (
+                  <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                    Your total is $0. Add items to proceed with payment.
+                  </div>
+                )}
+
+                {/* 根据选择渲染对应支付组件 */}
+                {total > 0 && (
+                  <>
+                    {payProvider === "stripe" ? (
+                      <StripePayment
+                        key={`st-${amountInMinorUnit}-${currency}-${payProvider}`}
+                        amountInCents={amountInMinorUnit}
+                        currency={currency}
+                        onSucceeded={() => router.push("/checkout/confirm")}
+                      />
+                    ) : (
+                      <BraintreeDropIn
+                        key={`bt-${amountInMinorUnit}-${currency}-${payProvider}`}
+                        amount={Number(total.toFixed(2))}
+                        currency={currency}
+                        enableCard={false} // 只开 PayPal；想开卡改成 true
+                        onSucceeded={() => router.push("/checkout/confirm")}
+                      />
+                    )}
+                  </>
+                )}
               </div>
             </section>
           )}
         </div>
 
-        <StepActionRail
-          step={step}
-          onNext={nextStep}
-          gotoLogin={gotoLogin}
-        />
+        <StepActionRail step={step} onNext={nextStep} gotoLogin={gotoLogin} />
       </div>
     </main>
   );
@@ -419,8 +490,20 @@ function Row({
 }) {
   return (
     <div className="flex items-center justify-between">
-      <div className={[strongLeft ? "font-semibold" : "text-neutral-600"].join(" ")}>{label}</div>
-      <div className={[strongRight ? "font-semibold" : "", bigRight ? "text-lg" : "text-base", valueClass || ""].join(" ")}>
+      <div
+        className={[strongLeft ? "font-semibold" : "text-neutral-600"].join(
+          " "
+        )}
+      >
+        {label}
+      </div>
+      <div
+        className={[
+          strongRight ? "font-semibold" : "",
+          bigRight ? "text-lg" : "text-base",
+          valueClass || "",
+        ].join(" ")}
+      >
         {value}
       </div>
     </div>
