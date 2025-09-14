@@ -632,6 +632,14 @@ delivery 需要多少天才能抵达
 
 或者用 ngrok 给本地 3000 端口开 https 隧道：
 
+用户付款后如何获得用户的邮箱，并发 confirmation email: 1.访客结账时显式收集
+在收货地址 / 联系方式表单里有 “Email（必填）” 一栏；提交订单就带上了。
+
+2.来自支付方式/钱包
+Apple Pay / Google Pay / PayPal / Stripe Link 等会把买家的“账单邮箱”回传给商家（取决于集成方式），商家用它发收据。
+
+目前是根据我在 strapi 中定位的是 USD，就是用 USD 交易，用 AUD 就是用 AUD 交易，要不要动态改变我的 currency 呢，或者说让币种随“地址国家/地区”变化，通常做法是：等用户在 Address 步骤选择了国家，再把币种映射出来传给支付：生产中建议用 Stripe 的 Products/Prices 按币种定价，或接入稳定的汇率源；不要在请求里“临时乘一个写死的汇率”。
+
 # ============================================================================
 
 很好，然后我想修改 Delivery & Collection 这部分的内容，我希望取消掉 collection，只让用户选择 Standard delivery 或者 Express delivery
