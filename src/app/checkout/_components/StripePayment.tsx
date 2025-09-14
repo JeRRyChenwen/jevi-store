@@ -1,7 +1,7 @@
 // src/app/checkout/_components/StripePayment.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import {
   Elements,
@@ -25,11 +25,8 @@ type StripePaymentProps = {
   amountInCents: number;
   /** 货币代码（如 'USD'） */
   currency: string;
-  /** 可选：下单商品，传给后端用于 metadata（后端也可忽略） */
   cart?: MinimalCartItem[];
-  /** 可选：配送方式，传给后端用于 metadata（后端也可忽略） */
   delivery?: DeliveryMethod;
-  /** 可选：在当前页直接支付成功时回调（无需跳转） */
   onSucceeded?: (paymentIntentId?: string) => void;
 };
 
@@ -55,10 +52,8 @@ function CheckoutForm({
 
     const { error, paymentIntent } = await stripe.confirmPayment({
       elements,
-      // 如果需要 3DS，会自动处理；能在本页完成就不跳转
       redirect: "if_required",
       confirmParams: {
-        // 若走到重定向流程，回到确认页
         return_url: `${window.location.origin}/checkout/confirm`,
       },
     });
@@ -69,7 +64,6 @@ function CheckoutForm({
       return;
     }
 
-    // 在本页即可拿到成功态
     if (paymentIntent?.status === "succeeded") {
       onSucceeded?.(paymentIntent.id);
     }
@@ -107,23 +101,36 @@ export default function StripePayment({
   delivery,
   onSucceeded,
 }: StripePaymentProps) {
-  const [clientSecret, setClientSecret] = useState<string>();
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // 🔧 先无条件调用所有 hooks（包括 useMemo）
+  const options = useMemo(
+    () =>
+      clientSecret
+        ? ({
+            clientSecret,
+            appearance: { theme: "stripe" as const },
+          } as const)
+        : null,
+    [clientSecret]
+  );
+
   useEffect(() => {
-    // 金额非法则不创建意图
     if (!amountInCents || amountInCents <= 0) {
       setError("Amount must be greater than 0.");
+      setClientSecret(null);
       return;
     }
     setError(null);
 
-    const create = async () => {
+    let aborted = false;
+
+    (async () => {
       try {
         const res = await fetch("/api/payments/create-intent", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          // 后端如果只读 amount/currency，额外字段会被忽略；若已实现，可用于 metadata
           body: JSON.stringify({
             amount: amountInCents,
             currency,
@@ -139,13 +146,15 @@ export default function StripePayment({
         if (!data?.clientSecret) {
           throw new Error("No clientSecret in response");
         }
-        setClientSecret(data.clientSecret);
+        if (!aborted) setClientSecret(data.clientSecret);
       } catch (e: any) {
-        setError(e?.message || "Failed to prepare payment");
+        if (!aborted) setError(e?.message || "Failed to prepare payment");
       }
-    };
+    })();
 
-    create();
+    return () => {
+      aborted = true;
+    };
   }, [amountInCents, currency, delivery, cart]);
 
   if (!pk) {
@@ -165,17 +174,15 @@ export default function StripePayment({
     );
   }
 
-  if (!clientSecret) {
+  if (!options) {
     return <div className="text-sm text-neutral-500">Preparing payment…</div>;
   }
 
   return (
     <Elements
+      key={clientSecret!} // clientSecret 变化时重挂载 Elements
       stripe={stripePromise}
-      options={{
-        clientSecret,
-        appearance: { theme: "stripe" },
-      }}
+      options={options}
     >
       <CheckoutForm onSucceeded={onSucceeded} />
     </Elements>
