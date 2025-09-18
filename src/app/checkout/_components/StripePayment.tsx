@@ -23,7 +23,7 @@ export type MinimalCartItem = {
 type StripePaymentProps = {
   /** 金额（最小货币单位，例如 USD 的 cents） */
   amountInCents: number;
-  /** 货币代码（如 'USD'） */
+  /** 货币代码（如 'USD' / 'AUD'） */
   currency: string;
   cart?: MinimalCartItem[];
   delivery?: DeliveryMethod;
@@ -72,7 +72,21 @@ function CheckoutForm({
 
   return (
     <form onSubmit={handleSubmit} className="w-full max-w-[680px] space-y-4">
-      <PaymentElement options={{ layout: "tabs" }} />
+      <PaymentElement
+        options={{
+          layout: "tabs",
+          // ✅ 显式禁用所有钱包与 Link，避免相关 console warning
+          wallets: {
+            applePay: "never",
+            googlePay: "never",
+            link: "never",
+          },
+          // ✅ 不让 Payment Element 去渲染/收集 email（避免触发 Link 提示）
+          fields: {
+            billingDetails: { email: "never" },
+          },
+        }}
+      />
       {errorMsg && (
         <div className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-600">
           {errorMsg}
@@ -104,7 +118,7 @@ export default function StripePayment({
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // 🔧 先无条件调用所有 hooks（包括 useMemo）
+  // 传入 Elements 的 options（含 clientSecret）
   const options = useMemo(
     () =>
       clientSecret
@@ -128,6 +142,7 @@ export default function StripePayment({
 
     (async () => {
       try {
+        // 每次进入支付步骤都重新创建 PaymentIntent，确保使用“仅卡片”的新配置
         const res = await fetch("/api/payments/create-intent", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
