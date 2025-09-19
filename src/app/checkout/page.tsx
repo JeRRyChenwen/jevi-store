@@ -12,9 +12,14 @@ import type { CartItem as CartListItem } from "@/components/cart/CartList";
 import StripePayment from "@/app/checkout/_components/StripePayment";
 import BraintreeDropIn from "@/app/checkout/_components/BraintreeDropIn";
 
+// ✅ 新增：多币种结算工具
+import { selectCurrencyAndTotals } from "@/lib/cartPricing";
+import { effectiveMinor, type PriceRec, type Currency } from "@/lib/pricing";
+
 type CartItem = CartListItem;
 
 const LS_KEY = "bag:v1";
+// 下面两个常量仍按“选中币种”的主货币单位（元/小数）来理解
 const DELIVERY_FREE_THRESHOLD = 100;
 const DELIVERY_FLAT = 10;
 
@@ -190,6 +195,44 @@ function StepActionRail({
   );
 }
 
+/* ---------------- Helpers: 把购物车项转成多币种计价输入 ---------------- */
+// 允许两种形态的购物车项：
+// 1) 旧：{ price(元), basePrice(元), currency }
+// 2) 新：{ prices: PriceRec[] }
+function itemToPriceRecs(it: any): PriceRec[] {
+  if (Array.isArray(it?.prices) && it.prices.length) {
+    // 来自 Strapi 组件：确保字段是整数“分”
+    return it.prices
+      .map((p: any) => {
+        const currency = String(p?.currency || "").toUpperCase() as Currency;
+        const price = Math.max(0, Math.round(Number(p?.price) || 0));
+        const rec: PriceRec = { currency, price };
+        if (p?.discount_percent_off != null) rec.discount_percent_off = Number(p.discount_percent_off);
+        if (p?.sale_starts_at) rec.sale_starts_at = String(p.sale_starts_at);
+        if (p?.sale_ends_at) rec.sale_ends_at = String(p.sale_ends_at);
+        if (p?.sale_price_minor != null) rec.sale_price_minor = Math.max(0, Number(p.sale_price_minor));
+        return rec;
+      })
+      .filter((r: PriceRec) => Number.isInteger(r.price));
+  }
+
+  // 旧：从 price/basePrice/currency 推出一个 PriceRec
+  const currency = String(it?.currency || "AUD").toUpperCase() as Currency;
+  const priceMajor = Number(it?.price) || 0;
+  const baseMajor = Number(it?.basePrice ?? it?.price ?? 0);
+
+  const priceMinor = Math.max(0, Math.round(priceMajor * 100));
+  const baseMinor = Math.max(0, Math.round(baseMajor * 100));
+  const rec: PriceRec = { currency, price: baseMinor || priceMinor };
+
+  // 如果旧项里有折扣（base > price），反推出折扣
+  if (baseMinor > priceMinor && baseMinor > 0) {
+    const off = Math.round((1 - priceMinor / baseMinor) * 100);
+    rec.discount_percent_off = Math.max(0, off);
+  }
+  return [rec];
+}
+
 export default function CheckoutPage() {
   const router = useRouter();
   const pathname = usePathname();
@@ -199,7 +242,6 @@ export default function CheckoutPage() {
   const [loaded, setLoaded] = useState(false);
 
   const [cart, setCart] = useState<CartItem[]>([]);
-  const currency = cart[0]?.currency || "USD";
 
   const initialStepFromURL = (() => {
     const s = searchParams.get("step");
@@ -216,7 +258,7 @@ export default function CheckoutPage() {
 
   // 支付方式选择：Stripe 卡 / Braintree(PayPal)
   type PayProvider = "stripe" | "braintree";
-  const [payProvider, setPayProvider] = useState<PayProvider>("stripe");
+  const [payProvider, setPayProvider] = useState<PayProvider>("braintree"); // 你现在主要用 PayPal
 
   useEffect(() => {
     try {
@@ -254,24 +296,67 @@ export default function CheckoutPage() {
       window.removeEventListener("bag:updated", refresh as EventListener);
   }, [myId]);
 
+  // 购物车是否有商品
   const hasItems = cart.length > 0;
-  const subtotal = useMemo(
-    () => cart.reduce((acc, it) => acc + it.price * it.qty, 0),
-    [cart]
-  );
-  const saved = useMemo(
-    () =>
-      cart.reduce((acc, it) => {
-        const base = typeof it.basePrice === "number" ? it.basePrice : it.price;
-        const diff = base - it.price;
-        return acc + (diff > 0 ? diff * it.qty : 0);
-      }, 0),
-    [cart]
-  );
-  const deliveryFee =
-    hasItems && subtotal < DELIVERY_FREE_THRESHOLD ? DELIVERY_FLAT : 0;
-  const total = hasItems ? subtotal + deliveryFee : 0;
 
+  // ===== 统一用“多币种”计算小计、总计（items only）=====
+  const userCurrencyParam = searchParams.get("cc") || undefined; // 可选：?cc=USD 手动指定币种
+  const pricingInput = useMemo(
+    () =>
+      cart.map((it: any) => ({
+        qty: Number(it?.qty) || 1,
+        prices: itemToPriceRecs(it),
+      })),
+    [cart]
+  );
+
+  const itemsTotals = useMemo(() => {
+    if (!pricingInput.length) {
+      return { currency: ("AUD" as Currency), itemsMinor: 0, itemsMajor: 0 };
+    }
+    const { currency, totalMinor, totalMajor } = selectCurrencyAndTotals(
+      pricingInput,
+      userCurrencyParam, // 允许 URL 指定币种
+      undefined,
+      "AUD"
+    );
+    return { currency, itemsMinor: totalMinor, itemsMajor: totalMajor };
+  }, [pricingInput, userCurrencyParam]);
+
+  const currency = itemsTotals.currency as string;
+
+  // 计算“你节省了”：
+  // 对于新模型：按（base - effective）求和；旧模型：按（basePrice - price）求和（同币）
+  const savedMajor = useMemo(() => {
+    let savedMinor = 0;
+    for (const it of cart as any[]) {
+      const qty = Number(it?.qty) || 1;
+      const recs = itemToPriceRecs(it);
+      const rec = recs.find((r) => r.currency === (currency as Currency));
+      if (rec) {
+        const base = rec.price;
+        const eff = effectiveMinor(rec);
+        if (eff < base) savedMinor += (base - eff) * qty;
+        continue;
+      }
+      // 旧
+      const baseMajor = Number(it?.basePrice ?? it?.price ?? 0);
+      const priceMajor = Number(it?.price ?? 0);
+      if (baseMajor > priceMajor) savedMinor += Math.round((baseMajor - priceMajor) * 100) * qty;
+    }
+    return savedMinor / 100;
+  }, [cart, currency]);
+
+  // 运费（跟随选定币种；阈值与费用你暂时定为固定数字）
+  const deliveryFeeMajor =
+    hasItems && itemsTotals.itemsMajor < DELIVERY_FREE_THRESHOLD ? DELIVERY_FLAT : 0;
+  const deliveryFeeMinor = Math.round(deliveryFeeMajor * 100);
+
+  // 总计 = 商品小计 + 运费
+  const totalMinor = itemsTotals.itemsMinor + deliveryFeeMinor;
+  const totalMajor = itemsTotals.itemsMajor + deliveryFeeMajor;
+
+  // ———— 本地改动：删改购物车项数量 ————
   const removeItem = (key: string) =>
     setCart((prev) => prev.filter((x) => x.key !== key));
   const inc = (key: string) =>
@@ -306,7 +391,9 @@ export default function CheckoutPage() {
       `/auth/login?next=${encodeURIComponent("/checkout?step=address")}`
     );
 
-  const amountInMinorUnit = Math.round(total * 100);
+  // Stripe 需要“分”（整数）；Braintree 需要“元”（小数）
+  const amountInMinorUnit = Math.max(0, Math.round(totalMinor));
+  const amountInMajorUnit = Math.max(0, Number(totalMajor.toFixed(2)));
 
   return (
     <main className="w-full px-4 sm:px-6 lg:px-8 2xl:px-12 py-6 md:py-8">
@@ -338,13 +425,13 @@ export default function CheckoutPage() {
                 <div className="space-y-2 text-sm">
                   <Row
                     label="Subtotal"
-                    value={fmtPrice(subtotal, currency)}
+                    value={fmtPrice(itemsTotals.itemsMajor, currency)}
                     strongRight
                   />
-                  {saved > 0 && (
+                  {savedMajor > 0 && (
                     <Row
                       label="You saved"
-                      value={fmtPrice(saved, currency)}
+                      value={fmtPrice(savedMajor, currency)}
                       valueClass="text-emerald-700 font-semibold"
                     />
                   )}
@@ -352,12 +439,12 @@ export default function CheckoutPage() {
                     <Row
                       label="Delivery fee"
                       value={
-                        subtotal >= DELIVERY_FREE_THRESHOLD
+                        itemsTotals.itemsMajor >= DELIVERY_FREE_THRESHOLD
                           ? "FREE for over $100"
                           : fmtPrice(DELIVERY_FLAT, currency)
                       }
                       valueClass={
-                        subtotal >= DELIVERY_FREE_THRESHOLD
+                        itemsTotals.itemsMajor >= DELIVERY_FREE_THRESHOLD
                           ? "text-emerald-700 font-semibold"
                           : undefined
                       }
@@ -366,7 +453,7 @@ export default function CheckoutPage() {
                   <div className="pt-1">
                     <Row
                       label="Total"
-                      value={fmtPrice(total, currency)}
+                      value={fmtPrice(totalMajor, currency)}
                       strongLeft
                       strongRight
                       bigRight
@@ -384,7 +471,7 @@ export default function CheckoutPage() {
 
           {step === "delivery" && (
             <>
-              {hasItems && subtotal >= DELIVERY_FREE_THRESHOLD && (
+              {hasItems && itemsTotals.itemsMajor >= DELIVERY_FREE_THRESHOLD && (
                 <div className="rounded-xl border px-4 py-3 text-sm">
                   <div className="mb-2 font-medium">
                     Congratulations! You have reached free shipping
@@ -435,28 +522,28 @@ export default function CheckoutPage() {
                 </div>
 
                 {/* 金额为 0 的友好提示 */}
-                {total <= 0 && (
+                {totalMajor <= 0 && (
                   <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700">
                     Your total is $0. Add items to proceed with payment.
                   </div>
                 )}
 
                 {/* 根据选择渲染对应支付组件 */}
-                {total > 0 && (
+                {totalMajor > 0 && (
                   <>
                     {payProvider === "stripe" ? (
                       <StripePayment
                         key={`st-${amountInMinorUnit}-${currency}-${payProvider}`}
                         amountInCents={amountInMinorUnit}
-                        currency={currency}
+                        currency={currency.toLowerCase()}
                         onSucceeded={() => router.push("/checkout/confirm")}
                       />
                     ) : (
                       <BraintreeDropIn
-                        key={`bt-${amountInMinorUnit}-${currency}-${payProvider}`}
-                        amount={Number(total.toFixed(2))}
-                        currency={currency}
-                        enableCard={false} // 只开 PayPal；想开卡改成 true
+                        key={`bt-${amountInMajorUnit}-${currency}-${payProvider}`}
+                        amount={amountInMajorUnit}
+                        currency={currency.toUpperCase()}
+                        enableCard={false} // 只开 PayPal；如要开卡，改为 true
                         onSucceeded={() => router.push("/checkout/confirm")}
                       />
                     )}

@@ -18,6 +18,14 @@ type FetchOpts = RequestInit & {
   noCache?: boolean;
 };
 
+// ------------------- 与“多币种价格组件”相关的小工具 -------------------
+/** 在需要的产品查询上拼上 prices 组件的 populate。安全幂等（不会重复拼）。 */
+export const PRODUCT_PRICE_POPULATE = `&populate[prices]=*`;
+
+export function withPricePopulate(qs: string): string {
+  return qs.includes("populate[prices]") ? qs : `${qs}${PRODUCT_PRICE_POPULATE}`;
+}
+
 // -------- 核心请求 --------
 export async function api(path: string, opts: FetchOpts = {}) {
   const { noCache, ...rest } = opts;
@@ -175,18 +183,27 @@ export function __invalidateTopLevelCategoryCache() {
   __topLevelDocIdMapCache = null;
 }
 
+/**
+ * 旧的分类查询工具，默认带上 prices 组件，避免忘记 populate。
+ * 如需进一步的图片/变体字段，可在调用处追加其它 populate 段。
+ */
 export async function queryProductsByCategorySlug(
   slug: string,
   page = 1,
   pageSize = 40
 ) {
-  const qs =
+  let qs =
     `/api/products` +
-    `?populate=cover,variants,category` +
-    `&filters[category][slug][$eq]=${encodeURIComponent(slug)}` +
+    `?filters[category][slug][$eq]=${encodeURIComponent(slug)}` +
     `&pagination[page]=${page}&pagination[pageSize]=${pageSize}` +
     `&sort=updatedAt:desc` +
     `&publicationState=live`;
+
+  // ✅ 默认补上 prices
+  qs = withPricePopulate(qs);
+
+  // 你也可以在这里顺手补上封面/变体（按需）：
+  // qs += `&populate[cover]=true&populate[variants]=true`;
 
   return api(qs, { noCache: false });
 }

@@ -16,8 +16,19 @@ import {
   SelectGroup,
   SelectItem,
 } from "@/components/ui/select";
-// ✅ 统一颜色工具（与详情页共用）
+
+// 颜色工具
 import { normalizeColorName, colorNameToCss } from "@/lib/colors";
+
+// ✅ pricing 工具：用于货币与促销计算
+import {
+  type PriceRec,
+  pickCurrency,
+  effectiveMinor,
+  minorToMajor,
+  // 如果以后切换 price 为主货币，可用这个把主货币转成最小单位
+  // majorToMinor,
+} from "@/lib/pricing";
 
 type Props = {
   slug: string;
@@ -33,10 +44,15 @@ type ProductLite = {
   key: string;
   slug?: string; // 用于详情页路由
   name: string;
+
+  /** ✅ 来自 Strapi Price 组件（已标准化为最小货币单位） */
+  prices: PriceRec[];
+
+  /** 旧字段（保底用） */
   price: number | null;
   currency?: string | null;
 
-  /** 折扣与时间窗/Popularity */
+  /** 折扣与时间窗（旧字段，暂保留） */
   discountPercent?: number;
   saleStartsAt?: string | null;
   saleEndsAt?: string | null;
@@ -84,6 +100,8 @@ function parseCSV(sp: URLSearchParams, key: string): string[] {
 function getImagesByColorFromProduct(attrs: any): Record<string, string[]> {
   const arr: any[] = Array.isArray(attrs?.color_galleries)
     ? attrs.color_galleries
+    : Array.isArray(attrs?.color_galleries?.data)
+    ? attrs.color_galleries.data
     : [];
   const out: Record<string, string[]> = {};
   for (const cg of arr) {
@@ -146,8 +164,8 @@ function sortSizes(arr: string[]) {
     const oa = SIZE_ORDER[aa];
     const ob = SIZE_ORDER[bb];
     if (oa != null && ob != null) return oa - ob;
-    const na = parseFloat(aa);
-    const nb = parseFloat(bb);
+    const na = parseFloat(String(aa));
+    const nb = parseFloat(String(bb));
     if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
     return aa.localeCompare(bb);
   });
@@ -168,12 +186,42 @@ function getVariantSizes(attrs: any): string[] {
   return sortSizes(Array.from(set));
 }
 
-// 价格/折扣/Popularity
-function formatPriceVal(
-  n: number | null,
-  currency?: string | null,
-  locale?: string
-) {
+/** ✅ 从 Strapi attributes 解析 Price 组件数组（与你当前的组件字段匹配） */
+function getPrices(attrs: any): PriceRec[] {
+  const arr: any[] = Array.isArray(attrs?.prices)
+    ? attrs.prices
+    : Array.isArray(attrs?.prices?.data)
+    ? attrs.prices.data
+    : [];
+
+  const out: PriceRec[] = [];
+  for (const p of arr) {
+    const a = p?.attributes ?? p ?? {};
+    const currency = String(a.currency ?? "").toUpperCase();
+    if (!currency) continue;
+
+    // 你现在在后台填写的是“最小货币单位”（500 => $5.00）
+    // 如果将来把 price 改为主货币（5 => $5.00），改成：
+    // const amount_minor = majorToMinor(Number(a.price), currency as any);
+    const amount_minor = Number(a.price);
+
+    if (!Number.isFinite(amount_minor)) continue;
+
+    out.push({
+      currency: currency as any,
+      amount_minor: Math.max(0, Math.round(amount_minor)),
+      // 你当前组件没有 sale_amount_minor，靠折扣 + 时间窗来算
+      discount_percent_off:
+        typeof a.discount_percent_off === "number" ? a.discount_percent_off : undefined,
+      sale_starts_at: a.sale_starts_at ?? undefined,
+      sale_ends_at: a.sale_ends_at ?? undefined,
+    });
+  }
+  return out;
+}
+
+/** 价格/折扣展示用（旧字段保底） */
+function formatPriceVal(n: number | null, currency?: string | null, locale?: string) {
   if (n == null) return "—";
   const cur = (currency || "AUD").toUpperCase();
   return new Intl.NumberFormat(locale, {
@@ -183,10 +231,13 @@ function formatPriceVal(
     maximumFractionDigits: 2,
   }).format(Number(n));
 }
+
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
 }
-function isSaleActive(p: ProductLite) {
+
+/** 旧字段促销窗口判断（保留兜底） */
+function isSaleActiveByLegacy(p: ProductLite) {
   const pct = p.discountPercent ?? 0;
   if (!pct || pct <= 0) return false;
   const now = Date.now();
@@ -196,21 +247,37 @@ function isSaleActive(p: ProductLite) {
   const notEnded = Number.isNaN(e) ? true : now <= e;
   return started && notEnded;
 }
-function salePrice(p: ProductLite) {
+function salePriceLegacy(p: ProductLite) {
   const base = p.price ?? 0;
   const pct = p.discountPercent ?? 0;
   return Math.max(0, base * (1 - pct / 100));
+}
+
+/** 判断某个 PriceRec 是否在促销时间窗内（且比基础价低） */
+function isPriceOnSale(rec?: PriceRec | null) {
+  if (!rec) return false;
+
+  // 用折扣百分比 + 时间窗来判断是否处于促销
+  const pct = typeof rec.discount_percent_off === "number" ? rec.discount_percent_off : 0;
+  if (pct <= 0) return false;
+
+  const now = Date.now();
+  const startOk = !rec.sale_starts_at || now >= Date.parse(rec.sale_starts_at);
+  const endOk = !rec.sale_ends_at || now <= Date.parse(rec.sale_ends_at);
+  return startOk && endOk;
 }
 
 function normalizeProduct(row: any): ProductLite {
   const attrs = row?.attributes ?? row ?? {};
   const name: string = attrs.title ?? attrs.name ?? attrs.slug ?? "Product";
 
-  // base_price_cents → 元
+  // base_price_cents → 元（保底用）
   const cents = Number(attrs.base_price_cents);
   const price = Number.isFinite(cents) ? Math.max(0, cents) / 100 : null;
-
   const currency: string | undefined = (attrs.currency ?? "AUD") as string;
+
+  // ✅ 新价格（来自 Price 组件）
+  const prices = getPrices(attrs);
 
   // 主图/颜色图片来自 product.color_galleries
   const variantsByColor = getImagesByColorFromProduct(attrs);
@@ -239,23 +306,22 @@ function normalizeProduct(row: any): ProductLite {
     `${name}-${Math.random().toString(36).slice(2)}`;
 
   const discountPercent: number | undefined =
-    typeof attrs.discount_percent_off === "number"
-      ? attrs.discount_percent_off
-      : undefined;
+    typeof attrs.discount_percent_off === "number" ? attrs.discount_percent_off : undefined;
 
   return {
     key,
     slug: attrs.slug,
     name,
-    price,
-    currency,
+    prices, // ✅ 新增
+    price, // 旧字段：兜底
+    currency, // 旧字段：兜底
     imageUrl,
     discountPercent,
     saleStartsAt: attrs.sale_starts_at ?? null,
     saleEndsAt: attrs.sale_ends_at ?? null,
     hotScore: typeof attrs.hot_score === "number" ? attrs.hot_score : null,
     colors,
-    sizes, // ✅
+    sizes,
     variantsByColor,
   };
 }
@@ -326,16 +392,6 @@ function ImageCarousel({ urls, alt }: { urls: string[]; alt: string }) {
 function ProductCard({ p, idx, start }: { p: ProductLite; idx: number; start: number }) {
   const [selectedColor, setSelectedColor] = useState<string | null>(p.colors?.[0] ?? null);
 
-  const onSale = isSaleActive(p);
-  const finalPrice = onSale ? salePrice(p) : p.price ?? 0;
-
-  // 折扣是否快结束（≤7天）
-  const endsSoon =
-    onSale &&
-    p.saleEndsAt &&
-    !Number.isNaN(Date.parse(p.saleEndsAt)) &&
-    Date.parse(p.saleEndsAt) - Date.now() <= 7 * 24 * 3600 * 1000;
-
   // 热度星级（0~5）
   let stars = p.hotScore ?? 0;
   if (stars > 5) stars = Math.round(clamp(stars, 0, 100) / 20);
@@ -355,6 +411,38 @@ function ProductCard({ p, idx, start }: { p: ProductLite; idx: number; start: nu
         })();
 
   const urls = (byColor && byColor.length ? byColor : anyColor) || (p.imageUrl ? [p.imageUrl] : []);
+
+  // ✅ 价格（优先 Price 组件；没有就回退旧字段）
+  const availableCurrencies = p.prices.map((r) => r.currency as any);
+  const currencyPicked = pickCurrency(availableCurrencies, { fallback: "AUD" });
+  const rec = p.prices.find((r) => r.currency === currencyPicked);
+
+  const hasSale = isPriceOnSale(rec);
+  const minorEff = rec ? effectiveMinor(rec) : undefined;
+  const minorBase = rec?.amount_minor;
+
+  let discountPct: number | null = null;
+  if (hasSale && typeof minorEff === "number" && typeof minorBase === "number" && minorBase > 0) {
+    discountPct = Math.round((1 - minorEff / minorBase) * 100);
+  }
+
+  const displayEff =
+    typeof minorEff === "number"
+      ? `${currencyPicked} ${minorToMajor(minorEff, currencyPicked)}`
+      : p.price != null
+      ? formatPriceVal(p.price, p.currency)
+      : "No price";
+
+  const displayBase =
+    typeof minorBase === "number"
+      ? `${currencyPicked} ${minorToMajor(minorBase, currencyPicked)}`
+      : p.price != null
+      ? formatPriceVal(p.price, p.currency)
+      : null;
+
+  // 旧字段保底的促销（如果没有 Price 组件）
+  const legacyOnSale = !rec && isSaleActiveByLegacy(p);
+  const legacySalePrice = legacyOnSale ? salePriceLegacy(p) : null;
 
   return (
     <article className="group overflow-hidden rounded-3xl border bg-card shadow-sm transition-shadow hover:shadow-md">
@@ -378,27 +466,33 @@ function ProductCard({ p, idx, start }: { p: ProductLite; idx: number; start: nu
           )}
         </h3>
 
-        {/* 2. 折扣文案 */}
-        {onSale && (
+        {/* 2. 折扣文案（使用 Price 组件） */}
+        {hasSale && discountPct != null && (
           <p className="mt-1 text-base font-semibold text-emerald-700 uppercase tracking-wide">
-            {p.discountPercent}% OFF {endsSoon ? "ENDS SOON" : ""}
+            {discountPct}% OFF
           </p>
         )}
 
-        {/* 3. 价格区 */}
+        {/* 3. 价格区（优先 Price 组件；无则回退旧字段逻辑） */}
         <div className="mt-2">
-          {onSale ? (
+          {hasSale && displayBase ? (
+            <div className="flex items-baseline gap-2">
+              <span className="text-base text-neutral-400 line-through">{displayBase}</span>
+              <span className="text-neutral-300">|</span>
+              <span className="text-base font-bold text-emerald-700">{displayEff}</span>
+            </div>
+          ) : legacyOnSale && legacySalePrice != null ? (
             <div className="flex items-baseline gap-2">
               <span className="text-base text-neutral-400 line-through">
                 {formatPriceVal(p.price, p.currency)}
               </span>
               <span className="text-neutral-300">|</span>
               <span className="text-base font-bold text-emerald-700">
-                {formatPriceVal(finalPrice, p.currency)}
+                {formatPriceVal(legacySalePrice, p.currency)}
               </span>
             </div>
           ) : (
-            <div className="text-base font-bold">{formatPriceVal(finalPrice, p.currency)}</div>
+            <div className="text-base font-bold">{displayEff}</div>
           )}
         </div>
 
@@ -416,13 +510,10 @@ function ProductCard({ p, idx, start }: { p: ProductLite; idx: number; start: nu
                   aria-pressed={active}
                   onClick={() => setSelectedColor(normalized)}
                   className={[
-                    // 更大的点击热区（24px+）
                     "relative inline-flex h-6 w-6 items-center justify-center rounded-full",
-                    // 选中 & hover 的边框效果
                     active
                       ? "ring-2 ring-neutral-900 ring-offset-2 ring-offset-white"
                       : "ring-1 ring-black/10 hover:ring-black/30",
-                    // 无障碍焦点可见
                     "transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30",
                   ].join(" ")}
                 >
@@ -439,7 +530,7 @@ function ProductCard({ p, idx, start }: { p: ProductLite; idx: number; start: nu
           </div>
         )}
 
-        {/* ✅ 5. 尺码（显示在颜色下方、星级上方） */}
+        {/* 5. 尺码（显示在颜色下方、星级上方） */}
         {p.sizes && p.sizes.length > 0 && (
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             {p.sizes.slice(0, 10).map((sz) => (
@@ -626,7 +717,7 @@ export default function CategoryGridClient({
             if (a.color && String(a.color).trim()) c.add(normalizeColorName(a.color));
           }
           setFacetMaterials(Array.from(m).sort((a, b) => a.localeCompare(b)));
-          setFacetSizes(sortSizes(Array.from(s))); // ✅ 用更合理的尺寸排序
+          setFacetSizes(sortSizes(Array.from(s)));
           setFacetColors(Array.from(c).sort((a, b) => a.localeCompare(b)));
         }
 
@@ -684,13 +775,11 @@ export default function CategoryGridClient({
         // 仅展示「被上架显示」的商品
         parts.push(`filters[is_showed][$eq]=true`);
 
-        // 价格（元→分）
+        // 价格（元→分）— 这仍旧基于旧字段做筛选（保留）
         const minCents = toCents(appliedMin);
         const maxCents = toCents(appliedMax);
-        if (typeof minCents === "number")
-          parts.push(`filters[base_price_cents][$gte]=${minCents}`);
-        if (typeof maxCents === "number")
-          parts.push(`filters[base_price_cents][$lte]=${maxCents}`);
+        if (typeof minCents === "number") parts.push(`filters[base_price_cents][$gte]=${minCents}`);
+        if (typeof maxCents === "number") parts.push(`filters[base_price_cents][$lte]=${maxCents}`);
 
         // product 级（gender）
         if (productGenderSupported && appliedGenders.length) {
@@ -700,25 +789,28 @@ export default function CategoryGridClient({
         }
 
         // variant 级（material / size / color）
-        if (variantFiltersSupported) {
-          const pushIN = (key: string, arr: string[]) => {
-            arr.forEach((v, i) =>
-              parts.push(`filters[variants][${key}][$in][${i}]=${encodeURIComponent(v)}`)
-            );
-          };
-          if (appliedMaterials.length) pushIN("material", appliedMaterials);
-          if (appliedSizes.length) pushIN("size", appliedSizes);
-          if (appliedColors.length) pushIN("color", appliedColors);
-        }
+        const pushIN = (key: string, arr: string[]) => {
+          arr.forEach((v, i) =>
+            parts.push(`filters[variants][${key}][$in][${i}]=${encodeURIComponent(v)}`)
+          );
+        };
+        if (appliedMaterials.length) pushIN("material", appliedMaterials);
+        if (appliedSizes.length) pushIN("size", appliedSizes);
+        if (appliedColors.length) pushIN("color", appliedColors);
 
-        // ✅ 关键：把 variants.size 一起取回
+        // ✅ 关键：把 prices 一起取回（字段名改为你实际存在的）
         const qs =
           `/api/products?${parts.join("&")}` +
           `&fields[0]=title&fields[1]=slug&fields[2]=base_price_cents&fields[3]=currency` +
           `&fields[4]=discount_percent_off&fields[5]=sale_starts_at&fields[6]=sale_ends_at&fields[7]=hot_score&fields[8]=priority` +
           `&populate[color_galleries][fields][0]=color` +
           `&populate[color_galleries][populate][images]=true` +
-          `&populate[variants][fields][0]=color&populate[variants][fields][1]=size` + // ← 新增 size
+          `&populate[variants][fields][0]=color&populate[variants][fields][1]=size` +
+          `&populate[prices][fields][0]=currency` +
+          `&populate[prices][fields][1]=price` +
+          `&populate[prices][fields][2]=discount_percent_off` +
+          `&populate[prices][fields][3]=sale_starts_at` +
+          `&populate[prices][fields][4]=sale_ends_at` +
           `&pagination[page]=${page}&pagination[pageSize]=${pageSize}` +
           `${sortQueryString}&publicationState=live`;
 
@@ -754,12 +846,11 @@ export default function CategoryGridClient({
     appliedMin,
     appliedMax,
     productGenderSupported,
-    appliedGenders.join(","), // 依赖 gender
-    variantFiltersSupported,
+    appliedGenders.join(","),
     appliedMaterials.join(","),
     appliedSizes.join(","),
     appliedColors.join(","),
-    sortQueryString, // 排序变化时重新拉取
+    sortQueryString,
   ]);
 
   const start = (page - 1) * pageSize;
@@ -830,10 +921,8 @@ export default function CategoryGridClient({
             </p>
           </div>
 
-        <div className="flex items-center gap-3">
-            <div className="text-sm md:text-base text-neutral-600 whitespace-nowrap">
-              {resultLabel}
-            </div>
+          <div className="flex items-center gap-3">
+            <div className="text-sm md:text-base text-neutral-600 whitespace-nowrap">{resultLabel}</div>
 
             {/* Sort */}
             <div className="hidden sm:flex">
@@ -1000,9 +1089,7 @@ export default function CategoryGridClient({
                     placeholder="Min"
                     value={draftMin ?? ""}
                     onChange={(e) =>
-                      setDraftMin(
-                        e.currentTarget.value === "" ? undefined : Math.max(0, Number(e.currentTarget.value))
-                      )
+                      setDraftMin(e.currentTarget.value === "" ? undefined : Math.max(0, Number(e.currentTarget.value)))
                     }
                   />
                 </div>
@@ -1015,9 +1102,7 @@ export default function CategoryGridClient({
                     placeholder="Max"
                     value={draftMax ?? ""}
                     onChange={(e) =>
-                      setDraftMax(
-                        e.currentTarget.value === "" ? undefined : Math.max(0, Number(e.currentTarget.value))
-                      )
+                      setDraftMax(e.currentTarget.value === "" ? undefined : Math.max(0, Number(e.currentTarget.value)))
                     }
                   />
                 </div>
