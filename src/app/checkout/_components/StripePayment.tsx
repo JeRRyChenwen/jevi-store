@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { loadStripe } from "@stripe/stripe-js";
+import { loadStripe, Stripe } from "@stripe/stripe-js";
 import {
   Elements,
   PaymentElement,
@@ -30,8 +30,12 @@ type StripePaymentProps = {
   onSucceeded?: (paymentIntentId?: string) => void;
 };
 
+// 全局开关（前端）
+const STRIPE_ON = process.env.NEXT_PUBLIC_ENABLE_STRIPE === "true";
 const pk = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || "";
-const stripePromise = pk ? loadStripe(pk) : Promise.resolve(null);
+const stripePromise: Promise<Stripe | null> = STRIPE_ON && pk
+  ? loadStripe(pk)
+  : Promise.resolve(null);
 
 function CheckoutForm({
   onSucceeded,
@@ -75,7 +79,7 @@ function CheckoutForm({
       <PaymentElement
         options={{
           layout: "tabs",
-          // ✅ 显式禁用所有钱包与 Link，避免相关 console warning
+          // ✅ 显式禁用钱包与 Link，避免相关 console warning
           wallets: {
             applePay: "never",
             googlePay: "never",
@@ -115,6 +119,9 @@ export default function StripePayment({
   delivery,
   onSucceeded,
 }: StripePaymentProps) {
+  // 🔕 若开关关闭，前端完全不渲染 Stripe（不加载 SDK、不请求后端）
+  if (!STRIPE_ON) return null;
+
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -142,17 +149,21 @@ export default function StripePayment({
 
     (async () => {
       try {
-        // 每次进入支付步骤都重新创建 PaymentIntent，确保使用“仅卡片”的新配置
         const res = await fetch("/api/payments/create-intent", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             amount: amountInCents,
-            currency,
+            currency: (currency || "usd").toLowerCase(), // 后端用小写
             cart,
             delivery,
           }),
         });
+
+        // 若后端被关（ENABLE_STRIPE=false），将返回 410
+        if (res.status === 410) {
+          throw new Error("Card payments are disabled.");
+        }
         if (!res.ok) {
           const t = await res.text();
           throw new Error(t || "Failed to create PaymentIntent");
@@ -172,6 +183,7 @@ export default function StripePayment({
     };
   }, [amountInCents, currency, delivery, cart]);
 
+  // 若开关打开但没配 pk，给出温柔提醒（方便未来恢复）
   if (!pk) {
     return (
       <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700">
