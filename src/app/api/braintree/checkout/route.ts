@@ -1,48 +1,83 @@
+// src/app/api/braintree/checkout/route.ts
 import { NextResponse } from "next/server";
 import braintree, { Environment } from "braintree";
 
 const gateway = new braintree.BraintreeGateway({
-  environment: Environment.Sandbox,
+  environment: Environment.Sandbox, // 生产改为 Environment.Production
   merchantId: process.env.BT_MERCHANT_ID!,
   publicKey:  process.env.BT_PUBLIC_KEY!,
   privateKey: process.env.BT_PRIVATE_KEY!,
 });
 
-// 币种到 merchantAccountId 的映射（按需维护）
-const MA_MAP: Record<string, string | undefined> = {
-  USD: process.env.BT_MERCHANT_ACCOUNT_USD,
-  AUD: process.env.BT_MERCHANT_ACCOUNT_AUD,
-  // EUR: process.env.BT_MERCHANT_ACCOUNT_EUR,
+// 各币种小数位（需要 JPY 等再扩展为 0）
+const DECIMALS: Record<string, number> = {
+  AUD: 2,
+  USD: 2,
+  EUR: 2,
+  GBP: 2,
+  CAD: 2,
 };
+
+// 币种 -> Merchant Account ID 映射（用你的 .env 值）
+const MA_MAP: Record<string, string | undefined> = {
+  AUD: process.env.BT_MERCHANT_ACCOUNT_AUD,
+  USD: process.env.BT_MERCHANT_ACCOUNT_USD,
+  EUR: process.env.BT_MERCHANT_ACCOUNT_EUR,
+  GBP: process.env.BT_MERCHANT_ACCOUNT_GBP,
+  CAD: process.env.BT_MERCHANT_ACCOUNT_CAD,
+};
+
+function formatAmount(n: number, currency: string) {
+  const dec = DECIMALS[currency] ?? 2;
+  return n.toFixed(dec); // Braintree 要求字符串，并按对应小数位
+}
 
 export async function POST(req: Request) {
   try {
-    const { nonce, amount, currency = "USD" } = await req.json() as {
-      nonce: string; amount: number; currency?: string;
-    };
+    const body = await req.json();
+    const nonce: string = body?.nonce;
+    const currency = (body?.currency || "AUD").toString().toUpperCase();
+    const amountNum = typeof body?.amount === "string" ? Number(body.amount) : Number(body?.amount);
 
-    if (!nonce) return NextResponse.json({ error: "Missing nonce" }, { status: 400 });
-    if (!Number.isFinite(amount) || amount <= 0) {
+    // 参数校验
+    if (!nonce) {
+      return NextResponse.json({ error: "Missing payment method nonce" }, { status: 400 });
+    }
+    if (!isFinite(amountNum) || amountNum <= 0) {
       return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
     }
 
-    const merchantAccountId = MA_MAP[currency.toUpperCase()];
+    const merchantAccountId = MA_MAP[currency];
+    if (!merchantAccountId) {
+      return NextResponse.json(
+        { error: `Unsupported currency ${currency}. Configure BT_MERCHANT_ACCOUNT_${currency} in .env.` },
+        { status: 400 }
+      );
+    }
 
     const result = await gateway.transaction.sale({
-      amount: Number(amount).toFixed(2),          // 金额必须是字符串，保留两位
+      amount: formatAmount(amountNum, currency),
+      merchantAccountId,                 // ✅ 与币种匹配
       paymentMethodNonce: nonce,
-      merchantAccountId,                          // 只有当你用非默认币种时需要
-      options: { submitForSettlement: true },     // 直接提交清算（真实环境可视情况先授权）
+      options: { submitForSettlement: true }, // 沙箱直接清算；生产可视需要仅授权
     });
 
     if (!result.success) {
-      // 常见错误：91565（币种不支持/商户号不匹配）
-      return NextResponse.json({ ok: false, error: result.message }, { status: 400 });
+      const tx = result.transaction;
+      const code = tx?.processorResponseCode || tx?.status || "failed";
+      const msg = result?.message || tx?.processorResponseText || "Braintree sale failed";
+      return NextResponse.json({ error: `${code}: ${msg}` }, { status: 400 });
     }
 
-    return NextResponse.json({ ok: true, id: result.transaction?.id });
+    const tx = result.transaction!;
+    return NextResponse.json({
+      ok: true,
+      transactionId: tx.id,
+      currency: tx.currencyIsoCode,
+      amount: tx.amount,
+    });
   } catch (err: any) {
-    console.error("checkout error", err);
+    console.error("braintree checkout error:", err?.message || err);
     return NextResponse.json({ error: err?.message || "Server error" }, { status: 500 });
   }
 }

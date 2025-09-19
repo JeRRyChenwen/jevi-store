@@ -11,13 +11,14 @@ if (!STRIPE_SECRET_KEY) {
 const stripe = new Stripe(STRIPE_SECRET_KEY);
 
 // ---- 辅助校验 ----
-const CURRENCY_ALLOWLIST = new Set(["usd", "aud", "eur", "gbp"]);
+// 允许的展示/结算币种（amount 必须是“最小货币单位”的整数）
+const CURRENCY_ALLOWLIST = new Set(["usd", "aud", "eur", "gbp", "cad"]); // ✅ 新增 cad/gbp
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
 
-    const amount = Number(body?.amount);
+    const amount = Number(body?.amount); // 最小货币单位：如 12.34 AUD => 1234
     let currency: string = (body?.currency ?? "usd").toString().toLowerCase();
     const delivery = (body?.delivery ?? null) as string | null;
     const cart = Array.isArray(body?.cart) ? body.cart : [];
@@ -29,33 +30,29 @@ export async function POST(req: Request) {
     // 金额（分）校验
     if (!Number.isInteger(amount) || amount <= 0) {
       return NextResponse.json(
-        { error: "Invalid amount: integer cents > 0 required" },
+        { error: "Invalid amount: integer minor units > 0 required" },
         { status: 400 }
       );
     }
 
-    // 货币校验（可按需收敛到你支持的列表）
+    // 货币校验
     if (!/^[a-z]{3}$/.test(currency)) {
-      return NextResponse.json(
-        { error: "Invalid currency code" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid currency code" }, { status: 400 });
     }
     if (!CURRENCY_ALLOWLIST.has(currency)) {
-      // 也可以直接放行，这里选择友好报错
       return NextResponse.json(
         { error: `Unsupported currency: ${currency}` },
         { status: 400 }
       );
     }
 
-    // ✅ 仅允许“银行卡”支付（不启用 automatic_payment_methods）
+    // ✅ 仅允许银行卡（不启用 automatic_payment_methods）
     const intent = await stripe.paymentIntents.create(
       {
         amount,
         currency,
         payment_method_types: ["card"],
-        // 可选：如果你计划保存卡用于后续代扣，可开启
+        // 如果以后要保存卡可启用：
         // setup_future_usage: "off_session",
         metadata: {
           app: "social-platform",
@@ -64,16 +61,15 @@ export async function POST(req: Request) {
           cart_len: String(cart.length ?? 0),
         },
       },
-      // 可选：传入幂等键，避免偶发重复创建
+      // 幂等键可避免重复创建
       idempotencyKey ? { idempotencyKey } : undefined
     );
 
     return NextResponse.json({
       clientSecret: intent.client_secret,
-      paymentIntentId: intent.id, // 便于排错/对账（前端不必使用）
+      paymentIntentId: intent.id, // 便于排错/对账
     });
   } catch (err: any) {
-    // 尽量输出核心信息但不要泄露敏感对象
     const msg =
       err?.raw?.message ||
       err?.message ||

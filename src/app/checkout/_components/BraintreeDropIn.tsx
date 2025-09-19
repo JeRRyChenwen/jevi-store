@@ -5,7 +5,7 @@ import { useEffect, useId, useRef, useState } from "react";
 
 type Props = {
   amount: number;          // 主货币单位金额，如 250.00
-  currency: string;        // 'USD' | 'AUD' ...
+  currency: string;        // 'USD' | 'AUD' | 'EUR' | 'GBP' | 'CAD' ...
   enableCard?: boolean;    // 是否在 Drop-in 开卡（默认只开 PayPal）
   onSucceeded?: (r: { id: string }) => void;
 };
@@ -25,6 +25,9 @@ export default function BraintreeDropIn({
   const [creating, setCreating] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 统一大写，保证和后端映射一致（如 BT_MERCHANT_ACCOUNT_AUD）
+  const cur = (currency || "AUD").toUpperCase();
 
   useEffect(() => {
     const node = containerRef.current;
@@ -51,8 +54,9 @@ export default function BraintreeDropIn({
           const txt = await res.text().catch(() => "");
           throw new Error(`Get clientToken failed (${res.status}). ${txt}`);
         }
-        const { clientToken } = await res.json();
-        if (!clientToken) throw new Error("No clientToken returned");
+        const { clientToken, token } = await res.json();
+        const auth = clientToken || token;
+        if (!auth) throw new Error("No clientToken returned");
 
         // 如果在等待 token 期间又来了一轮创建，直接放弃
         if (myRun !== runIdRef.current) return;
@@ -62,12 +66,17 @@ export default function BraintreeDropIn({
 
         // 3) 创建实例（此时容器必须是空的）
         created = await dropin.create({
-          authorization: clientToken,
+          authorization: auth,
           container: node,
-          locale: "en_AU",
+          locale: "en", // 可按需要换本地化，如 'en_AU'
           card: enableCard ? { cardholderName: true } : false,
-          paypal: { flow: "checkout", amount: amount.toFixed(2), currency },
-          // 需要的话：paypalCredit: true, venmo: { allowNewBrowserTab: false },
+          paypal: {
+            flow: "checkout",
+            amount: amount.toFixed(2), // PayPal 期望字符串形式金额
+            currency: cur,             // ✅ 与后端一致的币种
+            commit: true,
+          },
+          // 如需：paypalCredit: false, venmo: false,
         } as any);
 
         // 如果这次创建已过期（StrictMode 第二次已开始），立刻销毁自己
@@ -97,7 +106,7 @@ export default function BraintreeDropIn({
         try { node.innerHTML = ""; } catch {}
       })();
     };
-  }, [amount, currency, enableCard]);
+  }, [amount, cur, enableCard]); // ✅ 用 cur，币种变化时重建
 
   const handlePay = async () => {
     const inst = instance;
@@ -109,11 +118,19 @@ export default function BraintreeDropIn({
       const res = await fetch("/api/braintree/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nonce: payload?.nonce, amount, currency }),
+        body: JSON.stringify({
+          nonce: payload?.nonce,
+          amount,          // number，后端会 toFixed(2)
+          currency: cur,   // ✅ 与初始化保持一致
+        }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data?.ok) throw new Error(data?.error || `Payment failed (${res.status})`);
-      onSucceeded?.({ id: data.id });
+      if (!res.ok || data?.error || data?.ok === false) {
+        throw new Error(data?.error || `Payment failed (${res.status})`);
+      }
+      // 兼容后端返回字段名：transactionId（新）或 id（旧）
+      const id = data?.transactionId || data?.id || "";
+      onSucceeded?.({ id });
     } catch (e: any) {
       console.error("[Braintree] pay error:", e);
       setError(e?.message || "Payment failed");

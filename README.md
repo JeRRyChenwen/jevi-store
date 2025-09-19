@@ -642,6 +642,18 @@ Apple Pay / Google Pay / PayPal / Stripe Link 等会把买家的“账单邮箱�
 
 目前是根据我在 strapi 中定位的是 USD，就是用 USD 交易，用 AUD 就是用 AUD 交易，要不要动态改变我的 currency 呢，或者说让币种随“地址国家/地区”变化，通常做法是：等用户在 Address 步骤选择了国家，再把币种映射出来传给支付：生产中建议用 Stripe 的 Products/Prices 按币种定价，或接入稳定的汇率源；不要在请求里“临时乘一个写死的汇率”。
 
+{ AUD: 2, USD: 2, EUR: 2 }
+
+方案 1 ｜保留多币种余额（不自动换汇）
+
+在 PayPal 商业账户里 添加 USD/EUR 货币余额，就会分别以 USD/EUR/AUD 入账并单独结余（没有即时汇损）。
+
+路径（大意）：PayPal 商业账户 → 右上角齿轮 Settings → Money, banks and cards / Money → Currencies / Manage currencies → Add a currency（加 USD、EUR）。
+
+之后你可以在需要的时候手动把 USD/EUR 换成 AUD，或提现到对应币种的银行账户（如有）。
+
+我想问下这样做的话，当买家付钱给我（当然买家可能会来自不同的地区用不同的 currency 结算），是不是会自动通过 paypal 转换汇率成 AUD 打到我的 paypal 账户中
+
 # ============================================================================
 
 很好，然后我想修改 Delivery & Collection 这部分的内容，我希望取消掉 collection，只让用户选择 Standard delivery 或者 Express delivery
