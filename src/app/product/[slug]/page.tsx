@@ -7,15 +7,12 @@ import SizeClient from "../_components/SizeClient";
 import AddToBagClient from "../_components/AddToBagClient";
 import { normalizeColorName, colorNameToCss } from "@/lib/colors";
 
-// ✅ 多币种价格：工具 & 组件
-import PriceTag from "@/components/pricing/PriceTag";
+// ✅ pricing：统一价格&促销算法（与分类页一致）
 import {
+  type PriceRec,
+  pickCurrency,
   effectiveMinor,
   minorToMajor,
-  pickCurrency,
-  isSaleWindowActive,
-  type PriceRec,
-  type Currency,
 } from "@/lib/pricing";
 
 /** Next.js 15: params / searchParams 是 Promise，需要 await */
@@ -87,6 +84,31 @@ function getStockByColorSize(attrs: any): Record<string, Record<string, number>>
   return out;
 }
 
+function formatPriceVal(n: number | null, currency?: string | null, locale?: string) {
+  if (n == null) return "—";
+  const cur = (currency || "AUD").toUpperCase();
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency: cur,
+    currencyDisplay: "code",
+    maximumFractionDigits: 2,
+  }).format(Number(n));
+}
+
+/** 是否在促销窗口内（旧字段回退用） */
+function isSaleActive(
+  discountPercent?: number | null,
+  startsAt?: string | null,
+  endsAt?: string | null
+) {
+  const d = Number(discountPercent) || 0;
+  if (d <= 0) return false;
+  const now = Date.now();
+  const startOk = !startsAt || now >= new Date(startsAt).getTime();
+  const endOk = !endsAt || now <= new Date(endsAt).getTime();
+  return startOk && endOk;
+}
+
 /** 评分星星（0~5，支持半星） */
 function Stars({ value = 0 }: { value?: number }) {
   const v = Math.max(0, Math.min(5, Number(value) || 0));
@@ -127,6 +149,35 @@ function Stars({ value = 0 }: { value?: number }) {
   );
 }
 
+/** ✅ 从 Strapi attributes 解析 Price 组件数组（与分类页一致） */
+function getPrices(attrs: any): PriceRec[] {
+  const arr: any[] = Array.isArray(attrs?.prices)
+    ? attrs.prices
+    : Array.isArray(attrs?.prices?.data)
+    ? attrs.prices.data
+    : [];
+
+  const out: PriceRec[] = [];
+  for (const p of arr) {
+    const a = p?.attributes ?? p ?? {};
+    const currency = String(a.currency ?? "").toUpperCase();
+    const amount_minor = Number(a.price); // 你的 Price 组件里字段名是 price（最小货币单位）
+    if (!currency || !Number.isInteger(amount_minor)) continue;
+
+    const rec: PriceRec = {
+      currency: currency as any,
+      amount_minor,
+      // 你的组件里是百分比折扣 + 起止时间
+      discount_percent_off:
+        typeof a.discount_percent_off === "number" ? a.discount_percent_off : undefined,
+      sale_starts_at: a.sale_starts_at ?? undefined,
+      sale_ends_at: a.sale_ends_at ?? undefined,
+    };
+    out.push(rec);
+  }
+  return out;
+}
+
 export async function generateMetadata({ params }: PageProps) {
   const { slug } = await params;
   return { title: `Product – ${slug}` };
@@ -138,13 +189,19 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
 
   const qs =
     `/api/products?filters[slug][$eq]=${encodeURIComponent(slug)}` +
-    `&fields[0]=title&fields[1]=slug&fields[2]=hot_score` +
+    `&fields[0]=title&fields[1]=slug&fields[2]=base_price_cents&fields[3]=currency` +
+    `&fields[4]=discount_percent_off&fields[5]=sale_starts_at&fields[6]=sale_ends_at&fields[7]=hot_score` +
     `&populate[color_galleries][fields][0]=color` +
     `&populate[color_galleries][populate][images]=true` +
     `&populate[variants][fields][0]=color` +
     `&populate[variants][fields][1]=size` +
     `&populate[variants][fields][2]=stock` +
-    `&populate[prices]=*` + // ✅ 关键：价格组件
+    // ✅ 把 prices 组件取回来
+    `&populate[prices][fields][0]=currency` +
+    `&populate[prices][fields][1]=price` +
+    `&populate[prices][fields][2]=discount_percent_off` +
+    `&populate[prices][fields][3]=sale_starts_at` +
+    `&populate[prices][fields][4]=sale_ends_at` +
     `&publicationState=live`;
 
   const json = await api(qs, { noCache: true });
@@ -152,55 +209,67 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   if (!row) notFound();
 
   const attrs = row?.attributes ?? row ?? {};
+
   const title: string = attrs.title ?? attrs.name ?? "Product";
 
-  // ======== 颜色 -> 图片、库存 ========
+  // ✅ 新价格：优先使用 Price 组件
+  const prices = getPrices(attrs);
+  const availableCurrencies = prices.map((r) => r.currency);
+  const currencyPicked =
+    availableCurrencies.length > 0
+      ? pickCurrency(availableCurrencies, { fallback: "AUD" })
+      : ((attrs.currency ?? "AUD") as string);
+
+  const rec = prices.find((r) => r.currency === currencyPicked);
+  const minorBase = rec?.amount_minor;
+  const minorEff = rec ? effectiveMinor(rec) : undefined;
+
+  // 转成主货币“数字”给 UI/购物袋使用
+  const priceFromPrices =
+    typeof minorBase === "number" ? Number(minorToMajor(minorBase, currencyPicked as any)) : null;
+  const effFromPrices =
+    typeof minorEff === "number" ? Number(minorToMajor(minorEff, currencyPicked as any)) : null;
+
+  // 折扣百分比（由 Price 组件实时算，避免 100% 错）
+  const discountFromPrices =
+    typeof minorBase === "number" &&
+    typeof minorEff === "number" &&
+    minorEff < minorBase
+      ? Math.round((1 - minorEff / minorBase) * 100)
+      : null;
+
+  // ⛳️ 旧字段（仅作为兜底）
+  const cents = Number(attrs.base_price_cents);
+  const priceLegacy = Number.isFinite(cents) ? cents / 100 : null;
+  const currencyLegacy = (attrs.currency ?? "AUD") as string;
+  const discountLegacy = Number(attrs.discount_percent_off) || 0;
+  const saleActiveLegacy = isSaleActive(discountLegacy, attrs.sale_starts_at, attrs.sale_ends_at);
+  const salePriceLegacy =
+    saleActiveLegacy && priceLegacy != null ? priceLegacy * (1 - discountLegacy / 100) : null;
+
+  // === 最终用于展示/下单的金额 ===
+  const currency = (currencyPicked || currencyLegacy) as string;
+  const price =
+    priceFromPrices != null ? priceFromPrices : priceLegacy; // 基础价（主货币）
+  const salePrice =
+    effFromPrices != null && priceFromPrices != null && effFromPrices < priceFromPrices
+      ? effFromPrices
+      : salePriceLegacy;
+
+  const discount =
+    discountFromPrices != null
+      ? discountFromPrices
+      : saleActiveLegacy
+      ? Math.round(discountLegacy)
+      : 0;
+
+  // 颜色 -> 图片
   const byColor = getImagesByColorFromProduct(attrs);
   const colorKeys = Object.keys(byColor);
+
+  // 颜色+尺码 -> 库存
   const stockMap = getStockByColorSize(attrs);
 
-  // ======== 价格：从组件解析 & 选择币种 & 计算促销 ========
-  const pricesArr: any[] = Array.isArray(attrs?.prices) ? attrs.prices : [];
-  const prices: PriceRec[] = pricesArr
-    .map((p) => {
-      const currency = String(p?.currency || "").toUpperCase() as Currency;
-      const price = Math.max(0, Math.round(Number(p?.price) || 0)); // Integer minor units
-      const rec: PriceRec = { currency, price };
-      if (p?.discount_percent_off != null) rec.discount_percent_off = Number(p.discount_percent_off);
-      if (p?.sale_starts_at) rec.sale_starts_at = String(p.sale_starts_at);
-      if (p?.sale_ends_at) rec.sale_ends_at = String(p.sale_ends_at);
-      if (p?.sale_price_minor != null) rec.sale_price_minor = Math.max(0, Number(p.sale_price_minor));
-      return rec;
-    })
-    .filter((x) => Number.isInteger(x.price));
-
-  // 允许用 ?cc=USD 指定币种；否则自动挑选（fallback AUD）
-  const userCurrencyParam = Array.isArray(sp.cc) ? sp.cc[0] : sp.cc; // e.g. "?cc=USD"
-  const available = prices.map((p) => p.currency);
-  const currency = available.length
-    ? pickCurrency(available as Currency[], { userCurrency: userCurrencyParam, fallback: "AUD" })
-    : ("AUD" as Currency);
-
-  const rec = prices.find((p) => p.currency === currency) || prices[0];
-
-  // 若没有录价，构造一个空记录，避免后续计算报错
-  const safeRec: PriceRec =
-    rec || ({ currency, price: 0 } as PriceRec);
-
-  const baseMinor = safeRec.price;
-  const effMinor = effectiveMinor(safeRec);
-  const saleActive = isSaleWindowActive(safeRec) && effMinor < baseMinor;
-
-  const baseMajorStr = minorToMajor(baseMinor, currency);
-  const effMajorStr = minorToMajor(effMinor, currency);
-  const baseMajorNum = Number(baseMajorStr);
-  const effMajorNum = Number(effMajorStr);
-
-  // 展示用折扣百分比（无论用百分比还是直接写促销价，都按结果反推）
-  const derivedOffPct =
-    baseMinor > 0 ? Math.max(0, Math.round((1 - effMinor / baseMinor) * 100)) : 0;
-
-  // ======== 颜色/尺寸路由状态 ========
   // URL color
   const colorParamRaw = Array.isArray(sp.color) ? sp.color[0] : sp.color;
   const colorParam = normalizeColor(colorParamRaw);
@@ -234,10 +303,11 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     css: colorNameToCss(name),
   }));
 
-  // 尺码 & 库存（基于当前颜色）
+  // ====== 基于当前颜色计算尺码 & 库存 ======
   const sizesForColor = currentColor ? Object.keys(stockMap[currentColor] ?? {}) : [];
 
   const sizeParamRaw = Array.isArray(sp.size) ? sp.size[0] : sp.size;
+  // 不默认选择尺码：如果 URL 没有合法尺码，就保持 undefined
   const currentSize =
     typeof sizeParamRaw === "string" && sizesForColor.includes(sizeParamRaw)
       ? sizeParamRaw
@@ -250,6 +320,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
 
   const stockForCurrent =
     currentColor && currentSize ? stockMap[currentColor]?.[currentSize] ?? 0 : 0;
+
+  const saleActive = salePrice != null && price != null && salePrice < price;
 
   return (
     // ✅ 关键：剪掉页面横向溢出，避免出现横向滚动条
@@ -295,34 +367,28 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
         </section>
 
         {/* 右：信息栏（颜色 + 评分 + 尺码/库存 + AddToBag） */}
+        {/* ✅ 剪裁右栏的横向溢出，防止 scale 造成的“滑轮” */}
         <section className="order-3 lg:order-3 lg:pl-8 xl:pl-10 lg:sticky lg:top-24 self-start overflow-x-clip">
           <div className="space-y-5">
             <h2 className="text-2xl font-bold leading-tight">{title}</h2>
 
-            {/* 价格区（多币种 + 促销） */}
-            {prices.length > 0 ? (
-              saleActive ? (
-                <div className="space-y-2">
-                  {derivedOffPct > 0 && (
-                    <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 text-xs font-semibold px-2 py-1">
-                      {derivedOffPct}% OFF
-                    </span>
-                  )}
-                  <div className="text-sm text-neutral-500 line-through">
-                    {currency} {baseMajorStr}
-                  </div>
-                  <div className="text-xl font-semibold text-emerald-700">
-                    {currency} {effMajorStr}
-                  </div>
+            {/* 价格区（优先 Price 组件的实时结果） */}
+            {saleActive ? (
+              <div className="space-y-2">
+                {discount ? (
+                  <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 text-xs font-semibold px-2 py-1">
+                    {discount}% OFF
+                  </span>
+                ) : null}
+                <div className="text-sm text-neutral-500 line-through">
+                  {formatPriceVal(price, currency)}
                 </div>
-              ) : (
-                <div className="text-xl font-semibold">
-                  {/* 用 PriceTag 自动渲染当前币种价（也支持 ?cc=USD 覆盖） */}
-                  <PriceTag prices={prices} userCurrency={userCurrencyParam} />
+                <div className="text-xl font-semibold text-emerald-700">
+                  {formatPriceVal(salePrice, currency)}
                 </div>
-              )
+              </div>
             ) : (
-              <div className="text-xl font-semibold text-neutral-400">No price</div>
+              <div className="text-xl font-semibold">{formatPriceVal(price, currency)}</div>
             )}
 
             {/* 颜色（可点击切换） */}
@@ -343,9 +409,10 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
               <Stars value={rating} />
             </div>
 
-            {/* 尺码 */}
+            {/* 尺码（放到评分下面） */}
             {sizeOptions.length > 0 && (
               <div className="space-y-2">
+                {/* 这里把 Sizes 与当前尺码字号放大 */}
                 <div className="text-base md:text-lg text-neutral-700 flex items-center gap-2">
                   Sizes
                   {currentSize && (
@@ -355,10 +422,12 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                   )}
                 </div>
 
+                {/* 放大 10%~20%：按需调整 */}
                 <div className="origin-left scale-[1.12] md:scale-[1.18]">
                   <SizeClient options={sizeOptions} current={currentSize} slug={slug} />
                 </div>
 
+                {/* 这里把 In stock 行字号放大 */}
                 <div className="mt-1 text-sm md:text-base">
                   {currentSize ? (
                     stockForCurrent > 0 ? (
@@ -378,17 +447,18 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
               </div>
             )}
 
-            {/* ADD TO BAG */}
+            {/* ADD TO BAG + 右侧抽屉购物袋 */}
             <AddToBagClient
               slug={slug}
               title={title}
-              // 兼容你原来的 API：price = 原价（若有促销），salePrice = 最终价
-              price={baseMajorNum || null}
-              salePrice={saleActive ? effMajorNum : null}
+              // ✅ 这里用 null，而不是 undefined
+              price={price ?? null}
+              // ✅ 同理：不生效时传 null；生效时也用 null 兜底
+              salePrice={saleActive ? (salePrice ?? null) : null}
               currency={currency}
               imagesByColor={byColor}
               stockMap={stockMap}
-              // 如果你的 AddToBagClient 没有该 prop，请删除下一行
+              // 如果你的 AddToBagClient 没有该 prop，请删掉下一行
               fallbackColor={currentColor}
             />
           </div>
