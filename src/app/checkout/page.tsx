@@ -12,14 +12,14 @@ import type { CartItem as CartListItem } from "@/components/cart/CartList";
 import StripePayment from "@/app/checkout/_components/StripePayment";
 import BraintreeDropIn from "@/app/checkout/_components/BraintreeDropIn";
 
-// ✅ 新增：多币种结算工具
+// ✅ 使用新的定价工具（多币种总计 + 生效价）
 import { selectCurrencyAndTotals } from "@/lib/cartPricing";
 import { effectiveMinor, type PriceRec, type Currency } from "@/lib/pricing";
 
 type CartItem = CartListItem;
 
 const LS_KEY = "bag:v1";
-// 下面两个常量仍按“选中币种”的主货币单位（元/小数）来理解
+// 以下为「选中币种的主单位（元）」的常量
 const DELIVERY_FREE_THRESHOLD = 100;
 const DELIVERY_FLAT = 10;
 
@@ -195,43 +195,64 @@ function StepActionRail({
   );
 }
 
-/* ---------------- Helpers: 把购物车项转成多币种计价输入 ---------------- */
+/* ---------------- Helpers：把购物车项转成 PriceRec[] ---------------- */
 // 允许两种形态的购物车项：
-// 1) 旧：{ price(元), basePrice(元), currency }
-// 2) 新：{ prices: PriceRec[] }
+// 1) 新：{ prices: PriceRec[] } —— Strapi 组件（价格单位为“分/整数”）
+// 2) 旧：{ price(元), basePrice(元), currency }
 function itemToPriceRecs(it: any): PriceRec[] {
   if (Array.isArray(it?.prices) && it.prices.length) {
     // 来自 Strapi 组件：确保字段是整数“分”
     return it.prices
       .map((p: any) => {
         const currency = String(p?.currency || "").toUpperCase() as Currency;
-        const price = Math.max(0, Math.round(Number(p?.price) || 0));
-        const rec: PriceRec = { currency, price };
+        // 我们在 Strapi 里把 price 作为「分」记录：500 => AUD 5.00
+        const amount = Math.max(0, Math.round(Number(p?.price) || 0));
+        const rec: PriceRec = {
+          currency,
+          amount_minor: amount,
+          // 兼容：同时写入别名 price，方便旧工具/类型使用
+          // （若你的 pricing.ts 方案A里定义了 price?: number）
+          price: amount,
+        };
         if (p?.discount_percent_off != null) rec.discount_percent_off = Number(p.discount_percent_off);
         if (p?.sale_starts_at) rec.sale_starts_at = String(p.sale_starts_at);
         if (p?.sale_ends_at) rec.sale_ends_at = String(p.sale_ends_at);
-        if (p?.sale_price_minor != null) rec.sale_price_minor = Math.max(0, Number(p.sale_price_minor));
+        // ⚠️ 不再使用不存在的 sale_price_minor 字段
         return rec;
       })
-      .filter((r: PriceRec) => Number.isInteger(r.price));
+      // 过滤非法记录
+      .filter((r: PriceRec) =>
+        Number.isInteger((r as any).price ?? r.amount_minor)
+      );
   }
 
-  // 旧：从 price/basePrice/currency 推出一个 PriceRec
+  // 旧：从 price/basePrice/currency 推一个 PriceRec
   const currency = String(it?.currency || "AUD").toUpperCase() as Currency;
   const priceMajor = Number(it?.price) || 0;
   const baseMajor = Number(it?.basePrice ?? it?.price ?? 0);
 
   const priceMinor = Math.max(0, Math.round(priceMajor * 100));
   const baseMinor = Math.max(0, Math.round(baseMajor * 100));
-  const rec: PriceRec = { currency, price: baseMinor || priceMinor };
+  const base = baseMinor || priceMinor;
 
-  // 如果旧项里有折扣（base > price），反推出折扣
+  const rec: PriceRec = {
+    currency,
+    amount_minor: base,
+    // 兼容旧字段
+    price: base,
+  };
+
+  // 如果旧项里有折扣（base > price），反推出折扣百分比
   if (baseMinor > priceMinor && baseMinor > 0) {
     const off = Math.round((1 - priceMinor / baseMinor) * 100);
     rec.discount_percent_off = Math.max(0, off);
   }
   return [rec];
 }
+
+// 小工具：安全读取“基价（分）”
+const baseOf = (r: PriceRec) =>
+  Math.max(0, Number((r as any).price ?? r.amount_minor ?? 0));
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -256,9 +277,9 @@ export default function CheckoutPage() {
     router.replace(`${pathname}?${p.toString()}`, { scroll: false });
   };
 
-  // 支付方式选择：Stripe 卡 / Braintree(PayPal)
+  // 支付方式切换：Stripe 卡 / Braintree(PayPal)
   type PayProvider = "stripe" | "braintree";
-  const [payProvider, setPayProvider] = useState<PayProvider>("braintree"); // 你现在主要用 PayPal
+  const [payProvider, setPayProvider] = useState<PayProvider>("braintree");
 
   useEffect(() => {
     try {
@@ -276,9 +297,7 @@ export default function CheckoutPage() {
     try {
       const count = cart.reduce((acc, it) => acc + (Number(it.qty) || 0), 0);
       window.dispatchEvent(new CustomEvent("bag:count", { detail: { count } }));
-      window.dispatchEvent(
-        new CustomEvent("bag:updated", { detail: { source: myId } })
-      );
+      window.dispatchEvent(new CustomEvent("bag:updated", { detail: { source: myId } }));
     } catch {}
   }, [cart, loaded, myId]);
 
@@ -292,14 +311,13 @@ export default function CheckoutPage() {
       } catch {}
     };
     window.addEventListener("bag:updated", refresh as EventListener);
-    return () =>
-      window.removeEventListener("bag:updated", refresh as EventListener);
+    return () => window.removeEventListener("bag:updated", refresh as EventListener);
   }, [myId]);
 
   // 购物车是否有商品
   const hasItems = cart.length > 0;
 
-  // ===== 统一用“多币种”计算小计、总计（items only）=====
+  // ===== 统一用「多币种」计算商品小计（items only）=====
   const userCurrencyParam = searchParams.get("cc") || undefined; // 可选：?cc=USD 手动指定币种
   const pricingInput = useMemo(
     () =>
@@ -316,7 +334,7 @@ export default function CheckoutPage() {
     }
     const { currency, totalMinor, totalMajor } = selectCurrencyAndTotals(
       pricingInput,
-      userCurrencyParam, // 允许 URL 指定币种
+      userCurrencyParam, // URL 指定币种优先
       undefined,
       "AUD"
     );
@@ -325,8 +343,7 @@ export default function CheckoutPage() {
 
   const currency = itemsTotals.currency as string;
 
-  // 计算“你节省了”：
-  // 对于新模型：按（base - effective）求和；旧模型：按（basePrice - price）求和（同币）
+  // ===== 你节省了：按（基价 - 生效价）聚合（旧模型则回退）=====
   const savedMajor = useMemo(() => {
     let savedMinor = 0;
     for (const it of cart as any[]) {
@@ -334,20 +351,20 @@ export default function CheckoutPage() {
       const recs = itemToPriceRecs(it);
       const rec = recs.find((r) => r.currency === (currency as Currency));
       if (rec) {
-        const base = rec.price;
+        const base = baseOf(rec);
         const eff = effectiveMinor(rec);
         if (eff < base) savedMinor += (base - eff) * qty;
-        continue;
+      } else {
+        // 旧：元 -> 分
+        const baseMajor = Number(it?.basePrice ?? it?.price ?? 0);
+        const priceMajor = Number(it?.price ?? 0);
+        if (baseMajor > priceMajor) savedMinor += Math.round((baseMajor - priceMajor) * 100) * qty;
       }
-      // 旧
-      const baseMajor = Number(it?.basePrice ?? it?.price ?? 0);
-      const priceMajor = Number(it?.price ?? 0);
-      if (baseMajor > priceMajor) savedMinor += Math.round((baseMajor - priceMajor) * 100) * qty;
     }
     return savedMinor / 100;
   }, [cart, currency]);
 
-  // 运费（跟随选定币种；阈值与费用你暂时定为固定数字）
+  // 运费（跟随选定币种；阈值与费用为固定数字）
   const deliveryFeeMajor =
     hasItems && itemsTotals.itemsMajor < DELIVERY_FREE_THRESHOLD ? DELIVERY_FLAT : 0;
   const deliveryFeeMinor = Math.round(deliveryFeeMajor * 100);
@@ -356,42 +373,21 @@ export default function CheckoutPage() {
   const totalMinor = itemsTotals.itemsMinor + deliveryFeeMinor;
   const totalMajor = itemsTotals.itemsMajor + deliveryFeeMajor;
 
-  // ———— 本地改动：删改购物车项数量 ————
-  const removeItem = (key: string) =>
-    setCart((prev) => prev.filter((x) => x.key !== key));
+  // ———— 本地修改：数量增减/删除 ————
+  const removeItem = (key: string) => setCart((prev) => prev.filter((x) => x.key !== key));
   const inc = (key: string) =>
-    setCart((prev) =>
-      prev.map((x) =>
-        x.key === key ? { ...x, qty: Math.min(x.qty + 1, x.stock) } : x
-      )
-    );
+    setCart((prev) => prev.map((x) => (x.key === key ? { ...x, qty: Math.min(x.qty + 1, x.stock) } : x)));
   const dec = (key: string) =>
-    setCart((prev) =>
-      prev.map((x) =>
-        x.key === key ? { ...x, qty: Math.max(1, x.qty - 1) } : x
-      )
-    );
+    setCart((prev) => prev.map((x) => (x.key === key ? { ...x, qty: Math.max(1, x.qty - 1) } : x)));
 
-  const [deliveryMethod, setDeliveryMethod] =
-    useState<DeliveryMethod>("standard");
+  const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>("standard");
 
   const nextStep = () => {
-    setStepAndURL(
-      step === "bag"
-        ? "address"
-        : step === "address"
-        ? "delivery"
-        : step === "delivery"
-        ? "payment"
-        : "payment"
-    );
+    setStepAndURL(step === "bag" ? "address" : step === "address" ? "delivery" : step === "delivery" ? "payment" : "payment");
   };
-  const gotoLogin = () =>
-    router.push(
-      `/auth/login?next=${encodeURIComponent("/checkout?step=address")}`
-    );
+  const gotoLogin = () => router.push(`/auth/login?next=${encodeURIComponent("/checkout?step=address")}`);
 
-  // Stripe 需要“分”（整数）；Braintree 需要“元”（小数）
+  // Stripe 需要「分」（整数），Braintree 需要「元」（小数）
   const amountInMinorUnit = Math.max(0, Math.round(totalMinor));
   const amountInMajorUnit = Math.max(0, Number(totalMajor.toFixed(2)));
 
@@ -412,22 +408,13 @@ export default function CheckoutPage() {
               <div className="border-b px-4 py-3 font-semibold">Your Bag</div>
 
               <div className="p-4">
-                <CartList
-                  cart={cart}
-                  onInc={inc}
-                  onDec={dec}
-                  onRemove={removeItem}
-                />
+                <CartList cart={cart} onInc={inc} onDec={dec} onRemove={removeItem} />
               </div>
 
               <div className="border-t p-4">
                 <div className="mb-2 text-sm font-semibold">Order Summary</div>
                 <div className="space-y-2 text-sm">
-                  <Row
-                    label="Subtotal"
-                    value={fmtPrice(itemsTotals.itemsMajor, currency)}
-                    strongRight
-                  />
+                  <Row label="Subtotal" value={fmtPrice(itemsTotals.itemsMajor, currency)} strongRight />
                   {savedMajor > 0 && (
                     <Row
                       label="You saved"
@@ -444,23 +431,13 @@ export default function CheckoutPage() {
                           : fmtPrice(DELIVERY_FLAT, currency)
                       }
                       valueClass={
-                        itemsTotals.itemsMajor >= DELIVERY_FREE_THRESHOLD
-                          ? "text-emerald-700 font-semibold"
-                          : undefined
+                        itemsTotals.itemsMajor >= DELIVERY_FREE_THRESHOLD ? "text-emerald-700 font-semibold" : undefined
                       }
                     />
                   )}
                   <div className="pt-1">
-                    <Row
-                      label="Total"
-                      value={fmtPrice(totalMajor, currency)}
-                      strongLeft
-                      strongRight
-                      bigRight
-                    />
-                    <div className="mt-1 text-xs text-neutral-500">
-                      Including GST
-                    </div>
+                    <Row label="Total" value={fmtPrice(totalMajor, currency)} strongLeft strongRight bigRight />
+                    <div className="mt-1 text-xs text-neutral-500">Including GST</div>
                   </div>
                 </div>
               </div>
@@ -473,19 +450,14 @@ export default function CheckoutPage() {
             <>
               {hasItems && itemsTotals.itemsMajor >= DELIVERY_FREE_THRESHOLD && (
                 <div className="rounded-xl border px-4 py-3 text-sm">
-                  <div className="mb-2 font-medium">
-                    Congratulations! You have reached free shipping
-                  </div>
+                  <div className="mb-2 font-medium">Congratulations! You have reached free shipping</div>
                   <div className="h-1 w-full overflow-hidden rounded bg-neutral-200">
                     <div className="h-full w-full bg-emerald-600" />
                   </div>
                 </div>
               )}
 
-              <DeliverySection
-                deliveryMethod={deliveryMethod}
-                setDeliveryMethod={setDeliveryMethod}
-              />
+              <DeliverySection deliveryMethod={deliveryMethod} setDeliveryMethod={setDeliveryMethod} />
             </>
           )}
 
@@ -496,24 +468,14 @@ export default function CheckoutPage() {
                 {/* 支付方式切换 */}
                 <div className="inline-flex rounded-full border p-1 text-sm">
                   <button
-                    className={[
-                      "rounded-full px-4 py-2",
-                      payProvider === "stripe"
-                        ? "bg-black text-white"
-                        : "text-neutral-700",
-                    ].join(" ")}
+                    className={["rounded-full px-4 py-2", payProvider === "stripe" ? "bg-black text-white" : "text-neutral-700"].join(" ")}
                     onClick={() => setPayProvider("stripe")}
                     type="button"
                   >
                     Card (Stripe)
                   </button>
                   <button
-                    className={[
-                      "rounded-full px-4 py-2",
-                      payProvider === "braintree"
-                        ? "bg-black text-white"
-                        : "text-neutral-700",
-                    ].join(" ")}
+                    className={["rounded-full px-4 py-2", payProvider === "braintree" ? "bg-black text-white" : "text-neutral-700"].join(" ")}
                     onClick={() => setPayProvider("braintree")}
                     type="button"
                   >
@@ -543,7 +505,7 @@ export default function CheckoutPage() {
                         key={`bt-${amountInMajorUnit}-${currency}-${payProvider}`}
                         amount={amountInMajorUnit}
                         currency={currency.toUpperCase()}
-                        enableCard={false} // 只开 PayPal；如要开卡，改为 true
+                        enableCard={false}
                         onSucceeded={() => router.push("/checkout/confirm")}
                       />
                     )}
@@ -577,20 +539,8 @@ function Row({
 }) {
   return (
     <div className="flex items-center justify-between">
-      <div
-        className={[strongLeft ? "font-semibold" : "text-neutral-600"].join(
-          " "
-        )}
-      >
-        {label}
-      </div>
-      <div
-        className={[
-          strongRight ? "font-semibold" : "",
-          bigRight ? "text-lg" : "text-base",
-          valueClass || "",
-        ].join(" ")}
-      >
+      <div className={[strongLeft ? "font-semibold" : "text-neutral-600"].join(" ")}>{label}</div>
+      <div className={[strongRight ? "font-semibold" : "", bigRight ? "text-lg" : "text-base", valueClass || ""].join(" ")}>
         {value}
       </div>
     </div>

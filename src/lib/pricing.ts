@@ -4,19 +4,34 @@
 export type Currency = "AUD" | "USD" | "EUR" | "GBP" | "CAD";
 
 /**
- * 单条价格记录：最小货币单位（如 12.34 -> 1234）
- * - amount_minor：基础价（必填）
- * - sale_amount_minor：促销价（可选）
- * - discount_percent_off：折扣百分比（0..100，可选，作为兜底）
- * - sale_starts_at / sale_ends_at：促销时间窗（可选）
+ * 单条价格记录（最小货币单位整数，例如 12.34 -> 1234）
+ *
+ * ✅ 新字段（推荐）：
+ *   - price              基础价
+ *   - sale_price_minor   促销价
+ *
+ * 🔁 兼容别名（老代码仍可写入/读取）：
+ *   - amount_minor       == price
+ *   - sale_amount_minor  == sale_price_minor
+ *
+ * 其他：
+ *   - discount_percent_off  折扣百分比（0..100，可选）
+ *   - sale_starts_at / sale_ends_at  促销时间窗（可选）
  */
 export type PriceRec = {
   currency: Currency;
-  amount_minor: number;                 // 基础价（最小货币单位整数）
-  sale_amount_minor?: number | null;    // 促销价（最小货币单位）
-  discount_percent_off?: number | null; // 0..100，可选
-  sale_starts_at?: string | null;       // ISO 字符串，可选
-  sale_ends_at?: string | null;         // ISO 字符串，可选
+
+  // 新字段（推荐）
+  price?: number;
+  sale_price_minor?: number | null;
+
+  // 兼容旧字段（允许出现在对象字面量里，避免 TS 报“多余属性”）
+  amount_minor?: number | null;
+  sale_amount_minor?: number | null;
+
+  discount_percent_off?: number | null;
+  sale_starts_at?: string | null;
+  sale_ends_at?: string | null;
 };
 
 const DECIMALS: Record<string, number> = {
@@ -36,6 +51,17 @@ export function minorToMajor(minor: number, currency: Currency): string {
   return (minor / 10 ** d).toFixed(d);
 }
 
+/* ---------------- internal helpers（统一读取新旧字段） ---------------- */
+function baseMinor(p: PriceRec): number {
+  const v = p.price ?? (p.amount_minor ?? 0);
+  return Math.max(0, Number(v) || 0);
+}
+function saleMinor(p: PriceRec): number | undefined {
+  const raw = (p.sale_price_minor ?? p.sale_amount_minor);
+  if (typeof raw !== "number") return undefined;
+  return Math.max(0, raw);
+}
+
 /** 仅判断“是否在促销时间窗内”（忽略有没有促销价/折扣） */
 export function isSaleWindowActive(p: PriceRec, now = new Date()): boolean {
   const s = p.sale_starts_at ? Date.parse(p.sale_starts_at) : NaN;
@@ -49,10 +75,12 @@ export function isSaleWindowActive(p: PriceRec, now = new Date()): boolean {
 /** 该记录是否“有效促销”（既在时间窗内，又存在比基础价更低的候选价） */
 export function isSaleActive(p: PriceRec, now = new Date()): boolean {
   if (!isSaleWindowActive(p, now)) return false;
-  const base = Math.max(0, p.amount_minor || 0);
+  const base = baseMinor(p);
   const cand: number[] = [base];
 
-  if (typeof p.sale_amount_minor === "number") cand.push(Math.max(0, p.sale_amount_minor));
+  const sm = saleMinor(p);
+  if (typeof sm === "number") cand.push(sm);
+
   if (typeof p.discount_percent_off === "number") {
     const pct = Math.min(100, Math.max(0, p.discount_percent_off));
     cand.push(Math.max(0, Math.round(base * (100 - pct) / 100)));
@@ -62,14 +90,14 @@ export function isSaleActive(p: PriceRec, now = new Date()): boolean {
 
 /** 计算当前“生效价”（最小货币单位整数） */
 export function effectiveMinor(p: PriceRec, now = new Date()): number {
-  const base = Math.max(0, p.amount_minor || 0);
+  const base = baseMinor(p);
   if (!isSaleWindowActive(p, now)) return base;
 
   const candidates: number[] = [base];
 
-  if (typeof p.sale_amount_minor === "number") {
-    candidates.push(Math.max(0, p.sale_amount_minor));
-  }
+  const sm = saleMinor(p);
+  if (typeof sm === "number") candidates.push(sm);
+
   if (typeof p.discount_percent_off === "number") {
     const pct = Math.min(100, Math.max(0, p.discount_percent_off));
     candidates.push(Math.max(0, Math.round(base * (100 - pct) / 100)));
