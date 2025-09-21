@@ -8,8 +8,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import CartList from "@/components/cart/CartList";
 import type { CartItem as CartListItem } from "@/components/cart/CartList";
 
-// 支付组件
-import StripePayment from "@/app/checkout/_components/StripePayment";
+// 支付组件（仅保留 PayPal / Braintree）
 import BraintreeDropIn from "@/app/checkout/_components/BraintreeDropIn";
 
 // ✅ 使用新的定价工具（多币种总计 + 生效价）
@@ -18,7 +17,10 @@ import { effectiveMinor, type PriceRec, type Currency } from "@/lib/pricing";
 
 type CartItem = CartListItem;
 
-const LS_KEY = "bag:v1";
+/* ---------------- 常量 ---------------- */
+const LS_CART_KEY = "bag:v1";
+const LS_ADDRESS_KEY = "sp.checkout.address";
+
 // 以下为「选中币种的主单位（元）」的常量
 const DELIVERY_FREE_THRESHOLD = 100;
 const DELIVERY_FLAT = 10;
@@ -30,6 +32,10 @@ function fmtPrice(n: number, currency: string, locale?: string) {
     currencyDisplay: "code",
     maximumFractionDigits: 2,
   }).format(n);
+}
+
+function fmtMoneyMinor(minor: number, currency: string, locale?: string) {
+  return fmtPrice((minor ?? 0) / 100, currency, locale);
 }
 
 /* ---------------- Stepper ---------------- */
@@ -98,20 +104,93 @@ function CheckoutSteps({
 }
 
 /* ---------------- Address ---------------- */
-function AddressForm() {
+type Address = {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  line1?: string;
+  line2?: string;
+  city?: string;
+  state?: string;
+  postcode?: string;
+  country?: string;
+};
+
+function AddressForm({
+  address,
+  setAddress,
+}: {
+  address: Address;
+  setAddress: (a: Address) => void;
+}) {
+  const on = (k: keyof Address) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setAddress({ ...address, [k]: e.target.value });
+
   return (
     <section className="rounded-xl border">
       <div className="border-b px-4 py-3 font-semibold">Address</div>
       <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-        <input className="w-full rounded-md border px-3 py-2 text-sm" placeholder="First Name" />
-        <input className="w-full rounded-md border px-3 py-2 text-sm" placeholder="Last Name" />
-        <input className="md:col-span-2 w-full rounded-md border px-3 py-2 text-sm" placeholder="Phone" />
-        <input className="md:col-span-2 w-full rounded-md border px-3 py-2 text-sm" placeholder="Address Line 1" />
-        <input className="md:col-span-2 w-full rounded-md border px-3 py-2 text-sm" placeholder="Address Line 2 (optional)" />
-        <input className="w-full rounded-md border px-3 py-2 text-sm" placeholder="City" />
-        <input className="w-full rounded-md border px-3 py-2 text-sm" placeholder="State/Region" />
-        <input className="w-full rounded-md border px-3 py-2 text-sm" placeholder="Postcode" />
-        <input className="w-full rounded-md border px-3 py-2 text-sm" placeholder="Country" />
+        <input
+          className="w-full rounded-md border px-3 py-2 text-sm"
+          placeholder="First Name"
+          value={address.firstName || ""}
+          onChange={on("firstName")}
+        />
+        <input
+          className="w-full rounded-md border px-3 py-2 text-sm"
+          placeholder="Last Name"
+          value={address.lastName || ""}
+          onChange={on("lastName")}
+        />
+        <input
+          className="md:col-span-2 w-full rounded-md border px-3 py-2 text-sm"
+          placeholder="Email"
+          value={address.email || ""}
+          onChange={on("email")}
+        />
+        <input
+          className="md:col-span-2 w-full rounded-md border px-3 py-2 text-sm"
+          placeholder="Phone"
+          value={address.phone || ""}
+          onChange={on("phone")}
+        />
+        <input
+          className="md:col-span-2 w-full rounded-md border px-3 py-2 text-sm"
+          placeholder="Address Line 1"
+          value={address.line1 || ""}
+          onChange={on("line1")}
+        />
+        <input
+          className="md:col-span-2 w-full rounded-md border px-3 py-2 text-sm"
+          placeholder="Address Line 2 (optional)"
+          value={address.line2 || ""}
+          onChange={on("line2")}
+        />
+        <input
+          className="w-full rounded-md border px-3 py-2 text-sm"
+          placeholder="City"
+          value={address.city || ""}
+          onChange={on("city")}
+        />
+        <input
+          className="w-full rounded-md border px-3 py-2 text-sm"
+          placeholder="State/Region"
+          value={address.state || ""}
+          onChange={on("state")}
+        />
+        <input
+          className="w-full rounded-md border px-3 py-2 text-sm"
+          placeholder="Postcode"
+          value={address.postcode || ""}
+          onChange={on("postcode")}
+        />
+        <input
+          className="w-full rounded-md border px-3 py-2 text-sm"
+          placeholder="Country"
+          value={address.country || ""}
+          onChange={on("country")}
+        />
       </div>
     </section>
   );
@@ -150,7 +229,9 @@ function DeliverySection({
             />
             <div className="flex-1">
               <div className="font-medium">{METHOD_META[m].label}</div>
-              <div className="text-sm text-neutral-600">{METHOD_META[m].eta}</div>
+              <div className="text-sm text-neutral-600">
+                {METHOD_META[m].eta}
+              </div>
             </div>
           </label>
         ))}
@@ -159,7 +240,7 @@ function DeliverySection({
   );
 }
 
-/* ---------------- Right rail ---------------- */
+/* ---------------- Right rail 下一步按钮 ---------------- */
 function StepActionRail({
   step,
   onNext,
@@ -201,26 +282,21 @@ function StepActionRail({
 // 2) 旧：{ price(元), basePrice(元), currency }
 function itemToPriceRecs(it: any): PriceRec[] {
   if (Array.isArray(it?.prices) && it.prices.length) {
-    // 来自 Strapi 组件：确保字段是整数“分”
     return it.prices
       .map((p: any) => {
         const currency = String(p?.currency || "").toUpperCase() as Currency;
-        // 我们在 Strapi 里把 price 作为「分」记录：500 => AUD 5.00
-        const amount = Math.max(0, Math.round(Number(p?.price) || 0));
+        const amount = Math.max(0, Math.round(Number(p?.price) || 0)); // 分
         const rec: PriceRec = {
           currency,
           amount_minor: amount,
-          // 兼容：同时写入别名 price，方便旧工具/类型使用
-          // （若你的 pricing.ts 方案A里定义了 price?: number）
           price: amount,
         };
-        if (p?.discount_percent_off != null) rec.discount_percent_off = Number(p.discount_percent_off);
+        if (p?.discount_percent_off != null)
+          rec.discount_percent_off = Number(p.discount_percent_off);
         if (p?.sale_starts_at) rec.sale_starts_at = String(p.sale_starts_at);
         if (p?.sale_ends_at) rec.sale_ends_at = String(p.sale_ends_at);
-        // ⚠️ 不再使用不存在的 sale_price_minor 字段
         return rec;
       })
-      // 过滤非法记录
       .filter((r: PriceRec) =>
         Number.isInteger((r as any).price ?? r.amount_minor)
       );
@@ -238,11 +314,9 @@ function itemToPriceRecs(it: any): PriceRec[] {
   const rec: PriceRec = {
     currency,
     amount_minor: base,
-    // 兼容旧字段
     price: base,
   };
 
-  // 如果旧项里有折扣（base > price），反推出折扣百分比
   if (baseMinor > priceMinor && baseMinor > 0) {
     const off = Math.round((1 - priceMinor / baseMinor) * 100);
     rec.discount_percent_off = Math.max(0, off);
@@ -250,10 +324,10 @@ function itemToPriceRecs(it: any): PriceRec[] {
   return [rec];
 }
 
-// 小工具：安全读取“基价（分）”
 const baseOf = (r: PriceRec) =>
   Math.max(0, Number((r as any).price ?? r.amount_minor ?? 0));
 
+/* ---------------- Page ---------------- */
 export default function CheckoutPage() {
   const router = useRouter();
   const pathname = usePathname();
@@ -262,7 +336,11 @@ export default function CheckoutPage() {
   const myId = useMemo(() => Math.random().toString(36).slice(2), []);
   const [loaded, setLoaded] = useState(false);
 
+  // 购物车
   const [cart, setCart] = useState<CartItem[]>([]);
+
+  // 地址（供 Payment 右栏展示）
+  const [address, setAddress] = useState<Address>({});
 
   const initialStepFromURL = (() => {
     const s = searchParams.get("step");
@@ -277,42 +355,55 @@ export default function CheckoutPage() {
     router.replace(`${pathname}?${p.toString()}`, { scroll: false });
   };
 
-  // 支付方式切换：Stripe 卡 / Braintree(PayPal)
-  type PayProvider = "stripe" | "braintree";
-  const [payProvider, setPayProvider] = useState<PayProvider>("braintree");
-
+  // 初始化：读购物车/地址
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(LS_KEY);
+      const raw = localStorage.getItem(LS_CART_KEY);
       if (raw) setCart(JSON.parse(raw));
+    } catch {}
+    try {
+      const rawAddr = localStorage.getItem(LS_ADDRESS_KEY);
+      if (rawAddr) setAddress(JSON.parse(rawAddr));
     } catch {}
     setLoaded(true);
   }, []);
 
+  // 同步购物车
   useEffect(() => {
     if (!loaded) return;
     try {
-      localStorage.setItem(LS_KEY, JSON.stringify(cart));
+      localStorage.setItem(LS_CART_KEY, JSON.stringify(cart));
     } catch {}
     try {
       const count = cart.reduce((acc, it) => acc + (Number(it.qty) || 0), 0);
       window.dispatchEvent(new CustomEvent("bag:count", { detail: { count } }));
-      window.dispatchEvent(new CustomEvent("bag:updated", { detail: { source: myId } }));
+      window.dispatchEvent(
+        new CustomEvent("bag:updated", { detail: { source: myId } })
+      );
     } catch {}
   }, [cart, loaded, myId]);
 
+  // 监听其他 tab 对购物车的更新
   useEffect(() => {
     const refresh = (e: Event) => {
       const ce = e as CustomEvent<any>;
       if (ce?.detail?.source === myId) return;
       try {
-        const raw = localStorage.getItem(LS_KEY);
+        const raw = localStorage.getItem(LS_CART_KEY);
         if (raw) setCart(JSON.parse(raw));
       } catch {}
     };
     window.addEventListener("bag:updated", refresh as EventListener);
-    return () => window.removeEventListener("bag:updated", refresh as EventListener);
+    return () =>
+      window.removeEventListener("bag:updated", refresh as EventListener);
   }, [myId]);
+
+  // 地址写回 localStorage（在 Address 步输入时实时保存）
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_ADDRESS_KEY, JSON.stringify(address));
+    } catch {}
+  }, [address]);
 
   // 购物车是否有商品
   const hasItems = cart.length > 0;
@@ -330,7 +421,7 @@ export default function CheckoutPage() {
 
   const itemsTotals = useMemo(() => {
     if (!pricingInput.length) {
-      return { currency: ("AUD" as Currency), itemsMinor: 0, itemsMajor: 0 };
+      return { currency: "AUD" as Currency, itemsMinor: 0, itemsMajor: 0 };
     }
     const { currency, totalMinor, totalMajor } = selectCurrencyAndTotals(
       pricingInput,
@@ -343,7 +434,7 @@ export default function CheckoutPage() {
 
   const currency = itemsTotals.currency as string;
 
-  // ===== 你节省了：按（基价 - 生效价）聚合（旧模型则回退）=====
+  // 你节省了（基价 - 生效价）
   const savedMajor = useMemo(() => {
     let savedMinor = 0;
     for (const it of cart as any[]) {
@@ -355,10 +446,10 @@ export default function CheckoutPage() {
         const eff = effectiveMinor(rec);
         if (eff < base) savedMinor += (base - eff) * qty;
       } else {
-        // 旧：元 -> 分
         const baseMajor = Number(it?.basePrice ?? it?.price ?? 0);
         const priceMajor = Number(it?.price ?? 0);
-        if (baseMajor > priceMajor) savedMinor += Math.round((baseMajor - priceMajor) * 100) * qty;
+        if (baseMajor > priceMajor)
+          savedMinor += Math.round((baseMajor - priceMajor) * 100) * qty;
       }
     }
     return savedMinor / 100;
@@ -366,7 +457,9 @@ export default function CheckoutPage() {
 
   // 运费（跟随选定币种；阈值与费用为固定数字）
   const deliveryFeeMajor =
-    hasItems && itemsTotals.itemsMajor < DELIVERY_FREE_THRESHOLD ? DELIVERY_FLAT : 0;
+    hasItems && itemsTotals.itemsMajor < DELIVERY_FREE_THRESHOLD
+      ? DELIVERY_FLAT
+      : 0;
   const deliveryFeeMinor = Math.round(deliveryFeeMajor * 100);
 
   // 总计 = 商品小计 + 运费
@@ -374,22 +467,45 @@ export default function CheckoutPage() {
   const totalMajor = itemsTotals.itemsMajor + deliveryFeeMajor;
 
   // ———— 本地修改：数量增减/删除 ————
-  const removeItem = (key: string) => setCart((prev) => prev.filter((x) => x.key !== key));
+  const removeItem = (key: string) =>
+    setCart((prev) => prev.filter((x) => x.key !== key));
   const inc = (key: string) =>
-    setCart((prev) => prev.map((x) => (x.key === key ? { ...x, qty: Math.min(x.qty + 1, x.stock) } : x)));
+    setCart((prev) =>
+      prev.map((x) =>
+        x.key === key ? { ...x, qty: Math.min(x.qty + 1, x.stock) } : x
+      )
+    );
   const dec = (key: string) =>
-    setCart((prev) => prev.map((x) => (x.key === key ? { ...x, qty: Math.max(1, x.qty - 1) } : x)));
+    setCart((prev) =>
+      prev.map((x) =>
+        x.key === key ? { ...x, qty: Math.max(1, x.qty - 1) } : x
+      )
+    );
 
-  const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>("standard");
+  const [deliveryMethod, setDeliveryMethod] =
+    useState<DeliveryMethod>("standard");
 
   const nextStep = () => {
-    setStepAndURL(step === "bag" ? "address" : step === "address" ? "delivery" : step === "delivery" ? "payment" : "payment");
+    setStepAndURL(
+      step === "bag"
+        ? "address"
+        : step === "address"
+        ? "delivery"
+        : step === "delivery"
+        ? "payment"
+        : "payment"
+    );
   };
-  const gotoLogin = () => router.push(`/auth/login?next=${encodeURIComponent("/checkout?step=address")}`);
+  const gotoLogin = () =>
+    router.push(
+      `/auth/login?next=${encodeURIComponent("/checkout?step=address")}`
+    );
 
-  // Stripe 需要「分」（整数），Braintree 需要「元」（小数）
-  const amountInMinorUnit = Math.max(0, Math.round(totalMinor));
+  // Braintree 需要「元」（小数）
   const amountInMajorUnit = Math.max(0, Number(totalMajor.toFixed(2)));
+
+  // 右侧摘要：件数
+  const itemsCount = cart.reduce((n, it: any) => n + (it?.qty ?? 1), 0);
 
   return (
     <main className="w-full px-4 sm:px-6 lg:px-8 2xl:px-12 py-6 md:py-8">
@@ -408,13 +524,22 @@ export default function CheckoutPage() {
               <div className="border-b px-4 py-3 font-semibold">Your Bag</div>
 
               <div className="p-4">
-                <CartList cart={cart} onInc={inc} onDec={dec} onRemove={removeItem} />
+                <CartList
+                  cart={cart}
+                  onInc={inc}
+                  onDec={dec}
+                  onRemove={removeItem}
+                />
               </div>
 
               <div className="border-t p-4">
                 <div className="mb-2 text-sm font-semibold">Order Summary</div>
                 <div className="space-y-2 text-sm">
-                  <Row label="Subtotal" value={fmtPrice(itemsTotals.itemsMajor, currency)} strongRight />
+                  <Row
+                    label="Subtotal"
+                    value={fmtPrice(itemsTotals.itemsMajor, currency)}
+                    strongRight
+                  />
                   {savedMajor > 0 && (
                     <Row
                       label="You saved"
@@ -431,92 +556,215 @@ export default function CheckoutPage() {
                           : fmtPrice(DELIVERY_FLAT, currency)
                       }
                       valueClass={
-                        itemsTotals.itemsMajor >= DELIVERY_FREE_THRESHOLD ? "text-emerald-700 font-semibold" : undefined
+                        itemsTotals.itemsMajor >= DELIVERY_FREE_THRESHOLD
+                          ? "text-emerald-700 font-semibold"
+                          : undefined
                       }
                     />
                   )}
                   <div className="pt-1">
-                    <Row label="Total" value={fmtPrice(totalMajor, currency)} strongLeft strongRight bigRight />
-                    <div className="mt-1 text-xs text-neutral-500">Including GST</div>
+                    <Row
+                      label="Total"
+                      value={fmtPrice(totalMajor, currency)}
+                      strongLeft
+                      strongRight
+                      bigRight
+                    />
+                    <div className="mt-1 text-xs text-neutral-500">
+                      Including GST
+                    </div>
                   </div>
                 </div>
               </div>
             </section>
           )}
 
-          {step === "address" && <AddressForm />}
+          {step === "address" && (
+            <AddressForm address={address} setAddress={setAddress} />
+          )}
 
           {step === "delivery" && (
             <>
               {hasItems && itemsTotals.itemsMajor >= DELIVERY_FREE_THRESHOLD && (
                 <div className="rounded-xl border px-4 py-3 text-sm">
-                  <div className="mb-2 font-medium">Congratulations! You have reached free shipping</div>
+                  <div className="mb-2 font-medium">
+                    Congratulations! You have reached free shipping
+                  </div>
                   <div className="h-1 w-full overflow-hidden rounded bg-neutral-200">
                     <div className="h-full w-full bg-emerald-600" />
                   </div>
                 </div>
               )}
 
-              <DeliverySection deliveryMethod={deliveryMethod} setDeliveryMethod={setDeliveryMethod} />
+              <DeliverySection
+                deliveryMethod={deliveryMethod}
+                setDeliveryMethod={setDeliveryMethod}
+              />
             </>
           )}
 
           {step === "payment" && (
             <section className="rounded-xl border">
-              <div className="border-b px-4 py-3 font-semibold">Payment</div>
-              <div className="p-4 space-y-4">
-                {/* 支付方式切换 */}
-                <div className="inline-flex rounded-full border p-1 text-sm">
-                  <button
-                    className={["rounded-full px-4 py-2", payProvider === "stripe" ? "bg-black text-white" : "text-neutral-700"].join(" ")}
-                    onClick={() => setPayProvider("stripe")}
-                    type="button"
-                  >
-                    Card (Stripe)
-                  </button>
-                  <button
-                    className={["rounded-full px-4 py-2", payProvider === "braintree" ? "bg-black text-white" : "text-neutral-700"].join(" ")}
-                    onClick={() => setPayProvider("braintree")}
-                    type="button"
-                  >
-                    PayPal (Braintree)
-                  </button>
-                </div>
+              {/* 改造成「模板布局」：左支付选项 + 右侧 Delivery Details 与摘要 */}
+              <div className="px-4 py-3 border-b font-semibold">
+                How would you like to pay?
+              </div>
 
-                {/* 金额为 0 的友好提示 */}
-                {totalMajor <= 0 && (
-                  <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700">
-                    Your total is $0. Add items to proceed with payment.
+              <div className="p-4">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* LEFT: Payment Options */}
+                  <div className="lg:col-span-2 space-y-6">
+                    <div className="border rounded-lg p-4">
+                      <h2 className="text-lg font-medium mb-4">
+                        Payment Options
+                      </h2>
+
+                      {/* 单一选项：PayPal */}
+                      <label className="flex items-center gap-3 w-full border rounded-md px-3 py-3 cursor-pointer border-black ring-1 ring-black">
+                        <input type="radio" name="payment" className="mt-0.5" checked readOnly />
+                        <div className="flex-1 flex items-center justify-between gap-3">
+                          <div className="font-medium">
+                            PayPal – Pay Now or Pay in 4*
+                          </div>
+                          <div className="flex items-center gap-2 opacity-80">
+                            <img
+                              src="https://www.paypalobjects.com/webstatic/icon/pp258.png"
+                              alt="PayPal"
+                              className="h-5"
+                            />
+                          </div>
+                        </div>
+                      </label>
+
+                      {/* 选中后渲染 Braintree 的 PayPal 按钮 */}
+                      <div className="mt-4 border rounded-md p-3">
+                        {totalMajor <= 0 ? (
+                          <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                            Your total is $0. Add items to proceed with payment.
+                          </div>
+                        ) : (
+                          <BraintreeDropIn
+                            key={`bt-${amountInMajorUnit}-${currency}`}
+                            amount={amountInMajorUnit}
+                            currency={currency.toUpperCase()}
+                            enableCard={false}
+                            onSucceeded={() => router.push("/checkout/confirm")}
+                          />
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 模板里的「Pay Now」大按钮：为了视觉一致，保持禁用态（真正支付点上面的黄色按钮） */}
+                    <button
+                      disabled
+                      className="w-full py-3 rounded-md bg-gray-200 text-gray-500 font-medium cursor-not-allowed"
+                      title="Click the PayPal button above to complete payment"
+                    >
+                      Pay Now
+                    </button>
+
+                    <p className="text-xs text-gray-500">
+                      * Pay in 4 availability is determined by PayPal and may
+                      vary by account and region.
+                    </p>
                   </div>
-                )}
 
-                {/* 根据选择渲染对应支付组件 */}
-                {totalMajor > 0 && (
-                  <>
-                    {payProvider === "stripe" ? (
-                      <StripePayment
-                        key={`st-${amountInMinorUnit}-${currency}-${payProvider}`}
-                        amountInCents={amountInMinorUnit}
-                        currency={currency.toLowerCase()}
-                        onSucceeded={() => router.push("/checkout/confirm")}
-                      />
-                    ) : (
-                      <BraintreeDropIn
-                        key={`bt-${amountInMajorUnit}-${currency}-${payProvider}`}
-                        amount={amountInMajorUnit}
-                        currency={currency.toUpperCase()}
-                        enableCard={false}
-                        onSucceeded={() => router.push("/checkout/confirm")}
-                      />
-                    )}
-                  </>
-                )}
+                  {/* RIGHT: Delivery Details + Summary */}
+                  <aside className="space-y-6">
+                    {/* 提示条 */}
+                    <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm">
+                      <div className="flex items-start gap-2">
+                        <span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-white">
+                          <Check size={14} />
+                        </span>
+                        <div>
+                          <div className="font-medium">
+                            Make sure your delivery address is correct!
+                          </div>
+                          <div className="text-gray-600">
+                            You can go back to the Address step to make changes.
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Delivery Details */}
+                    <div className="border rounded-lg p-4">
+                      <h3 className="text-base font-medium mb-3">
+                        Delivery Details
+                      </h3>
+                      {address?.firstName || address?.lastName ? (
+                        <div className="text-sm leading-6 text-gray-800">
+                          <div>
+                            {[address.firstName, address.lastName]
+                              .filter(Boolean)
+                              .join(" ")}
+                          </div>
+                          <div>
+                            {address.line1}
+                            {address.line2 ? ` ${address.line2}` : ""}
+                          </div>
+                          <div>
+                            {address.city} {address.state} {address.postcode}
+                          </div>
+                          <div>{address.country}</div>
+                          {address.email && (
+                            <div className="mt-2">{address.email}</div>
+                          )}
+                          {address.phone && <div>{address.phone}</div>}
+                        </div>
+                      ) : (
+                        <div className="text-sm text-gray-500">
+                          No delivery address found. Please complete the{" "}
+                          <b>Address</b> step.
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Order Summary（右侧小计/总计） */}
+                    <div className="border rounded-lg p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm text-gray-600">Items</div>
+                        <div className="text-base font-medium">
+                          {itemsCount} item{itemsCount > 1 ? "s" : ""}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm text-gray-600">Subtotal</div>
+                        <div className="text-base font-medium">
+                          {fmtMoneyMinor(itemsTotals.itemsMinor, currency)}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm text-gray-600">Delivery</div>
+                        <div className="text-base font-medium">
+                          {deliveryFeeMinor === 0
+                            ? "FREE"
+                            : fmtMoneyMinor(deliveryFeeMinor, currency)}
+                        </div>
+                      </div>
+
+                      <div className="border-t pt-3 flex items-center justify-between">
+                        <div className="text-lg font-semibold">Total</div>
+                        <div className="text-xl font-bold">
+                          {fmtMoneyMinor(totalMinor, currency)}
+                        </div>
+                      </div>
+                    </div>
+                  </aside>
+                </div>
               </div>
             </section>
           )}
         </div>
 
-        <StepActionRail step={step} onNext={nextStep} gotoLogin={gotoLogin} />
+        <StepActionRail
+          step={step}
+          onNext={nextStep}
+          gotoLogin={gotoLogin}
+        />
       </div>
     </main>
   );
@@ -540,7 +788,11 @@ function Row({
   return (
     <div className="flex items-center justify-between">
       <div className={[strongLeft ? "font-semibold" : "text-neutral-600"].join(" ")}>{label}</div>
-      <div className={[strongRight ? "font-semibold" : "", bigRight ? "text-lg" : "text-base", valueClass || ""].join(" ")}>
+      <div className={[
+        strongRight ? "font-semibold" : "",
+        bigRight ? "text-lg" : "text-base",
+        valueClass || "",
+      ].join(" ")}>
         {value}
       </div>
     </div>
