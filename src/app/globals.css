@@ -4,9 +4,10 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 主题色变量（保留你的设置） */
 :root {
   --background: #ffffff;
-  --foreground: #000000;
+  --foreground: #0a0a0a;
 }
 
 .dark {
@@ -14,7 +15,37 @@
   --foreground: #ffffff;
 }
 
-body {
-  background-color: var(--background);
-  color: var(--foreground);
+/* === Base：全站等比缩放 & 字体优化 === */
+@layer base {
+  /* 用 rem 驱动的全站缩放：默认 14px，更大屏逐级放大 */
+  html {
+    font-size: 14px; /* ≈较原生 16px 缩小 12.5% */
+  }
+  @media (min-width: 1280px) { /* xl */
+    html { font-size: 15px; }
+  }
+  @media (min-width: 1536px) { /* 2xl */
+    html { font-size: 16px; }
+  }
+
+  body {
+    @apply bg-[var(--background)] text-[var(--foreground)] antialiased;
+  }
+
+  /* 字体渲染优化（可选但常用） */
+  * {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+}
+
+/* === Components：可选的页面容器工具类 ===
+   在页面根部包一层：<div class="page-shell"> ... </div>
+   统一最大宽度与左右留白（也可放到 layout.tsx 使用）
+*/
+@layer components {
+  .page-shell {
+    @apply mx-auto w-full max-w-screen-xl 2xl:max-w-[1440px] px-4 md:px-6;
+  }
 }

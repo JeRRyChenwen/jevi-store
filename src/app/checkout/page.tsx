@@ -359,7 +359,7 @@ export default function CheckoutPage() {
               <div className="px-4 py-3 border-b font-semibold">How would you like to pay?</div>
 
               <div className="p-4">
-                {/* ===== 两列布局（注意 items-stretch 让各列拉满高度） ===== */}
+                {/* ===== 两列布局（items-stretch 让各列拉满高度） ===== */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
                   {/* LEFT: Payment Options + 蓝色提示 + Delivery Details + 订单摘要 */}
                   <div className="lg:col-span-2 space-y-6">
@@ -437,25 +437,27 @@ export default function CheckoutPage() {
                     </div>
                   </div>
 
-                  {/* RIGHT: PayPal Drop-in 区域（拉满高度 + 设最小高度） */}
+                  {/* RIGHT: PayPal Drop-in 区域（垂直 + 水平居中、拉满高度、设最小高度） */}
                   <div className="flex flex-col lg:self-stretch">
-                    <div className="border rounded-lg p-3 h-full min-h-[720px]">
-                      {amountInMajorUnit <= 0 ? (
-                        <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700">
-                          Your total is $0. Add items to proceed with payment.
-                        </div>
-                      ) : (
-                        <BraintreeDropIn
-                          key={`bt-${amountInMajorUnit}-${currency}`}
-                          amount={amountInMajorUnit}
-                          currency={currency.toUpperCase()}
-                          enableCard={false}
-                          onSucceeded={() => router.push("/checkout/confirm")}
-                          hideSubmitButton
-                          onExposePay={(fn: () => void) => { triggerPayRef.current = fn; }}
-                          onCanPayChange={(can) => setCanPay(can)}
-                        />
-                      )}
+                    <div className="border rounded-lg p-3 h-full min-h-[720px] flex items-center justify-center">
+                      <div className="w-full max-w-[520px] mx-auto">
+                        {amountInMajorUnit <= 0 ? (
+                          <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700 text-center">
+                            Your total is $0. Add items to proceed with payment.
+                          </div>
+                        ) : (
+                          <BraintreeDropIn
+                            key={`bt-${amountInMajorUnit}-${currency}`}
+                            amount={amountInMajorUnit}
+                            currency={currency.toUpperCase()}
+                            enableCard={false}
+                            onSucceeded={() => router.push("/checkout/confirm")}
+                            hideSubmitButton
+                            onExposePay={(fn: () => void) => { triggerPayRef.current = fn; }}
+                            onCanPayChange={(can) => setCanPay(can)}
+                          />
+                        )}
+                      </div>
                     </div>
                   </div>
 
