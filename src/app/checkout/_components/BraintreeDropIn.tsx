@@ -8,6 +8,11 @@ type Props = {
   currency: string;        // 'USD' | 'AUD' | 'EUR' | 'GBP' | 'CAD' ...
   enableCard?: boolean;    // 是否在 Drop-in 开卡（默认只开 PayPal）
   onSucceeded?: (r: { id: string }) => void;
+
+  // ✅ 新增：为“把按钮移到页面底部”服务
+  hideSubmitButton?: boolean;                 // 隐藏内部黑色按钮
+  onExposePay?: (pay: () => void) => void;    // 暴露“发起支付”函数
+  onCanPayChange?: (can: boolean) => void;    // 是否可 requestPaymentMethod（PayPal 授权后为 true）
 };
 
 export default function BraintreeDropIn({
@@ -15,6 +20,9 @@ export default function BraintreeDropIn({
   currency,
   enableCard = false,
   onSucceeded,
+  hideSubmitButton,
+  onExposePay,
+  onCanPayChange,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const runIdRef = useRef(0);          // 互斥：只保留最后一次创建
@@ -25,6 +33,7 @@ export default function BraintreeDropIn({
   const [creating, setCreating] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [canPay, setCanPay] = useState(false); // ✅ PayPal 授权后置 true
 
   // 统一大写，保证和后端映射一致（如 BT_MERCHANT_ACCOUNT_AUD）
   const cur = (currency || "AUD").toUpperCase();
@@ -43,6 +52,8 @@ export default function BraintreeDropIn({
     setError(null);
     setCreating(true);
     setInstance(null);
+    setCanPay(false);                // ✅ 重建时先不可支付
+    onCanPayChange?.(false);
 
     let created: any = null;
 
@@ -75,6 +86,8 @@ export default function BraintreeDropIn({
             amount: amount.toFixed(2), // PayPal 期望字符串形式金额
             currency: cur,             // ✅ 与后端一致的币种
             commit: true,
+            // 如需样式可启用：
+            // buttonStyle: { color: "black", shape: "pill", label: "pay", height: 48, layout: "horizontal", tagline: false },
           },
           // 如需：paypalCredit: false, venmo: false,
         } as any);
@@ -85,6 +98,19 @@ export default function BraintreeDropIn({
           created = null;
           return;
         }
+
+        // ✅ 事件：是否可以 requestPaymentMethod（PayPal 完成授权后为 true）
+        created.on?.("paymentMethodRequestable", () => {
+          setCanPay(true);
+          onCanPayChange?.(true);
+        });
+        created.on?.("noPaymentMethodRequestable", () => {
+          setCanPay(false);
+          onCanPayChange?.(false);
+        });
+
+        // ✅ 暴露“触发支付”的函数给父组件（底部按钮会调用它）
+        onExposePay?.(() => handlePay(created));
 
         liveInstanceRef.current = created;
         setInstance(created);
@@ -106,10 +132,11 @@ export default function BraintreeDropIn({
         try { node.innerHTML = ""; } catch {}
       })();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [amount, cur, enableCard]); // ✅ 用 cur，币种变化时重建
 
-  const handlePay = async () => {
-    const inst = instance;
+  const handlePay = async (instParam?: any) => {
+    const inst = instParam || instance;
     if (!inst) return;
     setSubmitting(true);
     setError(null);
@@ -155,19 +182,29 @@ export default function BraintreeDropIn({
         </div>
       )}
 
-      <button
-        type="button"
-        disabled={creating || submitting || !instance}
-        onClick={handlePay}
-        className={[
-          "rounded-full px-6 py-3 text-sm font-semibold",
-          creating || submitting || !instance
-            ? "bg-neutral-200 text-neutral-500 cursor-not-allowed"
-            : "bg-neutral-900 text-white hover:bg-neutral-800",
-        ].join(" ")}
-      >
-        {creating ? "Initialising…" : submitting ? "Processing…" : enableCard ? "Pay now" : "Pay with PayPal"}
-      </button>
+      {/* ⬇️ 这个就是组件内部的“Pay with PayPal”按钮；可通过 hideSubmitButton 隐藏
+          同时我们也根据 canPay 控制可点击（避免红色提示） */}
+      {!hideSubmitButton && (
+        <button
+          type="button"
+          disabled={creating || submitting || !instance || !canPay}
+          onClick={() => handlePay()}
+          className={[
+            "rounded-full px-6 py-3 text-sm font-semibold",
+            (creating || submitting || !instance || !canPay)
+              ? "bg-neutral-200 text-neutral-500 cursor-not-allowed"
+              : "bg-neutral-900 text-white hover:bg-neutral-800",
+          ].join(" ")}
+        >
+          {creating
+            ? "Initialising…"
+            : submitting
+            ? "Processing…"
+            : enableCard
+            ? "Pay now"
+            : "Pay with PayPal"}
+        </button>
+      )}
     </div>
   );
 }
