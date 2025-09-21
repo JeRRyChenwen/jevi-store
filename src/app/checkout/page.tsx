@@ -277,16 +277,15 @@ export default function CheckoutPage() {
   const totalMajor = itemsTotals.itemsMajor + deliveryFeeMajor;
   const amountInMajorUnit = Math.max(0, Number(totalMajor.toFixed(2)));
 
-  // —— “底部 Pay with PayPal” 按钮：由 Drop-in 暴露触发函数，并根据可用性启用 —— //
+  // —— 底部 Pay with PayPal —— //
   const triggerPayRef = useRef<null | (() => void)>(null);
-  const [canPay, setCanPay] = useState(false);   // PayPal 授权后会变 true
+  const [canPay, setCanPay] = useState(false);
   const [paying, setPaying] = useState(false);
 
   const handleBottomPay = () => {
     if (!triggerPayRef.current || !canPay || paying) return;
     setPaying(true);
     triggerPayRef.current();
-    // 成功后会在 BraintreeDropIn 内部跳转；这里稍后复位以避免连点
     setTimeout(() => setPaying(false), 2000);
   };
 
@@ -295,7 +294,6 @@ export default function CheckoutPage() {
   };
   const gotoLogin = () => router.push(`/auth/login?next=${encodeURIComponent("/checkout?step=address")}`);
 
-  // 右侧摘要：件数
   const itemsCount = cart.reduce((n, it: any) => n + (it?.qty ?? 1), 0);
 
   return (
@@ -361,8 +359,9 @@ export default function CheckoutPage() {
               <div className="px-4 py-3 border-b font-semibold">How would you like to pay?</div>
 
               <div className="p-4">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  {/* LEFT: Payment Options */}
+                {/* ===== 两列布局（注意 items-stretch 让各列拉满高度） ===== */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+                  {/* LEFT: Payment Options + 蓝色提示 + Delivery Details + 订单摘要 */}
                   <div className="lg:col-span-2 space-y-6">
                     <div className="border rounded-lg p-4">
                       <h2 className="text-lg font-medium mb-4">Payment Options</h2>
@@ -377,48 +376,9 @@ export default function CheckoutPage() {
                           </div>
                         </div>
                       </label>
-
-                      {/* Drop-in：只显示黄色 PayPal 按钮区域；不渲染内部黑色按钮 */}
-                      <div className="mt-4 border rounded-md p-3">
-                        {amountInMajorUnit <= 0 ? (
-                          <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700">
-                            Your total is $0. Add items to proceed with payment.
-                          </div>
-                        ) : (
-                          <BraintreeDropIn
-                            key={`bt-${amountInMajorUnit}-${currency}`}
-                            amount={amountInMajorUnit}
-                            currency={currency.toUpperCase()}
-                            enableCard={false}
-                            onSucceeded={() => router.push("/checkout/confirm")}
-                            hideSubmitButton
-                            onExposePay={(fn: () => void) => { triggerPayRef.current = fn; }}
-                            onCanPayChange={(can) => setCanPay(can)}
-                          />
-                        )}
-                      </div>
                     </div>
 
-                    {/* ⬇️ 只保留底部这个大按钮（移动后的 Pay with PayPal） */}
-                    <button
-                      disabled={!canPay || paying}
-                      onClick={handleBottomPay}
-                      className={[
-                        "w-full py-3 rounded-md font-medium",
-                        (!canPay || paying) ? "bg-gray-200 text-gray-500 cursor-not-allowed" : "bg-black text-white hover:bg-neutral-800"
-                      ].join(" ")}
-                      title={!canPay ? "Click the yellow PayPal button above to authorize first" : "Pay with PayPal"}
-                    >
-                      {paying ? "Processing..." : "Pay with PayPal"}
-                    </button>
-
-                    <p className="text-xs text-gray-500">
-                      * Pay in 4 availability is determined by PayPal and may vary by account and region.
-                    </p>
-                  </div>
-
-                  {/* RIGHT: Delivery Details + Summary */}
-                  <aside className="space-y-6">
+                    {/* 蓝色提示 */}
                     <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm">
                       <div className="flex items-start gap-2">
                         <span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-white">
@@ -431,6 +391,7 @@ export default function CheckoutPage() {
                       </div>
                     </div>
 
+                    {/* Delivery Details */}
                     <div className="border rounded-lg p-4">
                       <h3 className="text-base font-medium mb-3">Delivery Details</h3>
                       {address?.firstName || address?.lastName ? (
@@ -447,10 +408,13 @@ export default function CheckoutPage() {
                       )}
                     </div>
 
+                    {/* 订单摘要 */}
                     <div className="border rounded-lg p-4 space-y-3">
                       <div className="flex items-center justify-between">
                         <div className="text-sm text-gray-600">Items</div>
-                        <div className="text-base font-medium">{itemsCount} item{itemsCount > 1 ? "s" : ""}</div>
+                        <div className="text-base font-medium">
+                          {itemsCount} item{itemsCount > 1 ? "s" : ""}
+                        </div>
                       </div>
                       <div className="flex items-center justify-between">
                         <div className="text-sm text-gray-600">Subtotal</div>
@@ -471,8 +435,51 @@ export default function CheckoutPage() {
                         </div>
                       </div>
                     </div>
-                  </aside>
+                  </div>
+
+                  {/* RIGHT: PayPal Drop-in 区域（拉满高度 + 设最小高度） */}
+                  <div className="flex flex-col lg:self-stretch">
+                    <div className="border rounded-lg p-3 h-full min-h-[720px]">
+                      {amountInMajorUnit <= 0 ? (
+                        <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                          Your total is $0. Add items to proceed with payment.
+                        </div>
+                      ) : (
+                        <BraintreeDropIn
+                          key={`bt-${amountInMajorUnit}-${currency}`}
+                          amount={amountInMajorUnit}
+                          currency={currency.toUpperCase()}
+                          enableCard={false}
+                          onSucceeded={() => router.push("/checkout/confirm")}
+                          hideSubmitButton
+                          onExposePay={(fn: () => void) => { triggerPayRef.current = fn; }}
+                          onCanPayChange={(can) => setCanPay(can)}
+                        />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 底部唯一大按钮：跨整行 */}
+                  <div className="lg:col-span-3">
+                    <button
+                      disabled={!canPay || paying}
+                      onClick={handleBottomPay}
+                      className={[
+                        "w-full py-3 rounded-md font-medium",
+                        (!canPay || paying)
+                          ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                          : "bg-black text-white hover:bg-neutral-800"
+                      ].join(" ")}
+                      title={!canPay ? "Click the yellow PayPal button to authorize first" : "Pay with PayPal"}
+                    >
+                      {paying ? "Processing..." : "Pay with PayPal"}
+                    </button>
+                  </div>
                 </div>
+
+                <p className="mt-2 text-xs text-gray-500">
+                  * Pay in 4 availability is determined by PayPal and may vary by account and region.
+                </p>
               </div>
             </section>
           )}
@@ -492,7 +499,11 @@ function Row({
   return (
     <div className="flex items-center justify-between">
       <div className={[strongLeft ? "font-semibold" : "text-neutral-600"].join(" ")}>{label}</div>
-      <div className={[strongRight ? "font-semibold" : "", bigRight ? "text-lg" : "text-base", valueClass || ""].join(" ")}>
+      <div className={[
+        strongRight ? "font-semibold" : "",
+        bigRight ? "text-lg" : "text-base",
+        valueClass || ""
+      ].join(" ")}>
         {value}
       </div>
     </div>
