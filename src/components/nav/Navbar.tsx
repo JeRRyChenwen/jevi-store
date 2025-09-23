@@ -21,14 +21,11 @@ import BagButton from "./BagButton";
 type User = { id: string; email: string; name?: string | null };
 
 /** ============ API 基址与智能回退 ============ */
-/** 环境可显式指定直连基址；未指定则使用相对路径交给 Next.js rewrites/路由处理 */
 const ENV_BASE = (process.env.NEXT_PUBLIC_API_BASE || "").trim();
-/** 运行时可回退的“当前基址” */
 const ABSOLUTE_RE = /^https?:\/\//i;
 
 function normalizeBase(b: string) {
   if (!b) return "/api";
-  // 允许传 "/api"、"http://xxx"、"https://xxx"
   return b.endsWith("/") ? b.slice(0, -1) : b;
 }
 
@@ -36,20 +33,17 @@ const baseRef: { current: string } = {
   current: normalizeBase(ENV_BASE || "/api"),
 };
 
-/** 统一拼 URL（避免重复斜杠） */
 function buildUrl(path: string, base = baseRef.current) {
   const p = path.startsWith("/") ? path : `/${path}`;
   return `${base}${p}`;
 }
 
-/** 智能 fetch：直连失败（网络错误）时自动回退到 /api 重试一次 */
 async function safeFetch(
   path: string,
   init?: RequestInit & { retryOnNetworkError?: boolean }
 ) {
   const retryOnNetworkError = init?.retryOnNetworkError ?? true;
 
-  // 第一次按当前 base 请求
   try {
     const res = await fetch(buildUrl(path), init);
     return res;
@@ -57,19 +51,16 @@ async function safeFetch(
     const isNetworkError =
       err && (err.name === "TypeError" || err.message?.includes("NetworkError"));
 
-    // 仅当当前是“绝对地址”且允许回退时尝试一次回退
     if (
       retryOnNetworkError &&
       ABSOLUTE_RE.test(baseRef.current) &&
       isNetworkError
     ) {
-      // 回退到 /api 并重试一次
       baseRef.current = "/api";
       try {
         const res2 = await fetch(buildUrl(path, "/api"), init);
         return res2;
       } catch {
-        // 若回退仍失败，则把原错误抛出（但下面会被调用方吞掉）
         throw err;
       }
     }
@@ -118,7 +109,6 @@ export default function Navbar() {
           cache: "no-store",
         });
         if (r.ok) {
-          // 204 也可能是“本地兜底”，直接视为未登录
           if (r.status === 204) {
             setUser(null);
           } else {
@@ -129,14 +119,10 @@ export default function Navbar() {
           return;
         }
       } catch (e) {
-        lastErr = e; // 吞掉，让控制台更清净
+        lastErr = e;
       }
       if (i < retries) await new Promise((r) => setTimeout(r, i === 0 ? 0 : 100 * i));
     }
-    // 如需调试可打开：
-    // if (process.env.NODE_ENV !== "production" && lastErr) {
-    //   console.warn("[Navbar] fetchMe failed:", lastErr, "base =", baseRef.current);
-    // }
     setUser(null);
     setLoading(false);
   };
@@ -172,10 +158,22 @@ export default function Navbar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
-  // ⌘K / Ctrl+K 打开搜索
+  // ⌘K / Ctrl+K 打开搜索 —— 增加空值保护 & 在输入时忽略
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const key = e.key.toLowerCase();
+      const el = e.target as HTMLElement | null;
+      const tag = (el?.tagName ?? "").toLowerCase();
+      const isTyping =
+        !!el?.isContentEditable ||
+        tag === "input" ||
+        tag === "textarea" ||
+        tag === "select";
+
+      if (isTyping) return;
+
+      const key = (e.key ?? "").toLowerCase();
+      if (!key) return;
+
       if ((e.metaKey || e.ctrlKey) && key === "k") {
         e.preventDefault();
         setOpenSearch(true);
