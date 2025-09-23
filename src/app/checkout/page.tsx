@@ -101,7 +101,7 @@ function CheckoutSteps({
 type Address = {
   firstName?: string;
   lastName?: string;
-  // email 字段仍然保留在类型里，便于兼容历史数据，但 UI 中不再在 Address 步骤收集
+  // email 字段保留在数据里，但 Address 步骤不再收集
   email?: string;
   phone?: string;
   line1?: string;
@@ -140,7 +140,7 @@ function AddressForm({
           value={address.lastName || ""}
           onChange={on("lastName")}
         />
-        {/* ❌ 移除了 Email 输入（避免与 Payment 步骤重复收集） */}
+        {/* ❌ 移除了 Email 输入 */}
         <input
           className="md:col-span-2 w-full rounded-md border px-3 py-2 text-sm"
           placeholder="Phone"
@@ -575,7 +575,7 @@ export default function CheckoutPage() {
               </div>
 
               <div className="p-4">
-                {/* ===== 两列布局：右列去掉撑高与居中，减少上下空白 ===== */}
+                {/* ===== 两列布局：右列自然高度、去掉大边框 ===== */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
                   {/* LEFT: Payment Options + 蓝色提示 + Delivery Details + 订单摘要 */}
                   <div className="lg:col-span-2 space-y-6">
@@ -675,30 +675,28 @@ export default function CheckoutPage() {
                     </div>
                   </div>
 
-                  {/* RIGHT: PayPal + Your Details（自然高度，顶部对齐，区块间距更紧凑） */}
+                  {/* RIGHT: PayPal + Your Details（无大边框） */}
                   <div className="flex flex-col gap-6">
-                    {/* PayPal 区 */}
-                    <div className="border rounded-lg p-3">
-                      <div className="w-full max-w-[520px] mx-auto">
-                        {amountInMajorUnit <= 0 ? (
-                          <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700 text-center">
-                            Your total is $0. Add items to proceed with payment.
-                          </div>
-                        ) : (
-                          <BraintreeDropIn
-                            key={`bt-${amountInMajorUnit}-AUD`}
-                            amount={amountInMajorUnit}
-                            currency="AUD" // ✅ 统一以 AUD 结算
-                            enableCard={false}
-                            onSucceeded={() => router.push("/checkout/confirm")}
-                            hideSubmitButton
-                            onExposePay={(fn: () => void) => {
-                              triggerPayRef.current = fn;
-                            }}
-                            onCanPayChange={(can) => setCanPay(can)}
-                          />
-                        )}
-                      </div>
+                    {/* PayPal 区：去掉外层大边框，仅保留按钮本身 */}
+                    <div className="w-full max-w-[520px] mx-auto">
+                      {amountInMajorUnit <= 0 ? (
+                        <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700 text-center">
+                          Your total is $0. Add items to proceed with payment.
+                        </div>
+                      ) : (
+                        <BraintreeDropIn
+                          key={`bt-${amountInMajorUnit}-AUD`}
+                          amount={amountInMajorUnit}
+                          currency="AUD" // ✅ 统一以 AUD 结算
+                          enableCard={false}
+                          onSucceeded={() => router.push("/checkout/confirm")}
+                          hideSubmitButton
+                          onExposePay={(fn: () => void) => {
+                            triggerPayRef.current = fn;
+                          }}
+                          onCanPayChange={(can) => setCanPay(can)}
+                        />
+                      )}
                     </div>
 
                     {/* Your Details（保留 email 输入与订阅选项） */}
@@ -715,7 +713,6 @@ export default function CheckoutPage() {
                         className="w-full rounded-md border px-3 py-2 text-sm"
                         defaultValue={address?.email || ""}
                         onBlur={(e) =>
-                          // 把这里填写的邮箱回写到 address，后续可用于订单确认
                           setAddress({ ...address, email: e.currentTarget.value.trim() })
                         }
                       />
