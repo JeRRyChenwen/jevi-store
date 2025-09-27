@@ -7,8 +7,9 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import CartList from "@/components/cart/CartList";
 import type { CartItem as CartListItem } from "@/components/cart/CartList";
-import BraintreeDropIn from "@/app/checkout/_components/BraintreeDropIn";
 import PrefetchBraintreeToken from "@/app/checkout/_components/PrefetchBraintreeToken";
+// ⭐ 改：引入“只有 PayPal 按钮”的组件
+import BraintreePayPalOnly from "@/app/checkout/_components/BraintreePayPalOnly";
 import { selectCurrencyAndTotals } from "@/lib/cartPricing";
 import { effectiveMinor, type PriceRec, type Currency } from "@/lib/pricing";
 
@@ -17,8 +18,8 @@ type CartItem = CartListItem;
 /* ---------------- 常量 ---------------- */
 const LS_CART_KEY = "bag:v1";
 const LS_ADDRESS_KEY = "sp.checkout.address";
-const DELIVERY_FREE_THRESHOLD = 100; // 元
-const DELIVERY_FLAT = 10; // 元
+const DELIVERY_FREE_THRESHOLD = 100;
+const DELIVERY_FLAT = 10;
 const DISPLAY_CURRENCY: Currency = "AUD";
 const CONFIRM_PATH = "/order/confirmation";
 
@@ -179,7 +180,7 @@ function itemToPriceRecs(it: any): PriceRec[] {
     return it.prices
       .map((p: any) => {
         const currency = String(p?.currency || "").toUpperCase() as Currency;
-        const amount = Math.max(0, Math.round(Number(p?.price) || 0)); // 分
+        const amount = Math.max(0, Math.round(Number(p?.price) || 0));
         const rec: PriceRec = { currency, amount_minor: amount, price: amount };
         if (p?.discount_percent_off != null) rec.discount_percent_off = Number(p.discount_percent_off);
         if (p?.sale_starts_at) rec.sale_starts_at = String(p.sale_starts_at);
@@ -227,7 +228,7 @@ export default function CheckoutPage() {
     router.replace(`${pathname}?${p.toString()}`, { scroll: false });
   };
 
-  // 预连接 PayPal/Braintree（缩短加载）
+  // 预连接 PayPal/Braintree（可保留）
   useEffect(() => {
     const hosts = [
       "https://www.paypal.com",
@@ -265,7 +266,6 @@ export default function CheckoutPage() {
     setLoaded(true);
   }, []);
 
-  // 同步购物车 & 广播
   useEffect(() => {
     if (!loaded) return;
     try {
@@ -276,7 +276,6 @@ export default function CheckoutPage() {
     } catch {}
   }, [cart, loaded]);
 
-  // 地址写回
   useEffect(() => {
     try {
       localStorage.setItem(LS_ADDRESS_KEY, JSON.stringify(address));
@@ -305,7 +304,6 @@ export default function CheckoutPage() {
 
   const currency = DISPLAY_CURRENCY as string;
 
-  // 你节省了
   const savedMajor = useMemo(() => {
     let savedMinor = 0;
     for (const it of cart as any[]) {
@@ -325,21 +323,18 @@ export default function CheckoutPage() {
     return savedMinor / 100;
   }, [cart, currency]);
 
-  // 运费 & 总计
   const deliveryFeeMajor =
     hasItems && itemsTotals.itemsMajor < DELIVERY_FREE_THRESHOLD ? DELIVERY_FLAT : 0;
   const deliveryFeeMinor = Math.round(deliveryFeeMajor * 100);
   const totalMinor = itemsTotals.itemsMinor + deliveryFeeMinor;
   const totalMajor = itemsTotals.itemsMajor + deliveryFeeMajor;
   const amountInMajorUnit = Math.max(0, Number(totalMajor.toFixed(2)));
+  const itemsCount = cart.reduce((n, it: any) => n + (it?.qty ?? 1), 0);
 
   const nextStep = () => {
     setStepAndURL(step === "bag" ? "address" : step === "address" ? "delivery" : "payment");
   };
 
-  const itemsCount = cart.reduce((n, it: any) => n + (it?.qty ?? 1), 0);
-
-  // ✅ 支付成功 → 写入预览数据 → 跳到确认页
   const handlePaySucceeded = (payload?: any) => {
     try {
       sessionStorage.setItem(
@@ -360,7 +355,7 @@ export default function CheckoutPage() {
 
   return (
     <main className="w-full px-4 sm:px-6 lg:px-8 2xl:px-12 py-6 md:py-8">
-      {/* ✅ 一进入结算页就预取并缓存 Braintree clientToken */}
+      {/* 进入结算页即预取 clientToken，后续“秒渲染”按钮 */}
       <PrefetchBraintreeToken />
 
       <div className="mx-auto w-full max-w-[2300px]">
@@ -379,16 +374,12 @@ export default function CheckoutPage() {
                   cart={cart}
                   onInc={(k) =>
                     setCart((p) =>
-                      p.map((x) =>
-                        x.key === k ? { ...x, qty: Math.min(x.qty + 1, x.stock) } : x
-                      )
+                      p.map((x) => (x.key === k ? { ...x, qty: Math.min(x.qty + 1, x.stock) } : x))
                     )
                   }
                   onDec={(k) =>
                     setCart((p) =>
-                      p.map((x) =>
-                        x.key === k ? { ...x, qty: Math.max(1, x.qty - 1) } : x
-                      )
+                      p.map((x) => (x.key === k ? { ...x, qty: Math.max(1, x.qty - 1) } : x))
                     )
                   }
                   onRemove={(k) => setCart((p) => p.filter((x) => x.key !== k))}
@@ -409,9 +400,7 @@ export default function CheckoutPage() {
                           ? "FREE for over $100"
                           : fmtPrice(DELIVERY_FLAT, currency)
                       }
-                      valueClass={
-                        itemsTotals.itemsMajor >= DELIVERY_FREE_THRESHOLD ? "text-emerald-700 font-semibold" : undefined
-                      }
+                      valueClass={itemsTotals.itemsMajor >= DELIVERY_FREE_THRESHOLD ? "text-emerald-700 font-semibold" : undefined}
                     />
                   )}
                   <div className="pt-1">
@@ -425,21 +414,6 @@ export default function CheckoutPage() {
 
           {step === "address" && <AddressForm address={address} setAddress={setAddress} />}
 
-          {step === "delivery" && (
-            <>
-              {hasItems && itemsTotals.itemsMajor >= DELIVERY_FREE_THRESHOLD && (
-                <div className="rounded-xl border px-4 py-3 text-sm">
-                  <div className="mb-2 font-medium">Congratulations! You have reached free shipping</div>
-                  <div className="h-1 w-full overflow-hidden rounded bg-neutral-200">
-                    <div className="h-full w-full bg-emerald-600" />
-                  </div>
-                </div>
-              )}
-              <DeliverySection deliveryMethod={deliveryMethod} setDeliveryMethod={setDeliveryMethod} />
-            </>
-          )}
-
-          {/* ⭐ 预挂载：在 Delivery 步骤就把 Payment 区块建好（离屏、不可见、不占位） */}
           {(step === "delivery" || step === "payment") && (
             <section
               className="rounded-xl border"
@@ -451,30 +425,16 @@ export default function CheckoutPage() {
                       position: "absolute",
                       left: "-10000px",
                       top: 0,
-                      width: "520px", // 给一个稳定宽度，便于按钮初始化测量
+                      width: "520px",
                       maxWidth: "100%",
                       visibility: "hidden",
                       pointerEvents: "none",
                     }
               }
             >
-              <div className="px-4 py-3 border-b font-semibold">How would you like to pay?</div>
+              <div className="px-4 py-3 border-b font-semibold">Payment</div>
 
               <div className="p-4 space-y-6">
-                {/* Payment Options */}
-                <div className="border rounded-lg p-4">
-                  <h2 className="text-lg font-medium mb-4">Payment Options</h2>
-                  <label className="flex items-center gap-3 w-full border rounded-md px-3 py-3 cursor-pointer border-black ring-1 ring-black">
-                    <input type="radio" name="payment" className="mt-0.5" checked readOnly />
-                    <div className="flex-1 flex items-center justify-between gap-3">
-                      <div className="font-medium">PayPal</div>
-                      <div className="flex items-center gap-2 opacity-80">
-                        <img src="https://www.paypalobjects.com/webstatic/icon/pp258.png" alt="PayPal" className="h-5" />
-                      </div>
-                    </div>
-                  </label>
-                </div>
-
                 {/* 蓝色提示 */}
                 <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm">
                   <div className="flex items-start gap-2">
@@ -486,30 +446,6 @@ export default function CheckoutPage() {
                       <div className="text-gray-600">You can go back to the Address step to make changes.</div>
                     </div>
                   </div>
-                </div>
-
-                {/* Your Details */}
-                <div className="border rounded-lg p-4">
-                  <h3 className="text-base font-medium mb-2">Your Details</h3>
-                  <p className="text-sm text-neutral-600 mb-3">
-                    Please enter your email address, we'll send your order confirmation here
-                  </p>
-                  <label className="block text-sm font-medium mb-1">Email Address</label>
-                  <input
-                    type="email"
-                    placeholder="you@example.com"
-                    className="w-full rounded-md border px-3 py-2 text-sm"
-                    defaultValue={address?.email || ""}
-                    onBlur={(e) => setAddress({ ...address, email: e.currentTarget.value.trim() })}
-                  />
-                  <p className="mt-1 text-xs text-neutral-500">You can create an account after checkout</p>
-                  <label className="mt-3 flex items-start gap-2 text-sm">
-                    <input type="checkbox" className="mt-1" />
-                    <span>Email me updates on New Arrivals, Sale and Offers</span>
-                  </label>
-                  <p className="mt-3 text-xs text-neutral-500">
-                    * We treat your personal data with care, view our <a className="underline" href="/privacy">Privacy Policy</a>.
-                  </p>
                 </div>
 
                 {/* 订单摘要 */}
@@ -532,15 +468,13 @@ export default function CheckoutPage() {
                   </div>
                 </div>
 
-                {/* 底部唯一按钮：直接用 Drop-in 的 PayPal 按钮 */}
-                <div className="border rounded-lg p-4">
+                {/* ✅ 只有一颗 PayPal 按钮（不再有任何外框/分隔线） */}
+                <div className="p-4">
                   <div className="w-full max-w-[520px] mx-auto">
                     {amountInMajorUnit > 0 ? (
-                      <BraintreeDropIn
+                      <BraintreePayPalOnly
                         amount={amountInMajorUnit}
                         currency="AUD"
-                        enableCard={false}
-                        hideSubmitButton
                         onSucceeded={handlePaySucceeded}
                       />
                     ) : (
@@ -551,7 +485,6 @@ export default function CheckoutPage() {
                   </div>
                 </div>
 
-                {/* 统一币种提示 */}
                 <p className="mt-2 text-xs text-gray-500">
                   All charges are processed in <b>AUD</b>. Your bank or PayPal may apply currency conversion and fees.
                 </p>
