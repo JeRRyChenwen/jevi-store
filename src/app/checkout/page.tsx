@@ -8,6 +8,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import CartList from "@/components/cart/CartList";
 import type { CartItem as CartListItem } from "@/components/cart/CartList";
 import BraintreeDropIn from "@/app/checkout/_components/BraintreeDropIn";
+import PrefetchBraintreeToken from "@/app/checkout/_components/PrefetchBraintreeToken";
 import { selectCurrencyAndTotals } from "@/lib/cartPricing";
 import { effectiveMinor, type PriceRec, type Currency } from "@/lib/pricing";
 
@@ -233,6 +234,15 @@ export default function CheckoutPage() {
     router.replace(`${pathname}?${p.toString()}`, { scroll: false });
   };
 
+  // ✅ 预取 Braintree token（方案 B 的关键）
+  // 页面一挂载就开始预取，进入 Payment 时即可“秒建” Drop-in。
+  // 你也可以把 <PrefetchBraintreeToken /> 挪到更早的步骤或上层布局里。
+  // （真正的预取逻辑在该组件内部完成）
+  // 见：src/app/checkout/_components/PrefetchBraintreeToken.tsx
+  // ---------------------------------------------------------
+  // 无需在这里写任何逻辑，渲染即可。
+  // ---------------------------------------------------------
+
   // 预连接 PayPal/Braintree（缩短加载）
   useEffect(() => {
     const hosts = [
@@ -366,6 +376,9 @@ export default function CheckoutPage() {
 
   return (
     <main className="w-full px-4 sm:px-6 lg:px-8 2xl:px-12 py-6 md:py-8">
+      {/* ✅ 一进入结算页就预取并缓存 Braintree clientToken（方案 B 核心） */}
+      <PrefetchBraintreeToken />
+
       <div className="mx-auto w-full max-w-[2300px]">
         <div className="mb-5 text-sm text-neutral-600">
           <Link href="/" className="hover:underline">&larr; Back</Link>

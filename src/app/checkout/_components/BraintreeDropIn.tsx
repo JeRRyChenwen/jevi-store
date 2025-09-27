@@ -2,17 +2,20 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import {
+  readCachedBraintreeToken,
+  prefetchBraintreeToken,
+  fetchAndOverwriteBraintreeToken,
+} from "@/lib/braintreeToken";
 
 type Props = {
-  amount: number;          // 主货币单位金额，如 250.00
-  currency: string;        // 'USD' | 'AUD' | 'EUR' | 'GBP' | 'CAD' ...
-  enableCard?: boolean;    // 是否在 Drop-in 开卡（默认只开 PayPal）
+  amount: number;
+  currency: string;
+  enableCard?: boolean;
   onSucceeded?: (r: { id: string }) => void;
-
-  // ✅ 新增：为“把按钮移到页面底部”服务
-  hideSubmitButton?: boolean;                 // 隐藏内部黑色按钮
-  onExposePay?: (pay: () => void) => void;    // 暴露“发起支付”函数
-  onCanPayChange?: (can: boolean) => void;    // 是否可 requestPaymentMethod（PayPal 授权后为 true）
+  hideSubmitButton?: boolean;
+  onExposePay?: (pay: () => void) => void;
+  onCanPayChange?: (can: boolean) => void;
 };
 
 export default function BraintreeDropIn({
@@ -24,82 +27,146 @@ export default function BraintreeDropIn({
   onExposePay,
   onCanPayChange,
 }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const runIdRef = useRef(0);          // 互斥：只保留最后一次创建
+  // 仅作“托盘”，不会把这个节点直接给 Braintree
+  const hostRef = useRef<HTMLDivElement>(null);
+  const runIdRef = useRef(0);
   const liveInstanceRef = useRef<any>(null);
 
   const uid = useId();
   const [instance, setInstance] = useState<any>(null);
   const [creating, setCreating] = useState(true);
+  const [ready, setReady] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [canPay, setCanPay] = useState(false); // ✅ PayPal 授权后置 true
+  const [canPay, setCanPay] = useState(false);
 
-  // 统一大写，保证和后端映射一致（如 BT_MERCHANT_ACCOUNT_AUD）
   const cur = (currency || "AUD").toUpperCase();
 
-  useEffect(() => {
-    const node = containerRef.current;
-    if (!node) return;
+  // 小工具
+  const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const nextFrame = () =>
+    new Promise<void>((r) => requestAnimationFrame(() => r()));
 
-    // 进入新一轮创建：使之前的创建全部失效
+  // 确保托盘里存在一个“全新的、空的挂载节点”
+  const createMount = () => {
+    const host = hostRef.current!;
+    // 移除旧的
+    const old = host.querySelector('[data-bt-root="1"]');
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+    // 新建
+    const mount = document.createElement("div");
+    mount.setAttribute("data-bt-root", "1");
+    // 给点最小尺寸，避免 0 宽高导致 PayPal 按钮初始化失败
+    mount.style.minHeight = "52px";
+    mount.style.width = "100%";
+    host.appendChild(mount);
+    return mount;
+  };
+
+  // 等到挂载节点具有非零尺寸（最多 500ms）
+  const waitForMeasured = async (el: HTMLElement) => {
+    const deadline = Date.now() + 500;
+    // 先让浏览器排版至少 1 帧
+    await nextFrame();
+    while (Date.now() < deadline) {
+      const rect = el.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) return;
+      await delay(40);
+    }
+  };
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+
     runIdRef.current += 1;
     const myRun = runIdRef.current;
 
-    // 清空容器，避免“不是空节点”的错误
-    try { node.innerHTML = ""; } catch {}
+    // 清空托盘
+    try {
+      host.innerHTML = "";
+    } catch {}
 
     setError(null);
     setCreating(true);
+    setReady(false);
     setInstance(null);
-    setCanPay(false);                // ✅ 重建时先不可支付
+    setCanPay(false);
     onCanPayChange?.(false);
 
-    let created: any = null;
-
     (async () => {
+      let created: any = null;
       try {
-        // 1) 取 clientToken
-        const res = await fetch("/api/braintree/token", { cache: "no-store" });
-        if (!res.ok) {
-          const txt = await res.text().catch(() => "");
-          throw new Error(`Get clientToken failed (${res.status}). ${txt}`);
+        // 1) 读缓存/预取
+        let auth = readCachedBraintreeToken();
+        if (!auth) {
+          try {
+            auth = await prefetchBraintreeToken();
+          } catch {
+            /* 忽略，后面会报错 */
+          }
         }
-        const { clientToken, token } = await res.json();
-        const auth = clientToken || token;
-        if (!auth) throw new Error("No clientToken returned");
+        if (!auth) throw new Error("No cached clientToken");
 
-        // 如果在等待 token 期间又来了一轮创建，直接放弃
         if (myRun !== runIdRef.current) return;
 
-        // 2) 动态引入 Drop-in
+        // 2) 动态引入
         const dropin = (await import("braintree-web-drop-in")).default;
 
-        // 3) 创建实例（此时容器必须是空的）
-        created = await dropin.create({
-          authorization: auth,
-          container: node,
-          locale: "en", // 可按需要换本地化，如 'en_AU'
-          card: enableCard ? { cardholderName: true } : false,
-          paypal: {
-            flow: "checkout",
-            amount: amount.toFixed(2), // PayPal 期望字符串形式金额
-            currency: cur,             // ✅ 与后端一致的币种
-            commit: true,
-            // 如需样式可启用：
-            // buttonStyle: { color: "black", shape: "pill", label: "pay", height: 48, layout: "horizontal", tagline: false },
-          },
-          // 如需：paypalCredit: false, venmo: false,
-        } as any);
+        // 3) 包装 create：每次都用“全新的空 mount”，并等待 mount 完成测量
+        const createWith = async (authToken: string) => {
+          const mount = createMount();
+          await waitForMeasured(mount); // ⭐ 关键：等有尺寸再创建
+          return await dropin.create({
+            authorization: authToken,
+            container: mount,
+            locale: "en",
+            card: enableCard ? { cardholderName: true } : false,
+            paypal: {
+              flow: "checkout",
+              amount: amount.toFixed(2),
+              currency: cur,
+              commit: true,
+              // 可以按需加样式：buttonStyle: { color: "black", shape: "pill", label: "pay", height: 48, layout: "horizontal", tagline: false },
+            },
+          } as any);
+        };
 
-        // 如果这次创建已过期（StrictMode 第二次已开始），立刻销毁自己
+        // --- 第一次尝试 ---
+        try {
+          created = await createWith(auth);
+        } catch (err: any) {
+          const msg = String(err?.message || "").toLowerCase();
+          const isAllFailed =
+            err?.name === "DropinError" &&
+            msg.includes("all payment options failed to load");
+
+          if (isAllFailed) {
+            // 很多时候只是创建太早：等 150ms，用同一个 token 再来一次
+            await delay(150);
+            if (myRun !== runIdRef.current) return;
+            try {
+              created = await createWith(auth);
+            } catch (err2: any) {
+              // 仍然失败：再拉新 token 重试一次
+              const fresh = await fetchAndOverwriteBraintreeToken();
+              if (myRun !== runIdRef.current) return;
+              created = await createWith(fresh);
+            }
+          } else {
+            // 非“ALL payment options failed…”的错误，直接走拉新 token 再试
+            const fresh = await fetchAndOverwriteBraintreeToken();
+            if (myRun !== runIdRef.current) return;
+            created = await createWith(fresh);
+          }
+        }
+
         if (myRun !== runIdRef.current) {
-          await created.teardown().catch(() => {});
-          created = null;
+          await created?.teardown?.().catch(() => {});
           return;
         }
 
-        // ✅ 事件：是否可以 requestPaymentMethod（PayPal 完成授权后为 true）
+        // 事件：授权状态
         created.on?.("paymentMethodRequestable", () => {
           setCanPay(true);
           onCanPayChange?.(true);
@@ -109,12 +176,16 @@ export default function BraintreeDropIn({
           onCanPayChange?.(false);
         });
 
-        // ✅ 暴露“触发支付”的函数给父组件（底部按钮会调用它）
+        // 暴露“发起支付”供外部按钮调用
         onExposePay?.(() => handlePay(created));
 
         liveInstanceRef.current = created;
         setInstance(created);
+
+        // 就绪后淡入
+        setTimeout(() => setReady(true), 20);
       } catch (e: any) {
+        // 只有在最终失败才记日志/显示错误；中间的首轮失败不再刷控制台
         console.error("[Braintree] init error:", e);
         setError(e?.message || "Failed to initialise Braintree Drop-in");
       } finally {
@@ -122,18 +193,22 @@ export default function BraintreeDropIn({
       }
     })();
 
-    // 清理：使当前创建过期，并销毁已存在的实例
+    // 清理
     return () => {
-      runIdRef.current += 1; // 让本轮创建“过期”
+      runIdRef.current += 1;
       (async () => {
-        try { await created?.teardown(); } catch {}
-        try { await liveInstanceRef.current?.teardown(); } catch {}
+        try {
+          await liveInstanceRef.current?.teardown();
+        } catch {}
         liveInstanceRef.current = null;
-        try { node.innerHTML = ""; } catch {}
+        try {
+          host.innerHTML = "";
+        } catch {}
       })();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [amount, cur, enableCard]); // ✅ 用 cur，币种变化时重建
+  }, [amount, cur, enableCard]);
 
   const handlePay = async (instParam?: any) => {
     const inst = instParam || instance;
@@ -141,21 +216,20 @@ export default function BraintreeDropIn({
     setSubmitting(true);
     setError(null);
     try {
-      const payload = await inst.requestPaymentMethod(); // 弹出 PayPal，拿 nonce
+      const payload = await inst.requestPaymentMethod(); // 拉起 PayPal
       const res = await fetch("/api/braintree/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           nonce: payload?.nonce,
-          amount,          // number，后端会 toFixed(2)
-          currency: cur,   // ✅ 与初始化保持一致
+          amount,
+          currency: cur,
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data?.error || data?.ok === false) {
         throw new Error(data?.error || `Payment failed (${res.status})`);
       }
-      // 兼容后端返回字段名：transactionId（新）或 id（旧）
       const id = data?.transactionId || data?.id || "";
       onSucceeded?.({ id });
     } catch (e: any) {
@@ -168,22 +242,36 @@ export default function BraintreeDropIn({
 
   return (
     <div className="w-full max-w-[680px] space-y-4">
-      {/* Drop-in 容器：给最小高度避免被压扁 */}
-      <div id={`bt-dropin-${uid}`} ref={containerRef} className="min-h-[56px]" />
-
-      {creating && (
-        <div className="rounded-md bg-neutral-50 px-3 py-2 text-sm text-neutral-700">
-          Loading PayPal…
+      {/* Shell：固定高度 + 骨架；真实 Drop-in 就绪后淡入 */}
+      <div id={`bt-shell-${uid}`} className="relative min-h-[92px]" aria-busy={creating && !ready}>
+        {/* 骨架占位（ready 前显示） */}
+        <div
+          className={[
+            "absolute inset-0 z-0 flex items-center justify-center rounded-lg border border-neutral-200 bg-white",
+            ready ? "hidden" : "",
+          ].join(" ")}
+          aria-hidden={!creating || ready}
+        >
+          <div className="h-12 w-[220px] rounded-full bg-neutral-100 shadow-inner" />
         </div>
-      )}
+
+        {/* 真实 Drop-in 的“托盘”。真正给 Braintree 的是我们每次新建的子节点 */}
+        <div
+          ref={hostRef}
+          className={[
+            "relative z-10 transition-opacity duration-200 ease-out",
+            ready ? "opacity-100" : "opacity-0",
+          ].join(" ")}
+        />
+      </div>
+
+      {/* 只在报错时出现；正常加载不显示文案 */}
       {error && (
         <div className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-600">
           {error}
         </div>
       )}
 
-      {/* ⬇️ 这个就是组件内部的“Pay with PayPal”按钮；可通过 hideSubmitButton 隐藏
-          同时我们也根据 canPay 控制可点击（避免红色提示） */}
       {!hideSubmitButton && (
         <button
           type="button"
@@ -196,13 +284,7 @@ export default function BraintreeDropIn({
               : "bg-neutral-900 text-white hover:bg-neutral-800",
           ].join(" ")}
         >
-          {creating
-            ? "Initialising…"
-            : submitting
-            ? "Processing…"
-            : enableCard
-            ? "Pay now"
-            : "Pay with PayPal"}
+          {submitting ? "Processing…" : enableCard ? "Pay now" : "Pay with PayPal"}
         </button>
       )}
     </div>
