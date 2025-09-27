@@ -214,18 +214,11 @@ export default function CheckoutPage() {
   const [address, setAddress] = useState<Address>({});
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>("standard");
 
-  // 第一次到 payment 后常驻（隐藏/显示切换）
-  const [visitedPayment, setVisitedPayment] = useState(false);
-
   const initialStepFromURL = (() => {
     const s = searchParams.get("step");
     return isStepKey(s) ? (s as StepKey) : ("bag" as StepKey);
   })();
   const [step, setStep] = useState<StepKey>(initialStepFromURL);
-
-  useEffect(() => {
-    if (step === "payment" && !visitedPayment) setVisitedPayment(true);
-  }, [step, visitedPayment]);
 
   const setStepAndURL = (next: StepKey) => {
     setStep(next);
@@ -233,15 +226,6 @@ export default function CheckoutPage() {
     p.set("step", next);
     router.replace(`${pathname}?${p.toString()}`, { scroll: false });
   };
-
-  // ✅ 预取 Braintree token（方案 B 的关键）
-  // 页面一挂载就开始预取，进入 Payment 时即可“秒建” Drop-in。
-  // 你也可以把 <PrefetchBraintreeToken /> 挪到更早的步骤或上层布局里。
-  // （真正的预取逻辑在该组件内部完成）
-  // 见：src/app/checkout/_components/PrefetchBraintreeToken.tsx
-  // ---------------------------------------------------------
-  // 无需在这里写任何逻辑，渲染即可。
-  // ---------------------------------------------------------
 
   // 预连接 PayPal/Braintree（缩短加载）
   useEffect(() => {
@@ -376,7 +360,7 @@ export default function CheckoutPage() {
 
   return (
     <main className="w-full px-4 sm:px-6 lg:px-8 2xl:px-12 py-6 md:py-8">
-      {/* ✅ 一进入结算页就预取并缓存 Braintree clientToken（方案 B 核心） */}
+      {/* ✅ 一进入结算页就预取并缓存 Braintree clientToken */}
       <PrefetchBraintreeToken />
 
       <div className="mx-auto w-full max-w-[2300px]">
@@ -455,8 +439,25 @@ export default function CheckoutPage() {
             </>
           )}
 
-          {(visitedPayment || step === "payment") && (
-            <section className="rounded-xl border" style={{ display: step === "payment" ? "block" : "none" }}>
+          {/* ⭐ 预挂载：在 Delivery 步骤就把 Payment 区块建好（离屏、不可见、不占位） */}
+          {(step === "delivery" || step === "payment") && (
+            <section
+              className="rounded-xl border"
+              aria-hidden={step !== "payment"}
+              style={
+                step === "payment"
+                  ? undefined
+                  : {
+                      position: "absolute",
+                      left: "-10000px",
+                      top: 0,
+                      width: "520px", // 给一个稳定宽度，便于按钮初始化测量
+                      maxWidth: "100%",
+                      visibility: "hidden",
+                      pointerEvents: "none",
+                    }
+              }
+            >
               <div className="px-4 py-3 border-b font-semibold">How would you like to pay?</div>
 
               <div className="p-4 space-y-6">
@@ -509,23 +510,6 @@ export default function CheckoutPage() {
                   <p className="mt-3 text-xs text-neutral-500">
                     * We treat your personal data with care, view our <a className="underline" href="/privacy">Privacy Policy</a>.
                   </p>
-                </div>
-
-                {/* Delivery Details */}
-                <div className="border rounded-lg p-4">
-                  <h3 className="text-base font-medium mb-3">Delivery Details</h3>
-                  {address?.firstName || address?.lastName ? (
-                    <div className="text-sm leading-6 text-gray-800">
-                      <div>{[address.firstName, address.lastName].filter(Boolean).join(" ")}</div>
-                      <div>{address.line1}{address.line2 ? ` ${address.line2}` : ""}</div>
-                      <div>{address.city} {address.state} {address.postcode}</div>
-                      <div>{address.country}</div>
-                      {address.email && <div className="mt-2">{address.email}</div>}
-                      {address.phone && <div>{address.phone}</div>}
-                    </div>
-                  ) : (
-                    <div className="text-sm text-gray-500">No delivery address found. Please complete the <b>Address</b> step.</div>
-                  )}
                 </div>
 
                 {/* 订单摘要 */}
