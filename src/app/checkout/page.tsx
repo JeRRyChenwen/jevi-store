@@ -7,9 +7,11 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import CartList from "@/components/cart/CartList";
 import type { CartItem as CartListItem } from "@/components/cart/CartList";
-import PrefetchBraintreeToken from "@/app/checkout/_components/PrefetchBraintreeToken";
-// ⭐ 改：引入“只有 PayPal 按钮”的组件
+
+// ✅ 只渲染一颗 PayPal 按钮（无外围边框/文案）
 import BraintreePayPalOnly from "@/app/checkout/_components/BraintreePayPalOnly";
+import PrefetchBraintreeToken from "@/app/checkout/_components/PrefetchBraintreeToken";
+
 import { selectCurrencyAndTotals } from "@/lib/cartPricing";
 import { effectiveMinor, type PriceRec, type Currency } from "@/lib/pricing";
 
@@ -228,7 +230,7 @@ export default function CheckoutPage() {
     router.replace(`${pathname}?${p.toString()}`, { scroll: false });
   };
 
-  // 预连接 PayPal/Braintree（可保留）
+  // 预连接 PayPal/Braintree
   useEffect(() => {
     const hosts = [
       "https://www.paypal.com",
@@ -266,6 +268,7 @@ export default function CheckoutPage() {
     setLoaded(true);
   }, []);
 
+  // 同步购物车 & 广播
   useEffect(() => {
     if (!loaded) return;
     try {
@@ -276,6 +279,7 @@ export default function CheckoutPage() {
     } catch {}
   }, [cart, loaded]);
 
+  // 地址写回
   useEffect(() => {
     try {
       localStorage.setItem(LS_ADDRESS_KEY, JSON.stringify(address));
@@ -304,6 +308,7 @@ export default function CheckoutPage() {
 
   const currency = DISPLAY_CURRENCY as string;
 
+  // 你节省了
   const savedMajor = useMemo(() => {
     let savedMinor = 0;
     for (const it of cart as any[]) {
@@ -323,18 +328,21 @@ export default function CheckoutPage() {
     return savedMinor / 100;
   }, [cart, currency]);
 
+  // 运费 & 总计
   const deliveryFeeMajor =
     hasItems && itemsTotals.itemsMajor < DELIVERY_FREE_THRESHOLD ? DELIVERY_FLAT : 0;
   const deliveryFeeMinor = Math.round(deliveryFeeMajor * 100);
   const totalMinor = itemsTotals.itemsMinor + deliveryFeeMinor;
   const totalMajor = itemsTotals.itemsMajor + deliveryFeeMajor;
   const amountInMajorUnit = Math.max(0, Number(totalMajor.toFixed(2)));
-  const itemsCount = cart.reduce((n, it: any) => n + (it?.qty ?? 1), 0);
 
   const nextStep = () => {
     setStepAndURL(step === "bag" ? "address" : step === "address" ? "delivery" : "payment");
   };
 
+  const itemsCount = cart.reduce((n, it: any) => n + (it?.qty ?? 1), 0);
+
+  // 支付成功 → 写入预览数据 → 确认页
   const handlePaySucceeded = (payload?: any) => {
     try {
       sessionStorage.setItem(
@@ -355,7 +363,7 @@ export default function CheckoutPage() {
 
   return (
     <main className="w-full px-4 sm:px-6 lg:px-8 2xl:px-12 py-6 md:py-8">
-      {/* 进入结算页即预取 clientToken，后续“秒渲染”按钮 */}
+      {/* 进入结算页就预取并缓存 Braintree clientToken */}
       <PrefetchBraintreeToken />
 
       <div className="mx-auto w-full max-w-[2300px]">
@@ -366,6 +374,7 @@ export default function CheckoutPage() {
         <CheckoutSteps step={step} onChange={setStepAndURL} />
 
         <div className="space-y-6">
+          {/* Bag */}
           {step === "bag" && (
             <section className="rounded-xl border">
               <div className="border-b px-4 py-3 font-semibold">Your Bag</div>
@@ -374,12 +383,16 @@ export default function CheckoutPage() {
                   cart={cart}
                   onInc={(k) =>
                     setCart((p) =>
-                      p.map((x) => (x.key === k ? { ...x, qty: Math.min(x.qty + 1, x.stock) } : x))
+                      p.map((x) =>
+                        x.key === k ? { ...x, qty: Math.min(x.qty + 1, x.stock) } : x
+                      )
                     )
                   }
                   onDec={(k) =>
                     setCart((p) =>
-                      p.map((x) => (x.key === k ? { ...x, qty: Math.max(1, x.qty - 1) } : x))
+                      p.map((x) =>
+                        x.key === k ? { ...x, qty: Math.max(1, x.qty - 1) } : x
+                      )
                     )
                   }
                   onRemove={(k) => setCart((p) => p.filter((x) => x.key !== k))}
@@ -400,7 +413,9 @@ export default function CheckoutPage() {
                           ? "FREE for over $100"
                           : fmtPrice(DELIVERY_FLAT, currency)
                       }
-                      valueClass={itemsTotals.itemsMajor >= DELIVERY_FREE_THRESHOLD ? "text-emerald-700 font-semibold" : undefined}
+                      valueClass={
+                        itemsTotals.itemsMajor >= DELIVERY_FREE_THRESHOLD ? "text-emerald-700 font-semibold" : undefined
+                      }
                     />
                   )}
                   <div className="pt-1">
@@ -412,8 +427,28 @@ export default function CheckoutPage() {
             </section>
           )}
 
+          {/* Address */}
           {step === "address" && <AddressForm address={address} setAddress={setAddress} />}
 
+          {/* Delivery（保持原样） */}
+          {step === "delivery" && (
+            <>
+              {hasItems && itemsTotals.itemsMajor >= DELIVERY_FREE_THRESHOLD && (
+                <div className="rounded-xl border px-4 py-3 text-sm">
+                  <div className="mb-2 font-medium">Congratulations! You have reached free shipping</div>
+                  <div className="h-1 w-full overflow-hidden rounded bg-neutral-200">
+                    <div className="h-full w-full bg-emerald-600" />
+                  </div>
+                </div>
+              )}
+              <DeliverySection
+                deliveryMethod={deliveryMethod}
+                setDeliveryMethod={setDeliveryMethod}
+              />
+            </>
+          )}
+
+          {/* Payment：delivery 时离屏挂载，payment 时显示 */}
           {(step === "delivery" || step === "payment") && (
             <section
               className="rounded-xl border"
@@ -432,9 +467,23 @@ export default function CheckoutPage() {
                     }
               }
             >
-              <div className="px-4 py-3 border-b font-semibold">Payment</div>
+              <div className="px-4 py-3 border-b font-semibold">How would you like to pay?</div>
 
               <div className="p-4 space-y-6">
+                {/* Payment Options（只显示 PayPal 选中） */}
+                <div className="border rounded-lg p-4">
+                  <h2 className="text-lg font-medium mb-4">Payment Options</h2>
+                  <label className="flex items-center gap-3 w-full border rounded-md px-3 py-3 cursor-pointer border-black ring-1 ring-black">
+                    <input type="radio" name="payment" className="mt-0.5" checked readOnly />
+                    <div className="flex-1 flex items-center justify-between gap-3">
+                      <div className="font-medium">PayPal</div>
+                      <div className="flex items-center gap-2 opacity-80">
+                        <img src="https://www.paypalobjects.com/webstatic/icon/pp258.png" alt="PayPal" className="h-5" />
+                      </div>
+                    </div>
+                  </label>
+                </div>
+
                 {/* 蓝色提示 */}
                 <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm">
                   <div className="flex items-start gap-2">
@@ -446,6 +495,49 @@ export default function CheckoutPage() {
                       <div className="text-gray-600">You can go back to the Address step to make changes.</div>
                     </div>
                   </div>
+                </div>
+
+                {/* Your Details */}
+                <div className="border rounded-lg p-4">
+                  <h3 className="text-base font-medium mb-2">Your Details</h3>
+                  <p className="text-sm text-neutral-600 mb-3">
+                    Please enter your email address, we'll send your order confirmation here
+                  </p>
+                  <label className="block text-sm font-medium mb-1">Email Address</label>
+                  <input
+                    type="email"
+                    placeholder="you@example.com"
+                    className="w-full rounded-md border px-3 py-2 text-sm"
+                    defaultValue={address?.email || ""}
+                    onBlur={(e) => setAddress({ ...address, email: e.currentTarget.value.trim() })}
+                  />
+                  <p className="mt-1 text-xs text-neutral-500">You can create an account after checkout</p>
+                  <label className="mt-3 flex items-start gap-2 text-sm">
+                    <input type="checkbox" className="mt-1" />
+                    <span>Email me updates on New Arrivals, Sale and Offers</span>
+                  </label>
+                  <p className="mt-3 text-xs text-neutral-500">
+                    * We treat your personal data with care, view our <a className="underline" href="/privacy">Privacy Policy</a>.
+                  </p>
+                </div>
+
+                {/* Delivery Details */}
+                <div className="border rounded-lg p-4">
+                  <h3 className="text-base font-medium mb-3">Delivery Details</h3>
+                  {address?.firstName || address?.lastName ? (
+                    <div className="text-sm leading-6 text-gray-800">
+                      <div>{[address.firstName, address.lastName].filter(Boolean).join(" ")}</div>
+                      <div>{address.line1}{address.line2 ? ` ${address.line2}` : ""}</div>
+                      <div>{address.city} {address.state} {address.postcode}</div>
+                      <div>{address.country}</div>
+                      {address.email && <div className="mt-2">{address.email}</div>}
+                      {address.phone && <div>{address.phone}</div>}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-500">
+                      No delivery address found. Please complete the <b>Address</b> step.
+                    </div>
+                  )}
                 </div>
 
                 {/* 订单摘要 */}
@@ -460,7 +552,9 @@ export default function CheckoutPage() {
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="text-sm text-gray-600">Delivery</div>
-                    <div className="text-base font-medium">{deliveryFeeMinor === 0 ? "FREE" : fmtMoneyMinor(deliveryFeeMinor, currency)}</div>
+                    <div className="text-base font-medium">
+                      {deliveryFeeMinor === 0 ? "FREE" : fmtMoneyMinor(deliveryFeeMinor, currency)}
+                    </div>
                   </div>
                   <div className="border-t pt-3 flex items-center justify-between">
                     <div className="text-lg font-semibold">Total</div>
@@ -468,7 +562,7 @@ export default function CheckoutPage() {
                   </div>
                 </div>
 
-                {/* ✅ 只有一颗 PayPal 按钮（不再有任何外框/分隔线） */}
+                {/* 只有一颗 PayPal 按钮（无外围边框） */}
                 <div className="p-4">
                   <div className="w-full max-w-[520px] mx-auto">
                     {amountInMajorUnit > 0 ? (
@@ -485,6 +579,7 @@ export default function CheckoutPage() {
                   </div>
                 </div>
 
+                {/* 统一币种提示 */}
                 <p className="mt-2 text-xs text-gray-500">
                   All charges are processed in <b>AUD</b>. Your bank or PayPal may apply currency conversion and fees.
                 </p>
