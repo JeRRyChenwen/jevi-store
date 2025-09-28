@@ -564,7 +564,8 @@ export default function CheckoutPage() {
 
                 {/* 只有一颗 PayPal 按钮（无外围边框） */}
                 <div className="p-4">
-                  <div className="w-full max-w-[520px] mx-auto">
+                  {/* 调整这里的宽度即可，比如 240~320px 之间看效果 */}
+                  <div className="mx-auto w-[260px] sm:w-[300px]">
                     {amountInMajorUnit > 0 ? (
                       <BraintreePayPalOnly
                         amount={amountInMajorUnit}
