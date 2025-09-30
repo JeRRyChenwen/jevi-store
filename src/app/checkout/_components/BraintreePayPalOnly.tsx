@@ -12,9 +12,11 @@ type Props = {
   amount: number;                 // 主货币单位金额，如 13.80
   currency: string;               // 'AUD' | 'USD' ...
   onSucceeded?: (r: { id: string }) => void;
+  /** ✅ 新增：用户点击黄色 PayPal 按钮时触发（不管后续是否支付成功） */
+  onInitiate?: () => void;
 };
 
-export default function BraintreePayPalOnly({ amount, currency, onSucceeded }: Props) {
+export default function BraintreePayPalOnly({ amount, currency, onSucceeded, onInitiate }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +60,13 @@ export default function BraintreePayPalOnly({ amount, currency, onSucceeded }: P
       buttons = paypal.Buttons({
         fundingSource: paypal.FUNDING.PAYPAL,
         style: { layout: "horizontal", label: "paypal", height: 45, tagline: false }, // ✨ 只要按钮，无 tagline
+
+        /** ✅ 新增：用户点击按钮就回调（不阻塞后续 createOrder） */
+        onClick: () => {
+          try { onInitiate?.(); } catch {}
+          return true; // 允许继续
+        },
+
         createOrder: () =>
           (ppCheckout as any).createPayment({
             flow: "checkout",
@@ -66,6 +75,7 @@ export default function BraintreePayPalOnly({ amount, currency, onSucceeded }: P
             intent: "capture",
             commit: true,
           }),
+
         onApprove: async (data: any) => {
           const payload = await (ppCheckout as any).tokenizePayment(data); // 得到 nonce
           const res = await fetch("/api/braintree/checkout", {
@@ -84,6 +94,7 @@ export default function BraintreePayPalOnly({ amount, currency, onSucceeded }: P
           const id = out?.transactionId || out?.id || "";
           onSucceeded?.({ id });
         },
+
         onError: (err: any) => {
           if (!cancelled) setError(err?.message || "PayPal failed to render");
         },
@@ -113,7 +124,7 @@ export default function BraintreePayPalOnly({ amount, currency, onSucceeded }: P
       try { buttons?.close?.(); } catch {}
       if (hostRef.current) hostRef.current.innerHTML = "";
     };
-  }, [amount, currency]);
+  }, [amount, currency, onInitiate, onSucceeded]);
 
   return (
     <div className="relative min-h-[72px]">

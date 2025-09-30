@@ -585,6 +585,11 @@ http://lvh.me:3000/
 
 ENABLE_STRIPE=false
 
+如果要在 D1 数据库中建立新的表：
+首先添加新的文件到 migrations 文件夹
+wrangler d1 migrations apply socialplatform
+wrangler d1 migrations apply socialplatform --remote
+
 # ============================================================================
 
 # ============================================================================

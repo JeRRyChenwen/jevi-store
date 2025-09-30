@@ -25,6 +25,12 @@ const DELIVERY_FLAT = 10;
 const DISPLAY_CURRENCY: Currency = "AUD";
 const CONFIRM_PATH = "/order/confirmation";
 
+/* 工具：拼 API 地址（支持 NEXT_PUBLIC_API_BASE） */
+const apiURL = (path: string) => {
+  const base = (process.env.NEXT_PUBLIC_API_BASE || "").replace(/\/+$/, "");
+  return `${base}${path}`;
+};
+
 /* ---------------- 小工具 ---------------- */
 function fmtPrice(n: number, currency: string, locale?: string) {
   return new Intl.NumberFormat(locale, {
@@ -217,6 +223,10 @@ export default function CheckoutPage() {
   const [address, setAddress] = useState<Address>({});
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>("standard");
 
+  // ✅ 新增：订阅勾选 & 邮箱本地状态
+  const [marketingOptIn, setMarketingOptIn] = useState(false);
+  const [emailInput, setEmailInput] = useState<string>("");
+
   const initialStepFromURL = (() => {
     const s = searchParams.get("step");
     return isStepKey(s) ? (s as StepKey) : ("bag" as StepKey);
@@ -263,7 +273,11 @@ export default function CheckoutPage() {
     } catch {}
     try {
       const rawAddr = localStorage.getItem(LS_ADDRESS_KEY);
-      if (rawAddr) setAddress(JSON.parse(rawAddr));
+      if (rawAddr) {
+        const a = JSON.parse(rawAddr);
+        setAddress(a);
+        setEmailInput(a?.email || "");
+      }
     } catch {}
     setLoaded(true);
   }, []);
@@ -342,7 +356,46 @@ export default function CheckoutPage() {
 
   const itemsCount = cart.reduce((n, it: any) => n + (it?.qty ?? 1), 0);
 
-  // 支付成功 → 写入预览数据 → 确认页
+  // ---------- 获取浏览器时区与偏移（保留备查） ----------
+  const clientTZ =
+    (typeof Intl !== "undefined" && Intl.DateTimeFormat().resolvedOptions().timeZone) || "UTC";
+  const clientUTCOffsetMin = -new Date().getTimezoneOffset();
+
+  // ★★★ 关键：无论浏览器在哪，发送到后端的 tz 一律使用中国时区
+  const FORCE_CN_TZ = "Asia/Shanghai";
+
+  // ✅ 把订阅发送到 Worker（成功与否都不阻塞结账）
+  async function sendSubscriptionIfNeeded(emailRaw?: string) {
+    try {
+      if (!marketingOptIn) return;
+      const email = (emailRaw || address?.email || emailInput || "").trim().toLowerCase();
+      if (!email) return;
+
+      await fetch(apiURL("/subscribe"), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email,
+          marketing_opt_in: true,
+          source: "checkout",
+          // ★ 固定传中国时区，保证旧版后端也会按中国时间格式化 *_iso
+          tz: FORCE_CN_TZ,
+          meta: {
+            path: "/checkout",
+            step,
+            ts: Date.now(),
+            tz: FORCE_CN_TZ,             // 显式记录我们希望的显示时区
+            client_tz: clientTZ,         // 记录客户端原始时区便于排查
+            utc_offset_min: clientUTCOffsetMin,
+          },
+        }),
+      });
+    } catch (e) {
+      console.warn("[subscribe] best-effort failed:", e);
+    }
+  }
+
+  // 支付成功 → 写入预览数据 → 确认页（同时再兜底推送一次订阅）
   const handlePaySucceeded = (payload?: any) => {
     try {
       sessionStorage.setItem(
@@ -358,7 +411,15 @@ export default function CheckoutPage() {
         })
       );
     } catch {}
-    router.push(CONFIRM_PATH);
+
+    sendSubscriptionIfNeeded().finally(() => {
+      router.push(CONFIRM_PATH);
+    });
+  };
+
+  /* 点击黄色 PayPal 按钮即上报一次（不依赖 blur），不阻塞支付 */
+  const handlePayInitiated = () => {
+    sendSubscriptionIfNeeded();
   };
 
   return (
@@ -508,12 +569,29 @@ export default function CheckoutPage() {
                     type="email"
                     placeholder="you@example.com"
                     className="w-full rounded-md border px-3 py-2 text-sm"
-                    defaultValue={address?.email || ""}
-                    onBlur={(e) => setAddress({ ...address, email: e.currentTarget.value.trim() })}
+                    value={emailInput}
+                    onChange={(e) => setEmailInput(e.currentTarget.value)}
+                    onBlur={(e) => {
+                      const v = e.currentTarget.value.trim();
+                      setAddress({ ...address, email: v });
+                      if (marketingOptIn && v) sendSubscriptionIfNeeded(v);
+                    }}
                   />
                   <p className="mt-1 text-xs text-neutral-500">You can create an account after checkout</p>
                   <label className="mt-3 flex items-start gap-2 text-sm">
-                    <input type="checkbox" className="mt-1" />
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={marketingOptIn}
+                      onChange={(e) => {
+                        const v = e.currentTarget.checked;
+                        setMarketingOptIn(v);
+                        if (v) {
+                          const email = (emailInput || address?.email || "").trim();
+                          if (email) sendSubscriptionIfNeeded(email);
+                        }
+                      }}
+                    />
                     <span>Email me updates on New Arrivals, Sale and Offers</span>
                   </label>
                   <p className="mt-3 text-xs text-neutral-500">
@@ -564,12 +642,12 @@ export default function CheckoutPage() {
 
                 {/* 只有一颗 PayPal 按钮（无外围边框） */}
                 <div className="p-4">
-                  {/* 调整这里的宽度即可，比如 240~320px 之间看效果 */}
                   <div className="mx-auto w-[260px] sm:w-[300px]">
                     {amountInMajorUnit > 0 ? (
                       <BraintreePayPalOnly
                         amount={amountInMajorUnit}
                         currency="AUD"
+                        onInitiate={handlePayInitiated}
                         onSucceeded={handlePaySucceeded}
                       />
                     ) : (
