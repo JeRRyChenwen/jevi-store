@@ -12,9 +12,50 @@ type Props = {
   amount: number;                 // 主货币单位金额，如 13.80
   currency: string;               // 'AUD' | 'USD' ...
   onSucceeded?: (r: { id: string }) => void;
-  /** ✅ 新增：用户点击黄色 PayPal 按钮时触发（不管后续是否支付成功） */
+  /** 用户点击黄色 PayPal 按钮时触发（不管后续是否支付成功） */
   onInitiate?: () => void;
 };
+
+declare global {
+  interface Window {
+    __btTokenPromise?: Promise<string>;
+    paypal?: any;
+  }
+}
+
+const STORAGE_KEY = "bt:clientToken";
+
+// —— 单航班：同一标签页里只真正请求一次 token ——
+async function ensureTokenOnce(): Promise<string> {
+  if (typeof window === "undefined") return "";
+  const cached = readCachedBraintreeToken?.() || sessionStorage.getItem(STORAGE_KEY);
+  if (cached) return cached;
+
+  if (window.__btTokenPromise) {
+    try {
+      const t = await window.__btTokenPromise;
+      if (t) sessionStorage.setItem(STORAGE_KEY, t);
+      return t || "";
+    } catch {
+      delete window.__btTokenPromise;
+      return "";
+    }
+  }
+
+  window.__btTokenPromise = (async () => {
+    const res = await prefetchBraintreeToken();
+    const token = typeof res === "string" ? res : (res as any)?.clientToken || "";
+    if (token) sessionStorage.setItem(STORAGE_KEY, token);
+    return token;
+  })();
+
+  try {
+    return await window.__btTokenPromise;
+  } catch {
+    delete window.__btTokenPromise;
+    return "";
+  }
+}
 
 export default function BraintreePayPalOnly({ amount, currency, onSucceeded, onInitiate }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -26,45 +67,57 @@ export default function BraintreePayPalOnly({ amount, currency, onSucceeded, onI
     let buttons: any = null;
 
     const boot = async () => {
-      setReady(false);
       setError(null);
+      setReady(false);
 
       const host = hostRef.current;
       if (!host) return;
-      host.innerHTML = ""; // 清空旧的
+      host.innerHTML = ""; // 清空旧渲染
 
-      // 1) 取 clientToken（先读缓存/预取，不行再拉新）
-      let auth = readCachedBraintreeToken();
+      // 1) 取 clientToken（单航班 + 缓存）
+      let auth = await ensureTokenOnce();
       if (!auth) {
-        try { auth = await prefetchBraintreeToken(); } catch {}
+        try {
+          await fetchAndOverwriteBraintreeToken();
+          auth = await ensureTokenOnce();
+        } catch {}
       }
       if (!auth) throw new Error("No clientToken");
 
-      // 2) Braintree + PayPal SDK
+      // 2) Braintree + PayPal SDK（不重复加载 SDK）
       const braintree = await import("braintree-web");
       const client = await braintree.client.create({ authorization: auth });
       const ppCheckout = await braintree.paypalCheckout.create({ client });
 
-      // 通过 braintree 自动加载 PayPal SDK（会带 data-client-token），仅加载 buttons 组件
-      await (ppCheckout as any).loadPayPalSDK({
-        currency: currency.toUpperCase(),
-        intent: "capture",
-        components: "buttons",
-        commit: true,
-      });
-
+      if (typeof window === "undefined" || !window.paypal) {
+        await (ppCheckout as any).loadPayPalSDK({
+          currency: currency.toUpperCase(),
+          intent: "capture",
+          components: "buttons",
+          commit: true,
+        });
+      }
       if (cancelled) return;
 
-      // 3) 渲染“裸”的 PayPal 按钮
+      // 3) 渲染“真” PayPal 按钮
       const paypal = (window as any).paypal;
+      if (!paypal?.Buttons) throw new Error("PayPal SDK not available");
+
       buttons = paypal.Buttons({
         fundingSource: paypal.FUNDING.PAYPAL,
-        style: { layout: "horizontal", label: "paypal", height: 45, tagline: false }, // ✨ 只要按钮，无 tagline
+        style: {
+          layout: "horizontal",
+          label: "paypal",
+          height: 45,
+          tagline: false,
+          color: "gold",
+          shape: "rect",
+        },
 
-        /** ✅ 新增：用户点击按钮就回调（不阻塞后续 createOrder） */
+        // 点击即回调（不阻塞后续 createOrder）
         onClick: () => {
           try { onInitiate?.(); } catch {}
-          return true; // 允许继续
+          return true;
         },
 
         createOrder: () =>
@@ -77,7 +130,7 @@ export default function BraintreePayPalOnly({ amount, currency, onSucceeded, onI
           }),
 
         onApprove: async (data: any) => {
-          const payload = await (ppCheckout as any).tokenizePayment(data); // 得到 nonce
+          const payload = await (ppCheckout as any).tokenizePayment(data);
           const res = await fetch("/api/braintree/checkout", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -105,17 +158,17 @@ export default function BraintreePayPalOnly({ amount, currency, onSucceeded, onI
         return;
       }
 
-      await buttons.render(host);
-      if (!cancelled) setReady(true);
+      await buttons.render(host);     // 真实按钮完成首次绘制
+      if (!cancelled) setReady(true); // 仅用于错误提示/诊断；不再控制 UI 占位
     };
 
     boot().catch(async (e) => {
-      // 第一次失败（比如 token 过期）→ 换新 token 再试一次
       try {
         await fetchAndOverwriteBraintreeToken();
         await boot();
       } catch (err) {
-        if (!cancelled) setError((err as any)?.message || (e as any)?.message || "Failed to init PayPal");
+        if (!cancelled)
+          setError((err as any)?.message || (e as any)?.message || "Failed to init PayPal");
       }
     });
 
@@ -127,14 +180,9 @@ export default function BraintreePayPalOnly({ amount, currency, onSucceeded, onI
   }, [amount, currency, onInitiate, onSucceeded]);
 
   return (
-    <div className="relative min-h-[72px]">
-      {!ready && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="h-11 w-[210px] rounded-md bg-neutral-100 shadow-inner" />
-        </div>
-      )}
-      {/* 只渲染按钮，不带任何外框 */}
-      <div ref={hostRef} className={ready ? "" : "opacity-0"} />
+    // 只保留真实 PayPal 容器，固定尺寸，避免任何视觉不一致
+    <div className="relative" style={{ width: 300, height: 45 }}>
+      <div ref={hostRef} className="absolute inset-0" aria-live="polite" />
       {error && (
         <div className="mt-2 rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-600">{error}</div>
       )}

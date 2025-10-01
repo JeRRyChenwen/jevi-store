@@ -12,6 +12,9 @@ import type { CartItem as CartListItem } from "@/components/cart/CartList";
 import BraintreePayPalOnly from "@/app/checkout/_components/BraintreePayPalOnly";
 import PrefetchBraintreeToken from "@/app/checkout/_components/PrefetchBraintreeToken";
 
+// ✅ 预加载 PayPal SDK + Braintree 实例
+import PayPalPreloader from "@/app/checkout/_components/PayPalPreloader";
+
 import { selectCurrencyAndTotals } from "@/lib/cartPricing";
 import { effectiveMinor, type PriceRec, type Currency } from "@/lib/pricing";
 
@@ -223,7 +226,7 @@ export default function CheckoutPage() {
   const [address, setAddress] = useState<Address>({});
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>("standard");
 
-  // ✅ 新增：订阅勾选 & 邮箱本地状态
+  // ✅ 订阅勾选 & 邮箱本地状态
   const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [emailInput, setEmailInput] = useState<string>("");
 
@@ -240,7 +243,7 @@ export default function CheckoutPage() {
     router.replace(`${pathname}?${p.toString()}`, { scroll: false });
   };
 
-  // 预连接 PayPal/Braintree
+  // 预连接 PayPal/Braintree（网络层优化）
   useEffect(() => {
     const hosts = [
       "https://www.paypal.com",
@@ -378,14 +381,13 @@ export default function CheckoutPage() {
           email,
           marketing_opt_in: true,
           source: "checkout",
-          // ★ 固定传中国时区，保证旧版后端也会按中国时间格式化 *_iso
           tz: FORCE_CN_TZ,
           meta: {
             path: "/checkout",
             step,
             ts: Date.now(),
-            tz: FORCE_CN_TZ,             // 显式记录我们希望的显示时区
-            client_tz: clientTZ,         // 记录客户端原始时区便于排查
+            tz: FORCE_CN_TZ,
+            client_tz: clientTZ,
             utc_offset_min: clientUTCOffsetMin,
           },
         }),
@@ -395,7 +397,7 @@ export default function CheckoutPage() {
     }
   }
 
-  // 支付成功 → 写入预览数据 → 确认页（同时再兜底推送一次订阅）
+  // 支付成功 → 写入预览数据 → 确认页
   const handlePaySucceeded = (payload?: any) => {
     try {
       sessionStorage.setItem(
@@ -426,6 +428,8 @@ export default function CheckoutPage() {
     <main className="w-full px-4 sm:px-6 lg:px-8 2xl:px-12 py-6 md:py-8">
       {/* 进入结算页就预取并缓存 Braintree clientToken */}
       <PrefetchBraintreeToken />
+      {/* 进入结算页立刻预加载 PayPal SDK + Braintree（全流程常驻） */}
+      <PayPalPreloader currency={DISPLAY_CURRENCY as unknown as string} />
 
       <div className="mx-auto w-full max-w-[2300px]">
         <div className="mb-5 text-sm text-neutral-600">
@@ -509,165 +513,166 @@ export default function CheckoutPage() {
             </>
           )}
 
-          {/* Payment：delivery 时离屏挂载，payment 时显示 */}
-          {(step === "delivery" || step === "payment") && (
-            <section
-              className="rounded-xl border"
-              aria-hidden={step !== "payment"}
-              style={
-                step === "payment"
-                  ? undefined
-                  : {
-                      position: "absolute",
-                      left: "-10000px",
-                      top: 0,
-                      width: "520px",
-                      maxWidth: "100%",
-                      visibility: "hidden",
-                      pointerEvents: "none",
-                    }
-              }
-            >
-              <div className="px-4 py-3 border-b font-semibold">How would you like to pay?</div>
+          {/* Payment：始终挂载；非 payment 时固定在视口内且几乎透明，完成真实渲染 */}
+          <section
+            className="rounded-xl border"
+            aria-hidden={step !== "payment"}
+            style={
+              step === "payment"
+                ? undefined
+                : {
+                    position: "fixed",
+                    left: 0,
+                    bottom: 0,
+                    // 🔑 与可见时**完全一致**的宽高，避免 PayPal 自适应样式切换
+                    width: "300px",
+                    height: "1px", // section 不必太高；按钮本身在内部 300px 容器内
+                    opacity: 0.01, // 不是 0，避免可见性检测阻止渲染
+                    pointerEvents: "none",
+                    zIndex: 0,
+                  }
+            }
+          >
+            <div className="px-4 py-3 border-b font-semibold">How would you like to pay?</div>
 
-              <div className="p-4 space-y-6">
-                {/* Payment Options（只显示 PayPal 选中） */}
-                <div className="border rounded-lg p-4">
-                  <h2 className="text-lg font-medium mb-4">Payment Options</h2>
-                  <label className="flex items-center gap-3 w-full border rounded-md px-3 py-3 cursor-pointer border-black ring-1 ring-black">
-                    <input type="radio" name="payment" className="mt-0.5" checked readOnly />
-                    <div className="flex-1 flex items-center justify-between gap-3">
-                      <div className="font-medium">PayPal</div>
-                      <div className="flex items-center gap-2 opacity-80">
-                        <img src="https://www.paypalobjects.com/webstatic/icon/pp258.png" alt="PayPal" className="h-5" />
-                      </div>
-                    </div>
-                  </label>
-                </div>
-
-                {/* 蓝色提示 */}
-                <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm">
-                  <div className="flex items-start gap-2">
-                    <span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-white">
-                      <Check size={14} />
-                    </span>
-                    <div>
-                      <div className="font-medium">Make sure your delivery address is correct!</div>
-                      <div className="text-gray-600">You can go back to the Address step to make changes.</div>
+            <div className="p-4 space-y-6">
+              {/* Payment Options（只显示 PayPal 选中） */}
+              <div className="border rounded-lg p-4">
+                <h2 className="text-lg font-medium mb-4">Payment Options</h2>
+                <label className="flex items-center gap-3 w-full border rounded-md px-3 py-3 cursor-pointer border-black ring-1 ring-black">
+                  <input type="radio" name="payment" className="mt-0.5" checked readOnly />
+                  <div className="flex-1 flex items-center justify-between gap-3">
+                    <div className="font-medium">PayPal</div>
+                    <div className="flex items-center gap-2 opacity-80">
+                      <img src="https://www.paypalobjects.com/webstatic/icon/pp258.png" alt="PayPal" className="h-5" />
                     </div>
                   </div>
-                </div>
+                </label>
+              </div>
 
-                {/* Your Details */}
-                <div className="border rounded-lg p-4">
-                  <h3 className="text-base font-medium mb-2">Your Details</h3>
-                  <p className="text-sm text-neutral-600 mb-3">
-                    Please enter your email address, we'll send your order confirmation here
-                  </p>
-                  <label className="block text-sm font-medium mb-1">Email Address</label>
+              {/* 蓝色提示 */}
+              <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm">
+                <div className="flex items-start gap-2">
+                  <span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-white">
+                    <Check size={14} />
+                  </span>
+                  <div>
+                    <div className="font-medium">Make sure your delivery address is correct!</div>
+                    <div className="text-gray-600">You can go back to the Address step to make changes.</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Your Details */}
+              <div className="border rounded-lg p-4">
+                <h3 className="text-base font-medium mb-2">Your Details</h3>
+                <p className="text-sm text-neutral-600 mb-3">
+                  Please enter your email address, we'll send your order confirmation here
+                </p>
+                <label className="block text-sm font-medium mb-1">Email Address</label>
+                <input
+                  type="email"
+                  placeholder="you@example.com"
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                  value={emailInput}
+                  onChange={(e) => setEmailInput(e.currentTarget.value)}
+                  onBlur={(e) => {
+                    const v = e.currentTarget.value.trim();
+                    setAddress({ ...address, email: v });
+                    if (marketingOptIn && v) sendSubscriptionIfNeeded(v);
+                  }}
+                />
+                <p className="mt-1 text-xs text-neutral-500">You can create an account after checkout</p>
+                <label className="mt-3 flex items-start gap-2 text-sm">
                   <input
-                    type="email"
-                    placeholder="you@example.com"
-                    className="w-full rounded-md border px-3 py-2 text-sm"
-                    value={emailInput}
-                    onChange={(e) => setEmailInput(e.currentTarget.value)}
-                    onBlur={(e) => {
-                      const v = e.currentTarget.value.trim();
-                      setAddress({ ...address, email: v });
-                      if (marketingOptIn && v) sendSubscriptionIfNeeded(v);
+                    type="checkbox"
+                    className="mt-1"
+                    checked={marketingOptIn}
+                    onChange={(e) => {
+                      const v = e.currentTarget.checked;
+                      setMarketingOptIn(v);
+                      if (v) {
+                        const email = (emailInput || address?.email || "").trim();
+                        if (email) sendSubscriptionIfNeeded(email);
+                      }
                     }}
                   />
-                  <p className="mt-1 text-xs text-neutral-500">You can create an account after checkout</p>
-                  <label className="mt-3 flex items-start gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      className="mt-1"
-                      checked={marketingOptIn}
-                      onChange={(e) => {
-                        const v = e.currentTarget.checked;
-                        setMarketingOptIn(v);
-                        if (v) {
-                          const email = (emailInput || address?.email || "").trim();
-                          if (email) sendSubscriptionIfNeeded(email);
-                        }
-                      }}
-                    />
-                    <span>Email me updates on New Arrivals, Sale and Offers</span>
-                  </label>
-                  <p className="mt-3 text-xs text-neutral-500">
-                    * We treat your personal data with care, view our <a className="underline" href="/privacy">Privacy Policy</a>.
-                  </p>
-                </div>
+                  <span>Email me updates on New Arrivals, Sale and Offers</span>
+                </label>
+                <p className="mt-3 text-xs text-neutral-500">
+                  * We treat your personal data with care, view our <a className="underline" href="/privacy">Privacy Policy</a>.
+                </p>
+              </div>
 
-                {/* Delivery Details */}
-                <div className="border rounded-lg p-4">
-                  <h3 className="text-base font-medium mb-3">Delivery Details</h3>
-                  {address?.firstName || address?.lastName ? (
-                    <div className="text-sm leading-6 text-gray-800">
-                      <div>{[address.firstName, address.lastName].filter(Boolean).join(" ")}</div>
-                      <div>{address.line1}{address.line2 ? ` ${address.line2}` : ""}</div>
-                      <div>{address.city} {address.state} {address.postcode}</div>
-                      <div>{address.country}</div>
-                      {address.email && <div className="mt-2">{address.email}</div>}
-                      {address.phone && <div>{address.phone}</div>}
-                    </div>
+              {/* Delivery Details */}
+              <div className="border rounded-lg p-4">
+                <h3 className="text-base font-medium mb-3">Delivery Details</h3>
+                {address?.firstName || address?.lastName ? (
+                  <div className="text-sm leading-6 text-gray-800">
+                    <div>{[address.firstName, address.lastName].filter(Boolean).join(" ")}</div>
+                    <div>{address.line1}{address.line2 ? ` ${address.line2}` : ""}</div>
+                    <div>{address.city} {address.state} {address.postcode}</div>
+                    <div>{address.country}</div>
+                    {address.email && <div className="mt-2">{address.email}</div>}
+                    {address.phone && <div>{address.phone}</div>}
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-500">
+                    No delivery address found. Please complete the <b>Address</b> step.
+                  </div>
+                )}
+              </div>
+
+              {/* 订单摘要 */}
+              <div className="border rounded-lg p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-gray-600">Items</div>
+                  <div className="text-base font-medium">{itemsCount} item{itemsCount > 1 ? "s" : ""}</div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-gray-600">Subtotal</div>
+                  <div className="text-base font-medium">{fmtMoneyMinor(itemsTotals.itemsMinor, currency)}</div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-gray-600">Delivery</div>
+                  <div className="text-base font-medium">
+                    {deliveryFeeMinor === 0 ? "FREE" : fmtMoneyMinor(deliveryFeeMinor, currency)}
+                  </div>
+                </div>
+                <div className="border-t pt-3 flex items-center justify-between">
+                  <div className="text-lg font-semibold">Total</div>
+                  <div className="text-xl font-bold">{fmtMoneyMinor(totalMinor, currency)}</div>
+                </div>
+              </div>
+
+              {/* 只有一颗 PayPal 按钮（无外围边框） */}
+              <div className="p-4">
+                {/* ⚠️ 可见时也固定 300px，和隐藏渲染时保持 1:1 */}
+                <div className="mx-auto w-[300px]">
+                  {amountInMajorUnit > 0 ? (
+                    <BraintreePayPalOnly
+                      amount={amountInMajorUnit}
+                      currency="AUD"
+                      onInitiate={handlePayInitiated}
+                      onSucceeded={handlePaySucceeded}
+                    />
                   ) : (
-                    <div className="text-sm text-gray-500">
-                      No delivery address found. Please complete the <b>Address</b> step.
+                    <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700 text-center">
+                      Your total is $0. Add items to proceed with payment.
                     </div>
                   )}
                 </div>
-
-                {/* 订单摘要 */}
-                <div className="border rounded-lg p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm text-gray-600">Items</div>
-                    <div className="text-base font-medium">{itemsCount} item{itemsCount > 1 ? "s" : ""}</div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm text-gray-600">Subtotal</div>
-                    <div className="text-base font-medium">{fmtMoneyMinor(itemsTotals.itemsMinor, currency)}</div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm text-gray-600">Delivery</div>
-                    <div className="text-base font-medium">
-                      {deliveryFeeMinor === 0 ? "FREE" : fmtMoneyMinor(deliveryFeeMinor, currency)}
-                    </div>
-                  </div>
-                  <div className="border-t pt-3 flex items-center justify-between">
-                    <div className="text-lg font-semibold">Total</div>
-                    <div className="text-xl font-bold">{fmtMoneyMinor(totalMinor, currency)}</div>
-                  </div>
-                </div>
-
-                {/* 只有一颗 PayPal 按钮（无外围边框） */}
-                <div className="p-4">
-                  <div className="mx-auto w-[260px] sm:w-[300px]">
-                    {amountInMajorUnit > 0 ? (
-                      <BraintreePayPalOnly
-                        amount={amountInMajorUnit}
-                        currency="AUD"
-                        onInitiate={handlePayInitiated}
-                        onSucceeded={handlePaySucceeded}
-                      />
-                    ) : (
-                      <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700 text-center">
-                        Your total is $0. Add items to proceed with payment.
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* 统一币种提示 */}
-                <p className="mt-2 text-xs text-gray-500">
-                  All charges are processed in <b>AUD</b>. Your bank or PayPal may apply currency conversion and fees.
-                </p>
-                <p className="mt-1 text-xs text-gray-500">
-                  * Pay in 4 availability is determined by PayPal and may vary by account and region.
-                </p>
               </div>
-            </section>
-          )}
+
+              {/* 统一币种提示 */}
+              <p className="mt-2 text-xs text-gray-500">
+                All charges are processed in <b>AUD</b>. Your bank or PayPal may apply currency conversion and fees.
+              </p>
+              <p className="mt-1 text-xs text-gray-500">
+                * Pay in 4 availability is determined by PayPal and may vary by account and region.
+              </p>
+            </div>
+          </section>
         </div>
 
         {/* 底部下一步条（非 payment 步骤时显示） */}
