@@ -59,8 +59,25 @@ async function ensureTokenOnce(): Promise<string> {
 
 export default function BraintreePayPalOnly({ amount, currency, onSucceeded, onInitiate }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const buttonsRef = useRef<any>(null);            // 真实 PayPal Buttons 实例
+  const pendingClickRef = useRef(false);           // “抢点”标记（未 ready 时点击）
+  const onInitiateRef = useRef<typeof onInitiate>(); // 用 ref 持有回调，避免触发重建
+  const onSucceededRef = useRef<typeof onSucceeded>();
+
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 始终拿到最新回调，但不把它们放进 useEffect 依赖
+  useEffect(() => { onInitiateRef.current = onInitiate; }, [onInitiate]);
+  useEffect(() => { onSucceededRef.current = onSucceeded; }, [onSucceeded]);
+
+  // 程序化触发一次点击（若已 ready）
+  const tryTriggerClick = async () => {
+    try {
+      const btn = buttonsRef.current;
+      if (btn?.click) await btn.click();
+    } catch { /* 忽略 */ }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -114,9 +131,9 @@ export default function BraintreePayPalOnly({ amount, currency, onSucceeded, onI
           shape: "rect",
         },
 
-        // 点击即回调（不阻塞后续 createOrder）
         onClick: () => {
-          try { onInitiate?.(); } catch {}
+          // 在真正按钮上点击时调用最新回调
+          try { onInitiateRef.current?.(); } catch {}
           return true;
         },
 
@@ -130,7 +147,7 @@ export default function BraintreePayPalOnly({ amount, currency, onSucceeded, onI
           }),
 
         onApprove: async (data: any) => {
-          const payload = await (ppCheckout as any).tokenizePayment(data);
+          const payload = await (ppCheckout as any).tokenizePayment(data); // 得到 nonce
           const res = await fetch("/api/braintree/checkout", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -145,7 +162,7 @@ export default function BraintreePayPalOnly({ amount, currency, onSucceeded, onI
             throw new Error(out?.error || `Payment failed (${res.status})`);
           }
           const id = out?.transactionId || out?.id || "";
-          onSucceeded?.({ id });
+          onSucceededRef.current?.({ id });
         },
 
         onError: (err: any) => {
@@ -158,8 +175,18 @@ export default function BraintreePayPalOnly({ amount, currency, onSucceeded, onI
         return;
       }
 
-      await buttons.render(host);     // 真实按钮完成首次绘制
-      if (!cancelled) setReady(true); // 仅用于错误提示/诊断；不再控制 UI 占位
+      await buttons.render(host);      // 真实按钮完成首次绘制
+      if (cancelled) return;
+
+      buttonsRef.current = buttons;
+      setReady(true);
+
+      // 若用户在未 ready 时点了按钮，ready 后立刻触发一次
+      if (pendingClickRef.current) {
+        pendingClickRef.current = false;
+        // 等一帧，确保 iframe 完全可交互
+        requestAnimationFrame(() => { void tryTriggerClick(); });
+      }
     };
 
     boot().catch(async (e) => {
@@ -175,14 +202,39 @@ export default function BraintreePayPalOnly({ amount, currency, onSucceeded, onI
     return () => {
       cancelled = true;
       try { buttons?.close?.(); } catch {}
+      buttonsRef.current = null;
       if (hostRef.current) hostRef.current.innerHTML = "";
     };
-  }, [amount, currency, onInitiate, onSucceeded]);
+
+    // ⚠️ 只在 amount / currency 变化时才重建按钮；不要把 onInitiate/onSucceeded 放进依赖
+  }, [amount, currency]);
 
   return (
-    // 只保留真实 PayPal 容器，固定尺寸，避免任何视觉不一致
-    <div className="relative" style={{ width: 300, height: 45 }}>
-      <div ref={hostRef} className="absolute inset-0" aria-live="polite" />
+    <div
+      className="relative"
+      style={{ width: 300, height: 45 }}
+      aria-busy={!ready}
+      aria-live="polite"
+    >
+      {/* 真按钮容器（iframe 会挂在这里） */}
+      <div ref={hostRef} className="absolute inset-0" />
+
+      {/* 透明点击层：仅在未 ready 时存在。点击后排队，等 ready 立即触发 */}
+      {!ready && (
+        <button
+          type="button"
+          className="absolute inset-0 z-10"
+          aria-label="Pay with PayPal"
+          onClick={() => {
+            pendingClickRef.current = true;
+            // 如果此刻已经 ready（极端竞态），直接触发
+            void tryTriggerClick();
+            // 这里不调用 onInitiateRef：真正按钮的 onClick 会在 ready 后统一上报
+          }}
+          style={{ background: "transparent", cursor: "pointer" }}
+        />
+      )}
+
       {error && (
         <div className="mt-2 rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-600">{error}</div>
       )}
