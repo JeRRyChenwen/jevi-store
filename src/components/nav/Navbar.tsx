@@ -20,55 +20,39 @@ import BagButton from "./BagButton";
 
 type User = { id: string; email: string; name?: string | null };
 
-/** ============ API 基址与智能回退 ============ */
+/* ============ 基址 ============ */
 const ENV_BASE = (process.env.NEXT_PUBLIC_API_BASE || "").trim();
 const ABSOLUTE_RE = /^https?:\/\//i;
+const SECONDARY_BASE = ABSOLUTE_RE.test(ENV_BASE)
+  ? (ENV_BASE.endsWith("/") ? ENV_BASE.slice(0, -1) : ENV_BASE)
+  : null;
 
-function normalizeBase(b: string) {
-  if (!b) return "/api";
-  return b.endsWith("/") ? b.slice(0, -1) : b;
-}
-
-const baseRef: { current: string } = {
-  current: normalizeBase(ENV_BASE || "/api"),
-};
-
-function buildUrl(path: string, base = baseRef.current) {
+/** 总是优先打本地 /api；只有 /api 返回 404 时，才尝试远端 SECONDARY_BASE */
+async function fetchWithFallback(path: string, init?: RequestInit) {
   const p = path.startsWith("/") ? path : `/${path}`;
-  return `${base}${p}`;
-}
 
-async function safeFetch(
-  path: string,
-  init?: RequestInit & { retryOnNetworkError?: boolean }
-) {
-  const retryOnNetworkError = init?.retryOnNetworkError ?? true;
-
-  try {
-    const res = await fetch(buildUrl(path), init);
-    return res;
-  } catch (err: any) {
-    const isNetworkError =
-      err && (err.name === "TypeError" || err.message?.includes("NetworkError"));
-
-    if (
-      retryOnNetworkError &&
-      ABSOLUTE_RE.test(baseRef.current) &&
-      isNetworkError
-    ) {
-      baseRef.current = "/api";
-      try {
-        const res2 = await fetch(buildUrl(path, "/api"), init);
-        return res2;
-      } catch {
-        throw err;
-      }
-    }
-    throw err;
+  // 1) 本地优先
+  const resLocal = await fetch(`/api${p}`, init).catch(() => null as unknown as Response);
+  if (resLocal) {
+    // /api 存在（200/204/401/403/500 等非 404）都直接返回，避免先出现远端 404 的红字
+    if (resLocal.status !== 404) return resLocal;
   }
+
+  // 2) 仅当本地是 404 且配置了远端时，再打远端
+  if (SECONDARY_BASE) {
+    try {
+      const resRemote = await fetch(`${SECONDARY_BASE}${p}`, init);
+      return resRemote;
+    } catch {
+      // 远端也不可达，就把本地的结果交回去（可能是 404）
+      return resLocal!;
+    }
+  }
+
+  return resLocal!;
 }
 
-/** ============ 其它工具 ============ */
+/* ============ 其它工具 ============ */
 function hasSessionCookie() {
   return (
     typeof document !== "undefined" &&
@@ -83,7 +67,16 @@ function displayName(u: User) {
 const ICON_BTN = "!h-12 !w-12 md:!h-14 md:!w-14";
 const ICON_SIZE = "!h-6 !w-6 md:!h-6 md:!w-6";
 
-/** ============ 组件 ============ */
+/* ============ single-flight + 轻缓存（同一标签页） ============ */
+declare global {
+  interface Window {
+    __sp_me_inflight?: Promise<User | null>;
+    __sp_me_cache?: { ts: number; data: User | null };
+  }
+}
+const ME_CACHE_TTL = 30_000;
+
+/* ============ 组件 ============ */
 export default function Navbar() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -91,9 +84,8 @@ export default function Navbar() {
   const didInit = useRef(false);
   const pathname = usePathname();
 
-  const fetchMe = async (opts?: { force?: boolean; retries?: number }) => {
+  const fetchMe = async (opts?: { force?: boolean }) => {
     const force = !!opts?.force;
-    const retries = opts?.retries ?? 0;
 
     if (!force && !hasSessionCookie()) {
       setUser(null);
@@ -101,30 +93,49 @@ export default function Navbar() {
       return;
     }
 
-    let lastErr: unknown = null;
-    for (let i = 0; i <= retries; i++) {
+    const cache = typeof window !== "undefined" ? window.__sp_me_cache : undefined;
+    if (!force && cache && Date.now() - cache.ts < ME_CACHE_TTL) {
+      setUser(cache.data ?? null);
+      setLoading(false);
+      return;
+    }
+
+    if (typeof window !== "undefined" && window.__sp_me_inflight) {
       try {
-        const r = await safeFetch("/auth/me", {
+        const data = await window.__sp_me_inflight;
+        setUser(data ?? null);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      window.__sp_me_inflight = (async (): Promise<User | null> => {
+        const res = await fetchWithFallback("/auth/me", {
           credentials: "include",
           cache: "no-store",
-        });
-        if (r.ok) {
-          if (r.status === 204) {
-            setUser(null);
-          } else {
-            const u = (await r.json()) as User;
-            setUser(u);
-          }
-          setLoading(false);
-          return;
-        }
-      } catch (e) {
-        lastErr = e;
-      }
-      if (i < retries) await new Promise((r) => setTimeout(r, i === 0 ? 0 : 100 * i));
+        }).catch(() => null as unknown as Response);
+
+        if (!res) return null;            // 网络异常
+        if (!res.ok) return null;         // 401/404 等 → 未登录
+        if (res.status === 204) return null;
+
+        const u = (await res.json().catch(() => null)) as User | null;
+        return u;
+      })();
     }
-    setUser(null);
-    setLoading(false);
+
+    try {
+      const data = await (window.__sp_me_inflight as Promise<User | null>).catch(() => null);
+      if (typeof window !== "undefined") {
+        window.__sp_me_cache = { ts: Date.now(), data: data ?? null };
+      }
+      setUser(data ?? null);
+    } finally {
+      if (typeof window !== "undefined") delete window.__sp_me_inflight;
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -132,7 +143,7 @@ export default function Navbar() {
     didInit.current = true;
     fetchMe({ force: false });
 
-    const onAuthChanged = () => fetchMe({ force: true, retries: 3 });
+    const onAuthChanged = () => fetchMe({ force: true });
     const onFocus = () => fetchMe({ force: false });
     const onVisibility = () => {
       if (!document.hidden) fetchMe({ force: false });
@@ -150,7 +161,7 @@ export default function Navbar() {
 
   useEffect(() => {
     if (!didInit.current) return;
-    if (hasSessionCookie()) fetchMe({ force: true, retries: 2 });
+    if (hasSessionCookie()) fetchMe({ force: true });
     else {
       setUser(null);
       setLoading(false);
@@ -158,22 +169,17 @@ export default function Navbar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
-  // ⌘K / Ctrl+K 打开搜索 —— 增加空值保护 & 在输入时忽略
+  // ⌘K / Ctrl+K 打开搜索（输入时忽略）
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
       const tag = (el?.tagName ?? "").toLowerCase();
       const isTyping =
-        !!el?.isContentEditable ||
-        tag === "input" ||
-        tag === "textarea" ||
-        tag === "select";
-
+        !!el?.isContentEditable || tag === "input" || tag === "textarea" || tag === "select";
       if (isTyping) return;
 
       const key = (e.key ?? "").toLowerCase();
       if (!key) return;
-
       if ((e.metaKey || e.ctrlKey) && key === "k") {
         e.preventDefault();
         setOpenSearch(true);
@@ -185,7 +191,7 @@ export default function Navbar() {
 
   const logout = async () => {
     try {
-      await safeFetch("/auth/logout", {
+      await fetchWithFallback("/auth/logout", {
         method: "POST",
         credentials: "include",
       });
@@ -205,12 +211,10 @@ export default function Navbar() {
         SocialPlatform
       </Link>
 
-      {/* 右侧整体（搜索 + 图标）推到右边 */}
+      {/* 右：搜索 + 图标 */}
       <div className="ml-auto flex items-center gap-1 md:gap-2">
-        {/* 桌面端搜索框 */}
         <CompactSearch className="w-[420px] lg:w-[560px] mr-10 md:mr-30" />
 
-        {/* 移动端放大镜按钮（md 以下显示） */}
         <Button
           variant="ghost"
           size="icon"
@@ -221,7 +225,6 @@ export default function Navbar() {
           <SearchIcon className={ICON_SIZE} />
         </Button>
 
-        {/* 心愿单 */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className={ICON_BTN} aria-label="wishlist">
@@ -237,7 +240,7 @@ export default function Navbar() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* ✅ 背包按钮（点击触发右侧购物袋抽屉） */}
+        {/* 购物袋按钮 */}
         <BagButton />
 
         {/* 用户 */}
@@ -279,7 +282,6 @@ export default function Navbar() {
         )}
       </div>
 
-      {/* 移动端全屏搜索弹层 */}
       <SearchOverlay open={openSearch} onClose={() => setOpenSearch(false)} />
     </nav>
   );

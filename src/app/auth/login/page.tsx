@@ -1,3 +1,4 @@
+// src/app/auth/login/page.tsx
 "use client";
 
 import { useForm } from "react-hook-form";
@@ -11,7 +12,10 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE!; // 开发建议: http://localhost:8787
+// ⚙️ 基址：有 NEXT_PUBLIC_API_BASE（比如你的 Cloudflare Worker）就用它，否则走 Next 内置 /api
+const ENV_BASE = (process.env.NEXT_PUBLIC_API_BASE || "").trim();
+const API_BASE = ENV_BASE || "/api";
+const build = (p: string) => `${API_BASE}${p.startsWith("/") ? p : `/${p}`}`;
 
 const schema = z.object({
   email: z.string().email("请输入有效的邮箱"),
@@ -26,9 +30,7 @@ export default function LoginPage() {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-  } = useForm<LoginFormData>({
-    resolver: zodResolver(schema),
-  });
+  } = useForm<LoginFormData>({ resolver: zodResolver(schema) });
 
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -41,49 +43,46 @@ export default function LoginPage() {
     };
 
     try {
-      if (!API_BASE) throw new Error("未配置 NEXT_PUBLIC_API_BASE（请在 .env.local 设置）");
+      console.log("[Login] submit =>", { email: payload.email, API_BASE });
 
-      console.log("[Login] submit", { email: payload.email, API_BASE });
-
-      const res = await fetch(`${API_BASE}/auth/login`, {
+      // 1) 登录（会在服务器写入 sp_has_session / sp_user 等 cookie）
+      const res = await fetch(build("/auth/login"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include", // ★ 接收 HttpOnly Cookie
+        credentials: "include", // 接收 HttpOnly/同站 Cookie
         body: JSON.stringify(payload),
       });
 
-      console.log("[Login] /auth/login status =", res.status);
-
       const body = await res.json().catch(() => ({} as any));
+      console.log("[Login] /auth/login status=", res.status, body);
 
       if (!res.ok) {
         if (res.status === 401) throw new Error("邮箱或密码不正确");
         throw new Error(body?.error || body?.message || "登录失败");
       }
 
-      // ✅ 登录成功：等待会话就绪，再通知 Navbar 并跳转
-      console.log("[Login] res.ok. document.cookie(before poll) =", document.cookie);
-
+      // 2) 轮询 /auth/me，直到 200（有会话）或放弃
       const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
       let ready = false;
-      for (const delay of [0, 80, 160, 320, 480]) {
+      for (const delay of [0, 80, 160, 320, 480, 640]) {
         try {
-          const r = await fetch(`${API_BASE}/auth/me`, { credentials: "include" });
+          const r = await fetch(build("/auth/me"), { credentials: "include", cache: "no-store" });
           console.log(`[Login] /auth/me attempt delay=${delay} status=${r.status}`);
-          if (r.ok) { ready = true; break; }
+          if (r.status === 200) { ready = true; break; }
+          // 204=未登录；其它错误继续尝试
         } catch (e) {
-          console.log("[Login] /auth/me attempt error:", e);
+          console.log("[Login] /auth/me error:", e);
         }
         await sleep(delay);
       }
 
-      console.log("[Login] meReady =", ready, "document.cookie(after poll) =", document.cookie);
+      if (!ready) {
+        console.warn("[Login] 会话还未就绪，但继续跳转（Navbar 会自我修复）");
+      }
 
-      console.log("[Login] dispatch sp-auth-changed");
-      window.dispatchEvent(new Event("sp-auth-changed")); // 让 Navbar 立刻刷新
-
-      console.log("[Login] router.push('/')");
-      router.push("/");                                   // 跳到首页
+      // 3) 通知导航刷新，再跳首页
+      window.dispatchEvent(new Event("sp-auth-changed"));
+      router.push("/");
     } catch (err: any) {
       console.error("[Login] error:", err);
       setErrorMessage(err?.message || "网络或服务器异常");
@@ -123,7 +122,6 @@ export default function LoginPage() {
           <Link href="/auth/register" className="underline hover:text-primary">
             没有账号？去注册
           </Link>
-
           <Link href="/auth/forgot-password" className="underline hover:text-primary">
             忘记密码？
           </Link>

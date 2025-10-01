@@ -28,11 +28,9 @@ const DELIVERY_FLAT = 10;
 const DISPLAY_CURRENCY: Currency = "AUD";
 const CONFIRM_PATH = "/order/confirmation";
 
-/* 工具：拼 API 地址（支持 NEXT_PUBLIC_API_BASE） */
-const apiURL = (path: string) => {
-  const base = (process.env.NEXT_PUBLIC_API_BASE || "").replace(/\/+$/, "");
-  return `${base}${path}`;
-};
+/* 工具：本地 /api 优先（需要远端时单独指定） */
+const apiURL = (path: string) => `/api${path}`;
+const REMOTE_BASE = (process.env.NEXT_PUBLIC_API_BASE || "").replace(/\/+$/, "");
 
 /* ---------------- 小工具 ---------------- */
 function fmtPrice(n: number, currency: string, locale?: string) {
@@ -367,33 +365,53 @@ export default function CheckoutPage() {
   // ★★★ 关键：无论浏览器在哪，发送到后端的 tz 一律使用中国时区
   const FORCE_CN_TZ = "Asia/Shanghai";
 
-  // ✅ 把订阅发送到 Worker（成功与否都不阻塞结账）
+  // ✅ 把订阅发送到 Worker（成功与否都不阻塞结账，也不在控制台报红）
   async function sendSubscriptionIfNeeded(emailRaw?: string) {
     try {
       if (!marketingOptIn) return;
       const email = (emailRaw || address?.email || emailInput || "").trim().toLowerCase();
       if (!email) return;
 
-      await fetch(apiURL("/subscribe"), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          email,
-          marketing_opt_in: true,
-          source: "checkout",
+      const payload = {
+        email,
+        marketing_opt_in: true,
+        source: "checkout",
+        tz: FORCE_CN_TZ,
+        meta: {
+          path: "/checkout",
+          step,
+          ts: Date.now(),
           tz: FORCE_CN_TZ,
-          meta: {
-            path: "/checkout",
-            step,
-            ts: Date.now(),
-            tz: FORCE_CN_TZ,
-            client_tz: clientTZ,
-            utc_offset_min: clientUTCOffsetMin,
-          },
-        }),
-      });
-    } catch (e) {
-      console.warn("[subscribe] best-effort failed:", e);
+          client_tz: clientTZ,
+          utc_offset_min: clientUTCOffsetMin,
+        },
+      };
+
+      // 优先使用 sendBeacon（不会在 Console 里报 500）
+      const jsonBlob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+
+      // 1) 远端（如果配置了 NEXT_PUBLIC_API_BASE）
+      if (REMOTE_BASE) {
+        const ok = typeof navigator !== "undefined" && navigator.sendBeacon?.(`${REMOTE_BASE}/subscribe`, jsonBlob);
+        if (ok) return;
+      }
+
+      // 2) 本地 /api（仅当你有实现时才会收；没有也不会卡住）
+      const okLocal = typeof navigator !== "undefined" && navigator.sendBeacon?.(apiURL("/subscribe"), jsonBlob);
+      if (okLocal) return;
+
+      // 3) 兜底：非阻塞 fetch（不 await），也尽量避免阻塞点击
+      setTimeout(() => {
+        const target = REMOTE_BASE ? `${REMOTE_BASE}/subscribe` : apiURL("/subscribe");
+        fetch(target, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+          keepalive: true, // 离开页面也可尝试提交
+        }).catch(() => {});
+      }, 0);
+    } catch {
+      // 完全静默，不影响支付
     }
   }
 
@@ -419,9 +437,9 @@ export default function CheckoutPage() {
     });
   };
 
-  /* 点击黄色 PayPal 按钮即上报一次（不依赖 blur），不阻塞支付 */
+  /* 点击黄色 PayPal 按钮即上报一次（绝不阻塞支付，也不报红） */
   const handlePayInitiated = () => {
-    sendSubscriptionIfNeeded();
+    void sendSubscriptionIfNeeded();
   };
 
   return (
@@ -524,10 +542,9 @@ export default function CheckoutPage() {
                     position: "fixed",
                     left: 0,
                     bottom: 0,
-                    // 🔑 与可见时**完全一致**的宽高，避免 PayPal 自适应样式切换
                     width: "300px",
-                    height: "1px", // section 不必太高；按钮本身在内部 300px 容器内
-                    opacity: 0.01, // 不是 0，避免可见性检测阻止渲染
+                    height: "1px",
+                    opacity: 0.01,
                     pointerEvents: "none",
                     zIndex: 0,
                   }
