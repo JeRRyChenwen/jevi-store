@@ -10,12 +10,11 @@ import { Label } from "@/components/ui/label";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
-// ⚙️ 基址：有 NEXT_PUBLIC_API_BASE（比如你的 Cloudflare Worker）就用它，否则走 Next 内置 /api
-const ENV_BASE = (process.env.NEXT_PUBLIC_API_BASE || "").trim();
-const API_BASE = ENV_BASE || "/api";
-const build = (p: string) => `${API_BASE}${p.startsWith("/") ? p : `/${p}`}`;
+/** ✅ 鉴权接口一律走本地 /api，保证 Cookie 写在 localhost:3000 域上 */
+const AUTH_BASE = "/api";
+const buildAuth = (p: string) => `${AUTH_BASE}${p.startsWith("/") ? p : `/${p}`}`;
 
 const schema = z.object({
   email: z.string().email("请输入有效的邮箱"),
@@ -25,6 +24,8 @@ type LoginFormData = z.infer<typeof schema>;
 
 export default function LoginPage() {
   const router = useRouter();
+  const sp = useSearchParams();
+  const nextUrl = sp.get("next") || "/";
 
   const {
     register,
@@ -43,48 +44,73 @@ export default function LoginPage() {
     };
 
     try {
-      console.log("[Login] submit =>", { email: payload.email, API_BASE });
+      if (process.env.NODE_ENV !== "production") {
+        console.log("[Login] submit =>", { email: payload.email });
+      }
 
-      // 1) 登录（会在服务器写入 sp_has_session / sp_user 等 cookie）
-      const res = await fetch(build("/auth/login"), {
+      // 1) 调用本地 /api/auth/login，让本地域写入会话 Cookie
+      const res = await fetch(buildAuth("/auth/login"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include", // 接收 HttpOnly/同站 Cookie
+        credentials: "include",
+        cache: "no-store",
         body: JSON.stringify(payload),
       });
 
-      const body = await res.json().catch(() => ({} as any));
-      console.log("[Login] /auth/login status=", res.status, body);
+      // 尝试解析错误信息（成功时不强求 JSON）
+      let body: any = null;
+      try {
+        body = await res.clone().json();
+      } catch {}
 
       if (!res.ok) {
-        if (res.status === 401) throw new Error("邮箱或密码不正确");
-        throw new Error(body?.error || body?.message || "登录失败");
+        if (res.status === 401) throw new Error(body?.error || "邮箱或密码不正确");
+        throw new Error(body?.error || body?.message || `登录失败（${res.status}）`);
       }
 
-      // 2) 轮询 /auth/me，直到 200（有会话）或放弃
+      // 2) 轮询本地 /api/auth/me，确认会话可读（最多 ~1s）
       const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
       let ready = false;
-      for (const delay of [0, 80, 160, 320, 480, 640]) {
+      for (const delay of [0, 80, 160, 320, 480]) {
         try {
-          const r = await fetch(build("/auth/me"), { credentials: "include", cache: "no-store" });
-          console.log(`[Login] /auth/me attempt delay=${delay} status=${r.status}`);
-          if (r.status === 200) { ready = true; break; }
-          // 204=未登录；其它错误继续尝试
+          const r = await fetch(buildAuth("/auth/me"), {
+            credentials: "include",
+            cache: "no-store",
+          });
+          if (process.env.NODE_ENV !== "production") {
+            console.log(`[Login] /api/auth/me attempt delay=${delay} status=${r.status}`);
+          }
+          if (r.status === 200) {
+            ready = true;
+            break;
+          }
+          // 204 = 还未就绪；其它错误继续尝试
         } catch (e) {
-          console.log("[Login] /auth/me error:", e);
+          if (process.env.NODE_ENV !== "production") {
+            console.warn("[Login] /api/auth/me error:", e);
+          }
         }
         await sleep(delay);
       }
 
-      if (!ready) {
-        console.warn("[Login] 会话还未就绪，但继续跳转（Navbar 会自我修复）");
+      if (!ready && process.env.NODE_ENV !== "production") {
+        console.warn("[Login] 会话尚未就绪，继续跳转（Navbar 将自行刷新）");
       }
 
-      // 3) 通知导航刷新，再跳首页
-      window.dispatchEvent(new Event("sp-auth-changed"));
-      router.push("/");
+      // 3) 通知其它标签页/组件刷新
+      try {
+        window.dispatchEvent(new Event("sp-auth-changed"));
+        localStorage.setItem("sp_auth_ping", `${Date.now()}`);
+      } catch {}
+
+      // 4) 使用“硬跳转”更稳，避免 RSC 软导航失败
+      window.location.href = nextUrl;
+      // 如果你更想保持 SPA，可用 router.push(nextUrl)，但可能再次触发你之前的 RSC 载荷问题：
+      // router.push(nextUrl);
     } catch (err: any) {
-      console.error("[Login] error:", err);
+      if (process.env.NODE_ENV !== "production") {
+        console.error("[Login] error:", err);
+      }
       setErrorMessage(err?.message || "网络或服务器异常");
     }
   };
@@ -100,17 +126,33 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div>
               <Label htmlFor="email">邮箱</Label>
-              <Input type="email" autoComplete="email" {...register("email")} />
-              {errors.email && <p className="text-red-500 text-sm">{errors.email.message}</p>}
+              <Input
+                id="email"
+                type="email"
+                autoComplete="email"
+                {...register("email")}
+              />
+              {errors.email && (
+                <p className="text-red-500 text-sm mt-1">{errors.email.message}</p>
+              )}
             </div>
 
             <div>
               <Label htmlFor="password">密码</Label>
-              <Input type="password" autoComplete="current-password" {...register("password")} />
-              {errors.password && <p className="text-red-500 text-sm">{errors.password.message}</p>}
+              <Input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                {...register("password")}
+              />
+              {errors.password && (
+                <p className="text-red-500 text-sm mt-1">{errors.password.message}</p>
+              )}
             </div>
 
-            {errorMessage && <p className="text-red-500">{errorMessage}</p>}
+            {errorMessage && (
+              <p className="text-red-600 text-sm">{errorMessage}</p>
+            )}
 
             <Button type="submit" disabled={isSubmitting} className="w-full">
               {isSubmitting ? "登录中..." : "登录"}
@@ -119,10 +161,10 @@ export default function LoginPage() {
         </CardContent>
 
         <CardFooter className="flex justify-between text-sm">
-          <Link href="/auth/register" className="underline hover:text-primary">
+          <Link href="/auth/register" className="underline hover:text-primary" prefetch={false}>
             没有账号？去注册
           </Link>
-          <Link href="/auth/forgot-password" className="underline hover:text-primary">
+          <Link href="/auth/forgot-password" className="underline hover:text-primary" prefetch={false}>
             忘记密码？
           </Link>
         </CardFooter>

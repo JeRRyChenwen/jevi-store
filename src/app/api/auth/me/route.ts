@@ -2,19 +2,24 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(req: NextRequest) {
-  // 简单：有 sp_has_session 才认为登录
-  const has = req.cookies.get("sp_has_session")?.value === "1";
-  if (!has) return new NextResponse(null, { status: 204 });
+  const hasPresence = req.cookies.get("sp_has_session")?.value === "1";
+  const rawUser = req.cookies.get("sp_user")?.value || "";
 
-  // demo：从 sp_user 里取点信息返回（真实项目建议只返回后端查到的用户）
-  const raw = req.cookies.get("sp_user")?.value;
-  if (!raw) return new NextResponse(null, { status: 204 });
-
-  try {
-    const json = Buffer.from(raw, "base64").toString("utf8");
-    const user = JSON.parse(json);
-    return NextResponse.json(user, { status: 200 });
-  } catch {
+  // 只要有 sp_user 就返回 200；两者皆无则 204
+  if (!hasPresence && !rawUser) {
     return new NextResponse(null, { status: 204 });
   }
+
+  if (rawUser) {
+    try {
+      const json = Buffer.from(rawUser, "base64").toString("utf8");
+      const user = JSON.parse(json);
+      return NextResponse.json(user, { status: 200 });
+    } catch {
+      // 解析失败就当未登录
+      return new NextResponse(null, { status: 204 });
+    }
+  }
+
+  return new NextResponse(null, { status: 204 });
 }
