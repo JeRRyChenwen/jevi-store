@@ -34,17 +34,15 @@ async function fetchWithFallback(path: string, init?: RequestInit) {
   // 1) 本地优先
   const resLocal = await fetch(`/api${p}`, init).catch(() => null as unknown as Response);
   if (resLocal) {
-    // /api 存在（200/204/401/403/500 等非 404）都直接返回，避免先出现远端 404 的红字
     if (resLocal.status !== 404) return resLocal;
   }
 
-  // 2) 仅当本地是 404 且配置了远端时，再打远端
+  // 2) 本地 404 且配置了远端，再打远端
   if (SECONDARY_BASE) {
     try {
       const resRemote = await fetch(`${SECONDARY_BASE}${p}`, init);
       return resRemote;
     } catch {
-      // 远端也不可达，就把本地的结果交回去（可能是 404）
       return resLocal!;
     }
   }
@@ -54,10 +52,9 @@ async function fetchWithFallback(path: string, init?: RequestInit) {
 
 /* ============ 其它工具 ============ */
 function hasSessionCookie() {
-  return (
-    typeof document !== "undefined" &&
-    document.cookie.split("; ").some((c) => c.startsWith("sp_has_session=1"))
-  );
+  if (typeof document === "undefined") return false;
+  const c = document.cookie;
+  return c.includes("sp_has_session=1") || /(?:^|;\s*)sp_user=/.test(c);
 }
 function displayName(u: User) {
   if (u.name && u.name.trim()) return u.name.trim().split(/\s+/)[0];
@@ -117,8 +114,8 @@ export default function Navbar() {
           cache: "no-store",
         }).catch(() => null as unknown as Response);
 
-        if (!res) return null;            // 网络异常
-        if (!res.ok) return null;         // 401/404 等 → 未登录
+        if (!res) return null;    // 网络异常
+        if (!res.ok) return null; // 401/404/500 等都视作未登录
         if (res.status === 204) return null;
 
         const u = (await res.json().catch(() => null)) as User | null;
@@ -205,84 +202,97 @@ export default function Navbar() {
   };
 
   return (
-    <nav className="w-full flex items-center h-16 md:h-20 px-4 md:px-8 bg-white border-b border-neutral-200 sticky top-0 z-50">
-      {/* 左：Logo */}
-      <Link href="/" className="text-xl font-bold whitespace-nowrap">
-        SocialPlatform
-      </Link>
+    <>
+      {/* 顶部固定且全宽：背景用纯白，避免与页面叠加出现色差 */}
+      <div className="fixed top-0 inset-x-0 z-50 bg-white border-b border-neutral-200">
+        {/* 内容容器：居中排版，如需内容也全宽，去掉 max-w-[1400px] + mx-auto */}
+        <nav className="mx-auto w-full max-w-[1400px] px-4 md:px-8 h-16 md:h-20 flex items-center">
+          {/* 左：Logo */}
+          <Link href="/" className="text-xl font-bold whitespace-nowrap">
+            SocialPlatform
+          </Link>
 
-      {/* 右：搜索 + 图标 */}
-      <div className="ml-auto flex items-center gap-1 md:gap-2">
-        <CompactSearch className="w-[420px] lg:w-[560px] mr-10 md:mr-30" />
+          {/* 右：搜索 + 图标 */}
+          <div className="ml-auto flex items-center gap-1 md:gap-2">
+            <CompactSearch className="w-[420px] lg:w-[560px] mr-10 md:mr-30" />
 
-        <Button
-          variant="ghost"
-          size="icon"
-          className={`${ICON_BTN} md:hidden`}
-          aria-label="search"
-          onClick={() => setOpenSearch(true)}
-        >
-          <SearchIcon className={ICON_SIZE} />
-        </Button>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className={ICON_BTN} aria-label="wishlist">
-              <Heart className={ICON_SIZE} />
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`${ICON_BTN} md:hidden`}
+              aria-label="search"
+              onClick={() => setOpenSearch(true)}
+            >
+              <SearchIcon className={ICON_SIZE} />
             </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuItem disabled>0 saved items</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link href="/wishlist">Open wishlist</Link>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
 
-        {/* 购物袋按钮 */}
-        <BagButton />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className={ICON_BTN} aria-label="wishlist">
+                  <Heart className={ICON_SIZE} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem disabled>0 saved items</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/wishlist">Open wishlist</Link>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-        {/* 用户 */}
-        {loading ? (
-          <Button
-            variant="ghost"
-            size="icon"
-            className={`${ICON_BTN} opacity-60`}
-            disabled
-            aria-label="account loading"
-          >
-            <UserIcon className={ICON_SIZE} />
-          </Button>
-        ) : user ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className={ICON_BTN} aria-label="account menu">
+            {/* 购物袋按钮 */}
+            <BagButton />
+
+            {/* 用户 */}
+            {loading ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                className={`${ICON_BTN} opacity-60`}
+                disabled
+                aria-label="account loading"
+              >
                 <UserIcon className={ICON_SIZE} />
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem disabled>Signed in as {displayName(user)}</DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link href="/profile">个人资料</Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={logout} className="text-red-600">
-                退出登录
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : (
-          <Button asChild variant="ghost" size="icon" className={ICON_BTN} aria-label="go to login">
-            <Link href="/auth/login" title="登录">
-              <UserIcon className={ICON_SIZE} />
-            </Link>
-          </Button>
-        )}
+            ) : user ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className={ICON_BTN} aria-label="account menu">
+                    <UserIcon className={ICON_SIZE} />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem disabled>Signed in as {displayName(user)}</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/profile">个人资料</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={logout} className="text-red-600">
+                    退出登录
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Button
+                asChild
+                variant="ghost"
+                size="icon"
+                className={ICON_BTN}
+                aria-label="go to login"
+              >
+                <Link href="/auth/login" title="登录">
+                  <UserIcon className={ICON_SIZE} />
+                </Link>
+              </Button>
+            )}
+          </div>
+        </nav>
       </div>
 
+      {/* 搜索浮层（放在 fixed bar 外做兄弟节点更稳） */}
       <SearchOverlay open={openSearch} onClose={() => setOpenSearch(false)} />
-    </nav>
+    </>
   );
 }
