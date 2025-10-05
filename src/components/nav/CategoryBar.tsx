@@ -158,42 +158,55 @@ export default function CategoryBar() {
     openSlug ? loadingSlug === openSlug && currentSubs.length === 0 : false;
 
   return (
+    // 与 Navbar 同色、同宽，吸顶在 Navbar 下方（Navbar 高度：h-16 md:h-20）
     <section
-      className="relative w-full border-b bg-white text-neutral-900 shadow-sm"
+      className="sticky top-16 md:top-20 z-40 w-full bg-white border-b border-neutral-200"
       onMouseLeave={handleLeaveAll}
     >
-      <div className="mx-auto max-w-7xl px-4 md:px-6 lg:px-8">
-        <nav
-          aria-label="Shop categories"
-          className="flex w-full items-center gap-2 md:gap-4 overflow-x-auto md:overflow-visible py-3 md:py-4 justify-start md:justify-center"
-        >
-          {tops.map((c) => {
-            const slug = c.attributes.slug;
-            const label = c.attributes.name || slug;
-            const active =
-              pathname === `/category/${slug}` ||
-              (pathname?.startsWith(`/category/${slug}/`) ?? false);
+      <div className="mx-auto w-full max-w-[1400px] px-2 md:px-4">
+        {/* 渐变遮罩 + 横向滚动 */}
+        <div className="relative">
+          <div className="pointer-events-none absolute left-0 top-0 h-full w-6 bg-gradient-to-r from-white to-transparent" />
+          <div className="pointer-events-none absolute right-0 top-0 h-full w-6 bg-gradient-to-l from-white to-transparent" />
 
-            return (
-              <div key={slug} className="relative">
-                <Link
-                  href={`/category/${slug}`}
-                  onMouseEnter={() => handleEnter(slug)}
-                  className="inline-flex items-center gap-1 whitespace-nowrap px-2 md:px-3 py-2 text-sm md:text-[15px] font-medium border-b-2 border-transparent hover:border-neutral-400"
-                  aria-current={active ? "page" : undefined}
-                >
-                  {label}
-                </Link>
-              </div>
-            );
-          })}
-        </nav>
+          <nav
+            aria-label="Shop categories"
+            className="no-scrollbar -mx-2 flex w-full items-center gap-2 md:gap-3 overflow-x-auto md:overflow-visible py-2 md:py-3 px-2 justify-start md:justify-center"
+          >
+            {tops.map((c) => {
+              const slug = c.attributes.slug;
+              const label = c.attributes.name || slug;
+              const active =
+                pathname === `/category/${slug}` ||
+                (pathname?.startsWith(`/category/${slug}/`) ?? false);
+
+              return (
+                <div key={slug} className="relative">
+                  <Link
+                    href={`/category/${slug}`}
+                    onMouseEnter={() => handleEnter(slug)}
+                    aria-current={active ? "page" : undefined}
+                    aria-expanded={openSlug === slug}
+                    className={[
+                      "inline-flex items-center gap-1 whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm transition-colors",
+                      active
+                        ? "bg-black text-white"
+                        : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200",
+                    ].join(" ")}
+                  >
+                    {label}
+                  </Link>
+                </div>
+              );
+            })}
+          </nav>
+        </div>
       </div>
 
-      {/* 只有“加载中”或“有子分类”时才渲染下拉；没有子分类则完全不显示 */}
+      {/* 只有“加载中”或“有子分类”时才渲染下拉；没有子分类则完全不显示（桌面端） */}
       {openSlug && (isLoading || currentSubs.length > 0) && (
-        <div className="absolute inset-x-0 top-full z-50 bg-white border-b shadow-lg hidden md:block">
-          <div className="px-4 md:px-6 lg:px-8">
+        <div className="absolute inset-x-0 top-full z-50 bg-white border-b border-neutral-200 shadow-lg hidden md:block">
+          <div className="mx-auto w-full max-w-[1400px] px-4 md:px-6">
             <div className="py-6">
               {isLoading ? (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
@@ -212,7 +225,6 @@ export default function CategoryBar() {
                       <div className="text-[15px] font-medium">
                         {sub.attributes.name || sub.attributes.slug}
                       </div>
-                      {/* 已移除 “Shop now” 行 */}
                     </Link>
                   ))}
                 </div>

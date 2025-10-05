@@ -16,7 +16,8 @@ import {
 
 import CompactSearch from "@/components/search/CompactSearch";
 import SearchOverlay from "@/components/search/SearchOverlay";
-import BagButton from "./BagButton";
+// ✅ 用全局单例版的 BagButton
+import BagButton from "@/components/bag/BagButton";
 
 type User = { id: string; email: string; name?: string | null };
 
@@ -241,7 +242,7 @@ export default function Navbar() {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {/* 购物袋按钮 */}
+            {/* 购物袋按钮（调用全局 bag 单例） */}
             <BagButton />
 
             {/* 用户 */}

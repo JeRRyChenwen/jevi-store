@@ -11,7 +11,10 @@ export type CartItem = {
 
 function fmt(n: number, currency: string, locale?: string) {
   return new Intl.NumberFormat(locale, {
-    style: "currency", currency, currencyDisplay: "code", maximumFractionDigits: 2,
+    style: "currency",
+    currency,
+    currencyDisplay: "code",
+    maximumFractionDigits: 2,
   }).format(n);
 }
 
@@ -20,12 +23,34 @@ type Props = {
   onInc: (key: string) => void;
   onDec: (key: string) => void;
   onRemove: (key: string) => void;
+
+  /** 可选：是否在列表内部渲染一个“粘底”结算条（默认 false） */
+  showFooter?: boolean;
 };
 
-export default function CartList({ cart, onInc, onDec, onRemove }: Props) {
+export default function CartList({
+  cart,
+  onInc,
+  onDec,
+  onRemove,
+  showFooter = false, // 默认不渲染，避免与外层（例如 BagDrawer）重复
+}: Props) {
   if (cart.length === 0) {
     return <div className="text-sm text-neutral-500">Your bag is empty.</div>;
   }
+
+  // 只有当需要显示 footer 时，这些值才有用
+  const currency = cart[0]?.currency ?? "USD";
+  const subtotal = showFooter
+    ? cart.reduce((a, it) => a + it.price * it.qty, 0)
+    : 0;
+  const saved = showFooter
+    ? cart.reduce((a, it) => {
+        const base = typeof it.basePrice === "number" ? it.basePrice : it.price;
+        const diff = Math.max(0, base - it.price);
+        return a + diff * it.qty;
+      }, 0)
+    : 0;
 
   return (
     <div className="space-y-3">
@@ -88,6 +113,38 @@ export default function CartList({ cart, onInc, onDec, onRemove }: Props) {
           </button>
         </div>
       ))}
+
+      {/* 可选：仅当 showFooter=true 时，CartList 才会自己渲染一个粘底结算条 */}
+      {showFooter && (
+        <div
+          data-testid="cartlist-footer"
+          className="sticky bottom-0 left-0 right-0 border-t bg-white p-4"
+        >
+          <div className="mb-1 flex items-center justify-between">
+            <div className="text-sm text-neutral-600">Subtotal</div>
+            <div className="text-base font-semibold">{fmt(subtotal, currency)}</div>
+          </div>
+
+          {saved > 0 && (
+            <div className="mb-1 flex items-center justify-between">
+              <div className="text-sm text-neutral-600">You saved</div>
+              <div className="text-sm font-semibold text-emerald-700">
+                {fmt(saved, currency)}
+              </div>
+            </div>
+          )}
+
+          {/* 占位的按钮（禁用）。真正的跳转/结算逻辑请在外层容器实现。 */}
+          <button
+            type="button"
+            disabled
+            className="mt-3 w-full cursor-not-allowed rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white"
+            aria-label="Check out (disabled in CartList)"
+          >
+            Check out
+          </button>
+        </div>
+      )}
     </div>
   );
 }

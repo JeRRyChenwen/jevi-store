@@ -8,6 +8,9 @@
 :root {
   --background: #ffffff;
   --foreground: #0a0a0a;
+
+  /* 供头部/页面统一容器使用的最大宽度（和组件里保持一致） */
+  --app-max-width: 1400px;
 }
 
 .dark {
@@ -40,12 +43,26 @@
   }
 }
 
-/* === Components：可选的页面容器工具类 ===
-   在页面根部包一层：<div class="page-shell"> ... </div>
-   统一最大宽度与左右留白（也可放到 layout.tsx 使用）
+/* === Components：页面/头部容器工具类 ===
+   - .page-shell：页面主体容器
+   - .header-shell：头部（Navbar / CategoryBar）用，和组件中 max-w 匹配
 */
 @layer components {
   .page-shell {
     @apply mx-auto w-full max-w-screen-xl 2xl:max-w-[1440px] px-4 md:px-6;
   }
+
+  .header-shell {
+    /* 和 Navbar / CategoryBar 使用的一致 max-w */
+    max-width: var(--app-max-width);
+    @apply mx-auto w-full px-2 md:px-4;
+  }
+}
+
+/* === Utilities：隐藏横向滚动条（给移动端分类条更干净的滑动体验） ===
+   在组件里用 className="no-scrollbar overflow-x-auto"
+*/
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 }
