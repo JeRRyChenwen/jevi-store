@@ -5,7 +5,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createRoot, Root } from "react-dom/client";
 import { X, ChevronRight, Minus, Plus, Trash2 } from "lucide-react";
 
-/** 购物项类型（按你现有字段来） */
+/** 购物项类型（与你项目中的字段保持一致） */
 export type CartItem = {
   key: string;
   slug: string;
@@ -24,7 +24,7 @@ const LS_KEY = "bag:v1";
 const DELIVERY_FREE_THRESHOLD = 100;
 const DELIVERY_FLAT = 10;
 
-// ========= 工具 =========
+/* ---------------- 工具函数 ---------------- */
 function fmt(n: number, currency: string, locale?: string) {
   return new Intl.NumberFormat(locale, {
     style: "currency",
@@ -44,23 +44,30 @@ function writeCart(list: CartItem[]) {
   try {
     localStorage.setItem(LS_KEY, JSON.stringify(list));
   } catch {}
+  // 兼容旧事件 & 新事件（带明细）
   try {
     window.dispatchEvent(new Event("bag:updated"));
+    window.dispatchEvent(new CustomEvent<CartItem[]>("bag:change", { detail: list }));
+    const count = list.reduce((a, it) => a + (Number(it.qty) || 0), 0);
+    window.dispatchEvent(new CustomEvent("bag:count", { detail: { count } }));
   } catch {}
 }
 
-// ========= 模块级单例状态 =========
+/* ---------------- 单例挂载控制 ---------------- */
 let host: HTMLDivElement | null = null;
 let root: Root | null = null;
-let isMounted = false;
-let FLOAT_OFFSET_PX = 64; // 你想让按钮“上浮”的像素
-
+let FLOAT_OFFSET_PX = 64; // “结算区上浮高度”
 const OWNER = Math.random().toString(36).slice(2, 9);
 
-/** 确保 DOM 与 React Root 只创建一次 */
+// 跟踪 open 状态，供 bag.isOpen() 使用
+let OPEN_STATE = false;
+function markOpenState(v: boolean) {
+  OPEN_STATE = v;
+}
+
+/** 确保全局只创建一个 React Root */
 function ensureMount() {
   if (typeof window === "undefined") return;
-  // 复用已存在 DOM（避免 HMR 残留重复 root）
   const existed = document.getElementById("bag-root") as HTMLDivElement | null;
   if (existed) {
     host = existed;
@@ -73,13 +80,15 @@ function ensureMount() {
   if (!root) {
     root = createRoot(host);
     root.render(<BagApp />);
-    isMounted = true;
   }
 }
 
+/* ---------------- 对外 API（无需 Provider）---------------- */
+type BagEvent = "open" | "close" | "change";
+
 function add(item: CartItem) {
   ensureMount();
-  window.dispatchEvent(new CustomEvent("bag:add", { detail: item }));
+  window.dispatchEvent(new CustomEvent<CartItem>("bag:add", { detail: item }));
 }
 function open() {
   ensureMount();
@@ -94,57 +103,104 @@ function close() {
   window.dispatchEvent(new Event("bag:close"));
 }
 function setOffset(px: number) {
-  FLOAT_OFFSET_PX = Math.max(0, px | 0);
+  FLOAT_OFFSET_PX = Math.max(0, Number(px) || 0);
   ensureMount();
-  window.dispatchEvent(new CustomEvent("bag:setOffset", { detail: FLOAT_OFFSET_PX }));
+  window.dispatchEvent(new CustomEvent<number>("bag:setOffset", { detail: FLOAT_OFFSET_PX }));
+}
+function get(): CartItem[] {
+  return readCart();
+}
+function count(): number {
+  return get().reduce((a, it) => a + (Number(it.qty) || 0), 0);
+}
+function isOpen(): boolean {
+  return OPEN_STATE;
+}
+/** 订阅：open/close/change。返回 off 函数 */
+function on(type: BagEvent, cb: (...args: any[]) => void) {
+  if (type === "change") {
+    const h1 = (e: Event) => {
+      const list = (e as CustomEvent<CartItem[]>).detail;
+      if (Array.isArray(list)) cb(list);
+      else cb(readCart());
+    };
+    const h2 = (e: StorageEvent) => {
+      if (!e.key || e.key === LS_KEY) cb(readCart());
+    };
+    window.addEventListener("bag:change", h1 as EventListener);
+    window.addEventListener("storage", h2);
+    return () => {
+      window.removeEventListener("bag:change", h1 as EventListener);
+      window.removeEventListener("storage", h2);
+    };
+  }
+
+  const ev = type === "open" ? "bag:open" : "bag:close";
+  const h = () => cb();
+  window.addEventListener(ev, h as EventListener);
+  return () => window.removeEventListener(ev, h as EventListener);
 }
 
-/** 暴露给外部使用的 API（无需 Provider） */
-export const bag = { add, open, toggle, close, setOffset };
+export const bag = { add, open, toggle, close, setOffset, get, count, isOpen, on };
 
-// ========= UI 应用 =========
+/* ---------------- UI 应用（无遮罩的右侧抽屉）---------------- */
 function BagApp() {
   const [open, setOpen] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [offset, setOffset] = useState(FLOAT_OFFSET_PX);
+  const [offset, setOffsetState] = useState(FLOAT_OFFSET_PX);
 
   useEffect(() => {
     setCart(readCart());
-
-    // 只保留一个抽屉：清理历史遗留
-    const asides = Array.from(document.querySelectorAll<HTMLElement>('aside[aria-label="Your bag"]'));
+    // 清理历史遗留抽屉（确保唯一挂载）
+    const asides = Array.from(
+      document.querySelectorAll<HTMLElement>('aside[aria-label="Your bag"]')
+    );
     asides.forEach((n) => {
       if (n.dataset.bagOwner && n.dataset.bagOwner !== OWNER) n.remove();
     });
 
+    // 事件：统一从事件驱动打开/关闭/新增
     const onAdd = (e: Event) => {
       const it = (e as CustomEvent<CartItem>).detail;
       if (!it) return;
       setCart((prev) => {
-        const idx = prev.findIndex((x) => x.key === it.key);
+        const i = prev.findIndex((x) => x.key === it.key);
         let next: CartItem[];
-        if (idx >= 0) {
-          const old = prev[idx];
+        if (i >= 0) {
+          const cur = prev[i];
           next = [...prev];
-          next[idx] = { ...old, qty: Math.min(old.qty + it.qty, old.stock) };
+          next[i] = { ...cur, qty: Math.min((cur.qty || 0) + (it.qty || 1), cur.stock) };
         } else {
-          next = [...prev, it];
+          next = [{ ...it, qty: Math.max(1, it.qty || 1) }, ...prev];
         }
         writeCart(next);
         return next;
       });
-      setOpen(true);
+      // 统一用事件打开，便于外部 on("open") 捕捉
+      window.dispatchEvent(new Event("bag:open"));
     };
-    const onOpen = () => setOpen(true);
-    const onToggle = () => setOpen((v) => !v);
-    const onClose = () => setOpen(false);
+    const onOpen = () => {
+      setOpen(true);
+      markOpenState(true);
+    };
+    const onToggle = () => {
+      setOpen((v) => {
+        const nv = !v;
+        markOpenState(nv);
+        return nv;
+      });
+    };
+    const onClose = () => {
+      setOpen(false);
+      markOpenState(false);
+    };
     const onUpdated = () => setCart(readCart());
     const onStorage = (e: StorageEvent) => {
       if (!e.key || e.key === LS_KEY) setCart(readCart());
     };
     const onSetOffset = (e: Event) => {
       const px = (e as CustomEvent<number>).detail;
-      if (typeof px === "number") setOffset(px);
+      if (typeof px === "number") setOffsetState(px);
     };
 
     window.addEventListener("bag:add", onAdd as EventListener);
@@ -187,17 +243,22 @@ function BagApp() {
     writeCart(next);
   };
   const inc = (key: string) =>
-    setAndSave(cart.map((i) => (i.key === key ? { ...i, qty: Math.min(i.qty + 1, i.stock) } : i)));
+    setAndSave(
+      cart.map((i) => (i.key === key ? { ...i, qty: Math.min(i.qty + 1, i.stock) } : i))
+    );
   const dec = (key: string) =>
-    setAndSave(cart.map((i) => (i.key === key ? { ...i, qty: Math.max(1, i.qty - 1) } : i)));
+    setAndSave(
+      cart.map((i) => (i.key === key ? { ...i, qty: Math.max(1, i.qty - 1) } : i))
+    );
   const removeItem = (key: string) => setAndSave(cart.filter((i) => i.key !== key));
 
   const toCheckout = () => {
-    setOpen(false);
-    location.assign("/checkout?step=bag"); // 简化：直接跳转
+    // 统一走事件关闭，外部才能收到 close
+    window.dispatchEvent(new Event("bag:close"));
+    location.assign("/checkout?step=bag");
   };
 
-  // —— UI：没有任何遮罩 —— //
+  // —— UI：没有任何“遮罩层” —— //
   return (
     <aside
       aria-label="Your bag"
@@ -216,7 +277,7 @@ function BagApp() {
           <button
             type="button"
             className="rounded-full p-2 hover:bg-neutral-100"
-            onClick={() => setOpen(false)}
+            onClick={() => window.dispatchEvent(new Event("bag:close"))}
             aria-label="Close bag"
           >
             <X className="h-5 w-5" />
@@ -294,7 +355,7 @@ function BagApp() {
           {/* 让底栏有足够“上浮空间”的占位 */}
           <div style={{ height: offset }} />
 
-          {/* Sticky footer（在滚动容器内部） */}
+          {/* Sticky footer（在滚动容器内部靠底） */}
           <div
             data-testid="bag-footer"
             className="sticky -mx-4 border-t bg-white px-4 py-4 shadow-[0_-8px_24px_rgba(0,0,0,0.06)]"
