@@ -1,16 +1,16 @@
 // src/components/nav/BagDrawer.tsx
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { X, ChevronRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useBag } from "@/components/bag/BagProvider";
-import CartList from "@/components/cart/CartList";
+import CartList, { type CartItem as CartListItem } from "@/components/cart/CartList";
 
 const DELIVERY_FREE_THRESHOLD = 100;
 const DELIVERY_FLAT = 10;
 
-// ===== 小工具 =====
+// 价格格式化
 function fmt(n: number, currency: string, locale?: string) {
   return new Intl.NumberFormat(locale, {
     style: "currency",
@@ -20,56 +20,51 @@ function fmt(n: number, currency: string, locale?: string) {
   }).format(n);
 }
 
-/**
- * 支持三种方式决定“上浮距离”：
- * 1) CSS 变量：:root { --bag-checkout-offset: 140px; }
- * 2) 默认值 DEFAULT_OFFSET_PX
- * 3) 安全区：自动叠加 env(safe-area-inset-bottom)
- */
-const DEFAULT_OFFSET_PX = 120;     // ← 把按钮往上提多少（px），想更高就调大
-const FOOTER_HEIGHT_PX = 160;      // 估算底部区域高度，用于给列表留出 paddingBottom
+export default function BagDrawer({ ownerId = "global" }: { ownerId?: string }) {
+  // 不做整体断言，防止与上下文类型冲突
+  const bag = useBag() as any;
 
-export default function BagDrawer({ ownerId }: { ownerId: string }) {
-  const { open, closeBag, cart, removeItem, inc, dec } = useBag();
+  // 兼容不同命名：close / closeBag
+  const isOpen: boolean = !!bag?.open;
+  const closeFn: () => void =
+    typeof bag?.close === "function"
+      ? bag.close
+      : typeof bag?.closeBag === "function"
+      ? bag.closeBag
+      : () => {};
+
+  const removeItem: (key: string) => void = bag?.removeItem;
+  const inc: (key: string) => void = bag?.inc;
+  const dec: (key: string) => void = bag?.dec;
+
+  const cartItems: CartListItem[] = Array.isArray(bag?.cart) ? (bag.cart as CartListItem[]) : [];
+
   const router = useRouter();
   const asideRef = useRef<HTMLElement | null>(null);
 
-  // 允许用 CSS 变量微调上浮距离
-  const [offset, setOffset] = useState<number>(DEFAULT_OFFSET_PX);
-  useEffect(() => {
-    try {
-      const v = getComputedStyle(document.documentElement)
-        .getPropertyValue("--bag-checkout-offset")
-        .trim();
-      if (v) {
-        const n = parseInt(v, 10);
-        if (!Number.isNaN(n)) setOffset(n);
-      }
-    } catch {}
-  }, []);
-
-  // 给当前抽屉打 owner 标记，便于 Provider 做清理
+  // 仅做标记（不再操作其它实例 DOM，避免与 React 卸载冲突）
   useEffect(() => {
     if (asideRef.current) {
       asideRef.current.setAttribute("data-bag-owner", ownerId);
     }
   }, [ownerId]);
 
-  const currency = cart[0]?.currency ?? "USD";
-  const hasItems = cart.length > 0;
+  const currency = cartItems[0]?.currency ?? "AUD";
+  const hasItems = cartItems.length > 0;
 
   const subtotal = useMemo(
-    () => cart.reduce((a, it) => a + it.price * it.qty, 0),
-    [cart]
+    () => cartItems.reduce((a: number, it: CartListItem) => a + (it.price ?? 0) * (it.qty ?? 0), 0),
+    [cartItems]
   );
+
   const saved = useMemo(
     () =>
-      cart.reduce((a, it) => {
-        const base = typeof it.basePrice === "number" ? it.basePrice : it.price;
-        const diff = Math.max(0, base - it.price);
-        return a + diff * it.qty;
+      cartItems.reduce((a: number, it: CartListItem) => {
+        const base = typeof it.basePrice === "number" ? it.basePrice : (it.price ?? 0);
+        const diff = Math.max(0, base - (it.price ?? 0));
+        return a + diff * (it.qty ?? 0);
       }, 0),
-    [cart]
+    [cartItems]
   );
 
   const deliveryFee =
@@ -77,7 +72,7 @@ export default function BagDrawer({ ownerId }: { ownerId: string }) {
   const total = hasItems ? subtotal + deliveryFee : 0;
 
   const toCheckout = () => {
-    closeBag();
+    closeFn();
     router.push("/checkout?step=bag");
   };
 
@@ -90,77 +85,66 @@ export default function BagDrawer({ ownerId }: { ownerId: string }) {
       className={[
         "fixed inset-y-0 right-0 z-[9999] w-[360px] sm:w-[420px]",
         "bg-white shadow-xl transition-transform",
-        open ? "translate-x-0" : "translate-x-full",
+        isOpen ? "translate-x-0" : "translate-x-full",
       ].join(" ")}
     >
-      <div className="relative flex h-full flex-col overflow-hidden">
-        {/* 头部 */}
-        <div className="flex-none flex items-center justify-between border-b px-4 py-3">
+      {/* 纵向布局：中部滚动 + 底部吸底 */}
+      <div className="flex h-full flex-col overflow-hidden">
+        {/* Header */}
+        <div className="shrink-0 flex items-center justify-between border-b px-4 py-3">
           <div className="font-semibold">Your Bag</div>
           <button
             type="button"
             className="rounded-full p-2 hover:bg-neutral-100"
-            onClick={closeBag}
+            onClick={closeFn}
             aria-label="Close bag"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        {/* 列表：根据“上浮距离+footer高度”为滚动内容留出空间 */}
-        <div
-          className="flex-1 overflow-y-auto p-4"
-          style={{ paddingBottom: FOOTER_HEIGHT_PX + offset }}
-        >
-          <CartList cart={cart} onInc={inc} onDec={dec} onRemove={removeItem} />
+        {/* 中部：可滚动的列表（min-h-0 避免子元素撑爆） */}
+        <div className="flex-1 min-h-0 overflow-y-auto p-4">
+          <CartList cart={cartItems} onInc={inc} onDec={dec} onRemove={removeItem} />
         </div>
 
-        {/* 底部合计（absolute + 上浮） */}
-        <div
-          data-testid="bag-footer"
-          className="left-0 right-0 border-t bg-white p-4 shadow-[0_-8px_24px_rgba(0,0,0,0.06)]"
-          style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            // 自动叠加安全区（iOS 刘海屏），并整体上移 offset
-            bottom: `calc(env(safe-area-inset-bottom, 0px) + ${offset}px)`,
-            zIndex: 100,
-          }}
-        >
-          <div className="mb-1 flex items-center justify-between">
-            <div className="text-sm text-neutral-600">Subtotal</div>
-            <div className="text-base font-semibold">{fmt(subtotal, currency)}</div>
-          </div>
-
-          {saved > 0 && (
-            <div className="mb-1 flex items-center justify-between">
-              <div className="text-sm text-neutral-600">You saved</div>
-              <div className="text-sm font-semibold text-emerald-700">
-                {fmt(saved, currency)}
-              </div>
+        {/* 底部：Subtotal / You saved / Delivery fee / Total / Check out */}
+        <footer className="sticky bottom-0 z-10 shrink-0 border-t bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60 p-4 pb-[calc(env(safe-area-inset-bottom,0px)+16px)]">
+          <div className="space-y-2 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-neutral-600">Subtotal</span>
+              <span className="text-base font-semibold">{fmt(subtotal, currency)}</span>
             </div>
-          )}
 
-          {hasItems && (
-            <div className="mb-2 flex items-center justify-between">
-              <div className="text-sm text-neutral-600">Delivery fee</div>
-              <div
-                className={[
-                  "text-base font-semibold",
-                  subtotal >= DELIVERY_FREE_THRESHOLD ? "text-emerald-700" : "",
-                ].join(" ")}
-              >
-                {subtotal >= DELIVERY_FREE_THRESHOLD
-                  ? "FREE for over $100"
-                  : fmt(DELIVERY_FLAT, currency)}
+            {saved > 0 && (
+              <div className="flex items-center justify-between">
+                <span className="text-neutral-600">You saved</span>
+                <span className="font-semibold text-emerald-700">
+                  {fmt(saved, currency)}
+                </span>
               </div>
-            </div>
-          )}
+            )}
 
-          <div className="mb-3 flex items-center justify-between">
-            <div className="text-sm font-semibold">Total</div>
-            <div className="text-lg font-bold">{fmt(total, currency)}</div>
+            {hasItems && (
+              <div className="flex items-center justify-between">
+                <span className="text-neutral-600">Delivery fee</span>
+                <span
+                  className={[
+                    "text-base font-semibold",
+                    subtotal >= DELIVERY_FREE_THRESHOLD ? "text-emerald-700" : "",
+                  ].join(" ")}
+                >
+                  {subtotal >= DELIVERY_FREE_THRESHOLD
+                    ? "FREE for over $100"
+                    : fmt(DELIVERY_FLAT, currency)}
+                </span>
+              </div>
+            )}
+
+            <div className="mt-1 flex items-center justify-between">
+              <span className="text-sm font-semibold">Total</span>
+              <span className="text-lg font-bold">{fmt(total, currency)}</span>
+            </div>
           </div>
 
           <button
@@ -169,15 +153,15 @@ export default function BagDrawer({ ownerId }: { ownerId: string }) {
             onClick={toCheckout}
             aria-label="Check out"
             className={[
-              "w-full inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-semibold",
+              "mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-full px-6 text-sm font-semibold",
               !hasItems
-                ? "bg-neutral-200 text-neutral-500 cursor-not-allowed"
+                ? "cursor-not-allowed bg-neutral-200 text-neutral-500"
                 : "bg-neutral-900 text-white hover:bg-neutral-800",
             ].join(" ")}
           >
             Check out <ChevronRight className="h-4 w-4" />
           </button>
-        </div>
+        </footer>
       </div>
     </aside>
   );

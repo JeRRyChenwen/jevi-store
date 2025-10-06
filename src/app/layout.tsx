@@ -6,7 +6,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { ClientNavbar, CategoryBar } from "@/components/nav";
 
 import BagProvider from "@/components/bag/BagProvider";
-import BagSheet from "@/components/bag/BagSheet";
+import BagDrawer from "@/components/nav/BagDrawer";
 
 export const metadata: Metadata = {
   title: "SocialPlatform",
@@ -22,14 +22,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         )}
       >
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          <ClientNavbar />
-          <div className="h-16 md:h-20 bg-white" />
-          <CategoryBar />
-          <main className="page-shell py-4 md:py-6">{children}</main>
-
-          {/* ✅ 全站只挂载一次 */}
+          {/* ⬇️ 让 BagProvider 包住全站，确保任何页面都能立即响应 open() */}
           <BagProvider>
-            <BagSheet />
+            <ClientNavbar />
+            <div className="h-16 md:h-20 bg-white" />
+            <CategoryBar />
+
+            <main className="page-shell py-4 md:py-6">{children}</main>
+
+            {/* ⬇️ 常驻挂载抽屉（fixed + translate 来隐藏/显示） */}
+            <BagDrawer ownerId="global" />
           </BagProvider>
         </ThemeProvider>
       </body>

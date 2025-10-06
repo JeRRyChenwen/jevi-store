@@ -72,9 +72,22 @@ export default function AddToBagClient({
       image: preview,
     };
 
-    bag.add(item);      // 加入购物袋（写 localStorage + 广播更新）
-    bag.setOffset(64);  // 可选：调整“Check out”上浮高度
-    bag.open();         // 打开唯一的全局 Bag
+    // 写入本地并广播
+    bag.add(item);
+
+    // 可选：如果你的 bag.ts 提供 setOffset，调用；否则忽略
+    if (typeof (bag as any).setOffset === "function") {
+      (bag as any).setOffset(64);
+    }
+
+    // 关键：让 open() 延到下一帧（避免首次挂载时事件被丢）
+    if (typeof window !== "undefined") {
+      queueMicrotask(() => {
+        requestAnimationFrame(() => bag.open());
+      });
+    } else {
+      bag.open();
+    }
   };
 
   return (
