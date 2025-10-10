@@ -65,6 +65,7 @@ function CheckoutSteps({
 }) {
   const currentIndex = STEP_LIST.findIndex((s) => s.key === step);
   const progress = (currentIndex / (STEP_LIST.length - 1)) * 100;
+
   return (
     <div className="relative pt-8 pb-10">
       <div className="absolute left-0 right-0 top-6 h-[2px] bg-neutral-200" />
@@ -76,6 +77,8 @@ function CheckoutSteps({
         {STEP_LIST.map((s, i) => {
           const isActive = i === currentIndex;
           const isDone = i < currentIndex;
+          const isLocked = i > currentIndex;          // 🚫 未来步骤
+
           const baseCircle =
             "flex items-center justify-center h-8 w-8 rounded-full border text-sm";
           const circleClass = isActive
@@ -88,13 +91,24 @@ function CheckoutSteps({
             : isDone
             ? "text-neutral-500"
             : "text-neutral-400";
+
           return (
             <button
               key={s.key}
               type="button"
-              onClick={() => onChange(s.key)}
+              // 只能点击 ≤ 当前步骤的项（允许回退，不允许前进）
+              onClick={() => {
+                if (!isLocked) onChange(s.key);
+              }}
+              // 无障碍：未来步骤不可聚焦
+              tabIndex={isLocked ? -1 : 0}
               aria-current={isActive ? "step" : undefined}
-              className="group flex w-1/4 flex-col items-center gap-2 focus:outline-none"
+              aria-disabled={isLocked ? true : undefined}
+              title={isLocked ? "Complete previous steps to continue" : s.label}
+              className={[
+                "group flex w-1/4 flex-col items-center gap-2 focus:outline-none",
+                isLocked ? "cursor-not-allowed pointer-events-auto" : "cursor-pointer",
+              ].join(" ")}
             >
               <div className={`${baseCircle} ${circleClass}`}>
                 {isDone ? <Check className="h-4 w-4" /> : <span>{i + 1}</span>}
@@ -125,9 +139,17 @@ type Address = {
 function AddressForm({
   address,
   setAddress,
+  emailInput,
+  setEmailInput,
+  marketingOptIn,
+  setMarketingOptIn,
 }: {
   address: Address;
   setAddress: (a: Address) => void;
+  emailInput: string;
+  setEmailInput: (v: string) => void;
+  marketingOptIn: boolean;
+  setMarketingOptIn: (v: boolean) => void;
 }) {
   const on =
     (k: keyof Address) =>
@@ -137,16 +159,106 @@ function AddressForm({
   return (
     <section className="rounded-xl border">
       <div className="border-b px-4 py-3 font-semibold">Address</div>
-      <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-        <input className="w-full rounded-md border px-3 py-2 text-sm" placeholder="First Name" value={address.firstName || ""} onChange={on("firstName")} />
-        <input className="w-full rounded-md border px-3 py-2 text-sm" placeholder="Last Name" value={address.lastName || ""} onChange={on("lastName")} />
-        <input className="md:col-span-2 w-full rounded-md border px-3 py-2 text-sm" placeholder="Phone" value={address.phone || ""} onChange={on("phone")} />
-        <input className="md:col-span-2 w-full rounded-md border px-3 py-2 text-sm" placeholder="Address Line 1" value={address.line1 || ""} onChange={on("line1")} />
-        <input className="md:col-span-2 w-full rounded-md border px-3 py-2 text-sm" placeholder="Address Line 2 (optional)" value={address.line2 || ""} onChange={on("line2")} />
-        <input className="w-full rounded-md border px-3 py-2 text-sm" placeholder="City" value={address.city || ""} onChange={on("city")} />
-        <input className="w-full rounded-md border px-3 py-2 text-sm" placeholder="State/Region" value={address.state || ""} onChange={on("state")} />
-        <input className="w-full rounded-md border px-3 py-2 text-sm" placeholder="Postcode" value={address.postcode || ""} onChange={on("postcode")} />
-        <input className="w-full rounded-md border px-3 py-2 text-sm" placeholder="Country" value={address.country || ""} onChange={on("country")} />
+
+      <div className="p-4 space-y-6">
+        {/* === 送货地址表单（放到上面） === */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <input
+            className="w-full rounded-md border px-3 py-2 text-sm"
+            placeholder="First Name"
+            value={address.firstName || ""}
+            onChange={on("firstName")}
+          />
+          <input
+            className="w-full rounded-md border px-3 py-2 text-sm"
+            placeholder="Last Name"
+            value={address.lastName || ""}
+            onChange={on("lastName")}
+          />
+          <input
+            className="md:col-span-2 w-full rounded-md border px-3 py-2 text-sm"
+            placeholder="Phone"
+            value={address.phone || ""}
+            onChange={on("phone")}
+          />
+          <input
+            className="md:col-span-2 w-full rounded-md border px-3 py-2 text-sm"
+            placeholder="Address Line 1"
+            value={address.line1 || ""}
+            onChange={on("line1")}
+          />
+          <input
+            className="md:col-span-2 w-full rounded-md border px-3 py-2 text-sm"
+            placeholder="Address Line 2 (optional)"
+            value={address.line2 || ""}
+            onChange={on("line2")}
+          />
+          <input
+            className="w-full rounded-md border px-3 py-2 text-sm"
+            placeholder="City"
+            value={address.city || ""}
+            onChange={on("city")}
+          />
+          <input
+            className="w-full rounded-md border px-3 py-2 text-sm"
+            placeholder="State/Region"
+            value={address.state || ""}
+            onChange={on("state")}
+          />
+          <input
+            className="w-full rounded-md border px-3 py-2 text-sm"
+            placeholder="Postcode"
+            value={address.postcode || ""}
+            onChange={on("postcode")}
+          />
+          <input
+            className="w-full rounded-md border px-3 py-2 text-sm"
+            placeholder="Country"
+            value={address.country || ""}
+            onChange={on("country")}
+          />
+        </div>
+
+        {/* === Your Details（Email + 勾选）—移动到最下方 === */}
+        <div className="border rounded-lg p-4">
+          <h3 className="text-base font-medium mb-2">Your Details</h3>
+          <p className="text-sm text-neutral-600 mb-3">
+            Please enter your email address, we'll send your order confirmation here
+          </p>
+
+          <label className="block text-sm font-medium mb-1">Email Address</label>
+          <input
+            type="email"
+            placeholder="you@example.com"
+            className="w-full rounded-md border px-3 py-2 text-sm"
+            value={emailInput}
+            onChange={(e) => {
+              setEmailInput(e.currentTarget.value);
+              setAddress({ ...address, email: e.currentTarget.value });
+            }}
+          />
+          <p className="mt-1 text-xs text-neutral-500">
+            You can create an account after checkout
+          </p>
+
+          <label className="mt-3 flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={marketingOptIn}
+              onChange={(e) => setMarketingOptIn(e.currentTarget.checked)}
+            />
+            <span>Email me updates on New Arrivals, Sale and Offers</span>
+          </label>
+
+          <p className="mt-3 text-xs text-neutral-500">
+            * We treat your personal data with care, view our{" "}
+            <a className="underline" href="/privacy">
+              Privacy Policy
+            </a>
+            .
+          </p>
+        </div>
       </div>
     </section>
   );
@@ -170,8 +282,17 @@ function DeliverySection({
       <div className="border-b px-4 py-3 font-semibold">Delivery</div>
       <div className="p-4 space-y-3">
         {(["standard", "express"] as DeliveryMethod[]).map((m) => (
-          <label key={m} className="flex items-start gap-3 rounded-lg border p-3 has-[:checked]:border-neutral-900 cursor-pointer">
-            <input type="radio" name="deliveryMethod" className="mt-1" checked={deliveryMethod === m} onChange={() => setDeliveryMethod(m)} />
+          <label
+            key={m}
+            className="flex items-start gap-3 rounded-lg border p-3 has-[:checked]:border-neutral-900 cursor-pointer"
+          >
+            <input
+              type="radio"
+              name="deliveryMethod"
+              className="mt-1"
+              checked={deliveryMethod === m}
+              onChange={() => setDeliveryMethod(m)}
+            />
             <div className="flex-1">
               <div className="font-medium">{METHOD_META[m].label}</div>
               <div className="text-sm text-neutral-600">{METHOD_META[m].eta}</div>
@@ -224,7 +345,7 @@ export default function CheckoutPage() {
   const [address, setAddress] = useState<Address>({});
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>("standard");
 
-  // ✅ 订阅勾选 & 邮箱本地状态
+  // ✅ 勾选 & 邮箱本地状态（搬到 Address 步去展示）
   const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [emailInput, setEmailInput] = useState<string>("");
 
@@ -387,32 +508,26 @@ export default function CheckoutPage() {
         },
       };
 
-      // 优先使用 sendBeacon（不会在 Console 里报 500）
+      // 优先使用 sendBeacon
       const jsonBlob = new Blob([JSON.stringify(payload)], { type: "application/json" });
 
-      // 1) 远端（如果配置了 NEXT_PUBLIC_API_BASE）
       if (REMOTE_BASE) {
         const ok = typeof navigator !== "undefined" && navigator.sendBeacon?.(`${REMOTE_BASE}/subscribe`, jsonBlob);
         if (ok) return;
       }
-
-      // 2) 本地 /api（仅当你有实现时才会收；没有也不会卡住）
       const okLocal = typeof navigator !== "undefined" && navigator.sendBeacon?.(apiURL("/subscribe"), jsonBlob);
       if (okLocal) return;
 
-      // 3) 兜底：非阻塞 fetch（不 await），也尽量避免阻塞点击
       setTimeout(() => {
         const target = REMOTE_BASE ? `${REMOTE_BASE}/subscribe` : apiURL("/subscribe");
         fetch(target, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(payload),
-          keepalive: true, // 离开页面也可尝试提交
+          keepalive: true,
         }).catch(() => {});
       }, 0);
-    } catch {
-      // 完全静默，不影响支付
-    }
+    } catch {}
   }
 
   // 支付成功 → 写入预览数据 → 确认页
@@ -486,7 +601,11 @@ export default function CheckoutPage() {
                 <div className="space-y-2 text-sm">
                   <Row label="Subtotal" value={fmtPrice(itemsTotals.itemsMajor, currency)} strongRight />
                   {savedMajor > 0 && (
-                    <Row label="You saved" value={fmtPrice(savedMajor, currency)} valueClass="text-emerald-700 font-semibold" />
+                    <Row
+                      label="You saved"
+                      value={fmtPrice(savedMajor, currency)}
+                      valueClass="text-emerald-700 font-semibold"
+                    />
                   )}
                   {hasItems && (
                     <Row
@@ -510,8 +629,17 @@ export default function CheckoutPage() {
             </section>
           )}
 
-          {/* Address */}
-          {step === "address" && <AddressForm address={address} setAddress={setAddress} />}
+          {/* Address（已内置 Your Details） */}
+          {step === "address" && (
+            <AddressForm
+              address={address}
+              setAddress={setAddress}
+              emailInput={emailInput}
+              setEmailInput={setEmailInput}
+              marketingOptIn={marketingOptIn}
+              setMarketingOptIn={setMarketingOptIn}
+            />
+          )}
 
           {/* Delivery（保持原样） */}
           {step === "delivery" && (
@@ -580,55 +708,19 @@ export default function CheckoutPage() {
                 </div>
               </div>
 
-              {/* Your Details */}
-              <div className="border rounded-lg p-4">
-                <h3 className="text-base font-medium mb-2">Your Details</h3>
-                <p className="text-sm text-neutral-600 mb-3">
-                  Please enter your email address, we'll send your order confirmation here
-                </p>
-                <label className="block text-sm font-medium mb-1">Email Address</label>
-                <input
-                  type="email"
-                  placeholder="you@example.com"
-                  className="w-full rounded-md border px-3 py-2 text-sm"
-                  value={emailInput}
-                  onChange={(e) => setEmailInput(e.currentTarget.value)}
-                  onBlur={(e) => {
-                    const v = e.currentTarget.value.trim();
-                    setAddress({ ...address, email: v });
-                    if (marketingOptIn && v) sendSubscriptionIfNeeded(v);
-                  }}
-                />
-                <p className="mt-1 text-xs text-neutral-500">You can create an account after checkout</p>
-                <label className="mt-3 flex items-start gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    className="mt-1"
-                    checked={marketingOptIn}
-                    onChange={(e) => {
-                      const v = e.currentTarget.checked;
-                      setMarketingOptIn(v);
-                      if (v) {
-                        const email = (emailInput || address?.email || "").trim();
-                        if (email) sendSubscriptionIfNeeded(email);
-                      }
-                    }}
-                  />
-                  <span>Email me updates on New Arrivals, Sale and Offers</span>
-                </label>
-                <p className="mt-3 text-xs text-neutral-500">
-                  * We treat your personal data with care, view our <a className="underline" href="/privacy">Privacy Policy</a>.
-                </p>
-              </div>
-
-              {/* Delivery Details */}
+              {/* Delivery Details（摘要） */}
               <div className="border rounded-lg p-4">
                 <h3 className="text-base font-medium mb-3">Delivery Details</h3>
                 {address?.firstName || address?.lastName ? (
                   <div className="text-sm leading-6 text-gray-800">
                     <div>{[address.firstName, address.lastName].filter(Boolean).join(" ")}</div>
-                    <div>{address.line1}{address.line2 ? ` ${address.line2}` : ""}</div>
-                    <div>{address.city} {address.state} {address.postcode}</div>
+                    <div>
+                      {address.line1}
+                      {address.line2 ? ` ${address.line2}` : ""}
+                    </div>
+                    <div>
+                      {address.city} {address.state} {address.postcode}
+                    </div>
                     <div>{address.country}</div>
                     {address.email && <div className="mt-2">{address.email}</div>}
                     {address.phone && <div>{address.phone}</div>}
@@ -644,11 +736,15 @@ export default function CheckoutPage() {
               <div className="border rounded-lg p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-gray-600">Items</div>
-                  <div className="text-base font-medium">{itemsCount} item{itemsCount > 1 ? "s" : ""}</div>
+                  <div className="text-base font-medium">
+                    {itemsCount} item{itemsCount > 1 ? "s" : ""}
+                  </div>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-gray-600">Subtotal</div>
-                  <div className="text-base font-medium">{fmtMoneyMinor(itemsTotals.itemsMinor, currency)}</div>
+                  <div className="text-base font-medium">
+                    {fmtMoneyMinor(itemsTotals.itemsMinor, currency)}
+                  </div>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-gray-600">Delivery</div>
@@ -658,13 +754,14 @@ export default function CheckoutPage() {
                 </div>
                 <div className="border-t pt-3 flex items-center justify-between">
                   <div className="text-lg font-semibold">Total</div>
-                  <div className="text-xl font-bold">{fmtMoneyMinor(totalMinor, currency)}</div>
+                  <div className="text-xl font-bold">
+                    {fmtMoneyMinor(totalMinor, currency)}
+                  </div>
                 </div>
               </div>
 
               {/* 只有一颗 PayPal 按钮（无外围边框） */}
               <div className="p-4">
-                {/* ⚠️ 可见时也固定 300px，和隐藏渲染时保持 1:1 */}
                 <div className="mx-auto w-[300px]">
                   {amountInMajorUnit > 0 ? (
                     <BraintreePayPalOnly
