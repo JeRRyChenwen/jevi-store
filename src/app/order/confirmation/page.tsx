@@ -26,6 +26,7 @@ function fmtMoneyMinor(minor: number, currency: string, locale?: string) {
 export default function OrderConfirmationPage() {
   const [data, setData] = useState<Preview | null>(null);
 
+  // 读取上一步保存的订单预览
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem("last-order-preview");
@@ -33,17 +34,24 @@ export default function OrderConfirmationPage() {
     } catch {}
   }, []);
 
-  // （可选）清空购物袋
+  // 清空购物袋（当且仅当拿到 data 时执行）
   useEffect(() => {
-    if (data) {
-      try {
-        localStorage.setItem("bag:v1", "[]");
-        window.dispatchEvent(new CustomEvent("bag:count", { detail: { count: 0 } }));
-        window.dispatchEvent(new CustomEvent("bag:updated", { detail: {} }));
-      } catch {}
-    }
+    if (!data) return;
+    try {
+      localStorage.setItem("bag:v1", "[]");
+      window.dispatchEvent(new CustomEvent("bag:count", { detail: { count: 0 } }));
+      window.dispatchEvent(new CustomEvent("bag:updated", { detail: {} }));
+    } catch {}
   }, [data]);
 
+  // ✅ 顶层声明，内部用可选链保护，避免 Hook 顺序变化
+  const itemCount = useMemo(() => {
+    const list = data?.items;
+    if (!Array.isArray(list)) return 0;
+    return list.reduce((n, it: any) => n + (it?.qty ?? 1), 0);
+  }, [data]);
+
+  // 早退视图
   if (!data) {
     return (
       <main className="px-4 sm:px-6 lg:px-8 py-12">
@@ -53,8 +61,12 @@ export default function OrderConfirmationPage() {
             We couldn’t find your latest order details. If you just paid, try refreshing this page.
           </p>
           <div className="flex gap-3 justify-center">
-            <Link href="/" className="rounded-md bg-black text-white px-4 py-2 text-sm font-medium">Back to Home</Link>
-            <Link href="/checkout" className="rounded-md border px-4 py-2 text-sm font-medium">Back to Checkout</Link>
+            <Link href="/" className="rounded-md bg-black text-white px-4 py-2 text-sm font-medium">
+              Back to Home
+            </Link>
+            <Link href="/checkout" className="rounded-md border px-4 py-2 text-sm font-medium">
+              Back to Checkout
+            </Link>
           </div>
         </div>
       </main>
@@ -62,11 +74,6 @@ export default function OrderConfirmationPage() {
   }
 
   const { currency, totalMinor, address, deliveryMethod, payload } = data;
-
-  const itemCount = useMemo(
-    () => (Array.isArray(data.items) ? data.items.reduce((n, it: any) => n + (it?.qty ?? 1), 0) : 0),
-    [data.items]
-  );
 
   return (
     <main className="px-4 sm:px-6 lg:px-8 py-10">
@@ -104,8 +111,13 @@ export default function OrderConfirmationPage() {
             {address ? (
               <div className="text-sm leading-6">
                 <div>{[address.firstName, address.lastName].filter(Boolean).join(" ")}</div>
-                <div>{address.line1}{address.line2 ? ` ${address.line2}` : ""}</div>
-                <div>{address.city} {address.state} {address.postcode}</div>
+                <div>
+                  {address.line1}
+                  {address.line2 ? ` ${address.line2}` : ""}
+                </div>
+                <div>
+                  {address.city} {address.state} {address.postcode}
+                </div>
                 <div>{address.country}</div>
                 {address.phone && <div>{address.phone}</div>}
               </div>
@@ -118,9 +130,14 @@ export default function OrderConfirmationPage() {
           </section>
         </div>
 
-        <div className="mt-8 flex gap-3">
-          <Link href="/" className="rounded-md bg-black text-white px-4 py-2 text-sm font-medium">Continue Shopping</Link>
-          <Link href="/account/orders" className="rounded-md border px-4 py-2 text-sm font-medium">View Orders</Link>
+        {/* ⬇️ 这里只保留一个按钮，并把容器右对齐 */}
+        <div className="mt-8 flex justify-end">
+          <Link
+            href="/"
+            className="rounded-md bg-black text-white px-4 py-2 text-sm font-medium"
+          >
+            Continue Shopping
+          </Link>
         </div>
       </div>
     </main>
