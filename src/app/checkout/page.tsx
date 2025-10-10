@@ -161,85 +161,151 @@ function AddressForm({
       <div className="border-b px-4 py-3 font-semibold">Address</div>
 
       <div className="p-4 space-y-6">
-        {/* === 送货地址表单（放到上面） === */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <input
-            className="w-full rounded-md border px-3 py-2 text-sm"
-            placeholder="First Name"
-            value={address.firstName || ""}
-            onChange={on("firstName")}
-          />
-          <input
-            className="w-full rounded-md border px-3 py-2 text-sm"
-            placeholder="Last Name"
-            value={address.lastName || ""}
-            onChange={on("lastName")}
-          />
-          <input
-            className="md:col-span-2 w-full rounded-md border px-3 py-2 text-sm"
-            placeholder="Phone"
-            value={address.phone || ""}
-            onChange={on("phone")}
-          />
-          <input
-            className="md:col-span-2 w-full rounded-md border px-3 py-2 text-sm"
-            placeholder="Address Line 1"
-            value={address.line1 || ""}
-            onChange={on("line1")}
-          />
-          <input
-            className="md:col-span-2 w-full rounded-md border px-3 py-2 text-sm"
-            placeholder="Address Line 2 (optional)"
-            value={address.line2 || ""}
-            onChange={on("line2")}
-          />
-          <input
-            className="w-full rounded-md border px-3 py-2 text-sm"
-            placeholder="City"
-            value={address.city || ""}
-            onChange={on("city")}
-          />
-          <input
-            className="w-full rounded-md border px-3 py-2 text-sm"
-            placeholder="State/Region"
-            value={address.state || ""}
-            onChange={on("state")}
-          />
-          <input
-            className="w-full rounded-md border px-3 py-2 text-sm"
-            placeholder="Postcode"
-            value={address.postcode || ""}
-            onChange={on("postcode")}
-          />
-          <input
-            className="w-full rounded-md border px-3 py-2 text-sm"
-            placeholder="Country"
-            value={address.country || ""}
-            onChange={on("country")}
-          />
+
+        {/* === 收货地址表单（标题在上，无 placeholder） === */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-1">
+            <label htmlFor="addr-first" className="block text-sm font-medium text-neutral-700">
+              First Name
+            </label>
+            <input
+              id="addr-first"
+              className="w-full rounded-md border px-3 py-2 text-sm"
+              autoComplete="given-name"
+              value={address.firstName || ""}
+              onChange={on("firstName")}
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label htmlFor="addr-last" className="block text-sm font-medium text-neutral-700">
+              Last Name
+            </label>
+            <input
+              id="addr-last"
+              className="w-full rounded-md border px-3 py-2 text-sm"
+              autoComplete="family-name"
+              value={address.lastName || ""}
+              onChange={on("lastName")}
+            />
+          </div>
+
+          <div className="md:col-span-2 space-y-1">
+            <label htmlFor="addr-phone" className="block text-sm font-medium text-neutral-700">
+              Phone
+            </label>
+            <input
+              id="addr-phone"
+              className="w-full rounded-md border px-3 py-2 text-sm"
+              autoComplete="tel"
+              value={address.phone || ""}
+              onChange={on("phone")}
+            />
+          </div>
+
+          <div className="md:col-span-2 space-y-1">
+            <label htmlFor="addr-line1" className="block text-sm font-medium text-neutral-700">
+              Address Line 1
+            </label>
+            <input
+              id="addr-line1"
+              className="w-full rounded-md border px-3 py-2 text-sm"
+              autoComplete="address-line1"
+              value={address.line1 || ""}
+              onChange={on("line1")}
+            />
+          </div>
+
+          <div className="md:col-span-2 space-y-1">
+            <label htmlFor="addr-line2" className="block text-sm font-medium text-neutral-700">
+              Address Line 2 (optional)
+            </label>
+            <input
+              id="addr-line2"
+              className="w-full rounded-md border px-3 py-2 text-sm"
+              autoComplete="address-line2"
+              value={address.line2 || ""}
+              onChange={on("line2")}
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label htmlFor="addr-city" className="block text-sm font-medium text-neutral-700">
+              City
+            </label>
+            <input
+              id="addr-city"
+              className="w-full rounded-md border px-3 py-2 text-sm"
+              autoComplete="address-level2"
+              value={address.city || ""}
+              onChange={on("city")}
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label htmlFor="addr-state" className="block text-sm font-medium text-neutral-700">
+              State/Region
+            </label>
+            <input
+              id="addr-state"
+              className="w-full rounded-md border px-3 py-2 text-sm"
+              autoComplete="address-level1"
+              value={address.state || ""}
+              onChange={on("state")}
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label htmlFor="addr-postcode" className="block text-sm font-medium text-neutral-700">
+              Postcode
+            </label>
+            <input
+              id="addr-postcode"
+              className="w-full rounded-md border px-3 py-2 text-sm"
+              autoComplete="postal-code"
+              value={address.postcode || ""}
+              onChange={on("postcode")}
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label htmlFor="addr-country" className="block text-sm font-medium text-neutral-700">
+              Country
+            </label>
+            <input
+              id="addr-country"
+              className="w-full rounded-md border px-3 py-2 text-sm"
+              autoComplete="country-name"
+              value={address.country || ""}
+              onChange={on("country")}
+            />
+          </div>
         </div>
 
-        {/* === Your Details（Email + 勾选）—移动到最下方 === */}
+        {/* === Your Details（Email + 勾选）— 保留并放最下方，同样无 placeholder === */}
         <div className="border rounded-lg p-4">
           <h3 className="text-base font-medium mb-2">Your Details</h3>
           <p className="text-sm text-neutral-600 mb-3">
             Please enter your email address, we'll send your order confirmation here
           </p>
 
-          <label className="block text-sm font-medium mb-1">Email Address</label>
+          <label htmlFor="addr-email" className="block text-sm font-medium mb-1">
+            Email Address
+          </label>
           <input
+            id="addr-email"
             type="email"
-            placeholder="you@example.com"
             className="w-full rounded-md border px-3 py-2 text-sm"
+            autoComplete="email"
             value={emailInput}
             onChange={(e) => {
-              setEmailInput(e.currentTarget.value);
-              setAddress({ ...address, email: e.currentTarget.value });
+              const v = e.currentTarget.value;
+              setEmailInput(v);
+              setAddress({ ...address, email: v });
             }}
           />
-          <p className="mt-1 text-xs text-neutral-500">
-            You can create an account after checkout
-          </p>
+
+          <p className="mt-1 text-xs text-neutral-500">You can create an account after checkout</p>
 
           <label className="mt-3 flex items-start gap-2 text-sm">
             <input
