@@ -187,6 +187,8 @@ function AddressForm({
   showErrors,
   errs,
   errorBanner,
+  onEmailCommit,
+  onOptInChanged,
 }: {
   address: Address;
   setAddress: (a: Address) => void;
@@ -197,6 +199,10 @@ function AddressForm({
   showErrors: boolean;
   errs: AddressErr;
   errorBanner?: string | null;
+  /** Email 输入完成（onBlur）时触发，便于及时上报 */
+  onEmailCommit?: (email: string) => void;
+  /** 勾选变更时触发，便于立即上报 */
+  onOptInChanged?: (opt: boolean) => void;
 }) {
   const on =
     (k: keyof Address) =>
@@ -340,7 +346,7 @@ function AddressForm({
             Please enter your email address, we'll send your order confirmation here
           </p>
 
-        <label htmlFor="addr-email" className="block text-sm font-medium mb-1">
+          <label htmlFor="addr-email" className="block text-sm font-medium mb-1">
             Email Address
           </label>
           <input
@@ -354,6 +360,7 @@ function AddressForm({
               setEmailInput(v);
               setAddress({ ...address, email: v });
             }}
+            onBlur={(e) => onEmailCommit?.(e.currentTarget.value)}
           />
 
           <p className="mt-1 text-xs text-neutral-500">You can create an account after checkout</p>
@@ -363,7 +370,11 @@ function AddressForm({
               type="checkbox"
               className="mt-1"
               checked={marketingOptIn}
-              onChange={(e) => setMarketingOptIn(e.currentTarget.checked)}
+              onChange={(e) => {
+                const v = e.currentTarget.checked;
+                setMarketingOptIn(v);
+                onOptInChanged?.(v);
+              }}
             />
             <span>Email me updates on New Arrivals, Sale and Offers</span>
           </label>
@@ -661,41 +672,21 @@ export default function CheckoutPage() {
     setStepAndURL(step === "payment" ? "delivery" : step === "delivery" ? "address" : "bag");
   };
 
-  // 点击 Continue：Address 步骤改为「提交时校验」
-  const handleContinue = () => {
-    if (step === "address") {
-      const { valid, errs } = validateAddress(address, emailInput);
-      if (!valid) {
-        setAddressErrs(errs);
-        setAddressShowErrors(true);
-        const el = document.getElementById("address-section");
-        el?.scrollIntoView({ behavior: "smooth", block: "start" });
-        return;
-      }
-      setAddressShowErrors(false);
-      setAddressErrs(emptyErr);
-    }
-    nextStepCore();
-  };
-
-  const itemsCount = cart.reduce((n, it: any) => n + (it?.qty ?? 1), 0);
-
   // ---------- 时区标记 ----------
   const clientTZ =
     (typeof Intl !== "undefined" && Intl.DateTimeFormat().resolvedOptions().timeZone) || "UTC";
   const clientUTCOffsetMin = -new Date().getTimezoneOffset();
   const FORCE_CN_TZ = "Asia/Shanghai";
 
-  // ✅ 订阅（与支付无关）
+  // ✅ 订阅（无论勾选与否，只要有 email 就上报；marketing_opt_in 反映当前勾选状态）
   async function sendSubscriptionIfNeeded(emailRaw?: string) {
     try {
-      if (!marketingOptIn) return;
       const email = (emailRaw || address?.email || emailInput || "").trim().toLowerCase();
       if (!email) return;
 
       const payload = {
         email,
-        marketing_opt_in: true,
+        marketing_opt_in: !!marketingOptIn, // 关键：携带 true/false
         source: "checkout",
         tz: FORCE_CN_TZ,
         meta: {
@@ -729,6 +720,28 @@ export default function CheckoutPage() {
     } catch {}
   }
 
+  // 点击 Continue：Address 步骤改为「提交时校验」，成功后顺便上报一次（兜底）
+  const handleContinue = () => {
+    if (step === "address") {
+      const { valid, errs } = validateAddress(address, emailInput);
+      if (!valid) {
+        setAddressErrs(errs);
+        setAddressShowErrors(true);
+        const el = document.getElementById("address-section");
+        el?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      setAddressShowErrors(false);
+      setAddressErrs(emptyErr);
+
+      // ✅ 校验通过后兜底上报（无论勾选与否）
+      void sendSubscriptionIfNeeded();
+    }
+    nextStepCore();
+  };
+
+  const itemsCount = cart.reduce((n, it: any) => n + (it?.qty ?? 1), 0);
+
   // 支付成功 → 确认页
   const handlePaySucceeded = (payload?: any) => {
     try {
@@ -746,12 +759,14 @@ export default function CheckoutPage() {
       );
     } catch {}
 
+    // ✅ 成功后再上报一次（不影响跳转）
     sendSubscriptionIfNeeded().finally(() => {
       router.push(CONFIRM_PATH);
     });
   };
 
   const handlePayInitiated = () => {
+    // ✅ 发起支付前也上报一次
     void sendSubscriptionIfNeeded();
   };
 
@@ -847,6 +862,8 @@ export default function CheckoutPage() {
               showErrors={addressShowErrors}
               errs={addressErrs}
               errorBanner={addressShowErrors ? "Some required fields are missing or invalid." : null}
+              onEmailCommit={(email) => sendSubscriptionIfNeeded(email)}
+              onOptInChanged={(_opt) => sendSubscriptionIfNeeded()}
             />
           )}
 
