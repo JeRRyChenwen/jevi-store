@@ -42,6 +42,65 @@ function fmtMoneyMinor(minor: number, currency: string, locale?: string) {
   return fmtPrice((minor ?? 0) / 100, currency, locale);
 }
 
+/* ====== 校验正则 & 工具（Address Line 2、marketing 勾选不校验） ====== */
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
+const PHONE_RE = /^\+?[0-9\s\-()]{6,20}$/;
+const POSTCODE_RE = /^[A-Za-z0-9\s\-]{3,10}$/;
+const t = (s?: string) => (s || "").trim();
+
+type Address = {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  line1?: string;
+  line2?: string; // optional
+  city?: string;
+  state?: string;
+  postcode?: string;
+  country?: string;
+};
+
+type AddressErr = {
+  firstName: boolean;
+  lastName: boolean;
+  phone: boolean;
+  line1: boolean;
+  city: boolean;
+  state: boolean;
+  postcode: boolean;
+  country: boolean;
+  email: boolean;
+};
+
+const emptyErr: AddressErr = {
+  firstName: false,
+  lastName: false,
+  phone: false,
+  line1: false,
+  city: false,
+  state: false,
+  postcode: false,
+  country: false,
+  email: false,
+};
+
+function validateAddress(a: Address, emailInput: string) {
+  const errs: AddressErr = {
+    firstName: t(a.firstName) === "",
+    lastName: t(a.lastName) === "",
+    phone: !PHONE_RE.test(t(a.phone)),
+    line1: t(a.line1) === "",
+    city: t(a.city) === "",
+    state: t(a.state) === "",
+    postcode: !POSTCODE_RE.test(t(a.postcode)),
+    country: t(a.country) === "",
+    email: !EMAIL_RE.test(t(emailInput || a.email)),
+  };
+  const valid = Object.values(errs).every((v) => v === false);
+  return { valid, errs };
+}
+
 /* ---------------- Stepper ---------------- */
 type StepKey = "bag" | "address" | "delivery" | "payment";
 const STEP_LIST: { key: StepKey; label: string }[] = [
@@ -74,7 +133,7 @@ function CheckoutSteps({
         {STEP_LIST.map((s, i) => {
           const isActive = i === currentIndex;
           const isDone = i < currentIndex;
-          const isLocked = i > currentIndex; // 未来步骤禁止点击
+          const isLocked = i > currentIndex; // 只能回退，不允许前进
 
           const baseCircle =
             "flex items-center justify-center h-8 w-8 rounded-full border text-sm";
@@ -117,20 +176,7 @@ function CheckoutSteps({
   );
 }
 
-/* ---------------- Address ---------------- */
-type Address = {
-  firstName?: string;
-  lastName?: string;
-  email?: string;
-  phone?: string;
-  line1?: string;
-  line2?: string;
-  city?: string;
-  state?: string;
-  postcode?: string;
-  country?: string;
-};
-
+/* ---------------- Address 表单 ---------------- */
 function AddressForm({
   address,
   setAddress,
@@ -138,6 +184,9 @@ function AddressForm({
   setEmailInput,
   marketingOptIn,
   setMarketingOptIn,
+  showErrors,
+  errs,
+  errorBanner,
 }: {
   address: Address;
   setAddress: (a: Address) => void;
@@ -145,18 +194,26 @@ function AddressForm({
   setEmailInput: (v: string) => void;
   marketingOptIn: boolean;
   setMarketingOptIn: (v: boolean) => void;
+  showErrors: boolean;
+  errs: AddressErr;
+  errorBanner?: string | null;
 }) {
   const on =
     (k: keyof Address) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
       setAddress({ ...address, [k]: e.target.value });
 
+  const baseInput =
+    "w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-neutral-900/10";
+  const cls = (bad: boolean) =>
+    showErrors && bad ? `${baseInput} border-red-500` : `${baseInput} border-neutral-300`;
+
   return (
-    <section className="rounded-xl border">
+    <section className="rounded-xl border" id="address-section">
       <div className="border-b px-4 py-3 font-semibold">Address</div>
 
       <div className="p-4 space-y-6">
-        {/* 表单（无 placeholder，标签放上面） */}
+        {/* 表单（无 placeholder，标签放上面；仅在 showErrors 时标红） */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1">
             <label htmlFor="addr-first" className="block text-sm font-medium text-neutral-700">
@@ -164,7 +221,7 @@ function AddressForm({
             </label>
             <input
               id="addr-first"
-              className="w-full rounded-md border px-3 py-2 text-sm"
+              className={cls(errs.firstName)}
               autoComplete="given-name"
               value={address.firstName || ""}
               onChange={on("firstName")}
@@ -177,7 +234,7 @@ function AddressForm({
             </label>
             <input
               id="addr-last"
-              className="w-full rounded-md border px-3 py-2 text-sm"
+              className={cls(errs.lastName)}
               autoComplete="family-name"
               value={address.lastName || ""}
               onChange={on("lastName")}
@@ -190,7 +247,7 @@ function AddressForm({
             </label>
             <input
               id="addr-phone"
-              className="w-full rounded-md border px-3 py-2 text-sm"
+              className={cls(errs.phone)}
               autoComplete="tel"
               value={address.phone || ""}
               onChange={on("phone")}
@@ -203,7 +260,7 @@ function AddressForm({
             </label>
             <input
               id="addr-line1"
-              className="w-full rounded-md border px-3 py-2 text-sm"
+              className={cls(errs.line1)}
               autoComplete="address-line1"
               value={address.line1 || ""}
               onChange={on("line1")}
@@ -216,7 +273,7 @@ function AddressForm({
             </label>
             <input
               id="addr-line2"
-              className="w-full rounded-md border px-3 py-2 text-sm"
+              className={baseInput + " border-neutral-300"}
               autoComplete="address-line2"
               value={address.line2 || ""}
               onChange={on("line2")}
@@ -229,7 +286,7 @@ function AddressForm({
             </label>
             <input
               id="addr-city"
-              className="w-full rounded-md border px-3 py-2 text-sm"
+              className={cls(errs.city)}
               autoComplete="address-level2"
               value={address.city || ""}
               onChange={on("city")}
@@ -242,7 +299,7 @@ function AddressForm({
             </label>
             <input
               id="addr-state"
-              className="w-full rounded-md border px-3 py-2 text-sm"
+              className={cls(errs.state)}
               autoComplete="address-level1"
               value={address.state || ""}
               onChange={on("state")}
@@ -255,7 +312,7 @@ function AddressForm({
             </label>
             <input
               id="addr-postcode"
-              className="w-full rounded-md border px-3 py-2 text-sm"
+              className={cls(errs.postcode)}
               autoComplete="postal-code"
               value={address.postcode || ""}
               onChange={on("postcode")}
@@ -268,7 +325,7 @@ function AddressForm({
             </label>
             <input
               id="addr-country"
-              className="w-full rounded-md border px-3 py-2 text-sm"
+              className={cls(errs.country)}
               autoComplete="country-name"
               value={address.country || ""}
               onChange={on("country")}
@@ -276,20 +333,20 @@ function AddressForm({
           </div>
         </div>
 
-        {/* Your Details（保留，放底部） */}
+        {/* Your Details（保留） */}
         <div className="border rounded-lg p-4">
           <h3 className="text-base font-medium mb-2">Your Details</h3>
           <p className="text-sm text-neutral-600 mb-3">
             Please enter your email address, we'll send your order confirmation here
           </p>
 
-          <label htmlFor="addr-email" className="block text-sm font-medium mb-1">
+        <label htmlFor="addr-email" className="block text-sm font-medium mb-1">
             Email Address
           </label>
           <input
             id="addr-email"
             type="email"
-            className="w-full rounded-md border px-3 py-2 text-sm"
+            className={cls(errs.email)}
             autoComplete="email"
             value={emailInput}
             onChange={(e) => {
@@ -319,6 +376,13 @@ function AddressForm({
             .
           </p>
         </div>
+
+        {/* 提交时错误提示（英文） */}
+        {showErrors && errorBanner && (
+          <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
+            {errorBanner}
+          </div>
+        )}
       </div>
     </section>
   );
@@ -394,17 +458,25 @@ function itemToPriceRecs(it: any): PriceRec[] {
 }
 const baseOf = (r: PriceRec) => Math.max(0, Number((r as any).price ?? r.amount_minor ?? 0));
 
-/* ---------------- 可复用：大按钮 ---------------- */
-function LargeBackButton({ onClick, className = "" }: { onClick: () => void; className?: string }) {
-  // 与 Continue 同尺寸/圆角/字重；白底 + 描边
+/* ---------------- 大按钮 ---------------- */
+function LargeBackButton({
+  onClick,
+  className = "",
+  disabled,
+}: {
+  onClick: () => void;
+  className?: string;
+  disabled?: boolean;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       className={[
-        "rounded-full border bg-white px-6 py-3 text-sm font-semibold hover:bg-neutral-50",
-        "text-neutral-900",
-        "w-full",
+        "rounded-full border bg-white px-6 py-3 text-sm font-semibold",
+        disabled ? "opacity-60 cursor-not-allowed" : "hover:bg-neutral-50",
+        "text-neutral-900 w-full",
         className,
       ].join(" ")}
     >
@@ -416,18 +488,23 @@ function LargePrimaryButton({
   onClick,
   children,
   className = "",
+  disabled,
 }: {
   onClick: () => void;
   children: React.ReactNode;
   className?: string;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       className={[
-        "rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white hover:bg-neutral-800",
-        "w-full",
+        "rounded-full px-6 py-3 text-sm font-semibold w-full",
+        disabled
+          ? "bg-neutral-300 text-white cursor-not-allowed"
+          : "bg-neutral-900 text-white hover:bg-neutral-800",
         className,
       ].join(" ")}
     >
@@ -447,9 +524,13 @@ export default function CheckoutPage() {
   const [address, setAddress] = useState<Address>({});
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>("standard");
 
-  // ✅ 勾选 & 邮箱本地状态
+  // 勾选 & 邮箱本地状态
   const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [emailInput, setEmailInput] = useState<string>("");
+
+  // Address 提交时校验：是否展示错误、错误对象
+  const [addressShowErrors, setAddressShowErrors] = useState(false);
+  const [addressErrs, setAddressErrs] = useState<AddressErr>(emptyErr);
 
   const initialStepFromURL = (() => {
     const s = searchParams.get("step");
@@ -464,7 +545,7 @@ export default function CheckoutPage() {
     router.replace(`${pathname}?${p.toString()}`, { scroll: false });
   };
 
-  // 预连接 PayPal/Braintree
+  // 预连接
   useEffect(() => {
     const hosts = [
       "https://www.paypal.com",
@@ -489,7 +570,7 @@ export default function CheckoutPage() {
     });
   }, []);
 
-  // 初始化：读购物车/地址
+  // 初始化本地缓存
   useEffect(() => {
     try {
       const raw = localStorage.getItem(LS_CART_KEY);
@@ -546,7 +627,6 @@ export default function CheckoutPage() {
 
   const currency = DISPLAY_CURRENCY as string;
 
-  // 你节省了
   const savedMajor = useMemo(() => {
     let savedMinor = 0;
     for (const it of cart as any[]) {
@@ -574,11 +654,28 @@ export default function CheckoutPage() {
   const totalMajor = itemsTotals.itemsMajor + deliveryFeeMajor;
   const amountInMajorUnit = Math.max(0, Number(totalMajor.toFixed(2)));
 
-  const nextStep = () => {
+  const nextStepCore = () => {
     setStepAndURL(step === "bag" ? "address" : step === "address" ? "delivery" : "payment");
   };
   const prevStep = () => {
     setStepAndURL(step === "payment" ? "delivery" : step === "delivery" ? "address" : "bag");
+  };
+
+  // 点击 Continue：Address 步骤改为「提交时校验」
+  const handleContinue = () => {
+    if (step === "address") {
+      const { valid, errs } = validateAddress(address, emailInput);
+      if (!valid) {
+        setAddressErrs(errs);
+        setAddressShowErrors(true);
+        const el = document.getElementById("address-section");
+        el?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      setAddressShowErrors(false);
+      setAddressErrs(emptyErr);
+    }
+    nextStepCore();
   };
 
   const itemsCount = cart.reduce((n, it: any) => n + (it?.qty ?? 1), 0);
@@ -589,7 +686,7 @@ export default function CheckoutPage() {
   const clientUTCOffsetMin = -new Date().getTimezoneOffset();
   const FORCE_CN_TZ = "Asia/Shanghai";
 
-  // ✅ 订阅
+  // ✅ 订阅（与支付无关）
   async function sendSubscriptionIfNeeded(emailRaw?: string) {
     try {
       if (!marketingOptIn) return;
@@ -747,6 +844,9 @@ export default function CheckoutPage() {
               setEmailInput={setEmailInput}
               marketingOptIn={marketingOptIn}
               setMarketingOptIn={setMarketingOptIn}
+              showErrors={addressShowErrors}
+              errs={addressErrs}
+              errorBanner={addressShowErrors ? "Some required fields are missing or invalid." : null}
             />
           )}
 
@@ -790,7 +890,7 @@ export default function CheckoutPage() {
             <div className="px-4 py-3 border-b font-semibold">How would you like to pay?</div>
 
             <div className="p-4 space-y-6">
-              {/* Payment Options */}
+              {/* Payment Options（只显示 PayPal 选中） */}
               <div className="border rounded-lg p-4">
                 <h2 className="text-lg font-medium mb-4">Payment Options</h2>
                 <label className="flex items-center gap-3 w-full border rounded-md px-3 py-3 cursor-pointer border-black ring-1 ring-black">
@@ -897,7 +997,7 @@ export default function CheckoutPage() {
             </div>
           </section>
 
-          {/* ✅ Back（放在支付 section 外部的下面） */}
+          {/* ✅ Back 按钮在 Payment 区域外、边框下方（只在 payment 步骤显示） */}
           {step === "payment" && (
             <div className="px-4 pb-4 pt-2 flex justify-end">
               <div className="w-[320px] max-w-full">
@@ -912,14 +1012,14 @@ export default function CheckoutPage() {
           <div className="mt-6 flex justify-end">
             {step === "bag" ? (
               <div className="w-[320px] max-w-full">
-                <LargePrimaryButton onClick={nextStep}>Continue</LargePrimaryButton>
+                <LargePrimaryButton onClick={handleContinue}>Continue</LargePrimaryButton>
               </div>
             ) : (
               <div className="w-[660px] max-w-full flex gap-3 justify-end">
-                <LargeBackButton onClick={() => {
-                  setStepAndURL(step === "delivery" ? "address" : "bag");
-                }} />
-                <LargePrimaryButton onClick={nextStep}>Continue</LargePrimaryButton>
+                <LargeBackButton onClick={prevStep} />
+                <LargePrimaryButton onClick={handleContinue}>
+                  Continue
+                </LargePrimaryButton>
               </div>
             )}
           </div>
