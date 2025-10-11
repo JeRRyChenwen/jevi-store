@@ -101,8 +101,8 @@ function CheckoutSteps({
               aria-disabled={isLocked ? true : undefined}
               title={isLocked ? "Complete previous steps to continue" : s.label}
               className={[
-                "group flex w-1/4 flex-col items-center gap-2 focus:outline-none",
-                isLocked ? "cursor-not-allowed pointer-events-auto" : "cursor-pointer",
+                "group flex w-1/4 flex-col items-center gap-2 focus:outline-none select-none",
+                isLocked ? "cursor-default opacity-50 pointer-events-auto" : "cursor-pointer",
               ].join(" ")}
             >
               <div className={`${baseCircle} ${circleClass}`}>
