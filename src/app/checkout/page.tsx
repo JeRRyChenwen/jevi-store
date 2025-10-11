@@ -8,11 +8,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import CartList from "@/components/cart/CartList";
 import type { CartItem as CartListItem } from "@/components/cart/CartList";
 
-// ✅ 只渲染一颗 PayPal 按钮（无外围边框/文案）
 import BraintreePayPalOnly from "@/app/checkout/_components/BraintreePayPalOnly";
 import PrefetchBraintreeToken from "@/app/checkout/_components/PrefetchBraintreeToken";
-
-// ✅ 预加载 PayPal SDK + Braintree 实例
 import PayPalPreloader from "@/app/checkout/_components/PayPalPreloader";
 
 import { selectCurrencyAndTotals } from "@/lib/cartPricing";
@@ -77,7 +74,7 @@ function CheckoutSteps({
         {STEP_LIST.map((s, i) => {
           const isActive = i === currentIndex;
           const isDone = i < currentIndex;
-          const isLocked = i > currentIndex;          // 🚫 未来步骤
+          const isLocked = i > currentIndex; // 未来步骤禁止点击
 
           const baseCircle =
             "flex items-center justify-center h-8 w-8 rounded-full border text-sm";
@@ -96,11 +93,9 @@ function CheckoutSteps({
             <button
               key={s.key}
               type="button"
-              // 只能点击 ≤ 当前步骤的项（允许回退，不允许前进）
               onClick={() => {
                 if (!isLocked) onChange(s.key);
               }}
-              // 无障碍：未来步骤不可聚焦
               tabIndex={isLocked ? -1 : 0}
               aria-current={isActive ? "step" : undefined}
               aria-disabled={isLocked ? true : undefined}
@@ -153,7 +148,7 @@ function AddressForm({
 }) {
   const on =
     (k: keyof Address) =>
-    (e: React.ChangeEvent<HTMLInputElement>) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
       setAddress({ ...address, [k]: e.target.value });
 
   return (
@@ -161,8 +156,7 @@ function AddressForm({
       <div className="border-b px-4 py-3 font-semibold">Address</div>
 
       <div className="p-4 space-y-6">
-
-        {/* === 收货地址表单（标题在上，无 placeholder） === */}
+        {/* 表单（无 placeholder，标签放上面） */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1">
             <label htmlFor="addr-first" className="block text-sm font-medium text-neutral-700">
@@ -282,7 +276,7 @@ function AddressForm({
           </div>
         </div>
 
-        {/* === Your Details（Email + 勾选）— 保留并放最下方，同样无 placeholder === */}
+        {/* Your Details（保留，放底部） */}
         <div className="border rounded-lg p-4">
           <h3 className="text-base font-medium mb-2">Your Details</h3>
           <p className="text-sm text-neutral-600 mb-3">
@@ -400,6 +394,48 @@ function itemToPriceRecs(it: any): PriceRec[] {
 }
 const baseOf = (r: PriceRec) => Math.max(0, Number((r as any).price ?? r.amount_minor ?? 0));
 
+/* ---------------- 可复用：大按钮 ---------------- */
+function LargeBackButton({ onClick, className = "" }: { onClick: () => void; className?: string }) {
+  // 与 Continue 同尺寸/圆角/字重；白底 + 描边
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "rounded-full border bg-white px-6 py-3 text-sm font-semibold hover:bg-neutral-50",
+        "text-neutral-900",
+        "w-full",
+        className,
+      ].join(" ")}
+    >
+      Back
+    </button>
+  );
+}
+function LargePrimaryButton({
+  onClick,
+  children,
+  className = "",
+}: {
+  onClick: () => void;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white hover:bg-neutral-800",
+        "w-full",
+        className,
+      ].join(" ")}
+    >
+      {children}
+    </button>
+  );
+}
+
 /* ---------------- Page ---------------- */
 export default function CheckoutPage() {
   const router = useRouter();
@@ -411,7 +447,7 @@ export default function CheckoutPage() {
   const [address, setAddress] = useState<Address>({});
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>("standard");
 
-  // ✅ 勾选 & 邮箱本地状态（搬到 Address 步去展示）
+  // ✅ 勾选 & 邮箱本地状态
   const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [emailInput, setEmailInput] = useState<string>("");
 
@@ -428,7 +464,7 @@ export default function CheckoutPage() {
     router.replace(`${pathname}?${p.toString()}`, { scroll: false });
   };
 
-  // 预连接 PayPal/Braintree（网络层优化）
+  // 预连接 PayPal/Braintree
   useEffect(() => {
     const hosts = [
       "https://www.paypal.com",
@@ -541,18 +577,19 @@ export default function CheckoutPage() {
   const nextStep = () => {
     setStepAndURL(step === "bag" ? "address" : step === "address" ? "delivery" : "payment");
   };
+  const prevStep = () => {
+    setStepAndURL(step === "payment" ? "delivery" : step === "delivery" ? "address" : "bag");
+  };
 
   const itemsCount = cart.reduce((n, it: any) => n + (it?.qty ?? 1), 0);
 
-  // ---------- 获取浏览器时区与偏移（保留备查） ----------
+  // ---------- 时区标记 ----------
   const clientTZ =
     (typeof Intl !== "undefined" && Intl.DateTimeFormat().resolvedOptions().timeZone) || "UTC";
   const clientUTCOffsetMin = -new Date().getTimezoneOffset();
-
-  // ★★★ 关键：无论浏览器在哪，发送到后端的 tz 一律使用中国时区
   const FORCE_CN_TZ = "Asia/Shanghai";
 
-  // ✅ 把订阅发送到 Worker（成功与否都不阻塞结账，也不在控制台报红）
+  // ✅ 订阅
   async function sendSubscriptionIfNeeded(emailRaw?: string) {
     try {
       if (!marketingOptIn) return;
@@ -574,7 +611,6 @@ export default function CheckoutPage() {
         },
       };
 
-      // 优先使用 sendBeacon
       const jsonBlob = new Blob([JSON.stringify(payload)], { type: "application/json" });
 
       if (REMOTE_BASE) {
@@ -596,7 +632,7 @@ export default function CheckoutPage() {
     } catch {}
   }
 
-  // 支付成功 → 写入预览数据 → 确认页
+  // 支付成功 → 确认页
   const handlePaySucceeded = (payload?: any) => {
     try {
       sessionStorage.setItem(
@@ -618,16 +654,13 @@ export default function CheckoutPage() {
     });
   };
 
-  /* 点击黄色 PayPal 按钮即上报一次（绝不阻塞支付，也不报红） */
   const handlePayInitiated = () => {
     void sendSubscriptionIfNeeded();
   };
 
   return (
     <main className="w-full px-4 sm:px-6 lg:px-8 2xl:px-12 py-6 md:py-8">
-      {/* 进入结算页就预取并缓存 Braintree clientToken */}
       <PrefetchBraintreeToken />
-      {/* 进入结算页立刻预加载 PayPal SDK + Braintree（全流程常驻） */}
       <PayPalPreloader currency={DISPLAY_CURRENCY as unknown as string} />
 
       <div className="mx-auto w-full max-w-[2300px]">
@@ -687,7 +720,17 @@ export default function CheckoutPage() {
                     />
                   )}
                   <div className="pt-1">
-                    <Row label="Total" value={fmtPrice(totalMajor, currency)} strongLeft strongRight bigRight />
+                    <Row
+                      label="Total"
+                      value={fmtPrice(
+                        itemsTotals.itemsMajor +
+                          (hasItems && itemsTotals.itemsMajor < DELIVERY_FREE_THRESHOLD ? DELIVERY_FLAT : 0),
+                        currency
+                      )}
+                      strongLeft
+                      strongRight
+                      bigRight
+                    />
                     <div className="mt-1 text-xs text-neutral-500">Including GST</div>
                   </div>
                 </div>
@@ -695,7 +738,7 @@ export default function CheckoutPage() {
             </section>
           )}
 
-          {/* Address（已内置 Your Details） */}
+          {/* Address */}
           {step === "address" && (
             <AddressForm
               address={address}
@@ -707,7 +750,7 @@ export default function CheckoutPage() {
             />
           )}
 
-          {/* Delivery（保持原样） */}
+          {/* Delivery */}
           {step === "delivery" && (
             <>
               {hasItems && itemsTotals.itemsMajor >= DELIVERY_FREE_THRESHOLD && (
@@ -725,7 +768,7 @@ export default function CheckoutPage() {
             </>
           )}
 
-          {/* Payment：始终挂载；非 payment 时固定在视口内且几乎透明，完成真实渲染 */}
+          {/* Payment：始终挂载；非 payment 时固定在视口内且几乎透明 */}
           <section
             className="rounded-xl border"
             aria-hidden={step !== "payment"}
@@ -747,7 +790,7 @@ export default function CheckoutPage() {
             <div className="px-4 py-3 border-b font-semibold">How would you like to pay?</div>
 
             <div className="p-4 space-y-6">
-              {/* Payment Options（只显示 PayPal 选中） */}
+              {/* Payment Options */}
               <div className="border rounded-lg p-4">
                 <h2 className="text-lg font-medium mb-4">Payment Options</h2>
                 <label className="flex items-center gap-3 w-full border rounded-md px-3 py-3 cursor-pointer border-black ring-1 ring-black">
@@ -826,7 +869,7 @@ export default function CheckoutPage() {
                 </div>
               </div>
 
-              {/* 只有一颗 PayPal 按钮（无外围边框） */}
+              {/* PayPal 按钮 */}
               <div className="p-4">
                 <div className="mx-auto w-[300px]">
                   {amountInMajorUnit > 0 ? (
@@ -853,27 +896,32 @@ export default function CheckoutPage() {
               </p>
             </div>
           </section>
+
+          {/* ✅ Back（放在支付 section 外部的下面） */}
+          {step === "payment" && (
+            <div className="px-4 pb-4 pt-2 flex justify-end">
+              <div className="w-[320px] max-w-full">
+                <LargeBackButton onClick={() => setStepAndURL("delivery")} />
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* 底部下一步条（非 payment 步骤时显示） */}
+        {/* 底部操作条（Address / Delivery 显示 Back + Continue；Bag 只有 Continue；Payment 无） */}
         {step !== "payment" && (
           <div className="mt-6 flex justify-end">
-            <div className="w-[320px] max-w-full">
-              {step === "bag" && (
-                <button
-                  onClick={() => router.push(`/auth/login?next=${encodeURIComponent("/checkout?step=address")}`)}
-                  className="mb-2 w-full rounded-full border bg-white px-6 py-3 text-sm font-semibold hover:bg-neutral-50"
-                >
-                  Log in / Sign in and Continue
-                </button>
-              )}
-              <button
-                onClick={nextStep}
-                className="w-full rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white hover:bg-neutral-800"
-              >
-                Continue
-              </button>
-            </div>
+            {step === "bag" ? (
+              <div className="w-[320px] max-w-full">
+                <LargePrimaryButton onClick={nextStep}>Continue</LargePrimaryButton>
+              </div>
+            ) : (
+              <div className="w-[660px] max-w-full flex gap-3 justify-end">
+                <LargeBackButton onClick={() => {
+                  setStepAndURL(step === "delivery" ? "address" : "bag");
+                }} />
+                <LargePrimaryButton onClick={nextStep}>Continue</LargePrimaryButton>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -900,7 +948,13 @@ function Row({
   return (
     <div className="flex items-center justify-between">
       <div className={[strongLeft ? "font-semibold" : "text-neutral-600"].join(" ")}>{label}</div>
-      <div className={[strongRight ? "font-semibold" : "", bigRight ? "text-lg" : "text-base", valueClass || ""].join(" ")}>
+      <div
+        className={[
+          strongRight ? "font-semibold" : "",
+          bigRight ? "text-lg" : "text-base",
+          valueClass || "",
+        ].join(" ")}
+      >
         {value}
       </div>
     </div>
