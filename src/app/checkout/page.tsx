@@ -85,7 +85,8 @@ const emptyErr: AddressErr = {
   email: false,
 };
 
-function validateAddress(a: Address, emailInput: string) {
+/** ✅ 新增：允许在“已登录”时不校验邮箱 */
+function validateAddress(a: Address, emailInput: string, ignoreEmail = false) {
   const errs: AddressErr = {
     firstName: t(a.firstName) === "",
     lastName: t(a.lastName) === "",
@@ -95,7 +96,7 @@ function validateAddress(a: Address, emailInput: string) {
     state: t(a.state) === "",
     postcode: !POSTCODE_RE.test(t(a.postcode)),
     country: t(a.country) === "",
-    email: !EMAIL_RE.test(t(emailInput || a.email)),
+    email: ignoreEmail ? false : !EMAIL_RE.test(t(emailInput || a.email)),
   };
   const valid = Object.values(errs).every((v) => v === false);
   return { valid, errs };
@@ -189,6 +190,8 @@ function AddressForm({
   errorBanner,
   onEmailCommit,
   onOptInChanged,
+  /** ✅ 新增：已登录时隐藏“Your Details”区块与营销勾选 */
+  hideYourDetails = false,
 }: {
   address: Address;
   setAddress: (a: Address) => void;
@@ -199,10 +202,9 @@ function AddressForm({
   showErrors: boolean;
   errs: AddressErr;
   errorBanner?: string | null;
-  /** Email 输入完成（onBlur）时触发，便于及时上报 */
   onEmailCommit?: (email: string) => void;
-  /** 勾选变更时触发，便于立即上报 */
   onOptInChanged?: (opt: boolean) => void;
+  hideYourDetails?: boolean;
 }) {
   const on =
     (k: keyof Address) =>
@@ -219,7 +221,7 @@ function AddressForm({
       <div className="border-b px-4 py-3 font-semibold">Address</div>
 
       <div className="p-4 space-y-6">
-        {/* 表单（无 placeholder，标签放上面；仅在 showErrors 时标红） */}
+        {/* 表单主体 */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1">
             <label htmlFor="addr-first" className="block text-sm font-medium text-neutral-700">
@@ -339,54 +341,56 @@ function AddressForm({
           </div>
         </div>
 
-        {/* Your Details（保留） */}
-        <div className="border rounded-lg p-4">
-          <h3 className="text-base font-medium mb-2">Your Details</h3>
-          <p className="text-sm text-neutral-600 mb-3">
-            Please enter your email address, we'll send your order confirmation here
-          </p>
+        {/* ✅ 已登录则隐藏 “Your Details” 区域 */}
+        {!hideYourDetails && (
+          <div className="border rounded-lg p-4">
+            <h3 className="text-base font-medium mb-2">Your Details</h3>
+            <p className="text-sm text-neutral-600 mb-3">
+              Please enter your email address, we'll send your order confirmation here
+            </p>
 
-          <label htmlFor="addr-email" className="block text-sm font-medium mb-1">
-            Email Address
-          </label>
-          <input
-            id="addr-email"
-            type="email"
-            className={cls(errs.email)}
-            autoComplete="email"
-            value={emailInput}
-            onChange={(e) => {
-              const v = e.currentTarget.value;
-              setEmailInput(v);
-              setAddress({ ...address, email: v });
-            }}
-            onBlur={(e) => onEmailCommit?.(e.currentTarget.value)}
-          />
-
-          <p className="mt-1 text-xs text-neutral-500">You can create an account after checkout</p>
-
-          <label className="mt-3 flex items-start gap-2 text-sm">
+            <label htmlFor="addr-email" className="block text-sm font-medium mb-1">
+              Email Address
+            </label>
             <input
-              type="checkbox"
-              className="mt-1"
-              checked={marketingOptIn}
+              id="addr-email"
+              type="email"
+              className={cls(errs.email)}
+              autoComplete="email"
+              value={emailInput}
               onChange={(e) => {
-                const v = e.currentTarget.checked;
-                setMarketingOptIn(v);
-                onOptInChanged?.(v);
+                const v = e.currentTarget.value;
+                setEmailInput(v);
+                setAddress({ ...address, email: v });
               }}
+              onBlur={(e) => onEmailCommit?.(e.currentTarget.value)}
             />
-            <span>Email me updates on New Arrivals, Sale and Offers</span>
-          </label>
 
-          <p className="mt-3 text-xs text-neutral-500">
-            * We treat your personal data with care, view our{" "}
-            <a className="underline" href="/privacy">
-              Privacy Policy
-            </a>
-            .
-          </p>
-        </div>
+            <p className="mt-1 text-xs text-neutral-500">You can create an account after checkout</p>
+
+            <label className="mt-3 flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={marketingOptIn}
+                onChange={(e) => {
+                  const v = e.currentTarget.checked;
+                  setMarketingOptIn(v);
+                  onOptInChanged?.(v);
+                }}
+              />
+              <span>Email me updates on New Arrivals, Sale and Offers</span>
+            </label>
+
+            <p className="mt-3 text-xs text-neutral-500">
+              * We treat your personal data with care, view our{" "}
+              <a className="underline" href="/privacy">
+                Privacy Policy
+              </a>
+              .
+            </p>
+          </div>
+        )}
 
         {/* 提交时错误提示（英文） */}
         {showErrors && errorBanner && (
@@ -495,36 +499,6 @@ function LargeBackButton({
     </button>
   );
 }
-
-/** ✅ 新增：白底边框按钮，用于“Login / Sign up and Continue” */
-function LargeSecondaryButton({
-  onClick,
-  children,
-  className = "",
-  disabled,
-}: {
-  onClick: () => void;
-  children: React.ReactNode;
-  className?: string;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={[
-        "rounded-full border bg-white px-6 py-3 text-sm font-semibold",
-        disabled ? "opacity-60 cursor-not-allowed" : "hover:bg-neutral-50",
-        "text-neutral-900 w-full",
-        className,
-      ].join(" ")}
-    >
-      {children}
-    </button>
-  );
-}
-
 function LargePrimaryButton({
   onClick,
   children,
@@ -553,6 +527,34 @@ function LargePrimaryButton({
     </button>
   );
 }
+/** ✅ 新增：白色“Login / Sign up and Continue”按钮样式 */
+function LargeGhostButton({
+  onClick,
+  children,
+  className = "",
+  disabled,
+}: {
+  onClick: () => void;
+  children: React.ReactNode;
+  className?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={[
+        "rounded-full border bg-white px-6 py-3 text-sm font-semibold w-full",
+        disabled ? "opacity-60 cursor-not-allowed" : "hover:bg-neutral-50",
+        "text-neutral-900",
+        className,
+      ].join(" ")}
+    >
+      {children}
+    </button>
+  );
+}
 
 /* ---------------- Page ---------------- */
 export default function CheckoutPage() {
@@ -568,6 +570,14 @@ export default function CheckoutPage() {
   // 勾选 & 邮箱本地状态
   const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [emailInput, setEmailInput] = useState<string>("");
+
+  // ✅ 新增：登录态（读取 presence/session cookie）
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const readLoginFromCookie = () => {
+    const cookie = typeof document !== "undefined" ? document.cookie || "" : "";
+    const has = /(?:^|;\s*)sp_has_session=1/.test(cookie) || /(?:^|;\s*)sp_session=/.test(cookie);
+    setIsLoggedIn(has);
+  };
 
   // Address 提交时校验：是否展示错误、错误对象
   const [addressShowErrors, setAddressShowErrors] = useState(false);
@@ -611,7 +621,7 @@ export default function CheckoutPage() {
     });
   }, []);
 
-  // 初始化本地缓存
+  // 初始化本地缓存 & 登录态
   useEffect(() => {
     try {
       const raw = localStorage.getItem(LS_CART_KEY);
@@ -625,7 +635,10 @@ export default function CheckoutPage() {
         setEmailInput(a?.email || "");
       }
     } catch {}
+    readLoginFromCookie();
+    window.addEventListener("focus", readLoginFromCookie);
     setLoaded(true);
+    return () => window.removeEventListener("focus", readLoginFromCookie);
   }, []);
 
   // 同步购物车 & 广播
@@ -708,7 +721,7 @@ export default function CheckoutPage() {
   const clientUTCOffsetMin = -new Date().getTimezoneOffset();
   const FORCE_CN_TZ = "Asia/Shanghai";
 
-  // ✅ 订阅（无论勾选与否，只要有 email 就上报；marketing_opt_in 反映当前勾选状态）
+  // ✅ 订阅（未登录仍允许；已登录隐藏 Your Details 时基本不会触发）
   async function sendSubscriptionIfNeeded(emailRaw?: string) {
     try {
       const email = (emailRaw || address?.email || emailInput || "").trim().toLowerCase();
@@ -716,7 +729,7 @@ export default function CheckoutPage() {
 
       const payload = {
         email,
-        marketing_opt_in: !!marketingOptIn, // 关键：携带 true/false
+        marketing_opt_in: !!marketingOptIn,
         source: "checkout",
         tz: FORCE_CN_TZ,
         meta: {
@@ -750,10 +763,10 @@ export default function CheckoutPage() {
     } catch {}
   }
 
-  // 点击 Continue：Address 步骤改为「提交时校验」，成功后顺便上报一次（兜底）
+  // 点击 Continue：Address 步骤改为“提交时校验”
   const handleContinue = () => {
     if (step === "address") {
-      const { valid, errs } = validateAddress(address, emailInput);
+      const { valid, errs } = validateAddress(address, emailInput, /* ignoreEmail */ isLoggedIn);
       if (!valid) {
         setAddressErrs(errs);
         setAddressShowErrors(true);
@@ -764,8 +777,8 @@ export default function CheckoutPage() {
       setAddressShowErrors(false);
       setAddressErrs(emptyErr);
 
-      // ✅ 校验通过后兜底上报（无论勾选与否）
-      void sendSubscriptionIfNeeded();
+      // 未登录时才会上报（通常用于游客）
+      if (!isLoggedIn) void sendSubscriptionIfNeeded();
     }
     nextStepCore();
   };
@@ -789,15 +802,19 @@ export default function CheckoutPage() {
       );
     } catch {}
 
-    // ✅ 成功后再上报一次（不影响跳转）
     sendSubscriptionIfNeeded().finally(() => {
       router.push(CONFIRM_PATH);
     });
   };
 
   const handlePayInitiated = () => {
-    // ✅ 发起支付前也上报一次
     void sendSubscriptionIfNeeded();
+  };
+
+  // ✅ 新增：登录 / 注册并继续
+  const handleLoginAndContinue = () => {
+    const next = "/checkout?step=address";
+    router.push(`/auth/login?next=${encodeURIComponent(next)}`);
   };
 
   return (
@@ -894,6 +911,7 @@ export default function CheckoutPage() {
               errorBanner={addressShowErrors ? "Some required fields are missing or invalid." : null}
               onEmailCommit={(email) => sendSubscriptionIfNeeded(email)}
               onOptInChanged={(_opt) => sendSubscriptionIfNeeded()}
+              hideYourDetails={isLoggedIn}   // ✅ 已登录隐藏 Your Details
             />
           )}
 
@@ -990,7 +1008,7 @@ export default function CheckoutPage() {
 
               {/* 订单摘要 */}
               <div className="border rounded-lg p-4 space-y-3">
-                <div className="flex items中心 justify-between">
+                <div className="flex items-center justify-between">
                   <div className="text-sm text-gray-600">Items</div>
                   <div className="text-base font-medium">
                     {itemsCount} item{itemsCount > 1 ? "s" : ""}
@@ -1054,21 +1072,22 @@ export default function CheckoutPage() {
           )}
         </div>
 
-        {/* 底部操作条（Address / Delivery 显示 Back + Continue；Bag 新增 Login/Sign up；Payment 无） */}
+        {/* 底部操作条 */}
         {step !== "payment" && (
           <div className="mt-6 flex justify-end">
             {step === "bag" ? (
-              // ✅ 这里改成两个按钮：白色“Login / Sign up and Continue” + 黑色 Continue
-              <div className="w-[660px] max-w-full flex gap-3 justify-end">
-                <LargeSecondaryButton
-                  onClick={() => {
-                    const next = `/auth/login?next=${encodeURIComponent("/checkout")}`;
-                    router.push(next);
-                  }}
-                >
-                  Login / Sign up and Continue
-                </LargeSecondaryButton>
-                <LargePrimaryButton onClick={handleContinue}>Continue</LargePrimaryButton>
+              // ✅ 未登录：左白右黑；已登录：只显示 Continue
+              <div className={isLoggedIn ? "w-[320px] max-w-full" : "w-[660px] max-w-full flex gap-3 justify-end"}>
+                {!isLoggedIn && (
+                  <div className="w-[320px]">
+                    <LargeGhostButton onClick={handleLoginAndContinue}>
+                      Login / Sign up and Continue
+                    </LargeGhostButton>
+                  </div>
+                )}
+                <div className="w-[320px]">
+                  <LargePrimaryButton onClick={handleContinue}>Continue</LargePrimaryButton>
+                </div>
               </div>
             ) : (
               <div className="w-[660px] max-w-full flex gap-3 justify-end">

@@ -558,6 +558,253 @@ Cloudflare D1 数据库（类似 SQLite / PostgreSQL）
 
     ```
 
+# 12. 数据库储存结构
+
+### 12.1 订单储存结构
+
+    ```bash
+    下面是三张表（orders、order_items、order_payments）中每个列（column）的“用途说明 + 类型/取值建议 + 备注”。我按表 → 列名：含义的格式写，方便你直接复制粘贴进文档里使用（无表格）。
+
+    orders（订单主表）
+
+    id：数据库自增主键。
+    类型：INTEGER PRIMARY KEY AUTOINCREMENT。
+    备注：内部用，不对外暴露；用于与 order_items、order_payments 关联。
+
+    order_no：对外展示的订单编号。
+    类型：TEXT UNIQUE。
+    用途：给用户/客服/对账使用的人类可读订单号，比如 SP20251012-000123。
+    生成：通常在插入订单后由后端基于 id 与日期生成并回写。
+
+    user_id：下单用户的 users.id。
+    类型：INTEGER（可空）。
+    用途：关联已注册用户；游客下单为 NULL。
+    外键：FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL。
+
+    email：联系邮箱（下单邮箱）。
+    类型：TEXT NOT NULL。
+    用途：发送确认邮件、作为游客识别辅助；即使已登录也冗余存一份快照。
+
+    status：订单状态。
+    类型：TEXT NOT NULL，默认 'paid'。
+    典型取值：'pending' | 'paid' | 'failed' | 'refunded' | 'canceled' | 'closed' 等。
+    备注：最小可用可以只用 'paid'，后续按业务扩展。
+
+    currency：货币代码。
+    类型：TEXT NOT NULL。
+    取值：ISO 4217（如 'AUD'、'USD'、'CNY'）。
+    备注：与价格字段一起使用，统一以该货币结算。
+
+    items_total_minor：商品小计（分）。
+    类型：INTEGER NOT NULL。
+    含义：所有行项目小计的“最小货币单位”总和，比如 AUD 的 1760 表示 17.60 AUD。
+    备注：不要存浮点数，统一用整数最小单位。
+
+    delivery_fee_minor：运费（分）。
+    类型：INTEGER NOT NULL，默认 0。
+    含义：运费金额（最小单位），免运费则为 0。
+
+    tax_minor：税费（分）。
+    类型：INTEGER NOT NULL，默认 0。
+    含义：订单层面的税额（最小单位）。如已含税可保持 0。
+
+    discount_minor：折扣（分）。
+    类型：INTEGER NOT NULL，默认 0。
+    含义：订单层面的优惠合计（最小单位），为正值表示减少金额。
+    备注：行级折扣已体现在 order_items.price_minor 里时，这里可为 0。
+
+    grand_total_minor：订单总额（分）。
+    类型：INTEGER NOT NULL。
+    含义：应付/实付的合计金额（最小单位），通常 = items_total_minor + delivery_fee_minor + tax_minor - discount_minor。
+    备注：与支付方金额对齐非常关键。
+
+    delivery_method：配送方式。
+    类型：TEXT（可空）。
+    取值示例：'standard' | 'express' | 'pickup'。
+    备注：存快照，避免后续配置变化影响历史订单。
+
+    shipping_address_json：收货地址快照（JSON）。
+    类型：TEXT（可空）。
+    内容示例：{"firstName":"A","lastName":"B","line1":"...","city":"...","postcode":"...","country":"..."}。
+    备注：下单当时的地址快照，不依赖用户资料变更。
+
+    billing_address_json：账单地址快照（JSON）。
+    类型：TEXT（可空）。
+    用途：与配送地址可能不同；若相同可重复存或置空。
+
+    cart_snapshot_json：购物车快照（JSON）。
+    类型：TEXT（可空）。
+    用途：可选；存下单时前端购物车结构的原样快照，方便排查问题。
+
+    payment_provider：支付渠道标识。
+    类型：TEXT NOT NULL。
+    取值示例：'paypal-braintree' | 'stripe' | 'adyen'。
+    备注：用于多支付通道时区分来源。
+
+    payment_id：第三方支付的交易号/ID。
+    类型：TEXT NOT NULL。
+    用途：与支付网关对账，作为幂等键之一。
+    索引：唯一索引 ux_orders_payment_id，防止重复入库。
+
+    idempotency_key：幂等键（应用层）。
+    类型：TEXT（可空）。
+    用途：前端或服务端生成（如 crypto.randomUUID()），用于网络重试去重。
+    索引：唯一索引（可选）ux_orders_idem，允许为 NULL。
+
+    created_at：创建时间（秒）。
+    类型：INTEGER NOT NULL，默认 strftime('%s','now')。
+    备注：UNIX 时间戳（秒）。
+
+    updated_at：更新时间（秒）。
+    类型：INTEGER NOT NULL，默认 strftime('%s','now')。
+    备注：更新时请同步写入当前时间。
+
+    索引建议：
+
+    CREATE UNIQUE INDEX ux_orders_payment_id ON orders(payment_id);
+
+    CREATE UNIQUE INDEX ux_orders_idem ON orders(idempotency_key);
+
+    CREATE INDEX idx_orders_user ON orders(user_id);
+
+    order_items（订单行项目）
+
+    id：数据库自增主键。
+    类型：INTEGER PRIMARY KEY AUTOINCREMENT。
+    用途：内部标识。
+
+    order_id：所属订单的 orders.id。
+    类型：INTEGER NOT NULL。
+    外键：FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE。
+    备注：级联删除订单时自动删除行项目。
+
+    product_id：商品/变体在商品系统（如 Strapi）的标识。
+    类型：TEXT（可空）。
+    示例："strapi:products:123" 或具体变体 ID。
+    备注：用 TEXT 更灵活，避免跨系统耦合。
+
+    sku：库存单位编码。
+    类型：TEXT（可空）。
+    用途：对接仓储/发货时常用；没有可留空。
+
+    title：商品标题（快照）。
+    类型：TEXT NOT NULL。
+    用途：下单时的标题快照，商品后改名也不影响历史订单。
+
+    variant：规格描述。
+    类型：TEXT（可空）。
+    示例："Size 42 / Chocolate"；无规格可留空。
+
+    qty：购买数量。
+    类型：INTEGER NOT NULL。
+    备注：应为正整数。
+
+    price_minor：单价（分）。
+    类型：INTEGER NOT NULL。
+    含义：行级“最终成交价”的单件价格（最小单位），已包含行级折扣/促销后的结果。
+    备注：避免浮点；保存下单当时的价格快照。
+
+    subtotal_minor：行小计（分）。
+    类型：INTEGER NOT NULL。
+    含义：通常等于 price_minor * qty（最小单位）。
+    备注：冗余存储便于查询统计，注意与 qty/price_minor 保持一致。
+
+    meta_json：附加元数据（JSON）。
+    类型：TEXT（可空）。
+    示例：{"image":"...","category":"Shoes","attributes":{"color":"Chocolate","size":"42"}}。
+
+    索引建议：
+
+    CREATE INDEX idx_order_items_order ON order_items(order_id);
+
+    order_payments（支付明细，推荐但可选）
+
+    id：数据库自增主键。
+    类型：INTEGER PRIMARY KEY AUTOINCREMENT。
+    用途：内部标识。
+
+    order_id：关联订单 orders.id。
+    类型：INTEGER NOT NULL。
+    外键：FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE。
+    用途：同一订单可能有多次支付尝试/部分退款等。
+
+    provider：支付渠道标识。
+    类型：TEXT NOT NULL。
+    示例：'paypal-braintree' | 'stripe' | 'adyen'。
+    备注：与 orders.payment_provider 一致或更细粒度。
+
+    payment_id：第三方支付交易号/ID。
+    类型：TEXT NOT NULL UNIQUE。
+    用途：对账用；唯一保证同一支付不重复写入。
+
+    amount_minor：本次支付金额（分）。
+    类型：INTEGER NOT NULL。
+    用途：单次授权/扣款/退款的金额（最小单位）。
+    备注：对于部分退款/多次扣款等场景很有用。
+
+    currency：货币代码。
+    类型：TEXT NOT NULL。
+    取值：ISO 4217（如 'AUD'）。
+    备注：应与订单币种一致；跨币种极少见，建议避免。
+
+    status：支付状态。
+    类型：TEXT NOT NULL。
+    典型取值：'authorized' | 'captured' | 'paid' | 'failed' | 'voided' | 'refunded' | 'partially_refunded'。
+    备注：按实际网关语义映射。
+
+    raw_payload_json：网关返回的原始负载（JSON）。
+    类型：TEXT（可空）。
+    用途：保存支付成功/失败的完整响应，便于排障与对账审计。
+    备注：注意敏感信息（如卡号/token）遮蔽或遵守合规。
+
+    created_at：创建时间（秒）。
+    类型：INTEGER NOT NULL，默认 strftime('%s','now')。
+    用途：记录每一次支付事件时间线。
+
+    索引建议：
+
+    CREATE UNIQUE INDEX 已在 payment_id 上；如需查询订单维度流水，还可：
+    CREATE INDEX idx_order_payments_order ON order_payments(order_id);（可选）
+
+    交叉与实现建议（非列，但很重要）
+
+    最小货币单位（*_minor）：所有金额统一存整数，单位为“分/最小单位”。展示时再除以 100 并格式化，避免浮点误差。
+
+    幂等：至少用 orders.payment_id 唯一；如果前端会重试请求，建议同时携带 idempotency_key 并在 orders 上加唯一索引。
+
+    快照字段：title/price_minor/variant、shipping_address_json、billing_address_json 都是下单时快照，与商品/用户后续变动解耦。
+
+    游客支持：orders.user_id 允许 NULL，但 email 必填；如后续用户注册，可通过邮箱或订单号在用户中心做“认领/绑定”流程。
+
+    对账：orders.payment_id ↔ 网关后台；order_payments.raw_payload_json 保留证据链。
+
+    数据更新：orders.updated_at 请在状态或金额变更时刷新；order_items 一般下单后不再改动。
+
+    删除策略：生产上通常不允许硬删除历史订单；若必须删除，使用 ON DELETE CASCADE 能确保行项目/支付记录被一致清理，但请谨慎。
+
+    如果你需要，我可以基于你当前 Worker，直接补一个 /orders 的入库接口（带幂等校验），并给出“可粘贴”的完整代码与一个 SQL 迁移文件。
+
+
+    ```
+
+
+    ```bash
+    为什么这样设计？
+
+
+    支持游客：user_id 可空，同时把 email、地址快照、商品价格快照都落库，订单可独立完整复现。
+
+    幂等安全：对 payment_id（如 Braintree/PayPal 的交易号）建唯一索引；可额外使用 idempotency_key 处理前端/网络重试。
+
+    回溯价目：行项目保存当时价格与标题，后续改价或下架也不影响历史订单。
+
+    扩展性：未来要做退款、部分退款、拆单、重新发货，有 order_payments/status 就比较好演进。
+
+
+    ```
+
+### 12.2 订单储存结构
+
 # ============================================================================
 
 # ============================================================================
@@ -587,6 +834,12 @@ ENABLE_STRIPE=false
 
 如果要在 D1 数据库中建立新的表：
 首先添加新的文件到 migrations 文件夹
+
+关掉正在运行的 dev 进程（如果有）
+
+删除本地 D1 数据库缓存目录（Windows 下在项目根）：
+rmdir /s /q .wrangler\state\v3\d1
+
 wrangler d1 migrations apply socialplatform
 wrangler d1 migrations apply socialplatform --remote
 
@@ -644,6 +897,16 @@ checkout 页面里的每个页面都是依次点击的
 返回上一页，正则化
 
 注册账号的时候勾选是否 subscribe
+
+如果注册账号的时候邮箱已经被使用，弹出提示
+
+结账的时候把结账信息储存到数据库中 （currency）
+
+结账的时候自动发 order confirmation email
+
+每个账号缓存的 bag 里的物品不一样，还有爱心 icon wishlist
+
+设置默认地址
 
 很好，在此基础上，我打算把我的用户账号功能和我的 email_subscriptions 结合在一起，我给你的第一张截图和第二张截图是我的 d1 数据库中的两张表，第一张截图是我的 users 表，负责储存用户的账号信息，例如账号的邮箱，密码之类的信息，然后第二张截图就是我们刚才使用的 email_subscriptions 表，负责储存 email_subscriptions 的信息
 
