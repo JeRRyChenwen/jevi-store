@@ -495,6 +495,36 @@ function LargeBackButton({
     </button>
   );
 }
+
+/** ✅ 新增：白底边框按钮，用于“Login / Sign up and Continue” */
+function LargeSecondaryButton({
+  onClick,
+  children,
+  className = "",
+  disabled,
+}: {
+  onClick: () => void;
+  children: React.ReactNode;
+  className?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={[
+        "rounded-full border bg-white px-6 py-3 text-sm font-semibold",
+        disabled ? "opacity-60 cursor-not-allowed" : "hover:bg-neutral-50",
+        "text-neutral-900 w-full",
+        className,
+      ].join(" ")}
+    >
+      {children}
+    </button>
+  );
+}
+
 function LargePrimaryButton({
   onClick,
   children,
@@ -960,7 +990,7 @@ export default function CheckoutPage() {
 
               {/* 订单摘要 */}
               <div className="border rounded-lg p-4 space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex items中心 justify-between">
                   <div className="text-sm text-gray-600">Items</div>
                   <div className="text-base font-medium">
                     {itemsCount} item{itemsCount > 1 ? "s" : ""}
@@ -1024,11 +1054,20 @@ export default function CheckoutPage() {
           )}
         </div>
 
-        {/* 底部操作条（Address / Delivery 显示 Back + Continue；Bag 只有 Continue；Payment 无） */}
+        {/* 底部操作条（Address / Delivery 显示 Back + Continue；Bag 新增 Login/Sign up；Payment 无） */}
         {step !== "payment" && (
           <div className="mt-6 flex justify-end">
             {step === "bag" ? (
-              <div className="w-[320px] max-w-full">
+              // ✅ 这里改成两个按钮：白色“Login / Sign up and Continue” + 黑色 Continue
+              <div className="w-[660px] max-w-full flex gap-3 justify-end">
+                <LargeSecondaryButton
+                  onClick={() => {
+                    const next = `/auth/login?next=${encodeURIComponent("/checkout")}`;
+                    router.push(next);
+                  }}
+                >
+                  Login / Sign up and Continue
+                </LargeSecondaryButton>
                 <LargePrimaryButton onClick={handleContinue}>Continue</LargePrimaryButton>
               </div>
             ) : (
