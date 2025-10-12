@@ -1,3 +1,4 @@
+// D:\前端练习\social-platform\src\app\auth\register\page.tsx
 "use client";
 
 import { useForm } from "react-hook-form";
@@ -9,11 +10,13 @@ import { Label } from "@/components/ui/label";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { useState } from "react";
 
-// ✅ 和后端校验一致：密码至少 8 位
+// ✅ 校验保持不变（密码至少 8 位）
 const schema = z.object({
   username: z.string().min(3, "用户名至少3位"),
   email: z.string().email("请输入有效的邮箱"),
   password: z.string().min(8, "密码至少8位"),
+  // 订阅勾选：可选布尔
+  marketingOptIn: z.boolean().optional(),
 });
 
 type RegisterFormData = z.infer<typeof schema>;
@@ -25,6 +28,7 @@ export default function RegisterPage() {
     formState: { errors },
   } = useForm<RegisterFormData>({
     resolver: zodResolver(schema),
+    defaultValues: { marketingOptIn: false },
   });
 
   const [loading, setLoading] = useState(false);
@@ -35,17 +39,18 @@ export default function RegisterPage() {
     setErrorMessage("");
 
     try {
-      // ✅ 把 username 映射为后端期望的 name；bio 可选，这里不传
+      // ✅ 把 username 映射为后端期望的 name；把勾选结果作为 marketing_opt_in 一并提交
       const payload = {
         email: data.email,
         password: data.password,
         name: data.username,
+        marketing_opt_in: !!data.marketingOptIn,
       };
 
       const base = process.env.NEXT_PUBLIC_API_BASE;
       if (!base) throw new Error("缺少 NEXT_PUBLIC_API_BASE 环境变量");
 
-      // ✅ 直接调用 Worker 的 /auth/register
+      // 调用 Worker 的 /auth/register（后端会根据 marketing_opt_in 自动 upsert 订阅）
       const res = await fetch(`${base}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -55,11 +60,10 @@ export default function RegisterPage() {
       const json = await res.json().catch(() => ({} as any));
 
       if (!res.ok) {
-        // 后端错误格式为 { error: string }
         throw new Error(json?.error || "注册失败");
       }
 
-      // 成功后跳转到登录页（按你的路由习惯调整）
+      // 成功后跳转登录
       window.location.href = "/auth/login";
     } catch (error: unknown) {
       if (error instanceof Error) setErrorMessage(error.message);
@@ -100,6 +104,25 @@ export default function RegisterPage() {
               {errors.password && (
                 <p className="text-red-500 text-sm">{errors.password.message}</p>
               )}
+            </div>
+
+            {/* ✅ 英文文案（与截图一致） */}
+            <div className="space-y-2 pt-1">
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  {...register("marketingOptIn")}
+                />
+                <span>Email me updates on New Arrivals, Sale and Offers</span>
+              </label>
+              <p className="text-xs text-neutral-500">
+                * We treat your personal data with care, view our{" "}
+                <a href="/privacy" className="underline">
+                  Privacy Policy
+                </a>
+                .
+              </p>
             </div>
 
             {errorMessage && <p className="text-red-500">{errorMessage}</p>}
