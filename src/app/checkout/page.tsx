@@ -85,7 +85,7 @@ const emptyErr: AddressErr = {
   email: false,
 };
 
-/** ✅ 新增：允许在“已登录”时不校验邮箱 */
+/** ✅ 允许在“已登录”时不校验邮箱 */
 function validateAddress(a: Address, emailInput: string, ignoreEmail = false) {
   const errs: AddressErr = {
     firstName: t(a.firstName) === "",
@@ -190,7 +190,7 @@ function AddressForm({
   errorBanner,
   onEmailCommit,
   onOptInChanged,
-  /** ✅ 新增：已登录时隐藏“Your Details”区块与营销勾选 */
+  /** ✅ 已登录时隐藏“Your Details”区块与营销勾选 */
   hideYourDetails = false,
 }: {
   address: Address;
@@ -527,7 +527,7 @@ function LargePrimaryButton({
     </button>
   );
 }
-/** ✅ 新增：白色“Login / Sign up and Continue”按钮样式 */
+/** ✅ 白色“Login / Sign up and Continue”按钮样式 */
 function LargeGhostButton({
   onClick,
   children,
@@ -554,6 +554,115 @@ function LargeGhostButton({
       {children}
     </button>
   );
+}
+
+/* ========= ✅ 成功支付后把订单发送给 Worker（返回 order_id） ========= */
+async function sendOrderToServer(args: {
+  cart: any[];
+  address: Address;
+  currency: string;
+  itemsMinor: number;
+  deliveryFeeMinor: number;
+  taxMinor?: number;
+  grandMinor: number;
+  paypalPayload: any;
+  deliveryMethod?: "standard" | "express";
+}): Promise<{ ok: boolean; order_id?: number | null }> {
+  try {
+    const target = REMOTE_BASE ? `${REMOTE_BASE}/orders` : apiURL("/orders");
+
+    // 从购物车构造 order_items（尽量用 effectiveMinor 作为单价）
+    const items = (args.cart || []).map((it: any) => {
+      const recs = itemToPriceRecs(it);
+      const rec = recs.find((r) => r.currency === (args.currency as Currency));
+      const unitMinor = rec ? effectiveMinor(rec) : Math.round(Number(it?.price || 0) * 100);
+      const qty = Math.max(1, Number(it?.qty) || 1);
+      const lineMinor = unitMinor * qty;
+
+      return {
+        product_id: it?.id ?? null,
+        product_sku: it?.sku ?? null,
+        product_title: String(it?.title || it?.name || "Item"),
+        variant_title: it?.variant || [it?.color, it?.size].filter(Boolean).join(" / ") || null,
+        qty,
+        currency: args.currency,
+        unit_price_minor: unitMinor,
+        line_total_minor: lineMinor,
+        discount_minor: 0,
+        tax_minor: 0,
+        snapshot: {
+          slug: it?.slug ?? null,
+          image: it?.image || it?.img || null,
+          attrs: {
+            color: it?.color ?? null,
+            size: it?.size ?? null,
+            ...(it?.attrs || {}),
+          },
+        },
+      };
+    });
+
+    const txnId =
+      args.paypalPayload?.id ||
+      args.paypalPayload?.transaction?.id ||
+      args.paypalPayload?.paypalTransactionId ||
+      null;
+
+    const body = {
+      email: args.address?.email || "",
+      first_name: args.address?.firstName || null,
+      last_name: args.address?.lastName || null,
+      phone: args.address?.phone || null,
+      addr_line1: args.address?.line1 || null,
+      addr_line2: args.address?.line2 || null,
+      addr_city: args.address?.city || null,
+      addr_state: args.address?.state || null,
+      addr_postcode: args.address?.postcode || null,
+      addr_country: args.address?.country || null,
+
+      currency: args.currency,
+      items_total_minor: Number(args.itemsMinor) || 0,
+      delivery_fee_minor: Number(args.deliveryFeeMinor) || 0,
+      discount_minor: 0,
+      tax_minor: Number(args.taxMinor || 0),
+      grand_total_minor: Number(args.grandMinor) || 0,
+
+      delivery_method: args.deliveryMethod ?? "standard", // 若 orders 无该列，Worker 会写 meta.delivery_method
+
+      items,
+
+      payment: {
+        provider: "paypal",
+        provider_txn_id: txnId,
+        amount_minor: Number(args.grandMinor) || 0,
+        currency: args.currency,
+        status: "captured",
+        captured_at: Math.floor(Date.now() / 1000),
+        raw: args.paypalPayload || null,
+      },
+
+      notes: null,
+      meta: { step: "payment", path: "/checkout" },
+    };
+
+    const res = await fetch(target, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      credentials: "include", // 让 session cookie 带上（已登录可关联 user_id）
+      keepalive: true,
+      body: JSON.stringify(body),
+    }).catch(() => null);
+
+    if (!res) return { ok: false };
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data && typeof data.order_id !== "undefined") {
+      return { ok: true, order_id: data.order_id ?? null };
+    }
+    return { ok: false };
+  } catch (e) {
+    console.error("[orders] persist error:", e);
+    return { ok: false };
+  }
 }
 
 /* ---------------- Page ---------------- */
@@ -785,13 +894,33 @@ export default function CheckoutPage() {
 
   const itemsCount = cart.reduce((n, it: any) => n + (it?.qty ?? 1), 0);
 
-  // 支付成功 → 确认页
-  const handlePaySucceeded = (payload?: any) => {
+  // ✅ 支付成功 → 先尝试落库（拿 order_id）→ 存预览与 orderId → 清空购物车 → 跳转确认页
+  const handlePaySucceeded = async (payload?: any) => {
+    let orderId: number | null | undefined = null;
+
+    try {
+      const persist = await sendOrderToServer({
+        cart,
+        address,
+        currency,
+        itemsMinor: itemsTotals.itemsMinor,
+        deliveryFeeMinor: deliveryFeeMinor,
+        taxMinor: 0,
+        grandMinor: totalMinor,
+        paypalPayload: payload,
+        deliveryMethod,
+      });
+      orderId = persist.order_id ?? null;
+    } catch (e) {
+      console.warn("[checkout] /orders persist failed, continue to confirmation anyway", e);
+    }
+
     try {
       sessionStorage.setItem(
         "last-order-preview",
         JSON.stringify({
           ts: Date.now(),
+          orderId: orderId ?? null,
           currency,
           totalMinor,
           items: cart,
@@ -802,6 +931,15 @@ export default function CheckoutPage() {
       );
     } catch {}
 
+    // 可选：清空购物车（已经成功支付）
+    try {
+      setCart([]);
+      localStorage.setItem(LS_CART_KEY, JSON.stringify([]));
+      window.dispatchEvent(new CustomEvent("bag:count", { detail: { count: 0 } }));
+      window.dispatchEvent(new CustomEvent("bag:updated", { detail: {} }));
+    } catch {}
+
+    // 订阅埋点 & 跳转
     sendSubscriptionIfNeeded().finally(() => {
       router.push(CONFIRM_PATH);
     });
@@ -811,7 +949,7 @@ export default function CheckoutPage() {
     void sendSubscriptionIfNeeded();
   };
 
-  // ✅ 新增：登录 / 注册并继续
+  // ✅ 登录 / 注册并继续
   const handleLoginAndContinue = () => {
     const next = "/checkout?step=address";
     router.push(`/auth/login?next=${encodeURIComponent(next)}`);
@@ -975,11 +1113,9 @@ export default function CheckoutPage() {
                   <span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-white">
                     <Check size={14} />
                   </span>
-                  <div>
-                    <div className="font-medium">Make sure your delivery address is correct!</div>
-                    <div className="text-gray-600">You can go back to the Address step to make changes.</div>
-                  </div>
                 </div>
+                <div className="font-medium">Make sure your delivery address is correct!</div>
+                <div className="text-gray-600">You can go back to the Address step to make changes.</div>
               </div>
 
               {/* Delivery Details（摘要） */}
