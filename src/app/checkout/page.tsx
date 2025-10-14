@@ -86,7 +86,7 @@ const emptyErr: AddressErr = {
   email: false,
 };
 
-/** ✅ 允许在“已登录或已存在邮箱”时不校验邮箱 */
+/** ✅ 允许在“已登录或地址中已有邮箱”时不校验邮箱 */
 function validateAddress(a: Address, emailInput: string, ignoreEmail = false) {
   const errs: AddressErr = {
     firstName: t(a.firstName) === "",
@@ -567,9 +567,9 @@ async function sendOrderToServer(args: {
   deliveryMethod?: "standard" | "express";
 }): Promise<{ ok: boolean; order_id?: number | null }> {
   try {
-    const target = REMOTE_BASE ? `${REMOTE_BASE}/orders` : apiURL("/orders");
+    const target = "/api/orders"; // 固定走 Next 代理，这样会自动带上 3000 域的 Cookie
 
-    // 从购物车构造 order_items
+    // 从购物车构造 order_items（尽量用 effectiveMinor 作为单价）
     const items = (args.cart || []).map((it: any) => {
       const recs = itemToPriceRecs(it);
       const rec = recs.find((r) => r.currency === (args.currency as Currency));
@@ -591,11 +591,7 @@ async function sendOrderToServer(args: {
         snapshot: {
           slug: it?.slug ?? null,
           image: it?.image || it?.img || null,
-          attrs: {
-            color: it?.color ?? null,
-            size: it?.size ?? null,
-            ...(it?.attrs || {}),
-          },
+          attrs: { color: it?.color ?? null, size: it?.size ?? null, ...(it?.attrs || {}) },
         },
       };
     });
@@ -650,13 +646,34 @@ async function sendOrderToServer(args: {
       credentials: "include", // ★ 把登录 cookie 带上
       keepalive: true,
       body: JSON.stringify(body),
-    }).catch(() => null);
+    }).catch((e) => {
+      console.error("[orders] network error:", e);
+      return null as unknown as Response;
+    });
 
     if (!res) return { ok: false };
-    const data = await res.json().catch(() => ({}));
+
+    // 更友好的错误打印：尝试解析 JSON，否则回退到 text
+    let data: any = null;
+    let text: string | null = null;
+    try {
+      data = await res.clone().json();
+    } catch {
+      try {
+        text = await res.text();
+      } catch {}
+    }
+
     if (res.ok && data && typeof data.order_id !== "undefined") {
       return { ok: true, order_id: data.order_id ?? null };
     }
+
+    console.error("[orders] server error:", {
+      status: res.status,
+      data,
+      text,
+    });
+
     return { ok: false };
   } catch (e) {
     console.error("[orders] persist error:", e);
@@ -753,7 +770,9 @@ export default function CheckoutPage() {
           setAddress((a) => {
             if (a.email) return a;
             const next = { ...a, email: authedEmail };
-            try { localStorage.setItem(LS_ADDRESS_KEY, JSON.stringify(next)); } catch {}
+            try {
+              localStorage.setItem(LS_ADDRESS_KEY, JSON.stringify(next));
+            } catch {}
             return next;
           });
         }
@@ -923,7 +942,9 @@ export default function CheckoutPage() {
         orderAddress.email = authedEmail;
         setAddress(orderAddress);
         setEmailInput((prev) => prev || authedEmail);
-        try { localStorage.setItem(LS_ADDRESS_KEY, JSON.stringify(orderAddress)); } catch {}
+        try {
+          localStorage.setItem(LS_ADDRESS_KEY, JSON.stringify(orderAddress));
+        } catch {}
       }
     }
 
