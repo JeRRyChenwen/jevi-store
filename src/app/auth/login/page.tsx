@@ -38,8 +38,10 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginFormData) => {
     setErrorMessage("");
 
+    const email = data.email.trim().toLowerCase();
     const payload = {
-      email: data.email.trim().toLowerCase(),
+      email,                // 后端支持 email
+      identifier: email,    // 也同时放到 identifier，兼容“用户名/邮箱二选一”登录
       password: data.password,
     };
 
@@ -51,7 +53,10 @@ export default function LoginPage() {
       // 1) 调用本地 /api/auth/login，让本地域写入会话 Cookie
       const res = await fetch(buildAuth("/auth/login"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          "accept": "application/json",          // ← 小补充
+        },
         credentials: "include",
         cache: "no-store",
         body: JSON.stringify(payload),
@@ -76,6 +81,7 @@ export default function LoginPage() {
           const r = await fetch(buildAuth("/auth/me"), {
             credentials: "include",
             cache: "no-store",
+            headers: { accept: "application/json" },
           });
           if (process.env.NODE_ENV !== "production") {
             console.log(`[Login] /api/auth/me attempt delay=${delay} status=${r.status}`);
@@ -84,7 +90,6 @@ export default function LoginPage() {
             ready = true;
             break;
           }
-          // 204 = 还未就绪；其它错误继续尝试
         } catch (e) {
           if (process.env.NODE_ENV !== "production") {
             console.warn("[Login] /api/auth/me error:", e);
@@ -103,10 +108,8 @@ export default function LoginPage() {
         localStorage.setItem("sp_auth_ping", `${Date.now()}`);
       } catch {}
 
-      // 4) 使用“硬跳转”更稳，避免 RSC 软导航失败
+      // 4) 使用“硬跳转”更稳
       window.location.href = nextUrl;
-      // 如果你更想保持 SPA，可用 router.push(nextUrl)，但可能再次触发你之前的 RSC 载荷问题：
-      // router.push(nextUrl);
     } catch (err: any) {
       if (process.env.NODE_ENV !== "production") {
         console.error("[Login] error:", err);
@@ -126,33 +129,17 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div>
               <Label htmlFor="email">邮箱</Label>
-              <Input
-                id="email"
-                type="email"
-                autoComplete="email"
-                {...register("email")}
-              />
-              {errors.email && (
-                <p className="text-red-500 text-sm mt-1">{errors.email.message}</p>
-              )}
+              <Input id="email" type="email" autoComplete="email" {...register("email")} />
+              {errors.email && <p className="text-red-500 text-sm mt-1">{errors.email.message}</p>}
             </div>
 
             <div>
               <Label htmlFor="password">密码</Label>
-              <Input
-                id="password"
-                type="password"
-                autoComplete="current-password"
-                {...register("password")}
-              />
-              {errors.password && (
-                <p className="text-red-500 text-sm mt-1">{errors.password.message}</p>
-              )}
+              <Input id="password" type="password" autoComplete="current-password" {...register("password")} />
+              {errors.password && <p className="text-red-500 text-sm mt-1">{errors.password.message}</p>}
             </div>
 
-            {errorMessage && (
-              <p className="text-red-600 text-sm">{errorMessage}</p>
-            )}
+            {errorMessage && <p className="text-red-600 text-sm">{errorMessage}</p>}
 
             <Button type="submit" disabled={isSubmitting} className="w-full">
               {isSubmitting ? "登录中..." : "登录"}

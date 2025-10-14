@@ -19,7 +19,8 @@ import SearchOverlay from "@/components/search/SearchOverlay";
 // ✅ 用全局单例版的 BagButton
 import BagButton from "@/components/bag/BagButton";
 
-type User = { id: string; email: string; name?: string | null };
+// 让 email 可选，避免类型导致的误用
+type User = { id: string; email?: string; name?: string | null };
 
 /* ============ 基址 ============ */
 const ENV_BASE = (process.env.NEXT_PUBLIC_API_BASE || "").trim();
@@ -57,9 +58,17 @@ function hasSessionCookie() {
   const c = document.cookie;
   return c.includes("sp_has_session=1") || /(?:^|;\s*)sp_user=/.test(c);
 }
-function displayName(u: User) {
-  if (u.name && u.name.trim()) return u.name.trim().split(/\s+/)[0];
-  return u.email.split("@")[0];
+
+// ✅ 防御式：任何异常都返回 "Account"
+function displayName(u: any) {
+  if (!u || typeof u !== "object") return "Account";
+  const name = typeof u.name === "string" ? u.name.trim() : "";
+  const email = typeof u.email === "string" ? u.email.trim() : "";
+
+  if (name) return name.split(/\s+/)[0];
+  if (email && email.includes("@")) return email.split("@")[0];
+
+  return "Account";
 }
 
 const ICON_BTN = "!h-12 !w-12 md:!h-14 md:!w-14";
@@ -115,12 +124,23 @@ export default function Navbar() {
           cache: "no-store",
         }).catch(() => null as unknown as Response);
 
-        if (!res) return null;    // 网络异常
-        if (!res.ok) return null; // 401/404/500 等都视作未登录
-        if (res.status === 204) return null;
+        // 401/404/500/204 都视作未登录
+        if (!res || !res.ok || res.status === 204) return null;
 
-        const u = (await res.json().catch(() => null)) as User | null;
-        return u;
+        const raw = await res.json().catch(() => null);
+
+        // ✅ 结构校验：没有 email 就拒绝，避免后续 displayName 报错
+        if (!raw || typeof raw !== "object" || typeof (raw as any).email !== "string") {
+          return null;
+        }
+
+        const r: any = raw;
+        const normalized: User = {
+          id: String(r.id ?? ""),
+          email: String(r.email),
+          name: typeof r.name === "string" ? r.name : null,
+        };
+        return normalized;
       })();
     }
 

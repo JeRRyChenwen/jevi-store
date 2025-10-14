@@ -14,6 +14,7 @@ import PayPalPreloader from "@/app/checkout/_components/PayPalPreloader";
 
 import { selectCurrencyAndTotals } from "@/lib/cartPricing";
 import { effectiveMinor, type PriceRec, type Currency } from "@/lib/pricing";
+import { fetchAuthedEmail, isLoggedInViaCookie } from "@/lib/auth";
 
 type CartItem = CartListItem;
 
@@ -85,7 +86,7 @@ const emptyErr: AddressErr = {
   email: false,
 };
 
-/** ✅ 允许在“已登录”时不校验邮箱 */
+/** ✅ 允许在“已登录或已存在邮箱”时不校验邮箱 */
 function validateAddress(a: Address, emailInput: string, ignoreEmail = false) {
   const errs: AddressErr = {
     firstName: t(a.firstName) === "",
@@ -135,7 +136,6 @@ function CheckoutSteps({
           const isActive = i === currentIndex;
           const isDone = i < currentIndex;
           const isLocked = i > currentIndex; // 只能回退，不允许前进
-
           const baseCircle =
             "flex items-center justify-center h-8 w-8 rounded-full border text-sm";
           const circleClass = isActive
@@ -392,7 +392,6 @@ function AddressForm({
           </div>
         )}
 
-        {/* 提交时错误提示（英文） */}
         {showErrors && errorBanner && (
           <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
             {errorBanner}
@@ -527,7 +526,6 @@ function LargePrimaryButton({
     </button>
   );
 }
-/** ✅ 白色“Login / Sign up and Continue”按钮样式 */
 function LargeGhostButton({
   onClick,
   children,
@@ -571,7 +569,7 @@ async function sendOrderToServer(args: {
   try {
     const target = REMOTE_BASE ? `${REMOTE_BASE}/orders` : apiURL("/orders");
 
-    // 从购物车构造 order_items（尽量用 effectiveMinor 作为单价）
+    // 从购物车构造 order_items
     const items = (args.cart || []).map((it: any) => {
       const recs = itemToPriceRecs(it);
       const rec = recs.find((r) => r.currency === (args.currency as Currency));
@@ -609,6 +607,7 @@ async function sendOrderToServer(args: {
       null;
 
     const body = {
+      // 前端可为空，后端会用 JWT/DB 兜底
       email: args.address?.email || "",
       first_name: args.address?.firstName || null,
       last_name: args.address?.lastName || null,
@@ -627,7 +626,7 @@ async function sendOrderToServer(args: {
       tax_minor: Number(args.taxMinor || 0),
       grand_total_minor: Number(args.grandMinor) || 0,
 
-      delivery_method: args.deliveryMethod ?? "standard", // 若 orders 无该列，Worker 会写 meta.delivery_method
+      delivery_method: args.deliveryMethod ?? "standard",
 
       items,
 
@@ -648,7 +647,7 @@ async function sendOrderToServer(args: {
     const res = await fetch(target, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      credentials: "include", // 让 session cookie 带上（已登录可关联 user_id）
+      credentials: "include", // ★ 把登录 cookie 带上
       keepalive: true,
       body: JSON.stringify(body),
     }).catch(() => null);
@@ -680,15 +679,14 @@ export default function CheckoutPage() {
   const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [emailInput, setEmailInput] = useState<string>("");
 
-  // ✅ 新增：登录态（读取 presence/session cookie）
+  // ✅ 登录态（读取 presence/session cookie）
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const readLoginFromCookie = () => {
-    const cookie = typeof document !== "undefined" ? document.cookie || "" : "";
-    const has = /(?:^|;\s*)sp_has_session=1/.test(cookie) || /(?:^|;\s*)sp_session=/.test(cookie);
+    const has = isLoggedInViaCookie();
     setIsLoggedIn(has);
   };
 
-  // Address 提交时校验：是否展示错误、错误对象
+  // 地址校验状态
   const [addressShowErrors, setAddressShowErrors] = useState(false);
   const [addressErrs, setAddressErrs] = useState<AddressErr>(emptyErr);
 
@@ -730,7 +728,7 @@ export default function CheckoutPage() {
     });
   }, []);
 
-  // 初始化本地缓存 & 登录态
+  // 初始化本地缓存 & 登录态 & 回填邮箱
   useEffect(() => {
     try {
       const raw = localStorage.getItem(LS_CART_KEY);
@@ -745,6 +743,23 @@ export default function CheckoutPage() {
       }
     } catch {}
     readLoginFromCookie();
+
+    // ★ 如果已登录且地址/输入没有邮箱，从 /auth/me 回填一次
+    (async () => {
+      if (isLoggedInViaCookie()) {
+        const authedEmail = await fetchAuthedEmail();
+        if (authedEmail) {
+          setEmailInput((prev) => prev || authedEmail);
+          setAddress((a) => {
+            if (a.email) return a;
+            const next = { ...a, email: authedEmail };
+            try { localStorage.setItem(LS_ADDRESS_KEY, JSON.stringify(next)); } catch {}
+            return next;
+          });
+        }
+      }
+    })();
+
     window.addEventListener("focus", readLoginFromCookie);
     setLoaded(true);
     return () => window.removeEventListener("focus", readLoginFromCookie);
@@ -875,7 +890,9 @@ export default function CheckoutPage() {
   // 点击 Continue：Address 步骤改为“提交时校验”
   const handleContinue = () => {
     if (step === "address") {
-      const { valid, errs } = validateAddress(address, emailInput, /* ignoreEmail */ isLoggedIn);
+      // ★ 关键：已登录 或 地址里本来就有邮箱 → 忽略邮箱校验
+      const ignoreEmail = isLoggedIn || !!(address.email && address.email.trim());
+      const { valid, errs } = validateAddress(address, emailInput, ignoreEmail);
       if (!valid) {
         setAddressErrs(errs);
         setAddressShowErrors(true);
@@ -886,7 +903,7 @@ export default function CheckoutPage() {
       setAddressShowErrors(false);
       setAddressErrs(emptyErr);
 
-      // 未登录时才会上报（通常用于游客）
+      // 未登录时才会上报订阅
       if (!isLoggedIn) void sendSubscriptionIfNeeded();
     }
     nextStepCore();
@@ -894,14 +911,26 @@ export default function CheckoutPage() {
 
   const itemsCount = cart.reduce((n, it: any) => n + (it?.qty ?? 1), 0);
 
-  // ✅ 支付成功 → 先尝试落库（拿 order_id）→ 存预览与 orderId → 清空购物车 → 跳转确认页
+  // ✅ 支付成功 → 先尝试落库 → 存预览与 orderId → 清空购物车 → 跳转确认页
   const handlePaySucceeded = async (payload?: any) => {
     let orderId: number | null | undefined = null;
+
+    // ★ 下单前兜底：若地址里没有 email 且用户已登录，调用 /auth/me 拿邮箱
+    let orderAddress = { ...address };
+    if ((!orderAddress.email || !EMAIL_RE.test((orderAddress.email || "").trim())) && isLoggedIn) {
+      const authedEmail = await fetchAuthedEmail();
+      if (authedEmail) {
+        orderAddress.email = authedEmail;
+        setAddress(orderAddress);
+        setEmailInput((prev) => prev || authedEmail);
+        try { localStorage.setItem(LS_ADDRESS_KEY, JSON.stringify(orderAddress)); } catch {}
+      }
+    }
 
     try {
       const persist = await sendOrderToServer({
         cart,
-        address,
+        address: orderAddress, // ★ 用兜底后的地址
         currency,
         itemsMinor: itemsTotals.itemsMinor,
         deliveryFeeMinor: deliveryFeeMinor,
@@ -924,14 +953,14 @@ export default function CheckoutPage() {
           currency,
           totalMinor,
           items: cart,
-          address,
+          address: orderAddress,
           deliveryMethod,
           payload: payload ?? null,
         })
       );
     } catch {}
 
-    // 可选：清空购物车（已经成功支付）
+    // 清空购物车
     try {
       setCart([]);
       localStorage.setItem(LS_CART_KEY, JSON.stringify([]));
@@ -1049,7 +1078,7 @@ export default function CheckoutPage() {
               errorBanner={addressShowErrors ? "Some required fields are missing or invalid." : null}
               onEmailCommit={(email) => sendSubscriptionIfNeeded(email)}
               onOptInChanged={(_opt) => sendSubscriptionIfNeeded()}
-              hideYourDetails={isLoggedIn}   // ✅ 已登录隐藏 Your Details
+              hideYourDetails={isLoggedIn}
             />
           )}
 
@@ -1071,7 +1100,7 @@ export default function CheckoutPage() {
             </>
           )}
 
-          {/* Payment：始终挂载；非 payment 时固定在视口内且几乎透明 */}
+          {/* Payment（始终挂载） */}
           <section
             className="rounded-xl border"
             aria-hidden={step !== "payment"}
@@ -1093,7 +1122,7 @@ export default function CheckoutPage() {
             <div className="px-4 py-3 border-b font-semibold">How would you like to pay?</div>
 
             <div className="p-4 space-y-6">
-              {/* Payment Options（只显示 PayPal 选中） */}
+              {/* Payment Options（只显示 PayPal） */}
               <div className="border rounded-lg p-4">
                 <h2 className="text-lg font-medium mb-4">Payment Options</h2>
                 <label className="flex items-center gap-3 w-full border rounded-md px-3 py-3 cursor-pointer border-black ring-1 ring-black">
@@ -1188,7 +1217,6 @@ export default function CheckoutPage() {
                 </div>
               </div>
 
-              {/* 统一币种提示 */}
               <p className="mt-2 text-xs text-gray-500">
                 All charges are processed in <b>AUD</b>. Your bank or PayPal may apply currency conversion and fees.
               </p>
@@ -1198,7 +1226,7 @@ export default function CheckoutPage() {
             </div>
           </section>
 
-          {/* ✅ Back 按钮在 Payment 区域外、边框下方（只在 payment 步骤显示） */}
+          {/* ✅ Back 按钮（只在 payment 步骤显示） */}
           {step === "payment" && (
             <div className="px-4 pb-4 pt-2 flex justify-end">
               <div className="w-[320px] max-w-full">
@@ -1212,7 +1240,6 @@ export default function CheckoutPage() {
         {step !== "payment" && (
           <div className="mt-6 flex justify-end">
             {step === "bag" ? (
-              // ✅ 未登录：左白右黑；已登录：只显示 Continue
               <div className={isLoggedIn ? "w-[320px] max-w-full" : "w-[660px] max-w-full flex gap-3 justify-end"}>
                 {!isLoggedIn && (
                   <div className="w-[320px]">
