@@ -8,6 +8,9 @@ import { ClientNavbar, CategoryBar } from "@/components/nav";
 import BagProvider from "@/components/bag/BagProvider";
 import BagDrawer from "@/components/nav/BagDrawer";
 
+// ✅ 新增：只引入我们自己封装的 Client Provider
+import PayPalProvider from "@/components/paypal/Provider";
+
 export const metadata: Metadata = {
   title: "SocialPlatform",
   description: "社交平台 - 由 Next.js + shadcn 构建",
@@ -22,17 +25,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         )}
       >
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          {/* ⬇️ 让 BagProvider 包住全站，确保任何页面都能立即响应 open() */}
-          <BagProvider>
-            <ClientNavbar />
-            <div className="h-16 md:h-20 bg-white" />
-            <CategoryBar />
+          {/* ✅ 这里用 Client 组件包起来，避免在 Server 端直接导入 @paypal/react-paypal-js */}
+          <PayPalProvider>
+            {/* 你的全站状态/导航等依旧保持 */}
+            <BagProvider>
+              <ClientNavbar />
+              <div className="h-16 md:h-20 bg-white" />
+              <CategoryBar />
 
-            <main className="page-shell py-4 md:py-6">{children}</main>
+              <main className="page-shell py-4 md:py-6">{children}</main>
 
-            {/* ⬇️ 常驻挂载抽屉（fixed + translate 来隐藏/显示） */}
-            <BagDrawer ownerId="global" />
-          </BagProvider>
+              <BagDrawer ownerId="global" />
+            </BagProvider>
+          </PayPalProvider>
         </ThemeProvider>
       </body>
     </html>

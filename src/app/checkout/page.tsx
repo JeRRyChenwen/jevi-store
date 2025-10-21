@@ -8,9 +8,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import CartList from "@/components/cart/CartList";
 import type { CartItem as CartListItem } from "@/components/cart/CartList";
 
-import BraintreePayPalOnly from "@/app/checkout/_components/BraintreePayPalOnly";
-import PrefetchBraintreeToken from "@/app/checkout/_components/PrefetchBraintreeToken";
-import PayPalPreloader from "@/app/checkout/_components/PayPalPreloader";
+import { PayPalButtons, usePayPalScriptReducer } from "@paypal/react-paypal-js"; // ★ 新增
 
 import { selectCurrencyAndTotals } from "@/lib/cartPricing";
 import { effectiveMinor, type PriceRec, type Currency } from "@/lib/pricing";
@@ -391,12 +389,6 @@ function AddressForm({
             </p>
           </div>
         )}
-
-        {showErrors && errorBanner && (
-          <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
-            {errorBanner}
-          </div>
-        )}
       </div>
     </section>
   );
@@ -642,8 +634,11 @@ async function sendOrderToServer(args: {
 
     const res = await fetch(target, {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      credentials: "include", // ★ 把登录 cookie 带上
+      headers: {
+        "content-type": "application/json",
+        "x-debug": "1",            // ← 加这一行，便于后端把 db_error 回传
+      },
+      credentials: "include",      // 带上登录 cookie
       keepalive: true,
       body: JSON.stringify(body),
     }).catch((e) => {
@@ -679,6 +674,46 @@ async function sendOrderToServer(args: {
     console.error("[orders] persist error:", e);
     return { ok: false };
   }
+}
+
+/* ---------------- 内联 PayPal 按钮 ---------------- */
+function PaypalButtonInline({
+  amountMinor,
+  currency,
+  onInitiate,
+  onSucceeded,
+}: {
+  amountMinor: number;
+  currency: string;
+  onInitiate: () => void;
+  onSucceeded: (payload?: any) => void;
+}) {
+  const [{ isResolved }] = usePayPalScriptReducer();
+  if (!isResolved) return null;
+
+  const value = (amountMinor / 100).toFixed(2); // "13.80"
+
+  return (
+    <PayPalButtons
+      style={{ layout: "vertical", shape: "rect", label: "paypal" }}
+      forceReRender={[value, currency]} // ★ 金额/币种变化时刷新组件而非重载 SDK
+      createOrder={(data, actions) => {
+        onInitiate?.();
+        return actions.order.create({
+          intent: "CAPTURE",
+          purchase_units: [{ amount: { value, currency_code: currency } }],
+        });
+      }}
+      onApprove={async (_data, actions) => {
+        const details = await actions.order!.capture();
+        onSucceeded?.(details);
+      }}
+      onError={(err) => {
+        console.error("PayPal error:", err);
+        // 这里也可以显示一条 toast
+      }}
+    />
+  );
 }
 
 /* ---------------- Page ---------------- */
@@ -725,6 +760,7 @@ export default function CheckoutPage() {
     const hosts = [
       "https://www.paypal.com",
       "https://www.paypalobjects.com",
+      // braintree 脚本已不再需要，如仍保留其他地方的集成，以下两行可保留；否则可以删除
       "https://assets.braintreegateway.com",
       "https://client-analytics.braintreegateway.com",
     ];
@@ -806,8 +842,7 @@ export default function CheckoutPage() {
 
   // 统一用 AUD 计算与展示
   const pricingInput = useMemo(
-    () => cart.map((it: any) => ({ qty: Number(it?.qty) || 1, prices: itemToPriceRecs(it) })),
-    [cart]
+    () => cart.map((it: any) => ({ qty: Number(it?.qty) || 1, prices: itemToPriceRecs(it) })), [cart]
   );
 
   const itemsTotals = useMemo(() => {
@@ -867,7 +902,7 @@ export default function CheckoutPage() {
   // ✅ 订阅（未登录仍允许；已登录隐藏 Your Details 时基本不会触发）
   async function sendSubscriptionIfNeeded(emailRaw?: string) {
     try {
-      const email = (emailRaw || address?.email || emailInput || "").trim().toLowerCase();
+      const email = (emailRaw || address?.email || "").trim().toLowerCase();
       if (!email) return;
 
       const payload = {
@@ -911,7 +946,7 @@ export default function CheckoutPage() {
     if (step === "address") {
       // ★ 关键：已登录 或 地址里本来就有邮箱 → 忽略邮箱校验
       const ignoreEmail = isLoggedIn || !!(address.email && address.email.trim());
-      const { valid, errs } = validateAddress(address, emailInput, ignoreEmail);
+      const { valid, errs } = validateAddress(address, "", ignoreEmail);
       if (!valid) {
         setAddressErrs(errs);
         setAddressShowErrors(true);
@@ -1007,8 +1042,7 @@ export default function CheckoutPage() {
 
   return (
     <main className="w-full px-4 sm:px-6 lg:px-8 2xl:px-12 py-6 md:py-8">
-      <PrefetchBraintreeToken />
-      <PayPalPreloader currency={DISPLAY_CURRENCY as unknown as string} />
+      {/* PrefetchBraintreeToken / PayPalPreloader 已移除，避免重复加载 SDK */}
 
       <div className="mx-auto w-full max-w-[2300px]">
         <div className="mb-5 text-sm text-neutral-600">
@@ -1224,8 +1258,8 @@ export default function CheckoutPage() {
               <div className="p-4">
                 <div className="mx-auto w-[300px]">
                   {amountInMajorUnit > 0 ? (
-                    <BraintreePayPalOnly
-                      amount={amountInMajorUnit}
+                    <PaypalButtonInline
+                      amountMinor={totalMinor}
                       currency="AUD"
                       onInitiate={handlePayInitiated}
                       onSucceeded={handlePaySucceeded}

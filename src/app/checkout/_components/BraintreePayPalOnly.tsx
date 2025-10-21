@@ -18,7 +18,7 @@ type Props = {
 declare global {
   interface Window {
     __btTokenPromise?: Promise<string>;
-    paypal?: any;
+    // ✅ 不再声明 window.paypal，避免与 @paypal/paypal-js 的全局类型冲突
   }
 }
 
@@ -59,14 +59,21 @@ export default function BraintreePayPalOnly({ amount, currency, onSucceeded, onI
   const hostRef = useRef<HTMLDivElement>(null);
   const buttonsRef = useRef<any>(null);
   const pendingClickRef = useRef(false);
-  const onInitiateRef = useRef<typeof onInitiate>();
-  const onSucceededRef = useRef<typeof onSucceeded>();
+
+  // ✅ 给 useRef 提供初始值
+  const onInitiateRef = useRef<Props["onInitiate"]>(undefined);
+  const onSucceededRef = useRef<Props["onSucceeded"]>(undefined);
 
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { onInitiateRef.current = onInitiate; }, [onInitiate]);
-  useEffect(() => { onSucceededRef.current = onSucceeded; }, [onSucceeded]);
+  useEffect(() => {
+    onInitiateRef.current = onInitiate;
+  }, [onInitiate]);
+
+  useEffect(() => {
+    onSucceededRef.current = onSucceeded;
+  }, [onSucceeded]);
 
   const tryTriggerClick = async () => {
     try {
@@ -97,12 +104,12 @@ export default function BraintreePayPalOnly({ amount, currency, onSucceeded, onI
       }
       if (!auth) throw new Error("No clientToken");
 
-      // 2) Braintree + PayPal SDK（只在缺少 Buttons 时加载 SDK）
+      // 2) Braintree + PayPal SDK（缺少 Buttons 时再加载 SDK）
       const braintree = await import("braintree-web");
       const client = await braintree.client.create({ authorization: auth });
       const ppCheckout = await braintree.paypalCheckout.create({ client });
 
-      if (typeof window === "undefined" || !window.paypal || !window.paypal.Buttons) {
+      if (typeof window === "undefined" || !(window as any).paypal || !(window as any).paypal.Buttons) {
         await (ppCheckout as any).loadPayPalSDK({
           currency: currency.toUpperCase(),
           intent: "capture",
@@ -112,7 +119,7 @@ export default function BraintreePayPalOnly({ amount, currency, onSucceeded, onI
       }
       if (cancelled) return;
 
-      // 3) 渲染真实 PayPal 按钮
+      // 3) 渲染 PayPal 按钮
       const paypal = (window as any).paypal;
       if (!paypal?.Buttons) throw new Error("PayPal SDK not available");
 
@@ -126,7 +133,12 @@ export default function BraintreePayPalOnly({ amount, currency, onSucceeded, onI
           color: "gold",
           shape: "rect",
         },
-        onClick: () => { try { onInitiateRef.current?.(); } catch {} return true; },
+        onClick: () => {
+          try {
+            onInitiateRef.current?.();
+          } catch {}
+          return true;
+        },
         createOrder: () =>
           (ppCheckout as any).createPayment({
             flow: "checkout",
@@ -153,7 +165,9 @@ export default function BraintreePayPalOnly({ amount, currency, onSucceeded, onI
           const id = out?.transactionId || out?.id || "";
           onSucceededRef.current?.({ id });
         },
-        onError: (err: any) => { if (!cancelled) setError(err?.message || "PayPal failed to render"); },
+        onError: (err: any) => {
+          if (!cancelled) setError(err?.message || "PayPal failed to render");
+        },
       });
 
       if (buttons.isEligible && !buttons.isEligible()) {
@@ -169,7 +183,9 @@ export default function BraintreePayPalOnly({ amount, currency, onSucceeded, onI
 
       if (pendingClickRef.current) {
         pendingClickRef.current = false;
-        requestAnimationFrame(() => { void tryTriggerClick(); });
+        requestAnimationFrame(() => {
+          void tryTriggerClick();
+        });
       }
     };
 
@@ -185,7 +201,9 @@ export default function BraintreePayPalOnly({ amount, currency, onSucceeded, onI
 
     return () => {
       cancelled = true;
-      try { buttons?.close?.(); } catch {}
+      try {
+        buttons?.close?.();
+      } catch {}
       buttonsRef.current = null;
       if (hostRef.current) hostRef.current.innerHTML = "";
     };
@@ -199,11 +217,18 @@ export default function BraintreePayPalOnly({ amount, currency, onSucceeded, onI
           type="button"
           className="absolute inset-0 z-10"
           aria-label="Pay with PayPal"
-          onClick={() => { pendingClickRef.current = true; void tryTriggerClick(); }}
+          onClick={() => {
+            pendingClickRef.current = true;
+            void tryTriggerClick();
+          }}
           style={{ background: "transparent", cursor: "pointer" }}
         />
       )}
-      {error && <div className="mt-2 rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-600">{error}</div>}
+      {error && (
+        <div className="mt-2 rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-600">
+          {error}
+        </div>
+      )}
     </div>
   );
 }
