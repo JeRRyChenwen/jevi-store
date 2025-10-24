@@ -1,5 +1,7 @@
 // src/app/page.tsx
-import React from "react";
+"use client";
+
+import { useEffect } from "react";
 import HomeHeroGrid from "@/components/home/HomeHeroGrid";
 
 const SIDE_LEFT = {
@@ -63,6 +65,14 @@ const RIGHT_BOTTOM = {
 };
 
 export default function HomePage() {
+  // ✅ 页面挂载与卸载日志
+  useEffect(() => {
+    console.log("✅ homepage mounted");
+    return () => {
+      console.log("🧹 homepage unmounted");
+    };
+  }, []);
+
   return (
     // 头部（Navbar/CategoryBar/SearchStrip）已在全局 layout.tsx 中
     // 这里仅渲染首页主体，避免重复
