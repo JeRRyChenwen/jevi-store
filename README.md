@@ -918,6 +918,14 @@ checkout 页面里的每个页面都是依次点击的
 
 我的想法是这样的其实，目前用户登录之后不是会把用户的 email 显示在个人资料页面里吗，我们就像个人资料页面一样，我们获得了用户的 email 之后可以通过用户的 email （email 是唯一的）去在 D1 数据库里的 users 表中检索这个 email 的对应的 id，我们获取到 email 以及 id 之后，我们再把这 2 个 collumn 的数据结合订单的信息一起放到 orders 表中，因为 orders 表中的 user_id 其实就是 users 表中的 id，这是 primary key
 
+商户后台开通：Braintree 控制台里需要启用 Hosted Fields（一般默认可用），并确保你的 Merchant Account 支持该币种（AUD）。
+
+3D Secure（可选）：若要做 3DS 验证，需要再集成 three-d-secure 模块；上面这版是基础版，不含 3DS。
+
+样式：我在 styles 里做了基础可读性设置（Braintree 会把输入框放到 iframe 里，外层容器需要有固定高度）。
+
+禁用 PayPal 卡入口：BraintreePayPalOnly.tsx 里 loadPayPalSDK 已建议加 disable-funding: "card,credit,venmo,paylater"，避免重复入口。
+
 # ============================================================================
 
 # ============================================================================

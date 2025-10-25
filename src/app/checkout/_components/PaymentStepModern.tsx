@@ -3,8 +3,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Check } from "lucide-react";
-import BraintreeDropIn from "./BraintreeDropIn"; // ✅ 复用你现有的 Drop-in 组件
-import { cn } from "@/lib/utils"; // 若没有该工具，可把 cn 替换成简单模板字符串
+import BraintreeDropIn from "./BraintreeDropIn"; // 你现有的 PayPal 组件（含黄色按钮）
+import BraintreeHostedFields from "./BraintreeHostedFields"; // 新增：卡支付组件
+import { cn } from "@/lib/utils"; // 若你没有该工具，可以直接用模板字符串替代
 
 type Address = {
   fullName?: string;
@@ -25,11 +26,11 @@ type CartItem = {
   color?: string;
   size?: string;
   qty?: number;
-  // 允许多种价字段命名，尽量兼容你项目现状
-  price?: number;              // 以“元”为单位
-  salePrice?: number;          // 以“元”为单位
-  priceMinor?: number;         // 以“分”为单位
-  salePriceMinor?: number;     // 以“分”为单位
+  // 兼容多种价格字段命名
+  price?: number;              // 单位“元”
+  salePrice?: number;          // 单位“元”
+  priceMinor?: number;         // 单位“分”
+  salePriceMinor?: number;     // 单位“分”
   currency?: string;
   imageUrl?: string;
 };
@@ -49,7 +50,6 @@ function formatMoney(minor: number, currency: string) {
 }
 
 function loadAddress(): Address | null {
-  // 尝试读取 Address 步保存的草稿。你可以把 key 改成你真实使用的 key
   const KEYS = ["sp.checkout.address", "checkout_address", "addressDraft"];
   for (const k of KEYS) {
     try {
@@ -74,7 +74,7 @@ function loadCart(): CartItem[] {
 export default function PaymentStepModern() {
   const [address, setAddress] = useState<Address | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [selected, setSelected] = useState<"paypal">("paypal");
+  const [selected, setSelected] = useState<"paypal" | "card">("paypal");
 
   useEffect(() => {
     setAddress(loadAddress());
@@ -82,14 +82,13 @@ export default function PaymentStepModern() {
   }, []);
 
   const currency = useMemo(() => {
-    return cart.find(i => i?.currency)?.currency || "AUD";
+    return cart.find((i) => i?.currency)?.currency || "AUD";
   }, [cart]);
 
   const subtotalMinor = useMemo(() => {
     return cart.reduce((sum, it) => {
       const qty = it.qty ?? 1;
-      // 优先使用 “分”，否则使用 “元 * 100”
-      let unitMinor =
+      const unitMinor =
         typeof it.salePriceMinor === "number" ? it.salePriceMinor :
         typeof it.priceMinor === "number" ? it.priceMinor :
         typeof it.salePrice === "number" ? Math.round(it.salePrice * 100) :
@@ -99,7 +98,7 @@ export default function PaymentStepModern() {
     }, 0);
   }, [cart]);
 
-  const deliveryMinor = 0; // 这里先做免费运费，后续你可按需替换
+  const deliveryMinor = 0; // 示例：免运费
   const totalMinor = subtotalMinor + deliveryMinor;
 
   return (
@@ -109,14 +108,13 @@ export default function PaymentStepModern() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* LEFT: Payment Options */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Payment Options Card */}
           <div className="border rounded-lg p-4">
             <h2 className="text-lg font-medium mb-4">Payment Options</h2>
 
-            {/* —— 单一选项：PayPal —— */}
+            {/* 选项：PayPal */}
             <label
               className={cn(
-                "flex items-center gap-3 w-full border rounded-md px-3 py-3 cursor-pointer",
+                "flex items-center gap-3 w-full border rounded-md px-3 py-3 cursor-pointer mb-3",
                 selected === "paypal" ? "border-black ring-1 ring-black" : "border-gray-300"
               )}
             >
@@ -130,37 +128,72 @@ export default function PaymentStepModern() {
               <div className="flex-1 flex items-center justify-between gap-3">
                 <div className="font-medium">PayPal – Pay Now or Pay in 4*</div>
                 <div className="flex items-center gap-2 opacity-80">
-                  {/* 右侧贴品牌徽标，可用你自己的图片资源 */}
-                  <img src="https://www.paypalobjects.com/webstatic/icon/pp258.png" alt="PayPal" className="h-5" />
+                  <img
+                    src="https://www.paypalobjects.com/webstatic/icon/pp258.png"
+                    alt="PayPal"
+                    className="h-5"
+                  />
                 </div>
               </div>
             </label>
 
-            {/* 选中 PayPal 后，渲染 Drop-in/按钮 */}
-            {selected === "paypal" && (
-              <div className="mt-4 border rounded-md p-3">
-                {/* ✅ 这里直接放你原本的 Braintree PayPal 组件
-                    注意：BraintreeDropIn 通常需要 amount(“元”) 与 currency
-                    我们把 totalMinor -> 元 传入 */}
+            {/* 选项：Card（Braintree Hosted Fields） */}
+            <label
+              className={cn(
+                "flex items-center gap-3 w-full border rounded-md px-3 py-3 cursor-pointer",
+                selected === "card" ? "border-black ring-1 ring-black" : "border-gray-300"
+              )}
+            >
+              <input
+                type="radio"
+                name="payment"
+                className="mt-0.5"
+                checked={selected === "card"}
+                onChange={() => setSelected("card")}
+              />
+              <div className="flex-1 flex items-center justify-between gap-3">
+                <div className="font-medium">Debit or Credit Card</div>
+                <div className="flex items-center gap-2 opacity-80">
+                  {/* 品牌小图标可换成你自己的资源 */}
+                  <img src="https://upload.wikimedia.org/wikipedia/commons/0/04/Visa.svg" alt="Visa" className="h-4" />
+                  <img src="https://upload.wikimedia.org/wikipedia/commons/0/0c/Mastercard_logo.png" alt="Mastercard" className="h-4" />
+                  <img src="https://upload.wikimedia.org/wikipedia/commons/3/30/Amex_logo.svg" alt="AmEx" className="h-4" />
+                </div>
+              </div>
+            </label>
+
+            {/* 渲染具体支付组件 */}
+            <div className="mt-4 border rounded-md p-3">
+              {selected === "paypal" ? (
+                // 你现有的 PayPal 组件（内部有黄色按钮完成支付）
                 <BraintreeDropIn
                   amount={Number((totalMinor / 100).toFixed(2))}
                   currency={currency}
                 />
-                {/* 保留你组件内部的黄色 PayPal 按钮即可；不要再重复渲染“Pay Now” */}
-              </div>
-            )}
+              ) : (
+                // 我们新增的卡支付组件（自带“Pay …”按钮）
+                <BraintreeHostedFields
+                  amount={Number((totalMinor / 100).toFixed(2))}
+                  currency={currency}
+                />
+              )}
+            </div>
           </div>
 
-          {/* “Pay Now”大按钮（示例样式，禁用态保持与模板一致；真正支付点击在 PayPal 黄色按钮里完成） */}
+          {/* PayNow 按钮：当选择 PayPal 时，这个按钮没有用（禁用 + 提示）；
+              当选择 Card 时，实际的支付按钮在 HostedFields 里面，所以这里也不需要额外按钮。 */}
           <button
             disabled
             className="w-full py-3 rounded-md bg-gray-200 text-gray-500 font-medium cursor-not-allowed"
-            title="Click the PayPal button above to complete payment"
+            title={
+              selected === "paypal"
+                ? "Click the PayPal button above to complete payment"
+                : "Use the Pay button inside the card form"
+            }
           >
-            Pay Now
+            {selected === "paypal" ? "Pay Now (use PayPal button above)" : "Pay Now"}
           </button>
 
-          {/* 说明 */}
           <p className="text-xs text-gray-500">
             * Pay in 4 availability is determined by PayPal and may vary by account and region.
           </p>
@@ -207,7 +240,7 @@ export default function PaymentStepModern() {
             )}
           </div>
 
-          {/* Order Summary（右侧小计/总计） */}
+          {/* Order Summary */}
           <div className="border rounded-lg p-4 space-y-3">
             <div className="flex items-center justify-between">
               <div className="text-sm text-gray-600">Items</div>

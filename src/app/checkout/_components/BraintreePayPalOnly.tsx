@@ -18,7 +18,7 @@ type Props = {
 declare global {
   interface Window {
     __btTokenPromise?: Promise<string>;
-    // ✅ 不再声明 window.paypal，避免与 @paypal/paypal-js 的全局类型冲突
+    // 不再声明 window.paypal，避免与 @paypal/paypal-js 的全局类型冲突
   }
 }
 
@@ -60,20 +60,15 @@ export default function BraintreePayPalOnly({ amount, currency, onSucceeded, onI
   const buttonsRef = useRef<any>(null);
   const pendingClickRef = useRef(false);
 
-  // ✅ 给 useRef 提供初始值
+  // 给 useRef 提供初始值
   const onInitiateRef = useRef<Props["onInitiate"]>(undefined);
   const onSucceededRef = useRef<Props["onSucceeded"]>(undefined);
 
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    onInitiateRef.current = onInitiate;
-  }, [onInitiate]);
-
-  useEffect(() => {
-    onSucceededRef.current = onSucceeded;
-  }, [onSucceeded]);
+  useEffect(() => { onInitiateRef.current = onInitiate; }, [onInitiate]);
+  useEffect(() => { onSucceededRef.current = onSucceeded; }, [onSucceeded]);
 
   const tryTriggerClick = async () => {
     try {
@@ -115,16 +110,18 @@ export default function BraintreePayPalOnly({ amount, currency, onSucceeded, onI
           intent: "capture",
           components: "buttons",
           commit: true,
+          // ✅ 关键：禁用 PayPal 自带的卡/信用卡/Pay Later/Venmo 入口，避免和你自建卡表单重复
+          "disable-funding": "card,credit,venmo,paylater",
         });
       }
       if (cancelled) return;
 
-      // 3) 渲染 PayPal 按钮
+      // 3) 渲染 PayPal 按钮（仅 PayPal 资金来源）
       const paypal = (window as any).paypal;
       if (!paypal?.Buttons) throw new Error("PayPal SDK not available");
 
       buttons = paypal.Buttons({
-        fundingSource: paypal.FUNDING.PAYPAL,
+        fundingSource: paypal.FUNDING.PAYPAL, // 再次限制只显示 PayPal
         style: {
           layout: "horizontal",
           label: "paypal",
@@ -134,9 +131,7 @@ export default function BraintreePayPalOnly({ amount, currency, onSucceeded, onI
           shape: "rect",
         },
         onClick: () => {
-          try {
-            onInitiateRef.current?.();
-          } catch {}
+          try { onInitiateRef.current?.(); } catch {}
           return true;
         },
         createOrder: () =>
@@ -183,9 +178,7 @@ export default function BraintreePayPalOnly({ amount, currency, onSucceeded, onI
 
       if (pendingClickRef.current) {
         pendingClickRef.current = false;
-        requestAnimationFrame(() => {
-          void tryTriggerClick();
-        });
+        requestAnimationFrame(() => { void tryTriggerClick(); });
       }
     };
 
@@ -201,9 +194,7 @@ export default function BraintreePayPalOnly({ amount, currency, onSucceeded, onI
 
     return () => {
       cancelled = true;
-      try {
-        buttons?.close?.();
-      } catch {}
+      try { buttons?.close?.(); } catch {}
       buttonsRef.current = null;
       if (hostRef.current) hostRef.current.innerHTML = "";
     };
