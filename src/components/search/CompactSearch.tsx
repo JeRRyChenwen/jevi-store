@@ -1,7 +1,7 @@
 // src/components/search/CompactSearch.tsx
 "use client";
 
-import { useEffect, useMemo, useRef, useState, FormEvent } from "react";
+import { useEffect, useRef, useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -17,7 +17,6 @@ export default function CompactSearch({
 }: Props) {
   const router = useRouter();
 
-  // 搜索逻辑（已在 useProductSearch 里做了防抖与请求）
   const {
     query,
     setQuery,
@@ -28,32 +27,27 @@ export default function CompactSearch({
     error,
   } = useProductSearch();
 
-  // 焦点/激活项等交互
   const [active, setActive] = useState(0);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const blurTimer = useRef<number | null>(null);
+  const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 是否显示下拉
   const visible = opened && (loading || error || items.length > 0);
 
-  // 当结果变化时，激活项重置
   useEffect(() => {
     setActive(0);
   }, [items.length, opened]);
 
-  // 失焦时延迟关闭，避免点击结果被打断
   const onBlurSafe = () => {
-    if (blurTimer.current) window.clearTimeout(blurTimer.current);
-    blurTimer.current = window.setTimeout(() => setOpened(false), 120);
+    if (blurTimer.current) clearTimeout(blurTimer.current);
+    blurTimer.current = setTimeout(() => setOpened(false), 120);
   };
 
   const onFocus = () => {
-    if (blurTimer.current) window.clearTimeout(blurTimer.current);
+    if (blurTimer.current) clearTimeout(blurTimer.current);
     if ((items.length > 0 || error || loading) && query.trim()) setOpened(true);
   };
 
-  // 提交：跳到搜索页（保留你的原行为）
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     const v = query.trim();
@@ -62,7 +56,6 @@ export default function CompactSearch({
     router.push(`/search?q=${encodeURIComponent(v)}`);
   };
 
-  // 键盘交互（上下选择、回车跳详情、Esc 关闭）
   const onKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (e) => {
     if (!visible) return;
     if (e.key === "ArrowDown") {
@@ -78,13 +71,19 @@ export default function CompactSearch({
         setOpened(false);
         router.push(`/product/${target.slug}`);
       } else {
-        // 若无选中项，退回到搜索页
         onSubmit(e as any);
       }
     } else if (e.key === "Escape") {
       setOpened(false);
       (e.currentTarget as HTMLInputElement).blur();
     }
+  };
+
+  // —— 为了避免 TS 对 aria-* 的严格类型报错，这里用条件展开来生成 ariaProps ——
+  const ariaProps: React.InputHTMLAttributes<HTMLInputElement> = {
+    "aria-autocomplete": "list",
+    "aria-controls": "search-suggestions",
+    ...(visible ? { "aria-expanded": true, "aria-activedescendant": `search-item-${active}` } : {}),
   };
 
   return (
@@ -115,10 +114,7 @@ export default function CompactSearch({
           onBlur={onBlurSafe}
           placeholder={placeholder}
           className="h-10 md:h-11 flex-1 bg-transparent outline-none px-4 text-sm placeholder:text-neutral-500"
-          aria-autocomplete="list"
-          aria-controls="search-suggestions"
-          aria-expanded={visible}
-          aria-activedescendant={visible ? `search-item-${active}` : undefined}
+          {...ariaProps}
         />
         <button
           type="submit"
@@ -140,7 +136,6 @@ export default function CompactSearch({
             e.preventDefault();
           }}
         >
-          {/* 错误/空态/结果 */}
           {error ? (
             <div className="p-3 text-sm text-red-600">搜索失败：{error}</div>
           ) : items.length === 0 && !loading ? (
@@ -177,8 +172,8 @@ export default function CompactSearch({
                       ) : null}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="truncate">{it.name}</div>
-                      <div className="text-xs text-neutral-500 truncate">/{it.slug}</div>
+                      <div className="truncate font-medium">{it.name}</div>
+                      {/* 第二行 slug 已移除 */}
                     </div>
                   </Link>
                 </li>
@@ -187,9 +182,7 @@ export default function CompactSearch({
           )}
 
           {loading ? (
-            <div className="p-2 text-xs text-neutral-500">
-              正在搜索 “{query}” …
-            </div>
+            <div className="p-2 text-xs text-neutral-500">正在搜索 “{query}” …</div>
           ) : null}
         </div>
       )}
