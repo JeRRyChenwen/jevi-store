@@ -80,14 +80,14 @@ export default function LoginPage() {
       title="Sign in"
       subtitle="Welcome back. Access your saved items and orders."
       footer={
-        <div className="text-center text-sm text-muted-foreground">
+        <div className="text-center text-sm text-muted-foreground font-semibold space-y-4">
           <p>
             Don’t have an account?{" "}
-            <a href="/auth/register" className="underline">Create one</a>
+            <a href="/auth/register" className="underline hover:text-primary font-semibold">Create one</a>
           </p>
           <div className="h-8" aria-hidden />
           <p>
-            <a href="/auth/forgot-password" className="underline">Forgot password?</a>
+            <a href="/auth/forgot-password" className="underline hover:text-primary font-semibold">Forgot password?</a>
           </p>
         </div>
       }

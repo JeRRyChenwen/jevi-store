@@ -66,16 +66,18 @@ export default function RegisterPage() {
       title="Create your account"
       subtitle="Join us to track orders, save items and enjoy a faster checkout."
       footer={
-        <div className="space-y-2">
+        <div className="text-center text-sm text-muted-foreground font-normal space-y-4">
           <p className="text-xs">
             By clicking <span className="font-medium">Create an Account</span>, you agree to our{" "}
-            <a href="/privacy" className="underline">privacy policy</a>,{" "}
-            <a href="/terms" className="underline">terms &amp; conditions</a> and{" "}
-            <a href="/cookies" className="underline">cookie policy</a>.
+            <a href="/privacy" className="underline ">privacy policy</a>,{" "}
+            <a href="/terms" className="underline ">terms &amp; conditions</a> and{" "}
+            <a href="/cookies" className="underline ">cookie policy</a>.
           </p>
+          <div className="h-8" aria-hidden />
           <p>
             Already have an account?{" "}
-            <a href="/auth/login" className="underline">Sign in</a>
+
+            <a href="/auth/login" className="underline hover:text-primary font-semibold">Sign in</a>
           </p>
         </div>
       }
@@ -101,7 +103,7 @@ export default function RegisterPage() {
         </div>
 
         <div className="space-y-2 pt-1">
-          <label className="flex items-start gap-2 text-sm">
+          <label className="flex items-start gap-2 text-sm font-semibold">
             <input type="checkbox" className="mt-1" autoComplete="off" {...register("marketingOptIn")} />
             <span>Email me updates on New Arrivals, Sale and Offers</span>
           </label>
