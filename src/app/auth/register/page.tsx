@@ -117,6 +117,8 @@ export default function RegisterPage() {
           </p>
         )}
 
+        <div className="h-8" aria-hidden />
+
         <Button
           type="submit"
           disabled={loading}

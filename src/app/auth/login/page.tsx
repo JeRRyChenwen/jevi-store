@@ -1,3 +1,4 @@
+// D:\前端练习\social-platform\src\app\auth\login\page.tsx
 "use client";
 
 import { useForm } from "react-hook-form";
@@ -30,7 +31,6 @@ export default function LoginPage() {
 
   const onSubmit = async (data: LoginFormData) => {
     setErrorMessage("");
-
     const email = data.email.trim().toLowerCase();
     const payload = { email, identifier: email, password: data.password };
 
@@ -92,9 +92,7 @@ export default function LoginPage() {
         </div>
       }
     >
-      {/* 调大表单项之间的纵向间距 */}
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" autoComplete="on">
-        {/* 每个字段：标题与输入框之间用 gap-3/4 拉开 */}
         <div className="grid gap-3">
           <Label htmlFor="email" className="block">Email</Label>
           <Input id="email" type="email" autoComplete="email" {...register("email")} />
@@ -109,7 +107,9 @@ export default function LoginPage() {
 
         {errorMessage && <p className="text-red-600 text-sm">{errorMessage}</p>}
 
-        {/* 按钮仍然是缩窄版，带边框 */}
+        {/* ⬇️ 两行空白（每行约 2rem） */}
+        <div className="h-8" aria-hidden />
+
         <Button
           type="submit"
           disabled={isSubmitting}
