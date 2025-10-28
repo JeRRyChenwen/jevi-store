@@ -74,7 +74,7 @@ export default function RegisterPage() {
             <a href="/cookies" className="underline ">cookie policy</a>.
           </p>
           <div className="h-8" aria-hidden />
-          <p>
+          <p className="hover:text-primary font-semibold">
             Already have an account?{" "}
 
             <a href="/auth/login" className="underline hover:text-primary font-semibold">Sign in</a>
