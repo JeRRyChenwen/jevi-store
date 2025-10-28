@@ -1,4 +1,4 @@
-// D:\前端练习\social-platform\src\app\auth\register\page.tsx
+// src/app/auth/register/page.tsx
 "use client";
 
 import { useForm } from "react-hook-form";
@@ -7,27 +7,20 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import AuthShell from "@/components/auth/AuthShell";
 import { useState } from "react";
 
 const schema = z.object({
-  username: z.string().min(3, "用户名至少3位"),
-  email: z.string().email("请输入有效的邮箱"),
-  password: z.string().min(8, "密码至少8位"),
+  username: z.string().min(3, "Username must be at least 3 characters"),
+  email: z.string().email("Please enter a valid email"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
   marketingOptIn: z.boolean().optional(),
 });
-
 type RegisterFormData = z.infer<typeof schema>;
 
 export default function RegisterPage() {
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<RegisterFormData>({
-    resolver: zodResolver(schema),
-    defaultValues: { marketingOptIn: false },
-  });
+  const { register, handleSubmit, formState: { errors } } =
+    useForm<RegisterFormData>({ resolver: zodResolver(schema), defaultValues: { marketingOptIn: false } });
 
   const [loading, setLoading] = useState(false);
   const [serverMsg, setServerMsg] = useState<string>("");
@@ -35,7 +28,6 @@ export default function RegisterPage() {
   const onSubmit = async (data: RegisterFormData) => {
     setLoading(true);
     setServerMsg("");
-
     try {
       const payload = {
         email: data.email,
@@ -45,7 +37,7 @@ export default function RegisterPage() {
       };
 
       const base = process.env.NEXT_PUBLIC_API_BASE;
-      if (!base) throw new Error("缺少 NEXT_PUBLIC_API_BASE 环境变量");
+      if (!base) throw new Error("Missing NEXT_PUBLIC_API_BASE environment variable");
 
       const res = await fetch(`${base}/auth/register`, {
         method: "POST",
@@ -55,109 +47,80 @@ export default function RegisterPage() {
 
       const text = await res.text();
       let body: any = null;
-      try {
-        body = text ? JSON.parse(text) : null;
-      } catch {
-        body = { message: text || "" };
-      }
+      try { body = text ? JSON.parse(text) : null; } catch { body = { message: text || "" }; }
 
       if (!res.ok) {
-        const hint =
-          body?.message ||
-          body?.error ||
-          `HTTP ${res.status} ${res.statusText || ""}`.trim();
-        throw new Error(hint || "注册失败");
+        const hint = body?.message || body?.error || `HTTP ${res.status} ${res.statusText || ""}`.trim();
+        throw new Error(hint || "Registration failed");
       }
-
-      setServerMsg(body?.message || "注册成功");
+      setServerMsg(body?.message || "Registration successful");
       window.location.href = "/auth/login";
     } catch (e) {
-      setServerMsg(e instanceof Error ? e.message : "未知错误");
+      setServerMsg(e instanceof Error ? e.message : "Unknown error");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-muted/30">
-      <Card className="w-full max-w-md p-6">
-        <CardHeader>
-          <CardTitle className="text-2xl">注册账号</CardTitle>
-        </CardHeader>
+    <AuthShell
+      title="Create your account"
+      subtitle="Join us to track orders, save items and enjoy a faster checkout."
+      footer={
+        <div className="space-y-2">
+          <p className="text-xs">
+            By clicking <span className="font-medium">Create an Account</span>, you agree to our{" "}
+            <a href="/privacy" className="underline">privacy policy</a>,{" "}
+            <a href="/terms" className="underline">terms &amp; conditions</a> and{" "}
+            <a href="/cookies" className="underline">cookie policy</a>.
+          </p>
+          <p>
+            Already have an account?{" "}
+            <a href="/auth/login" className="underline">Sign in</a>
+          </p>
+        </div>
+      }
+    >
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" autoComplete="on">
+        <div>
+          <Label htmlFor="username">Username</Label>
+          <Input id="username" type="text" autoComplete="username" {...register("username")} />
+          {errors.username && <p className="text-red-500 text-sm">{errors.username.message}</p>}
+        </div>
 
-        <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" autoComplete="on">
-            <div>
-              <Label htmlFor="username">用户名</Label>
-              <Input
-                id="username"
-                type="text"
-                autoComplete="username"   // ✅ 只保留 autoComplete
-                {...register("username")} // register 已包含 name="username"
-              />
-              {errors.username && (
-                <p className="text-red-500 text-sm">{errors.username.message}</p>
-              )}
-            </div>
+        <div>
+          <Label htmlFor="email">Email</Label>
+          <Input id="email" type="email" autoComplete="email" inputMode="email" {...register("email")} />
+          {errors.email && <p className="text-red-500 text-sm">{errors.email.message}</p>}
+        </div>
 
-            <div>
-              <Label htmlFor="email">邮箱</Label>
-              <Input
-                id="email"
-                type="email"
-                autoComplete="email"
-                inputMode="email"
-                {...register("email")}    // 不要再写 name="email"
-              />
-              {errors.email && (
-                <p className="text-red-500 text-sm">{errors.email.message}</p>
-              )}
-            </div>
+        <div>
+          <Label htmlFor="password">Password</Label>
+          <Input id="password" type="password" autoComplete="new-password" {...register("password")} />
+          {errors.password && <p className="text-red-500 text-sm">{errors.password.message}</p>}
+        </div>
 
-            <div>
-              <Label htmlFor="password">密码</Label>
-              <Input
-                id="password"
-                type="password"
-                autoComplete="new-password" // 注册页用 new-password
-                {...register("password")}    // 不要再写 name="password"
-              />
-              {errors.password && (
-                <p className="text-red-500 text-sm">{errors.password.message}</p>
-              )}
-            </div>
+        <div className="space-y-2 pt-1">
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" className="mt-1" autoComplete="off" {...register("marketingOptIn")} />
+            <span>Email me updates on New Arrivals, Sale and Offers</span>
+          </label>
+          <p className="text-xs text-muted-foreground">
+            * We treat your personal data with care. View our{" "}
+            <a href="/privacy" className="underline">Privacy Policy</a>.
+          </p>
+        </div>
 
-            <div className="space-y-2 pt-1">
-              <label className="flex items-start gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="mt-1"
-                  autoComplete="off"
-                  {...register("marketingOptIn")} // 已带 name
-                />
-                <span>Email me updates on New Arrivals, Sale and Offers</span>
-              </label>
-              <p className="text-xs text-neutral-500">
-                * We treat your personal data with care, view our{" "}
-                <a href="/privacy" className="underline">
-                  Privacy Policy
-                </a>
-                .
-              </p>
-            </div>
+        {serverMsg && (
+          <p className={/fail|error|http/i.test(serverMsg) ? "text-red-500" : "text-green-600"}>
+            {serverMsg}
+          </p>
+        )}
 
-            {serverMsg && (
-              <p className={/失败|error|HTTP/i.test(serverMsg) ? "text-red-500" : "text-green-600"}>
-                {serverMsg}
-              </p>
-            )}
-
-            <Button type="submit" disabled={loading} className="w-full">
-              {loading ? "注册中..." : "注册"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+        <Button type="submit" disabled={loading} className="w-full h-11 rounded-xl">
+          {loading ? "Creating account..." : "Create account"}
+        </Button>
+      </form>
+    </AuthShell>
   );
 }
