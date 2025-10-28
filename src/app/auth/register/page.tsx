@@ -10,12 +10,10 @@ import { Label } from "@/components/ui/label";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { useState } from "react";
 
-// ✅ 校验保持不变（密码至少 8 位）
 const schema = z.object({
   username: z.string().min(3, "用户名至少3位"),
   email: z.string().email("请输入有效的邮箱"),
   password: z.string().min(8, "密码至少8位"),
-  // 订阅勾选：可选布尔
   marketingOptIn: z.boolean().optional(),
 });
 
@@ -32,14 +30,13 @@ export default function RegisterPage() {
   });
 
   const [loading, setLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState("");
+  const [serverMsg, setServerMsg] = useState<string>("");
 
   const onSubmit = async (data: RegisterFormData) => {
     setLoading(true);
-    setErrorMessage("");
+    setServerMsg("");
 
     try {
-      // ✅ 把 username 映射为后端期望的 name；把勾选结果作为 marketing_opt_in 一并提交
       const payload = {
         email: data.email,
         password: data.password,
@@ -50,24 +47,32 @@ export default function RegisterPage() {
       const base = process.env.NEXT_PUBLIC_API_BASE;
       if (!base) throw new Error("缺少 NEXT_PUBLIC_API_BASE 环境变量");
 
-      // 调用 Worker 的 /auth/register（后端会根据 marketing_opt_in 自动 upsert 订阅）
       const res = await fetch(`${base}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
-      const json = await res.json().catch(() => ({} as any));
-
-      if (!res.ok) {
-        throw new Error(json?.error || "注册失败");
+      const text = await res.text();
+      let body: any = null;
+      try {
+        body = text ? JSON.parse(text) : null;
+      } catch {
+        body = { message: text || "" };
       }
 
-      // 成功后跳转登录
+      if (!res.ok) {
+        const hint =
+          body?.message ||
+          body?.error ||
+          `HTTP ${res.status} ${res.statusText || ""}`.trim();
+        throw new Error(hint || "注册失败");
+      }
+
+      setServerMsg(body?.message || "注册成功");
       window.location.href = "/auth/login";
-    } catch (error: unknown) {
-      if (error instanceof Error) setErrorMessage(error.message);
-      else setErrorMessage("未知错误");
+    } catch (e) {
+      setServerMsg(e instanceof Error ? e.message : "未知错误");
     } finally {
       setLoading(false);
     }
@@ -81,10 +86,15 @@ export default function RegisterPage() {
         </CardHeader>
 
         <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" autoComplete="on">
             <div>
               <Label htmlFor="username">用户名</Label>
-              <Input id="username" {...register("username")} />
+              <Input
+                id="username"
+                type="text"
+                autoComplete="username"   // ✅ 只保留 autoComplete
+                {...register("username")} // register 已包含 name="username"
+              />
               {errors.username && (
                 <p className="text-red-500 text-sm">{errors.username.message}</p>
               )}
@@ -92,7 +102,13 @@ export default function RegisterPage() {
 
             <div>
               <Label htmlFor="email">邮箱</Label>
-              <Input id="email" type="email" {...register("email")} />
+              <Input
+                id="email"
+                type="email"
+                autoComplete="email"
+                inputMode="email"
+                {...register("email")}    // 不要再写 name="email"
+              />
               {errors.email && (
                 <p className="text-red-500 text-sm">{errors.email.message}</p>
               )}
@@ -100,19 +116,24 @@ export default function RegisterPage() {
 
             <div>
               <Label htmlFor="password">密码</Label>
-              <Input id="password" type="password" {...register("password")} />
+              <Input
+                id="password"
+                type="password"
+                autoComplete="new-password" // 注册页用 new-password
+                {...register("password")}    // 不要再写 name="password"
+              />
               {errors.password && (
                 <p className="text-red-500 text-sm">{errors.password.message}</p>
               )}
             </div>
 
-            {/* ✅ 英文文案（与截图一致） */}
             <div className="space-y-2 pt-1">
               <label className="flex items-start gap-2 text-sm">
                 <input
                   type="checkbox"
                   className="mt-1"
-                  {...register("marketingOptIn")}
+                  autoComplete="off"
+                  {...register("marketingOptIn")} // 已带 name
                 />
                 <span>Email me updates on New Arrivals, Sale and Offers</span>
               </label>
@@ -125,7 +146,11 @@ export default function RegisterPage() {
               </p>
             </div>
 
-            {errorMessage && <p className="text-red-500">{errorMessage}</p>}
+            {serverMsg && (
+              <p className={/失败|error|HTTP/i.test(serverMsg) ? "text-red-500" : "text-green-600"}>
+                {serverMsg}
+              </p>
+            )}
 
             <Button type="submit" disabled={loading} className="w-full">
               {loading ? "注册中..." : "注册"}
