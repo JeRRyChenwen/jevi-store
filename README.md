@@ -990,3 +990,11 @@ Express delivery 则有更快的速度抵达
    10，user 注册 协议
 
 生产环境里最好在服务器端根据商品 ID 重新计算总价
+
+==========================
+terms and conditions
+==========================
+
+By clicking Create an Account, you agree to yd.'s privacy policy, terms & conditions and cookie policy
+
+By subscribing you agree to our Terms and Conditions and Privacy Policy. Applies to Full Price product only. Minimum spend of $80. Excludes sale items, gift cards, alterations, delivery costs.
