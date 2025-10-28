@@ -107,10 +107,10 @@ export default function RegisterPage() {
             <input type="checkbox" className="mt-1" autoComplete="off" {...register("marketingOptIn")} />
             <span>Email me updates on New Arrivals, Sale and Offers</span>
           </label>
-          <p className="text-xs text-muted-foreground">
+          {/* <p className="text-xs text-muted-foreground">
             * We treat your personal data with care. View our{" "}
             <a href="/privacy" className="underline">Privacy Policy</a>.
-          </p>
+          </p> */}
         </div>
 
         {serverMsg && (
