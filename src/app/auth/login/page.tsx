@@ -1,4 +1,3 @@
-// src/app/auth/login/page.tsx
 "use client";
 
 import { useForm } from "react-hook-form";
@@ -81,33 +80,41 @@ export default function LoginPage() {
       title="Sign in"
       subtitle="Welcome back. Access your saved items and orders."
       footer={
-        <div className="space-y-2">
+        <div className="text-center text-sm text-muted-foreground">
           <p>
             Don’t have an account?{" "}
             <a href="/auth/register" className="underline">Create one</a>
           </p>
+          <div className="h-8" aria-hidden />
           <p>
             <a href="/auth/forgot-password" className="underline">Forgot password?</a>
           </p>
         </div>
       }
     >
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" autoComplete="on">
-        <div>
-          <Label htmlFor="email">Email</Label>
+      {/* 调大表单项之间的纵向间距 */}
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" autoComplete="on">
+        {/* 每个字段：标题与输入框之间用 gap-3/4 拉开 */}
+        <div className="grid gap-3">
+          <Label htmlFor="email" className="block">Email</Label>
           <Input id="email" type="email" autoComplete="email" {...register("email")} />
           {errors.email && <p className="text-red-500 text-sm mt-1">{errors.email.message}</p>}
         </div>
 
-        <div>
-          <Label htmlFor="password">Password</Label>
+        <div className="grid gap-3">
+          <Label htmlFor="password" className="block">Password</Label>
           <Input id="password" type="password" autoComplete="current-password" {...register("password")} />
           {errors.password && <p className="text-red-500 text-sm mt-1">{errors.password.message}</p>}
         </div>
 
         {errorMessage && <p className="text-red-600 text-sm">{errorMessage}</p>}
 
-        <Button type="submit" disabled={isSubmitting} className="w-full h-11 rounded-xl">
+        {/* 按钮仍然是缩窄版，带边框 */}
+        <Button
+          type="submit"
+          disabled={isSubmitting}
+          className="w-auto px-10 h-11 rounded-xl border border-input mx-auto block"
+        >
           {isSubmitting ? "Signing in..." : "Sign in"}
         </Button>
       </form>

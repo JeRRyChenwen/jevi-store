@@ -1,4 +1,3 @@
-// src/app/auth/register/page.tsx
 "use client";
 
 import { useForm } from "react-hook-form";
@@ -81,21 +80,22 @@ export default function RegisterPage() {
         </div>
       }
     >
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" autoComplete="on">
-        <div>
-          <Label htmlFor="username">Username</Label>
+      {/* 调大表单项之间的纵向间距 */}
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" autoComplete="on">
+        <div className="grid gap-3">
+          <Label htmlFor="username" className="block">Username</Label>
           <Input id="username" type="text" autoComplete="username" {...register("username")} />
           {errors.username && <p className="text-red-500 text-sm">{errors.username.message}</p>}
         </div>
 
-        <div>
-          <Label htmlFor="email">Email</Label>
+        <div className="grid gap-3">
+          <Label htmlFor="email" className="block">Email</Label>
           <Input id="email" type="email" autoComplete="email" inputMode="email" {...register("email")} />
           {errors.email && <p className="text-red-500 text-sm">{errors.email.message}</p>}
         </div>
 
-        <div>
-          <Label htmlFor="password">Password</Label>
+        <div className="grid gap-3">
+          <Label htmlFor="password" className="block">Password</Label>
           <Input id="password" type="password" autoComplete="new-password" {...register("password")} />
           {errors.password && <p className="text-red-500 text-sm">{errors.password.message}</p>}
         </div>
@@ -117,7 +117,11 @@ export default function RegisterPage() {
           </p>
         )}
 
-        <Button type="submit" disabled={loading} className="w-full h-11 rounded-xl">
+        <Button
+          type="submit"
+          disabled={loading}
+          className="w-auto px-10 h-11 rounded-xl border border-input mx-auto block"
+        >
           {loading ? "Creating account..." : "Create account"}
         </Button>
       </form>
