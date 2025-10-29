@@ -68,7 +68,7 @@ export default function RegisterPage() {
       footer={
         <div className="text-center text-sm text-muted-foreground font-normal space-y-4">
           <p className="text-xs">
-            By clicking <span className="font-medium">Create an Account</span>, you agree to our{" "}
+            By proceeding to <span className="font-medium">Create account</span>, you accept our{" "}
             <a href="/privacy" className="underline ">privacy policy</a>,{" "}
             <a href="/terms" className="underline ">terms &amp; conditions</a> and{" "}
             <a href="/cookies" className="underline ">cookie policy</a>.
