@@ -10,21 +10,25 @@ export const metadata: Metadata = {
 
 export default function TermsPage() {
   return (
-    <LegalShell title="Terms & Conditions" updatedAt="2025-10-29">
-      <section>
-        <p>
-          These Terms and Conditions (“Terms”) govern your access to and use of the{" "}
-          <strong>SocialPlatform</strong> website (the “Website”) and related services. By accessing
-          or using this Website, you agree to be bound by these Terms. If you do not agree, you must
-          stop using the Website immediately.
-        </p>
-        <p>
-          These Terms may be updated periodically, and any revisions will be published on this page.
-          Your continued use of the Website after such changes indicates your acceptance of the
-          revised Terms.
-        </p>
-      </section>
-
+    <LegalShell
+      title="Terms & Conditions"
+      updatedAt="2025-10-29"
+      intro={
+        <>
+          <p>
+            These Terms and Conditions (“Terms”) govern your access to and use of the{" "}
+            <strong>SocialPlatform</strong> website (the “Website”) and related services. By
+            accessing or using this Website, you agree to be bound by these Terms. If you do not
+            agree, you must stop using the Website immediately.
+          </p>
+          <p>
+            These Terms may be updated periodically, and any revisions will be published on this
+            page. Your continued use of the Website after such changes indicates your acceptance of
+            the revised Terms.
+          </p>
+        </>
+      }
+    >
       <section>
         <h2 className="text-base font-semibold text-foreground">1. Use of the Website</h2>
         <p>

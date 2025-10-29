@@ -10,16 +10,22 @@ export const metadata: Metadata = {
 
 export default function CookiesPage() {
   return (
-    <LegalShell title="Cookie Policy" updatedAt="2025-10-29">
-      <section>
-        <p>
-          At <strong>SocialPlatform</strong>, we take your privacy seriously and are committed to
-          providing a transparent experience regarding how we use cookies and similar technologies.
-          This Cookie Policy explains what cookies are, how we use them, and how you can manage your
-          preferences.
-        </p>
-      </section>
-
+    <LegalShell
+      title="Cookie Policy"
+      updatedAt="2025-10-29"
+      intro={
+        <>
+          <p>
+            At <strong>SocialPlatform</strong>, we take your privacy seriously and are committed to
+            providing a transparent experience regarding how we use cookies and similar technologies.
+          </p>
+          <p>
+            This Cookie Policy explains what cookies are, how we use them, and how you can manage
+            your preferences.
+          </p>
+        </>
+      }
+    >
       <section>
         <h2 className="text-base font-semibold text-foreground">
           1. What Are Cookies and Similar Technologies
@@ -37,9 +43,7 @@ export default function CookiesPage() {
       </section>
 
       <section>
-        <h2 className="text-base font-semibold text-foreground">
-          2. Why We Use Cookies
-        </h2>
+        <h2 className="text-base font-semibold text-foreground">2. Why We Use Cookies</h2>
         <p>We use cookies and similar technologies for the following purposes:</p>
         <ul className="list-disc pl-5 space-y-1">
           <li>
@@ -51,21 +55,19 @@ export default function CookiesPage() {
             with the Website, measure marketing effectiveness, and improve site performance.
           </li>
           <li>
-            <strong>Preference cookies</strong> – Remember your choices, such as language,
-            currency, or region, to make future visits more convenient.
+            <strong>Preference cookies</strong> – Remember your choices, such as language, currency,
+            or region, to make future visits more convenient.
           </li>
           <li>
-            <strong>Advertising cookies</strong> – Deliver relevant ads and promotional content
-            based on your interests. These may be placed by us or third-party partners (e.g.,
-            Google, Meta).
+            <strong>Advertising cookies</strong> – Deliver relevant ads and promotional content based
+            on your interests. These may be placed by us or third-party partners (e.g., Google,
+            Meta).
           </li>
         </ul>
       </section>
 
       <section>
-        <h2 className="text-base font-semibold text-foreground">
-          3. Managing or Blocking Cookies
-        </h2>
+        <h2 className="text-base font-semibold text-foreground">3. Managing or Blocking Cookies</h2>
         <p>
           You can control or delete cookies at any time by adjusting your browser settings. Most
           browsers allow you to:
@@ -88,10 +90,10 @@ export default function CookiesPage() {
           4. Google Analytics and Similar Tools
         </h2>
         <p>
-          We use <strong>Google Analytics</strong> and similar tools to collect information about
-          how visitors use our Website. These tools help us understand traffic patterns and improve
-          user experience. Data collected includes, for example, which pages are visited, how long
-          users stay, and how they reached our site.
+          We use <strong>Google Analytics</strong> and similar tools to collect information about how
+          visitors use our Website. These tools help us understand traffic patterns and improve user
+          experience. Data collected includes, for example, which pages are visited, how long users
+          stay, and how they reached our site.
         </p>
         <p>
           Google Analytics cookies operate anonymously and do not identify individual users. You can
@@ -137,9 +139,7 @@ export default function CookiesPage() {
       </section>
 
       <section>
-        <h2 className="text-base font-semibold text-foreground">
-          6. Duration of Cookies
-        </h2>
+        <h2 className="text-base font-semibold text-foreground">6. Duration of Cookies</h2>
         <p>
           Some cookies are <strong>session cookies</strong>, which expire automatically when you
           close your browser. Others are <strong>persistent cookies</strong>, which remain on your
@@ -152,13 +152,11 @@ export default function CookiesPage() {
       </section>
 
       <section>
-        <h2 className="text-base font-semibold text-foreground">
-          7. Updates to This Cookie Policy
-        </h2>
+        <h2 className="text-base font-semibold text-foreground">7. Updates to This Cookie Policy</h2>
         <p>
-          We may update this Cookie Policy periodically to reflect changes in technology, law, or
-          our data practices. The latest version will always be available on this page, with the
-          date of the most recent update displayed at the top.
+          We may update this Cookie Policy periodically to reflect changes in technology, law, or our
+          data practices. The latest version will always be available on this page, with the date of
+          the most recent update displayed at the top.
         </p>
       </section>
 

@@ -10,20 +10,24 @@ export const metadata: Metadata = {
 
 export default function PrivacyPage() {
   return (
-    <LegalShell title="Privacy Policy" updatedAt="2025-10-29">
-      <section>
-        <p>
-          This Privacy Policy explains how <strong>SocialPlatform</strong> (“we”, “us”, or “our”)
-          collects, uses, stores, and protects your personal information when you use our website
-          and related services (collectively, the “Service”).
-        </p>
-        <p>
-          We are committed to safeguarding your privacy and complying with applicable data
-          protection laws, including the EU General Data Protection Regulation (GDPR), the
-          California Consumer Privacy Act (CCPA), and other relevant international privacy laws.
-        </p>
-      </section>
-
+    <LegalShell
+      title="Privacy Policy"
+      updatedAt="2025-10-29"
+      intro={
+        <>
+          <p>
+            This Privacy Policy explains how <strong>SocialPlatform</strong> (“we”, “us”, or “our”)
+            collects, uses, stores, and protects your personal information when you use our website
+            and related services (collectively, the “Service”).
+          </p>
+          <p>
+            We are committed to safeguarding your privacy and complying with applicable data
+            protection laws, including the EU General Data Protection Regulation (GDPR), the
+            California Consumer Privacy Act (CCPA), and other relevant international privacy laws.
+          </p>
+        </>
+      }
+    >
       <section>
         <h2 className="text-base font-semibold text-foreground">1. Information We Collect</h2>
         <p>We may collect the following types of personal information from you:</p>
