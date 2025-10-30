@@ -13,13 +13,22 @@ const schema = z.object({
   username: z.string().min(3, "Username must be at least 3 characters"),
   email: z.string().email("Please enter a valid email"),
   password: z.string().min(8, "Password must be at least 8 characters"),
+  confirmPassword: z.string().min(8, "Password must be at least 8 characters"),
   marketingOptIn: z.boolean().optional(),
+})
+.refine((data) => data.password === data.confirmPassword, {
+  path: ["confirmPassword"],
+  message: "Passwords do not match",
 });
+
 type RegisterFormData = z.infer<typeof schema>;
 
 export default function RegisterPage() {
   const { register, handleSubmit, formState: { errors } } =
-    useForm<RegisterFormData>({ resolver: zodResolver(schema), defaultValues: { marketingOptIn: false } });
+    useForm<RegisterFormData>({
+      resolver: zodResolver(schema),
+      defaultValues: { marketingOptIn: false },
+    });
 
   const [loading, setLoading] = useState(false);
   const [serverMsg, setServerMsg] = useState<string>("");
@@ -76,7 +85,6 @@ export default function RegisterPage() {
           <div className="h-8" aria-hidden />
           <p className="hover:text-primary font-semibold">
             Already have an account?{" "}
-
             <a href="/auth/login" className="underline hover:text-primary font-semibold">Sign in</a>
           </p>
         </div>
@@ -100,6 +108,13 @@ export default function RegisterPage() {
           <Label htmlFor="password" className="block">Password</Label>
           <Input id="password" type="password" autoComplete="new-password" {...register("password")} />
           {errors.password && <p className="text-red-500 text-sm">{errors.password.message}</p>}
+        </div>
+
+        {/* ✅ 新增：确认密码（保持原有 UI 风格） */}
+        <div className="grid gap-3">
+          <Label htmlFor="confirmPassword" className="block">Confirm Password</Label>
+          <Input id="confirmPassword" type="password" autoComplete="new-password" {...register("confirmPassword")} />
+          {errors.confirmPassword && <p className="text-red-500 text-sm">{errors.confirmPassword.message}</p>}
         </div>
 
         <div className="space-y-2 pt-1">
