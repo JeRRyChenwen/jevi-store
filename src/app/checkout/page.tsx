@@ -190,6 +190,8 @@ function AddressForm({
   onOptInChanged,
   /** ✅ 已登录时隐藏“Your Details”区块与营销勾选 */
   hideYourDetails = false,
+  /** ✅ 新增：保存为默认地址 */
+  onSaveDefault,
 }: {
   address: Address;
   setAddress: (a: Address) => void;
@@ -203,6 +205,7 @@ function AddressForm({
   onEmailCommit?: (email: string) => void;
   onOptInChanged?: (opt: boolean) => void;
   hideYourDetails?: boolean;
+  onSaveDefault?: () => Promise<void> | void;
 }) {
   const on =
     (k: keyof Address) =>
@@ -337,6 +340,17 @@ function AddressForm({
               onChange={on("country")}
             />
           </div>
+        </div>
+
+        {/* ✅ 新增：保存为默认地址按钮（放在 Country 下方区域） */}
+        <div className="pt-1 flex justify-end">
+          <button
+            type="button"
+            onClick={() => onSaveDefault?.()}
+            className="rounded-full border bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
+          >
+            Save address and set as default address
+          </button>
         </div>
 
         {/* ✅ 已登录则隐藏 “Your Details” 区域 */}
@@ -941,6 +955,53 @@ export default function CheckoutPage() {
     } catch {}
   }
 
+  // ✅ 新增：保存为默认地址（调用 /api/addresses）
+  const handleSaveDefaultAddress = async () => {
+    // 忽略邮箱进行校验
+    const { valid, errs } = validateAddress(address, "", true);
+    if (!valid) {
+      setAddressErrs(errs);
+      setAddressShowErrors(true);
+      const el = document.getElementById("address-section");
+      el?.scrollIntoView({ behavior: "smooth", block: "start" });
+      alert("Please complete the required address fields before saving.");
+      return;
+    }
+
+    try {
+      const payload = {
+        first_name: (address.firstName || "").trim(),
+        last_name: (address.lastName || "").trim(),
+        phone: (address.phone || "").trim(),
+        line1: (address.line1 || "").trim(),
+        line2: (address.line2 || "").trim(),
+        city: (address.city || "").trim(),
+        state: (address.state || "").trim(),
+        postcode: (address.postcode || "").trim(),
+        country: (address.country || "").trim(),
+      };
+
+      const res = await fetch(apiURL("/addresses"), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+
+      let data: any = null;
+      try { data = await res.clone().json(); } catch {}
+
+      if (!res.ok) {
+        const msg = data?.error || data?.message || `HTTP ${res.status}`;
+        throw new Error(msg);
+      }
+
+      alert("Saved as your default address.");
+    } catch (e: any) {
+      alert(e?.message || "Failed to save address");
+    }
+  };
+
   // 点击 Continue：Address 步骤改为“提交时校验”
   const handleContinue = () => {
     if (step === "address") {
@@ -1134,6 +1195,7 @@ export default function CheckoutPage() {
               onEmailCommit={(email) => sendSubscriptionIfNeeded(email)}
               onOptInChanged={(_opt) => sendSubscriptionIfNeeded()}
               hideYourDetails={isLoggedIn}
+              onSaveDefault={handleSaveDefaultAddress} // ★ 新增：保存默认地址
             />
           )}
 
