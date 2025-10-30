@@ -4,15 +4,8 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { User as UserIcon, Heart, Search as SearchIcon } from "lucide-react";
+import { User as UserIcon, Search as SearchIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
 
 import CompactSearch from "@/components/search/CompactSearch";
 import SearchOverlay from "@/components/search/SearchOverlay";
@@ -247,25 +240,10 @@ export default function Navbar() {
               <SearchIcon className={ICON_SIZE} />
             </Button>
 
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className={ICON_BTN} aria-label="wishlist">
-                  <Heart className={ICON_SIZE} />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuItem disabled>0 saved items</DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link href="/wishlist">Open wishlist</Link>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
             {/* 购物袋按钮（调用全局 bag 单例） */}
             <BagButton />
 
-            {/* 用户 */}
+            {/* 用户：登录中、已登录、未登录三态 */}
             {loading ? (
               <Button
                 variant="ghost"
@@ -277,25 +255,21 @@ export default function Navbar() {
                 <UserIcon className={ICON_SIZE} />
               </Button>
             ) : user ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className={ICON_BTN} aria-label="account menu">
-                    <UserIcon className={ICON_SIZE} />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem disabled>Signed in as {displayName(user)}</DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <Link href="/profile">个人资料</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={logout} className="text-red-600">
-                    退出登录
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              // ✅ 已登录：点击跳转到 /profile
+              <Button
+                asChild
+                variant="ghost"
+                size="icon"
+                className={ICON_BTN}
+                aria-label="go to profile"
+                title={`Signed in as ${displayName(user)}`}
+              >
+                <Link href="/profile">
+                  <UserIcon className={ICON_SIZE} />
+                </Link>
+              </Button>
             ) : (
+              // 未登录：去登录页
               <Button
                 asChild
                 variant="ghost"
