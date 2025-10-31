@@ -21,13 +21,12 @@ type SessionUser = {
 };
 
 async function readUserFromCookies(): Promise<SessionUser | null> {
-  // ✅ 关键：在新版本里要 await cookies()
   const jar = await cookies();
   const rawUser = jar.get("sp_user")?.value || "";
   const hasPresence = jar.get("sp_has_session")?.value === "1";
   const jwt = jar.get("sp_session")?.value || "";
 
-  // 1) 优先使用 sp_user
+  // 1) 优先 sp_user
   if (rawUser) {
     try {
       const json = Buffer.from(rawUser, "base64").toString("utf8");
@@ -38,12 +37,10 @@ async function readUserFromCookies(): Promise<SessionUser | null> {
         name: typeof u?.name === "string" ? u.name : null,
       };
       if (shaped.email) return shaped;
-    } catch {
-      // 解析失败则降级到 JWT
-    }
+    } catch {}
   }
 
-  // 2) 兜底：从 sp_session(JWT) 的 payload 解出展示用信息（不做签名校验）
+  // 2) 兜底：解析 JWT payload 展示
   if (hasPresence && jwt) {
     const parts = jwt.split(".");
     if (parts.length === 3) {
@@ -55,13 +52,41 @@ async function readUserFromCookies(): Promise<SessionUser | null> {
           name: typeof payload?.name === "string" ? payload.name : null,
         };
         if (shaped.email) return shaped;
-      } catch {
-        // 忽略
-      }
+      } catch {}
     }
   }
-
   return null;
+}
+
+// 统一走本地 /api 代理（会把 3000 域 Cookie 带上）
+const apiURL = (p: string) => `/api${p}`;
+
+// ===== Server Action: 退出登录 =====
+async function logoutAction() {
+  "use server";
+
+  // 1) 调用后端清 Cookie（Worker 应该在 /logout 返回 Set-Cookie 清除 sp_*）
+  try {
+    await fetch(apiURL("/logout"), {
+      method: "POST",
+      // Server Actions 里 fetch 不会自动携带浏览器 Cookie，
+      // 但因为这是同域的内部调用，Worker 仍会按约定返回清除指令。
+      // 这里我们再本地把 Next 侧的 cookies 一并删除，双保险。
+    });
+  } catch {
+    // 忽略网络错误，继续本地删除
+  }
+
+  // 2) 本地删除这些 cookie（兜底，防止代理异常）
+  const jar = await cookies();
+  ["sp_session", "sp_has_session", "sp_user"].forEach((k) => {
+    try {
+      jar.delete(k);
+    } catch {}
+  });
+
+  // 3) 回到首页
+  redirect("/");
 }
 
 export default async function ProfilePage() {
@@ -88,6 +113,17 @@ export default async function ProfilePage() {
       <p className="text-xs text-neutral-500 mt-4">
         该页面仅展示从登录会话里读取到的基本资料。修改资料的功能可以之后再接到后端接口。
       </p>
+
+      {/* 退出登录按钮 */}
+      <form action={logoutAction} className="mt-6">
+        <button
+          type="submit"
+          className="rounded-full border px-5 py-2 text-sm font-semibold hover:bg-neutral-50"
+          title="退出当前登录"
+        >
+          退出登录
+        </button>
+      </form>
     </main>
   );
 }

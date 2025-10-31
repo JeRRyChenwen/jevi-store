@@ -343,15 +343,17 @@ function AddressForm({
         </div>
 
         {/* ✅ 新增：保存为默认地址按钮（放在 Country 下方区域） */}
-        <div className="pt-1 flex justify-end">
-          <button
-            type="button"
-            onClick={() => onSaveDefault?.()}
-            className="rounded-full border bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
-          >
-            Save address and set as default address
-          </button>
-        </div>
+        {onSaveDefault && (
+          <div className="pt-1 flex justify-end">
+            <button
+              type="button"
+              onClick={() => onSaveDefault()}
+              className="rounded-full border bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
+            >
+              Save address and set as default address
+            </button>
+          </div>
+        )}
 
         {/* ✅ 已登录则隐藏 “Your Details” 区域 */}
         {!hideYourDetails && (
@@ -1195,7 +1197,7 @@ export default function CheckoutPage() {
               onEmailCommit={(email) => sendSubscriptionIfNeeded(email)}
               onOptInChanged={(_opt) => sendSubscriptionIfNeeded()}
               hideYourDetails={isLoggedIn}
-              onSaveDefault={handleSaveDefaultAddress} // ★ 新增：保存默认地址
+              onSaveDefault={isLoggedIn ? handleSaveDefaultAddress : undefined} // ★ 新增：保存默认地址
             />
           )}
 
