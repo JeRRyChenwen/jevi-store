@@ -8,7 +8,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import CartList from "@/components/cart/CartList";
 import type { CartItem as CartListItem } from "@/components/cart/CartList";
 
-import { PayPalButtons, usePayPalScriptReducer } from "@paypal/react-paypal-js"; // ★ 新增
+import { PayPalButtons, usePayPalScriptReducer } from "@paypal/react-paypal-js";
 
 import { selectCurrencyAndTotals } from "@/lib/cartPricing";
 import { effectiveMinor, type PriceRec, type Currency } from "@/lib/pricing";
@@ -84,7 +84,7 @@ const emptyErr: AddressErr = {
   email: false,
 };
 
-/** ✅ 允许在“已登录或地址中已有邮箱”时不校验邮箱 */
+/** 允许在“已登录或地址中已有邮箱”时不校验邮箱 */
 function validateAddress(a: Address, emailInput: string, ignoreEmail = false) {
   const errs: AddressErr = {
     firstName: t(a.firstName) === "",
@@ -188,10 +188,9 @@ function AddressForm({
   errorBanner,
   onEmailCommit,
   onOptInChanged,
-  /** ✅ 已登录时隐藏“Your Details”区块与营销勾选 */
   hideYourDetails = false,
-  /** ✅ 新增：保存为默认地址 */
   onSaveDefault,
+  saveMsg,
 }: {
   address: Address;
   setAddress: (a: Address) => void;
@@ -206,6 +205,7 @@ function AddressForm({
   onOptInChanged?: (opt: boolean) => void;
   hideYourDetails?: boolean;
   onSaveDefault?: () => Promise<void> | void;
+  saveMsg?: { kind: "error" | "success"; text: string } | null;
 }) {
   const on =
     (k: keyof Address) =>
@@ -342,9 +342,9 @@ function AddressForm({
           </div>
         </div>
 
-        {/* ✅ 新增：保存为默认地址按钮（放在 Country 下方区域） */}
+        {/* 保存为默认地址区域：按钮始终可点；只在有 saveMsg 时显示提示 */}
         {onSaveDefault && (
-          <div className="pt-1 flex justify-end">
+          <div className="pt-1 flex flex-col items-end gap-2">
             <button
               type="button"
               onClick={() => onSaveDefault()}
@@ -352,10 +352,21 @@ function AddressForm({
             >
               Save address and set as default address
             </button>
+
+            {saveMsg ? (
+              <div
+                className={
+                  "text-xs " + (saveMsg.kind === "success" ? "text-emerald-700" : "text-red-600")
+                }
+                aria-live="polite"
+              >
+                {saveMsg.text}
+              </div>
+            ) : null}
           </div>
         )}
 
-        {/* ✅ 已登录则隐藏 “Your Details” 区域 */}
+        {/* 已登录则隐藏 “Your Details” 区域 */}
         {!hideYourDetails && (
           <div className="border rounded-lg p-4">
             <h3 className="text-base font-medium mb-2">Your Details</h3>
@@ -562,7 +573,7 @@ function LargeGhostButton({
   );
 }
 
-/* ========= ✅ 成功支付后把订单发送给 Worker（返回 order_id） ========= */
+/* ========= 成功支付后把订单发送给 Worker（返回 order_id） ========= */
 async function sendOrderToServer(args: {
   cart: any[];
   address: Address;
@@ -575,9 +586,8 @@ async function sendOrderToServer(args: {
   deliveryMethod?: "standard" | "express";
 }): Promise<{ ok: boolean; order_id?: number | null }> {
   try {
-    const target = "/api/orders"; // 固定走 Next 代理，这样会自动带上 3000 域的 Cookie
+    const target = "/api/orders";
 
-    // 从购物车构造 order_items（尽量用 effectiveMinor 作为单价）
     const items = (args.cart || []).map((it: any) => {
       const recs = itemToPriceRecs(it);
       const rec = recs.find((r) => r.currency === (args.currency as Currency));
@@ -611,7 +621,6 @@ async function sendOrderToServer(args: {
       null;
 
     const body = {
-      // 前端可为空，后端会用 JWT/DB 兜底
       email: args.address?.email || "",
       first_name: args.address?.firstName || null,
       last_name: args.address?.lastName || null,
@@ -652,9 +661,9 @@ async function sendOrderToServer(args: {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-debug": "1",            // ← 加这一行，便于后端把 db_error 回传
+        "x-debug": "1",
       },
-      credentials: "include",      // 带上登录 cookie
+      credentials: "include",
       keepalive: true,
       body: JSON.stringify(body),
     }).catch((e) => {
@@ -664,7 +673,6 @@ async function sendOrderToServer(args: {
 
     if (!res) return { ok: false };
 
-    // 更友好的错误打印：尝试解析 JSON，否则回退到 text
     let data: any = null;
     let text: string | null = null;
     try {
@@ -707,12 +715,12 @@ function PaypalButtonInline({
   const [{ isResolved }] = usePayPalScriptReducer();
   if (!isResolved) return null;
 
-  const value = (amountMinor / 100).toFixed(2); // "13.80"
+  const value = (amountMinor / 100).toFixed(2);
 
   return (
     <PayPalButtons
       style={{ layout: "vertical", shape: "rect", label: "paypal" }}
-      forceReRender={[value, currency]} // ★ 金额/币种变化时刷新组件而非重载 SDK
+      forceReRender={[value, currency]}
       createOrder={(data, actions) => {
         onInitiate?.();
         return actions.order.create({
@@ -726,7 +734,6 @@ function PaypalButtonInline({
       }}
       onError={(err) => {
         console.error("PayPal error:", err);
-        // 这里也可以显示一条 toast
       }}
     />
   );
@@ -747,17 +754,21 @@ export default function CheckoutPage() {
   const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [emailInput, setEmailInput] = useState<string>("");
 
-  // ✅ 登录态（读取 presence/session cookie）
+  // 登录态（读取 presence/session cookie）
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const readLoginFromCookie = () => {
     const has = isLoggedInViaCookie();
     setIsLoggedIn(has);
   };
 
-  // 地址校验状态
+  // 地址校验状态（用于 Continue 按钮的显错）
   const [addressShowErrors, setAddressShowErrors] = useState(false);
   const [addressErrs, setAddressErrs] = useState<AddressErr>(emptyErr);
 
+  // 保存默认地址提示（点击保存后才可能出现）
+  const [saveMsg, setSaveMsg] = useState<{ kind: "error" | "success"; text: string } | null>(null);
+
+  // URL 步骤
   const initialStepFromURL = (() => {
     const s = searchParams.get("step");
     return isStepKey(s) ? (s as StepKey) : ("bag" as StepKey);
@@ -776,7 +787,6 @@ export default function CheckoutPage() {
     const hosts = [
       "https://www.paypal.com",
       "https://www.paypalobjects.com",
-      // braintree 脚本已不再需要，如仍保留其他地方的集成，以下两行可保留；否则可以删除
       "https://assets.braintreegateway.com",
       "https://client-analytics.braintreegateway.com",
     ];
@@ -813,7 +823,6 @@ export default function CheckoutPage() {
     } catch {}
     readLoginFromCookie();
 
-    // ★ 如果已登录且地址/输入没有邮箱，从 /auth/me 回填一次
     (async () => {
       if (isLoggedInViaCookie()) {
         const authedEmail = await fetchAuthedEmail();
@@ -847,11 +856,12 @@ export default function CheckoutPage() {
     } catch {}
   }, [cart, loaded]);
 
-  // 地址写回
+  // 地址写回：每次地址变化清空保存提示
   useEffect(() => {
     try {
       localStorage.setItem(LS_ADDRESS_KEY, JSON.stringify(address));
     } catch {}
+    setSaveMsg(null);
   }, [address]);
 
   const hasItems = cart.length > 0;
@@ -915,7 +925,7 @@ export default function CheckoutPage() {
   const clientUTCOffsetMin = -new Date().getTimezoneOffset();
   const FORCE_CN_TZ = "Asia/Shanghai";
 
-  // ✅ 订阅（未登录仍允许；已登录隐藏 Your Details 时基本不会触发）
+  // 订阅（未登录仍允许；已登录隐藏 Your Details 时基本不会触发）
   async function sendSubscriptionIfNeeded(emailRaw?: string) {
     try {
       const email = (emailRaw || address?.email || "").trim().toLowerCase();
@@ -957,16 +967,15 @@ export default function CheckoutPage() {
     } catch {}
   }
 
-  // ✅ 新增：保存为默认地址（调用 /api/addresses）
+  // 保存为默认地址：按钮可点，点击时才校验 & 提示
   const handleSaveDefaultAddress = async () => {
-    // 忽略邮箱进行校验
     const { valid, errs } = validateAddress(address, "", true);
     if (!valid) {
       setAddressErrs(errs);
       setAddressShowErrors(true);
-      const el = document.getElementById("address-section");
-      el?.scrollIntoView({ behavior: "smooth", block: "start" });
-      alert("Please complete the required address fields before saving.");
+      setSaveMsg({ kind: "error", text: "Please complete all required address fields before saving." });
+      document.getElementById("address-section")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
     }
 
@@ -994,20 +1003,38 @@ export default function CheckoutPage() {
       try { data = await res.clone().json(); } catch {}
 
       if (!res.ok) {
-        const msg = data?.error || data?.message || `HTTP ${res.status}`;
-        throw new Error(msg);
+        // 401 时追加 whoami 诊断，便于你在页面上直接看到原因
+        if (res.status === 401) {
+          try {
+            const who = await fetch("/api/__whoami?debug=1", {
+              credentials: "include",
+              headers: { accept: "application/json" },
+            }).then(r => r.json());
+            const reason = who?.diag?.reason || "UNKNOWN";
+            const cookies = JSON.stringify(who?.diag?.cookie_present || {});
+            setSaveMsg({
+              kind: "error",
+              text: `Unauthorized (401). reason=${reason}; cookies=${cookies}`,
+            });
+          } catch {
+            setSaveMsg({ kind: "error", text: "Unauthorized (401)" });
+          }
+        } else {
+          const msg = data?.error || data?.message || `HTTP ${res.status}`;
+          setSaveMsg({ kind: "error", text: msg });
+        }
+        return;
       }
 
-      alert("Saved as your default address.");
+      setSaveMsg({ kind: "success", text: "Saved as your default address." });
     } catch (e: any) {
-      alert(e?.message || "Failed to save address");
+      setSaveMsg({ kind: "error", text: e?.message || "Failed to save address" });
     }
   };
 
   // 点击 Continue：Address 步骤改为“提交时校验”
   const handleContinue = () => {
     if (step === "address") {
-      // ★ 关键：已登录 或 地址里本来就有邮箱 → 忽略邮箱校验
       const ignoreEmail = isLoggedIn || !!(address.email && address.email.trim());
       const { valid, errs } = validateAddress(address, "", ignoreEmail);
       if (!valid) {
@@ -1020,7 +1047,6 @@ export default function CheckoutPage() {
       setAddressShowErrors(false);
       setAddressErrs(emptyErr);
 
-      // 未登录时才会上报订阅
       if (!isLoggedIn) void sendSubscriptionIfNeeded();
     }
     nextStepCore();
@@ -1028,11 +1054,10 @@ export default function CheckoutPage() {
 
   const itemsCount = cart.reduce((n, it: any) => n + (it?.qty ?? 1), 0);
 
-  // ✅ 支付成功 → 先尝试落库 → 存预览与 orderId → 清空购物车 → 跳转确认页
+  // 支付成功 → 落库 → 预览 → 清空购物车 → 跳转确认页
   const handlePaySucceeded = async (payload?: any) => {
     let orderId: number | null | undefined = null;
 
-    // ★ 下单前兜底：若地址里没有 email 且用户已登录，调用 /auth/me 拿邮箱
     let orderAddress = { ...address };
     if ((!orderAddress.email || !EMAIL_RE.test((orderAddress.email || "").trim())) && isLoggedIn) {
       const authedEmail = await fetchAuthedEmail();
@@ -1049,7 +1074,7 @@ export default function CheckoutPage() {
     try {
       const persist = await sendOrderToServer({
         cart,
-        address: orderAddress, // ★ 用兜底后的地址
+        address: orderAddress,
         currency,
         itemsMinor: itemsTotals.itemsMinor,
         deliveryFeeMinor: deliveryFeeMinor,
@@ -1079,7 +1104,6 @@ export default function CheckoutPage() {
       );
     } catch {}
 
-    // 清空购物车
     try {
       setCart([]);
       localStorage.setItem(LS_CART_KEY, JSON.stringify([]));
@@ -1087,7 +1111,6 @@ export default function CheckoutPage() {
       window.dispatchEvent(new CustomEvent("bag:updated", { detail: {} }));
     } catch {}
 
-    // 订阅埋点 & 跳转
     sendSubscriptionIfNeeded().finally(() => {
       router.push(CONFIRM_PATH);
     });
@@ -1097,7 +1120,7 @@ export default function CheckoutPage() {
     void sendSubscriptionIfNeeded();
   };
 
-  // ✅ 登录 / 注册并继续
+  // 登录 / 注册并继续
   const handleLoginAndContinue = () => {
     const next = "/checkout?step=address";
     router.push(`/auth/login?next=${encodeURIComponent(next)}`);
@@ -1105,8 +1128,6 @@ export default function CheckoutPage() {
 
   return (
     <main className="w-full px-4 sm:px-6 lg:px-8 2xl:px-12 py-6 md:py-8">
-      {/* PrefetchBraintreeToken / PayPalPreloader 已移除，避免重复加载 SDK */}
-
       <div className="mx-auto w-full max-w-[2300px]">
         <div className="mb-5 text-sm text-neutral-600">
           <Link href="/" className="hover:underline">&larr; Back</Link>
@@ -1197,7 +1218,8 @@ export default function CheckoutPage() {
               onEmailCommit={(email) => sendSubscriptionIfNeeded(email)}
               onOptInChanged={(_opt) => sendSubscriptionIfNeeded()}
               hideYourDetails={isLoggedIn}
-              onSaveDefault={isLoggedIn ? handleSaveDefaultAddress : undefined} // ★ 新增：保存默认地址
+              onSaveDefault={isLoggedIn ? handleSaveDefaultAddress : undefined}
+              saveMsg={saveMsg}
             />
           )}
 
@@ -1345,7 +1367,7 @@ export default function CheckoutPage() {
             </div>
           </section>
 
-          {/* ✅ Back 按钮（只在 payment 步骤显示） */}
+          {/* Back 按钮（只在 payment 步骤显示） */}
           {step === "payment" && (
             <div className="px-4 pb-4 pt-2 flex justify-end">
               <div className="w-[320px] max-w-full">

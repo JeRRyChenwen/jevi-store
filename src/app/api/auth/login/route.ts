@@ -1,84 +1,89 @@
 // src/app/api/auth/login/route.ts
-import { NextRequest, NextResponse } from "next/server";
+import type { NextRequest } from 'next/server';
+import { cookies } from 'next/headers';
 
-// 上游（你的 d1-worker）
-const UP = (process.env.AUTH_UPSTREAM || "http://127.0.0.1:8787").replace(/\/+$/, "");
-const PATH = process.env.AUTH_LOGIN_PATH || "/auth/login";
-const UPSTREAM_URL = `${UP}${PATH}`;
+export const runtime = 'edge'; // 或删掉，按你的部署环境
+
+const WORKER_BASE = process.env.API_PROXY || 'http://127.0.0.1:8787';
+
+// 安全拆分多条 Set-Cookie（不会被 Expires 的逗号误伤）
+function splitSetCookie(header: string): string[] {
+  const out: string[] = [];
+  let i = 0, part = '', inExpires = false;
+  while (i < header.length) {
+    const ch = header[i];
+    if (ch === ',') {
+      // 只有在 Expires=Sat, 这种逗号才视为同一条；否则视为分隔两条 cookie
+      if (!inExpires) {
+        out.push(part.trim());
+        part = '';
+        i++; continue;
+      }
+    }
+    part += ch;
+    // 进入/退出 Expires 的逗号保护区
+    if (part.toLowerCase().endsWith('expires=')) inExpires = true;
+    if (inExpires && ch === ';') inExpires = false;
+    i++;
+  }
+  if (part.trim()) out.push(part.trim());
+  return out;
+}
+
+function parseSetCookie(c: string) {
+  const [kv, ...attrs] = c.split(';').map(s => s.trim());
+  const [name, ...valParts] = kv.split('=');
+  const value = valParts.join('=');
+  const attrMap = new Map<string, string | true>();
+  for (const a of attrs) {
+    const [k, ...v] = a.split('=');
+    const key = k.toLowerCase();
+    const vStr = v.join('=');
+    attrMap.set(key, vStr === '' ? true : vStr);
+  }
+  return { name, value, attrs: attrMap };
+}
 
 export async function POST(req: NextRequest) {
-  const secure = process.env.NODE_ENV === "production";
+  // 透传 body/headers 到 Worker
+  const upstream = await fetch(`${WORKER_BASE}/auth/login`, {
+    method: 'POST',
+    headers: {
+      'content-type': req.headers.get('content-type') || 'application/json',
+      'x-debug': req.nextUrl.searchParams.get('debug') === '1' ? '1' : '0',
+      // 需要的话透传其它头
+    },
+    body: req.body,       // 直接透传流
+    redirect: 'manual',
+  });
 
-  // 读取原始 body，便于转发，同时尽量解析出 email/identifier 用来生成 sp_user
-  const contentType = req.headers.get("content-type") || "application/json";
-  const raw = await req.text();
-  let emailLike = "";
+  // 先把上游响应体直接透传
+  const res = new Response(upstream.body, {
+    status: upstream.status,
+    headers: upstream.headers, // 先带上大多数字段
+  });
 
-  try {
-    if (contentType.includes("application/json")) {
-      const j = JSON.parse(raw || "{}");
-      emailLike = (j?.email || j?.identifier || "").toString();
-    } else if (contentType.includes("application/x-www-form-urlencoded")) {
-      const sp = new URLSearchParams(raw);
-      emailLike = (sp.get("email") || sp.get("identifier") || "") as string;
-    } else {
-      // multipart 等：用不到也没关系
+  // 但「多条 Set-Cookie」需要单独处理（避免被合并/丢失）
+  const setCookie = upstream.headers.get('set-cookie');
+  if (setCookie) {
+    const jar = cookies(); // Next 的服务端写 cookie API
+    for (const raw of splitSetCookie(setCookie)) {
+      const { name, value, attrs } = parseSetCookie(raw);
+      // 用 upstream 的属性落地（HttpOnly/SameSite/Secure/Path/Expires/Max-Age）
+      jar.set({
+        name,
+        value,
+        httpOnly: attrs.has('httponly'),
+        secure: attrs.has('secure'),
+        sameSite: (attrs.get('samesite') as any) || 'lax',
+        path: (attrs.get('path') as string) || '/',
+        expires: attrs.get('expires') ? new Date(attrs.get('expires') as string) : undefined,
+        maxAge: attrs.get('max-age') ? Number(attrs.get('max-age')) : undefined,
+      });
     }
-  } catch {}
-
-  // 转发到 worker
-  const up = await fetch(UPSTREAM_URL, {
-    method: "POST",
-    headers: { "content-type": contentType },
-    body: raw,
-  });
-
-  // 读取上游响应
-  const upJson = await up.json().catch(() => ({} as any));
-  if (!up.ok) {
-    return NextResponse.json(
-      { error: upJson?.error || "upstream error", upstream: { status: up.status, body: upJson } },
-      { status: up.status }
-    );
+    // **重要**：把上游合并过的一条 set-cookie 从 header 里删掉，避免重复/冲突
+    res.headers.delete('set-cookie');
   }
-
-  // 这里我们在 Next 侧种两个“前端可读”的 cookie（Navbar 能看到）
-  const res = NextResponse.json(
-    { ok: true, upstream: { used: UPSTREAM_URL } },
-    { status: 200 }
-  );
-
-  // 1) presence：前端用于快速感知有会话
-  res.cookies.set({
-    name: "sp_has_session",
-    value: "1",
-    httpOnly: false,            // ⭐ 前端需要读
-    sameSite: "lax",
-    path: "/",
-    secure,
-    maxAge: 60 * 60 * 24 * 7,
-  });
-
-  // 2) 用户快照：给 /api/auth/me 返回用户（演示用）
-  //   若上游已经返回 user 就用上游，否则用表单里的 email 兜底
-  const user =
-    upJson?.user && typeof upJson.user === "object"
-      ? upJson.user
-      : {
-          id: emailLike ? "u_" + Buffer.from(emailLike).toString("hex").slice(0, 8) : "",
-          email: emailLike || "",
-          name: (emailLike || "").split("@")[0] || "user",
-        };
-
-  res.cookies.set({
-    name: "sp_user",
-    value: Buffer.from(JSON.stringify(user)).toString("base64"),
-    httpOnly: false,            // ⭐ 前端需要读
-    sameSite: "lax",
-    path: "/",
-    secure,
-    maxAge: 60 * 60 * 24 * 7,
-  });
 
   return res;
 }

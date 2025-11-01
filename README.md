@@ -842,9 +842,17 @@ rmdir /s /q .wrangler\state\v3\d1
 
 wrangler d1 migrations apply socialplatform
 wrangler d1 migrations apply socialplatform --remote
+wrangler d1 migrations apply socialplatform --local
 
 清库
 wrangler d1 execute socialplatform --remote --command "PRAGMA foreign_keys=OFF; DROP TRIGGER IF EXISTS trg_users_updated_at; DROP TABLE IF EXISTS user_addresses; DROP TABLE IF EXISTS order_payments; DROP TABLE IF EXISTS order_items; DROP TABLE IF EXISTS orders; DROP TABLE IF EXISTS email_subscriptions; DROP TABLE IF EXISTS password_resets; DROP TABLE IF EXISTS users; DROP TABLE IF EXISTS d1_migrations; PRAGMA foreign_keys=ON;"
+
+await fetch('/api/auth/login', {
+method: 'POST',
+headers: {'content-type':'application/json'},
+credentials: 'include', // 一定要有！
+body: JSON.stringify({ login: 'lancechen1998@gmail.com', password: 'Cwxzhasdk1234' })
+}).then(r => r.json()).then(console.log)
 
 # ============================================================================
 
