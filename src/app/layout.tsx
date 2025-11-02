@@ -4,12 +4,12 @@ import type { Metadata } from "next";
 import { cn } from "@/lib/utils";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ClientNavbar, CategoryBar } from "@/components/nav";
-
 import BagProvider from "@/components/bag/BagProvider";
 import BagDrawer from "@/components/nav/BagDrawer";
-
-// ✅ 新增：只引入我们自己封装的 Client Provider
 import PayPalProvider from "@/components/paypal/Provider";
+
+// ✅ 直接引入你刚才创建的客户端面包屑组件
+import Breadcrumbs from "@/components/nav/Breadcrumbs";
 
 export const metadata: Metadata = {
   title: "SocialPlatform",
@@ -25,16 +25,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         )}
       >
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          {/* ✅ 这里用 Client 组件包起来，避免在 Server 端直接导入 @paypal/react-paypal-js */}
           <PayPalProvider>
-            {/* 你的全站状态/导航等依旧保持 */}
             <BagProvider>
+              {/* 顶部导航 */}
               <ClientNavbar />
               <div className="h-16 md:h-20 bg-white" />
               <CategoryBar />
 
+              {/* ✅ 全局面包屑（客户端组件） */}
+              <Breadcrumbs />
+
+              {/* 主体内容 */}
               <main className="page-shell py-4 md:py-6">{children}</main>
 
+              {/* 全局购物袋抽屉 */}
               <BagDrawer ownerId="global" />
             </BagProvider>
           </PayPalProvider>
