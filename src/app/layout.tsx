@@ -19,26 +19,22 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="zh-CN" suppressHydrationWarning>
-      <body
-        className={cn(
-          "min-h-screen bg-[var(--background)] text-[var(--foreground)] font-sans antialiased"
-        )}
-      >
+      <body className={cn("min-h-screen bg-[var(--background)] text-[var(--foreground)] font-sans antialiased")}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <PayPalProvider>
             <BagProvider>
-              {/* 顶部导航 */}
               <ClientNavbar />
               <div className="h-16 md:h-20 bg-white" />
               <CategoryBar />
 
-              {/* ✅ 全局面包屑（客户端组件） */}
-              <Breadcrumbs />
+              {/* ✅ 把面包屑放进与你页面同宽的容器里，然后通过 className 定位 */}
+              <div className="page-shell">
+                <Breadcrumbs className="mt-6 md:mt-8 ml-6 md:ml-10" />
+                {/* 也可以用 px 控制整体内边距：px-6 md:px-10 */}
+              </div>
 
-              {/* 主体内容 */}
               <main className="page-shell py-4 md:py-6">{children}</main>
 
-              {/* 全局购物袋抽屉 */}
               <BagDrawer ownerId="global" />
             </BagProvider>
           </PayPalProvider>
