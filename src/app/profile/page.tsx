@@ -2,6 +2,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { logoutAction } from "./_actions";
+import EditProfileCard from "./EditProfileCard"; // 👈 新增：引入可编辑卡片
 import {
   User as UserIcon,
   ShoppingBag,
@@ -125,12 +126,20 @@ export default async function ProfilePage() {
   const displayName =
     (user?.name || "").trim() || (user?.email ? user.email.split("@")[0] : "") || "User";
 
+  // 从 user.name 粗略猜测 first/last（后端未提供字段时的初始值）
+  const [guessedFirst, guessedLast] = (() => {
+    const n = (user?.name || "").trim();
+    if (!n) return ["", ""];
+    const parts = n.split(/\s+/);
+    return [parts[0] || "", parts.slice(1).join(" ") || ""];
+  })();
+
   // === 以下为 UI ===
   return (
     <main className="px-4 md:px-8 py-8 max-w-3xl mx-auto">
       <h1 className="text-2xl font-semibold mb-6">Hi, {displayName}</h1>
 
-      {/* 个人信息卡 */}
+      {/* 个人信息卡（只读摘要） */}
       <div className="rounded-lg border p-4 space-y-3">
         <div className="text-sm text-neutral-600">邮箱</div>
         <div className="text-base font-medium">{user?.email}</div>
@@ -147,7 +156,7 @@ export default async function ProfilePage() {
 
       {/* ==================== 折叠式菜单 ==================== */}
       <div className="mt-6 border rounded-lg divide-y">
-        {/* My Information 可展开 */}
+        {/* Profile 可展开（使用可编辑卡片） */}
         <details open className="group">
           <summary className="flex items-center justify-between px-4 py-3 cursor-pointer list-none hover:bg-neutral-50">
             <span className="flex items-center gap-2">
@@ -157,45 +166,12 @@ export default async function ProfilePage() {
             <ChevronDown className="h-4 w-4 text-neutral-500 group-open:rotate-180 transition-transform" />
           </summary>
 
-          <div className="px-6 py-4 space-y-4 bg-neutral-50/50">
-            <h3 className="text-sm font-semibold">Account Information</h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs text-neutral-500">First Name</label>
-                <div className="mt-1 font-medium">WENXUAN</div>
-              </div>
-              <div>
-                <label className="text-xs text-neutral-500">Last Name</label>
-                <div className="mt-1 font-medium">CHEN</div>
-              </div>
-              <div>
-                <label className="text-xs text-neutral-500">
-                  Phone Number <span className="text-neutral-400">(Optional)</span>
-                </label>
-                <div className="mt-1 font-medium">+61 412 345 678</div>
-              </div>
-              <div>
-                <label className="text-xs text-neutral-500">
-                  Date of Birth <span className="text-neutral-400">(Optional)</span>
-                </label>
-                <div className="mt-1 font-medium">30/05/1998</div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-4 mt-4">
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" className="accent-black" /> Change Email
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" className="accent-black" /> Change Password
-              </label>
-            </div>
-
-            <button className="mt-4 px-6 py-2 rounded-full bg-black text-white text-sm font-semibold hover:bg-neutral-800">
-              Save
-            </button>
-          </div>
+          {/* ✅ 可编辑组件（Edit / Save，调用 /api/auth/profile） */}
+          <EditProfileCard
+            initialFirstName={guessedFirst}
+            initialLastName={guessedLast}
+            initialEmail={user?.email || ""}
+          />
         </details>
 
         {/* 其他栏目仅为占位（未来可展开类似内容） */}
