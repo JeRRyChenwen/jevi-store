@@ -1,6 +1,7 @@
 // src/app/profile/page.tsx
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { logoutAction } from "./_actions";
 
 /** base64url -> string */
 function b64urlToString(input: string): string {
@@ -21,7 +22,7 @@ type SessionUser = {
 };
 
 async function readUserFromCookies(): Promise<SessionUser | null> {
-  const jar = await cookies();
+  const jar = await cookies(); // 👈 这里要 await
   const rawUser = jar.get("sp_user")?.value || "";
   const hasPresence = jar.get("sp_has_session")?.value === "1";
   const jwt = jar.get("sp_session")?.value || "";
@@ -58,68 +59,82 @@ async function readUserFromCookies(): Promise<SessionUser | null> {
   return null;
 }
 
-// 统一走本地 /api 代理（会把 3000 域 Cookie 带上）
-const apiURL = (p: string) => `/api${p}`;
-
-// ===== Server Action: 退出登录 =====
-async function logoutAction() {
-  "use server";
-
-  // 1) 调用后端清 Cookie（Worker 应该在 /logout 返回 Set-Cookie 清除 sp_*）
-  try {
-    await fetch(apiURL("/logout"), {
-      method: "POST",
-      // Server Actions 里 fetch 不会自动携带浏览器 Cookie，
-      // 但因为这是同域的内部调用，Worker 仍会按约定返回清除指令。
-      // 这里我们再本地把 Next 侧的 cookies 一并删除，双保险。
-    });
-  } catch {
-    // 忽略网络错误，继续本地删除
-  }
-
-  // 2) 本地删除这些 cookie（兜底，防止代理异常）
-  const jar = await cookies();
-  ["sp_session", "sp_has_session", "sp_user"].forEach((k) => {
-    try {
-      jar.delete(k);
-    } catch {}
+/** 服务端带本次请求 Cookie 调用同域 API */
+async function apiGet<T>(path: string): Promise<T> {
+  const cookieHeader = (await cookies()).toString(); // 👈 这里也要 await
+  const res = await fetch(path, {
+    method: "GET",
+    headers: { accept: "application/json", cookie: cookieHeader },
+    cache: "no-store",
   });
-
-  // 3) 回到首页
-  redirect("/");
+  if (!res.ok) {
+    let detail: any = null;
+    try { detail = await res.json(); } catch {}
+    throw new Error(`GET ${path} failed: ${res.status} ${res.statusText} ${detail ? JSON.stringify(detail) : ""}`);
+  }
+  return (await res.json()) as T;
 }
 
+type MeResp = {
+  ok: boolean;
+  user: { id: number; email: string | null; name: string | null } | null;
+  worker_version?: string;
+};
+
 export default async function ProfilePage() {
-  const user = await readUserFromCookies();
+  // A) 先从 cookie 取
+  let user = await readUserFromCookies();
   if (!user) {
-    // 未登录 → 带 next 回跳
     redirect("/auth/login?next=/profile");
   }
 
+  // B) cookie 没有 name → 从后端 /auth/me 兜底拉取
+  if (user && (!user.name || !user.name.trim())) {
+    try {
+      const me = await apiGet<MeResp>("/api/auth/me");
+      if (me?.ok && me.user?.email) {
+        user = {
+          id: me.user.id ?? user.id,
+          email: me.user.email ?? user.email,
+          name: (me.user.name ?? "").trim() || user.email?.split("@")[0] || null,
+        };
+      }
+    } catch {
+      // 忽略错误，回退邮箱前缀
+      user = {
+        ...user!,
+        name: user?.name?.trim() || user?.email?.split("@")[0] || null,
+      };
+    }
+  }
+
+  const displayName =
+    (user?.name || "").trim() || (user?.email ? user.email.split("@")[0] : "") || "User";
+
   return (
     <main className="px-4 md:px-8 py-8 max-w-3xl mx-auto">
-      <h1 className="text-2xl font-semibold mb-6">个人资料</h1>
+      <h1 className="text-2xl font-semibold mb-6">Hi, {displayName}</h1>
 
       <div className="rounded-lg border p-4 space-y-3">
         <div className="text-sm text-neutral-600">邮箱</div>
-        <div className="text-base font-medium">{user.email}</div>
+        <div className="text-base font-medium">{user?.email}</div>
 
         <div className="h-px bg-neutral-200 my-2" />
 
         <div className="text-sm text-neutral-600">昵称 / 名称</div>
-        <div className="text-base font-medium">{user.name || "（未设置）"}</div>
+        <div className="text-base font-medium">{displayName || "（未设置）"}</div>
       </div>
 
       <p className="text-xs text-neutral-500 mt-4">
-        该页面仅展示从登录会话里读取到的基本资料。修改资料的功能可以之后再接到后端接口。
+        该页面仅展示从登录会话/后端读取到的基本资料。修改资料的功能可以之后再接到后端接口。
       </p>
 
-      {/* 退出登录按钮 */}
+      {/* 退出登录（Server Action） */}
       <form action={logoutAction} className="mt-6">
         <button
           type="submit"
           className="rounded-full border px-5 py-2 text-sm font-semibold hover:bg-neutral-50"
-          title="退出当前登录"
+          title="退出登录"
         >
           退出登录
         </button>
