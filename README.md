@@ -938,6 +938,8 @@ checkout 页面里的每个页面都是依次点击的
 禁用 PayPal 卡入口：BraintreePayPalOnly.tsx 里 loadPayPalSDK 已建议加 disable-funding: "card,credit,venmo,paylater"，避免重复入口。
 
 很好！然后我还想修改一下我的个人资料页面，也就是我的 profile 页面
+My Fit Preferences
+Gift Card
 
 # ============================================================================
 
