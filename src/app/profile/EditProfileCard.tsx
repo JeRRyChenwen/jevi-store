@@ -93,7 +93,7 @@ export default function EditProfileCard({
             </div>
             <div className="md:col-span-2">
               <label className="text-xs text-neutral-500">Email</label>
-              <div className="mt-1 font-mono font-medium">{email}</div>
+              <div className="mt-1 font-medium">{email}</div>
             </div>
           </div>
 
