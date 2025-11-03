@@ -13,6 +13,8 @@ import {
   Store,
   ChevronDown,
 } from "lucide-react";
+import EditOrdersCard from "./EditOrdersCard";
+
 
 /** base64url -> string */
 function b64urlToString(input: string): string {
@@ -174,9 +176,22 @@ export default async function ProfilePage() {
           />
         </details>
 
+
+        {/* Orders（带查询与明细展示） */}
+        <details open className="group">
+          <summary className="flex items-center justify-between px-4 py-3 cursor-pointer list-none hover:bg-neutral-50">
+            <span className="flex items-center gap-2">
+              <ShoppingBag className="h-4 w-4 text-neutral-700" />
+              <span className="font-medium" >Orders</span>
+            </span>
+            <ChevronDown className="h-4 w-4 text-neutral-500 group-open:rotate-180 transition-transform" />
+          </summary>
+          <EditOrdersCard />
+        </details>
+
         {/* 其他栏目仅为占位（未来可展开类似内容） */}
         {[
-          { label: "Orders", icon: ShoppingBag },
+          // { label: "Orders", icon: ShoppingBag },
           // { label: "My Fit Preferences", icon: Cog },
           { label: "Address", icon: MapPin },
           // { label: "Gift Card", icon: Gift },
