@@ -176,12 +176,12 @@ export default async function ProfilePage() {
 
         {/* 其他栏目仅为占位（未来可展开类似内容） */}
         {[
-          { label: "My Orders", icon: ShoppingBag },
-          { label: "My Fit Preferences", icon: Cog },
-          { label: "Address Book", icon: MapPin },
-          { label: "Gift Card", icon: Gift },
+          { label: "Orders", icon: ShoppingBag },
+          // { label: "My Fit Preferences", icon: Cog },
+          { label: "Address", icon: MapPin },
+          // { label: "Gift Card", icon: Gift },
           { label: "Subscriptions", icon: Mail },
-          { label: "Preferred Store", icon: Store },
+          // { label: "Preferred Store", icon: Store },
         ].map((item) => {
           const Icon = item.icon;
           return (
