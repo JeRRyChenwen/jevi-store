@@ -77,7 +77,6 @@ export default function EditProfileCard({
 
   return (
     <div className="px-6 py-4 space-y-4 bg-neutral-50/50">
-      <h3 className="text-sm font-semibold">Account Information</h3>
 
       {/* 编辑 / 只读两种视图 */}
       {!editing ? (
