@@ -145,8 +145,7 @@ export default async function ProfilePage() {
           </summary>
 
           <EditProfileCard
-            initialFirstName={guessedFirst}
-            initialLastName={guessedLast}
+            initialName={(user?.name || user?.email?.split("@")[0] || "").trim()}
             initialEmail={user?.email || ""}
           />
         </details>

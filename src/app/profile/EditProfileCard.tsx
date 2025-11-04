@@ -4,39 +4,34 @@
 import { useEffect, useState } from "react";
 
 type Props = {
-  initialFirstName?: string;
-  initialLastName?: string;
+  initialName?: string;
   initialEmail: string;
 };
 
 type PatchBody = {
-  first_name?: string;
-  last_name?: string;
+  name?: string;
   email?: string;
 };
 
 export default function EditProfileCard({
-  initialFirstName = "",
-  initialLastName = "",
+  initialName = "",
   initialEmail,
 }: Props) {
   const [editing, setEditing] = useState(false);
-  const [firstName, setFirstName] = useState(initialFirstName);
-  const [lastName, setLastName] = useState(initialLastName);
+  const [name, setName] = useState(initialName);
   const [email, setEmail] = useState(initialEmail);
 
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  // 当外部 props 变化时，同步一次（防止切页回来值不同步）
+  // 外部 props 变化时（例如从 /auth/me 刷新回来），同步一次
   useEffect(() => {
     if (!editing) {
-      setFirstName(initialFirstName || "");
-      setLastName(initialLastName || "");
+      setName(initialName || "");
       setEmail(initialEmail || "");
     }
-  }, [initialFirstName, initialLastName, initialEmail, editing]);
+  }, [initialName, initialEmail, editing]);
 
   async function onSave() {
     setSaving(true);
@@ -44,8 +39,7 @@ export default function EditProfileCard({
     setErr(null);
     try {
       const body: PatchBody = {
-        first_name: firstName?.trim() || undefined,
-        last_name: lastName?.trim() || undefined,
+        name: name?.trim() || undefined,
         email: email?.trim() || undefined,
       };
 
@@ -64,7 +58,7 @@ export default function EditProfileCard({
       setMsg("Saved.");
       setEditing(false);
 
-      // 如果邮箱或名字变了，后端会刷新 cookie；此处刷新页面让 SSR 的“Hi, {name}”也立即更新
+      // 名字/邮箱可能影响 SSR 显示；保存后刷新一次页面
       setTimeout(() => {
         window.location.reload();
       }, 300);
@@ -77,20 +71,14 @@ export default function EditProfileCard({
 
   return (
     <div className="px-6 py-4 space-y-4 bg-neutral-50/50">
-
-      {/* 编辑 / 只读两种视图 */}
       {!editing ? (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs text-neutral-500">First Name</label>
-              <div className="mt-1 font-medium">{firstName || "—"}</div>
+            <div className="md:col-span-1">
+              <label className="text-xs text-neutral-500">User Name</label>
+              <div className="mt-1 font-medium">{name || "—"}</div>
             </div>
-            <div>
-              <label className="text-xs text-neutral-500">Last Name</label>
-              <div className="mt-1 font-medium">{lastName || "—"}</div>
-            </div>
-            <div className="md:col-span-2">
+            <div className="md:col-span-1">
               <label className="text-xs text-neutral-500">Email</label>
               <div className="mt-1 font-medium">{email}</div>
             </div>
@@ -119,25 +107,16 @@ export default function EditProfileCard({
       ) : (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs text-neutral-500">First Name</label>
+            <div className="md:col-span-1">
+              <label className="text-xs text-neutral-500">Name</label>
               <input
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
                 className="mt-1 w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-black/10"
-                placeholder="First name"
+                placeholder="Your name"
               />
             </div>
-            <div>
-              <label className="text-xs text-neutral-500">Last Name</label>
-              <input
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                className="mt-1 w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-black/10"
-                placeholder="Last name"
-              />
-            </div>
-            <div className="md:col-span-2">
+            <div className="md:col-span-1">
               <label className="text-xs text-neutral-500">Email</label>
               <input
                 value={email}
@@ -154,8 +133,7 @@ export default function EditProfileCard({
               type="button"
               onClick={() => {
                 setEditing(false);
-                setFirstName(initialFirstName || "");
-                setLastName(initialLastName || "");
+                setName(initialName || "");
                 setEmail(initialEmail || "");
                 setErr(null);
                 setMsg(null);
