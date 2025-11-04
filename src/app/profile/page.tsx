@@ -1,228 +1,272 @@
-// src/app/profile/page.tsx
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
-import { logoutAction } from "./_actions";
-import EditProfileCard from "./EditProfileCard"; // 👈 新增：引入可编辑卡片
-import {
-  User as UserIcon,
-  ShoppingBag,
-  Cog,
-  MapPin,
-  Gift,
-  Mail,
-  Store,
-  ChevronDown,
-} from "lucide-react";
-import EditOrdersCard from "./EditOrdersCard";
+// src/app/profile/EditOrdersCard.tsx
+"use client";
 
+import { useEffect, useMemo, useState } from "react";
 
-/** base64url -> string */
-function b64urlToString(input: string): string {
-  try {
-    let s = input.replace(/-/g, "+").replace(/_/g, "/");
-    const pad = s.length % 4;
-    if (pad) s += "=".repeat(4 - pad);
-    return Buffer.from(s, "base64").toString("utf8");
-  } catch {
-    return "";
-  }
-}
-
-type SessionUser = {
-  id: string | number | null;
+type OrderRow = {
+  id: number;
+  order_number?: string | null;
   email: string | null;
-  name: string | null;
+  currency: string | null;
+  total_minor: number;        // worker 返回字段别名：total_minor
+  status: string | null;
+  created_at: string | number | null; // 兼容“北京时间字符串”或早期的秒时间戳
+  item_count: number;
 };
 
-async function readUserFromCookies(): Promise<SessionUser | null> {
-  const jar = await cookies();
-  const rawUser = jar.get("sp_user")?.value || "";
-  const hasPresence = jar.get("sp_has_session")?.value === "1";
-  const jwt = jar.get("sp_session")?.value || "";
-
-  // 1) 优先 sp_user
-  if (rawUser) {
-    try {
-      const json = Buffer.from(rawUser, "base64").toString("utf8");
-      const u = JSON.parse(json);
-      const shaped: SessionUser = {
-        id: u?.id ?? null,
-        email: typeof u?.email === "string" ? u.email : null,
-        name: typeof u?.name === "string" ? u.name : null,
-      };
-      if (shaped.email) return shaped;
-    } catch {}
-  }
-
-  // 2) 兜底：解析 JWT payload 展示
-  if (hasPresence && jwt) {
-    const parts = jwt.split(".");
-    if (parts.length === 3) {
-      try {
-        const payload = JSON.parse(b64urlToString(parts[1] || "")) as any;
-        const shaped: SessionUser = {
-          id: payload?.sub ?? null,
-          email: typeof payload?.email === "string" ? payload.email : null,
-          name: typeof payload?.name === "string" ? payload.name : null,
-        };
-        if (shaped.email) return shaped;
-      } catch {}
-    }
-  }
-  return null;
-}
-
-/** 服务端带本次请求 Cookie 调用同域 API */
-async function apiGet<T>(path: string): Promise<T> {
-  const cookieHeader = (await cookies()).toString();
-  const res = await fetch(path, {
-    method: "GET",
-    headers: { accept: "application/json", cookie: cookieHeader },
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    let detail: any = null;
-    try {
-      detail = await res.json();
-    } catch {}
-    throw new Error(
-      `GET ${path} failed: ${res.status} ${res.statusText} ${detail ? JSON.stringify(detail) : ""}`
-    );
-  }
-  return (await res.json()) as T;
-}
-
-type MeResp = {
+type MyOrdersResp = {
   ok: boolean;
-  user: { id: number; email: string | null; name: string | null } | null;
+  email: string | null;
+  orders: OrderRow[];
   worker_version?: string;
 };
 
-export default async function ProfilePage() {
-  // A) 先从 cookie 取
-  let user = await readUserFromCookies();
-  if (!user) {
-    redirect("/auth/login?next=/profile");
-  }
+function fmtCurrency(minor: number, ccy: string | null) {
+  const code = (ccy || "AUD").toUpperCase();
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: code,
+    maximumFractionDigits: 2,
+  }).format((minor || 0) / 100);
+}
 
-  // B) cookie 没有 name → 从后端 /auth/me 兜底拉取
-  if (user && (!user.name || !user.name.trim())) {
-    try {
-      const me = await apiGet<MeResp>("/api/auth/me");
-      if (me?.ok && me.user?.email) {
-        user = {
-          id: me.user.id ?? user.id,
-          email: me.user.email ?? user.email,
-          name: (me.user.name ?? "").trim() || user.email?.split("@")[0] || null,
-        };
+function fmtDate(v: string | number | null) {
+  if (v == null) return "";
+  // 支持两种：1) "YYYY-MM-DD HH:mm:ss" 2) 秒时间戳
+  if (typeof v === "number") {
+    const d = new Date(v * 1000);
+    return d.toLocaleString();
+  }
+  if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}$/.test(v)) {
+    // 直接显示北京时间字符串
+    return v;
+  }
+  // 其它字符串尽力解析
+  const d = new Date(v);
+  return isNaN(+d) ? String(v) : d.toLocaleString();
+}
+
+export default function EditOrdersCard() {
+  const [orders, setOrders] = useState<OrderRow[] | null>(null);
+  const [q, setQ] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [busySearch, setBusySearch] = useState(false);
+  const [resultOne, setResultOne] = useState<OrderRow | null>(null);
+
+  // 首次加载—我的订单
+  useEffect(() => {
+    let dead = false;
+    (async () => {
+      try {
+        setLoading(true);
+        setErr(null);
+        const r = await fetch("/api/my/orders", {
+          method: "GET",
+          credentials: "include",
+          headers: { accept: "application/json" },
+          cache: "no-store",
+        });
+        if (!r.ok) {
+          const t = await r.text().catch(() => "");
+          throw new Error(`/api/my/orders ${r.status}: ${t}`);
+        }
+        const data = (await r.json()) as MyOrdersResp;
+        if (!dead) setOrders(Array.isArray(data.orders) ? data.orders : []);
+      } catch (e: any) {
+        if (!dead) setErr(e?.message || String(e));
+      } finally {
+        if (!dead) setLoading(false);
       }
-    } catch {
-      // 忽略错误，回退邮箱前缀
-      user = {
-        ...user!,
-        name: user?.name?.trim() || user?.email?.split("@")[0] || null,
-      };
+    })();
+    return () => { dead = true; };
+  }, []);
+
+  // 本地过滤（当不是纯数字检索时）
+  const filtered = useMemo(() => {
+    if (!orders) return [];
+    const s = q.trim().toLowerCase();
+    if (!s) return orders;
+    if (/^\d+$/.test(s)) return orders; // 数字时交给“精确查询”按钮
+    return orders.filter(o => {
+      const num = (o.order_number || "").toLowerCase();
+      const id = String(o.id);
+      const st = (o.status || "").toLowerCase();
+      return num.includes(s) || id.includes(s) || st.includes(s);
+    });
+  }, [orders, q]);
+
+  async function doExactSearch() {
+    setResultOne(null);
+    setErr(null);
+
+    const s = q.trim();
+    if (!s) return;
+
+    // 纯数字 → 尝试 /api/orders/:id
+    if (/^\d+$/.test(s)) {
+      try {
+        setBusySearch(true);
+        const r = await fetch(`/api/orders/${encodeURIComponent(s)}`, {
+          method: "GET",
+          credentials: "include",
+          headers: { accept: "application/json" },
+          cache: "no-store",
+        });
+        if (!r.ok) {
+          const t = await r.text().catch(() => "");
+          throw new Error(`/api/orders/${s} ${r.status}: ${t}`);
+        }
+        const data = await r.json();
+        // 后端返回结构：{ ok: true, order, items, payments, ... }
+        if (data?.order) {
+          const o = data.order as any;
+          const shaped: OrderRow = {
+            id: Number(o.id),
+            order_number: o.order_number ?? null,
+            email: o.email ?? null,
+            currency: o.currency ?? "AUD",
+            total_minor: Number(o.grand_total_minor ?? o.total_minor ?? 0) | 0,
+            status: o.status ?? null,
+            created_at: o.created_at ?? null,
+            item_count: Array.isArray(data.items) ? data.items.reduce((acc: number, it: any) => acc + (Number(it?.qty ?? 0) | 0), 0) : 0,
+          };
+          setResultOne(shaped);
+        } else {
+          setResultOne(null);
+          setErr("Not found");
+        }
+      } catch (e: any) {
+        setErr(e?.message || String(e));
+      } finally {
+        setBusySearch(false);
+      }
+      return;
     }
+
+    // 非纯数字：清空“精确结果”，靠本地过滤结果
+    setResultOne(null);
   }
 
-  const displayName =
-    (user?.name || "").trim() || (user?.email ? user.email.split("@")[0] : "") || "User";
-
-  // 从 user.name 粗略猜测 first/last（后端未提供字段时的初始值）
-  const [guessedFirst, guessedLast] = (() => {
-    const n = (user?.name || "").trim();
-    if (!n) return ["", ""];
-    const parts = n.split(/\s+/);
-    return [parts[0] || "", parts.slice(1).join(" ") || ""];
-  })();
-
-  // === 以下为 UI ===
   return (
-    <main className="px-4 md:px-8 py-8 max-w-3xl mx-auto">
-      <h1 className="text-2xl font-semibold mb-6">Hi, {displayName}</h1>
-
-      {/* 个人信息卡（只读摘要） */}
-      <div className="rounded-lg border p-4 space-y-3">
-        <div className="text-sm text-neutral-600">邮箱</div>
-        <div className="text-base font-medium">{user?.email}</div>
-
-        <div className="h-px bg-neutral-200 my-2" />
-
-        <div className="text-sm text-neutral-600">昵称 / 名称</div>
-        <div className="text-base font-medium">{displayName || "（未设置）"}</div>
-      </div>
-
-      <p className="text-xs text-neutral-500 mt-4">
-        该页面仅展示从登录会话/后端读取到的基本资料。修改资料的功能可以之后再接到后端接口。
-      </p>
-
-      {/* ==================== 折叠式菜单 ==================== */}
-      <div className="mt-6 border rounded-lg divide-y">
-        {/* Profile 可展开（使用可编辑卡片） */}
-        <details open className="group">
-          <summary className="flex items-center justify-between px-4 py-3 cursor-pointer list-none hover:bg-neutral-50">
-            <span className="flex items-center gap-2">
-              <UserIcon className="h-4 w-4 text-neutral-700" />
-              <span className="font-medium">Profile</span>
-            </span>
-            <ChevronDown className="h-4 w-4 text-neutral-500 group-open:rotate-180 transition-transform" />
-          </summary>
-
-          {/* ✅ 可编辑组件（Edit / Save，调用 /api/auth/profile） */}
-          <EditProfileCard
-            initialFirstName={guessedFirst}
-            initialLastName={guessedLast}
-            initialEmail={user?.email || ""}
-          />
-        </details>
-
-
-        {/* Orders（带查询与明细展示） */}
-        <details open className="group">
-          <summary className="flex items-center justify-between px-4 py-3 cursor-pointer list-none hover:bg-neutral-50">
-            <span className="flex items-center gap-2">
-              <ShoppingBag className="h-4 w-4 text-neutral-700" />
-              <span className="font-medium" >Orders</span>
-            </span>
-            <ChevronDown className="h-4 w-4 text-neutral-500 group-open:rotate-180 transition-transform" />
-          </summary>
-          <EditOrdersCard />
-        </details>
-
-        {/* 其他栏目仅为占位（未来可展开类似内容） */}
-        {[
-          // { label: "Orders", icon: ShoppingBag },
-          // { label: "My Fit Preferences", icon: Cog },
-          { label: "Address", icon: MapPin },
-          // { label: "Gift Card", icon: Gift },
-          { label: "Subscriptions", icon: Mail },
-          // { label: "Preferred Store", icon: Store },
-        ].map((item) => {
-          const Icon = item.icon;
-          return (
-            <details key={item.label} className="group">
-              <summary className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-neutral-50">
-                <span className="flex items-center gap-2">
-                  <Icon className="h-4 w-4 text-neutral-700" />
-                  <span>{item.label}</span>
-                </span>
-                <ChevronDown className="h-4 w-4 text-neutral-500 group-open:rotate-180 transition-transform" />
-              </summary>
-            </details>
-          );
-        })}
-      </div>
-      {/* ==================================================== */}
-
-      {/* 退出登录 */}
-      <form action={logoutAction} className="mt-6">
+    <div className="px-4 pb-4">
+      {/* 搜索行 */}
+      <div className="flex items-center gap-2 mb-3">
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="按订单号 / ID 过滤列表（本地过滤）"
+          className="h-9 w-full rounded-md border px-3 text-sm outline-none focus:ring-2 focus:ring-black/10"
+        />
         <button
-          type="submit"
-          className="rounded-full border px-5 py-2 text-sm font-semibold hover:bg-neutral-50"
+          onClick={doExactSearch}
+          disabled={busySearch}
+          className="h-9 rounded-md border px-3 text-sm hover:bg-neutral-50 disabled:opacity-50"
         >
-          退出登录
+          Search
         </button>
-      </form>
-    </main>
+      </div>
+
+      {/* 错误提示 */}
+      {err && (
+        <div className="mb-3 text-sm text-red-600">{err}</div>
+      )}
+
+      {/* 加载中 */}
+      {loading && (
+        <div className="text-sm text-neutral-500">Loading orders…</div>
+      )}
+
+      {/* 精确单条结果（当输入纯数字并点击 Search 时） */}
+      {resultOne && (
+        <div className="mb-4 rounded-lg border p-3">
+          <div className="text-sm mb-2 font-medium">精确匹配</div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-left text-neutral-500">
+                <tr>
+                  <th className="py-2 pr-4">订单号 / ID</th>
+                  <th className="py-2 pr-4">创建时间</th>
+                  <th className="py-2 pr-4">金额</th>
+                  <th className="py-2 pr-4">状态</th>
+                  <th className="py-2 pr-4">件数</th>
+                  <th className="py-2 pr-4">链接</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-t">
+                  <td className="py-2 pr-4">
+                    <div className="font-medium">
+                      {resultOne.order_number || "-"}
+                    </div>
+                    <div className="text-xs text-neutral-500">#{resultOne.id}</div>
+                  </td>
+                  <td className="py-2 pr-4">{fmtDate(resultOne.created_at)}</td>
+                  <td className="py-2 pr-4">{fmtCurrency(resultOne.total_minor, resultOne.currency)}</td>
+                  <td className="py-2 pr-4">{resultOne.status || "-"}</td>
+                  <td className="py-2 pr-4">{resultOne.item_count}</td>
+                  <td className="py-2 pr-4">
+                    <a
+                      className="text-blue-600 hover:underline"
+                      href={`/orders/${encodeURIComponent(resultOne.id)}`}
+                    >
+                      View
+                    </a>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* 我的订单列表（本地过滤） */}
+      {!loading && orders && (
+        <div className="overflow-x-auto rounded-lg border">
+          <table className="w-full text-sm">
+            <thead className="text-left text-neutral-500">
+              <tr>
+                <th className="py-2 pl-3 pr-4">订单号 / ID</th>
+                <th className="py-2 pr-4">创建时间</th>
+                <th className="py-2 pr-4">金额</th>
+                <th className="py-2 pr-4">状态</th>
+                <th className="py-2 pr-4">件数</th>
+                <th className="py-2 pr-3">链接</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td className="py-6 pl-3 pr-4 text-neutral-500" colSpan={6}>
+                    暂无订单。
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((o) => (
+                  <tr key={o.id} className="border-t">
+                    <td className="py-2 pl-3 pr-4">
+                      <div className="font-medium">{o.order_number || "-"}</div>
+                      <div className="text-xs text-neutral-500">#{o.id}</div>
+                    </td>
+                    <td className="py-2 pr-4">{fmtDate(o.created_at)}</td>
+                    <td className="py-2 pr-4">{fmtCurrency(o.total_minor, o.currency)}</td>
+                    <td className="py-2 pr-4">{o.status || "-"}</td>
+                    <td className="py-2 pr-4">{o.item_count}</td>
+                    <td className="py-2 pr-3">
+                      <a
+                        className="text-blue-600 hover:underline"
+                        href={`/orders/${encodeURIComponent(o.id)}`}
+                      >
+                        View
+                      </a>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }
