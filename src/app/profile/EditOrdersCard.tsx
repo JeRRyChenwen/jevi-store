@@ -2,192 +2,270 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { Search as SearchIcon, ExternalLink } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-// 如果你的项目没有 Badge / Skeleton，可以删掉这两行并把下面用到的组件换成 <span> / 占位 div
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 
 type OrderRow = {
   id: number;
   order_number?: string | null;
-  email: string;
-  currency: string;
-  total_minor: number;      // 后端返回的兼容字段（可能来自 grand_total_minor 或汇总）
+  email: string | null;
+  currency: string | null;
+  total_minor: number;        // worker 返回字段别名：total_minor
   status: string | null;
-  created_at: string;       // 你的 worker 用的是 'YYYY-MM-DD HH:mm:ss' 字符串
-  item_count: number;       // 子查询汇总的件数
+  created_at: string | number | null; // 兼容“北京时间字符串”或早期的秒时间戳
+  item_count: number;
 };
 
-export default function EditOrdersCard() {
-  const [loading, setLoading] = useState(true);
-  const [orders, setOrders] = useState<OrderRow[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
+type MyOrdersResp = {
+  ok: boolean;
+  email: string | null;
+  orders: OrderRow[];
+  worker_version?: string;
+};
 
+function fmtCurrency(minor: number, ccy: string | null) {
+  const code = (ccy || "AUD").toUpperCase();
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: code,
+    maximumFractionDigits: 2,
+  }).format((minor || 0) / 100);
+}
+
+function fmtDate(v: string | number | null) {
+  if (v == null) return "";
+  // 支持两种：1) "YYYY-MM-DD HH:mm:ss" 2) 秒时间戳
+  if (typeof v === "number") {
+    const d = new Date(v * 1000);
+    return d.toLocaleString();
+  }
+  if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}$/.test(v)) {
+    // 直接显示北京时间字符串
+    return v;
+  }
+  // 其它字符串尽力解析
+  const d = new Date(v);
+  return isNaN(+d) ? String(v) : d.toLocaleString();
+}
+
+export default function EditOrdersCard() {
+  const [orders, setOrders] = useState<OrderRow[] | null>(null);
+  const [q, setQ] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [busySearch, setBusySearch] = useState(false);
+  const [resultOne, setResultOne] = useState<OrderRow | null>(null);
+
+  // 首次加载—我的订单
   useEffect(() => {
-    let cancelled = false;
+    let dead = false;
     (async () => {
       try {
         setLoading(true);
-        const res = await fetch("/api/my/orders", {
+        setErr(null);
+        const r = await fetch("/api/my/orders", {
           method: "GET",
-          credentials: "include", // 很关键：带上登录 cookie
-          headers: { Accept: "application/json" },
+          credentials: "include",
+          headers: { accept: "application/json" },
+          cache: "no-store",
         });
-        const data = await res.json();
-        if (cancelled) return;
-        if (res.ok && data?.ok) {
-          setOrders(Array.isArray(data.orders) ? data.orders : []);
-          setError(null);
-        } else if (res.status === 401) {
-          setOrders([]);
-          setError("UNAUTHENTICATED");
-        } else {
-          setOrders([]);
-          setError(data?.error || "Failed to load orders");
+        if (!r.ok) {
+          const t = await r.text().catch(() => "");
+          throw new Error(`/api/my/orders ${r.status}: ${t}`);
         }
+        const data = (await r.json()) as MyOrdersResp;
+        if (!dead) setOrders(Array.isArray(data.orders) ? data.orders : []);
       } catch (e: any) {
-        if (!cancelled) {
-          setError(String(e?.message || e));
-          setOrders([]);
-        }
+        if (!dead) setErr(e?.message || String(e));
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!dead) setLoading(false);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { dead = true; };
   }, []);
 
-  // 本地过滤（按订单号文本）
+  // 本地过滤（当不是纯数字检索时）
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return orders;
-    return orders.filter((o) => {
-      const label = (o.order_number ? `#${o.order_number}` : `#${o.id}`).toLowerCase();
-      return label.includes(q);
+    if (!orders) return [];
+    const s = q.trim().toLowerCase();
+    if (!s) return orders;
+    if (/^\d+$/.test(s)) return orders; // 数字时交给“精确查询”按钮
+    return orders.filter(o => {
+      const num = (o.order_number || "").toLowerCase();
+      const id = String(o.id);
+      const st = (o.status || "").toLowerCase();
+      return num.includes(s) || id.includes(s) || st.includes(s);
     });
-  }, [orders, query]);
+  }, [orders, q]);
 
-  // 统一金额格式化
-  const fmtMoney = (amountMinor: number, currency: string) => {
-    const n = (amountMinor || 0) / 100;
-    try {
-      return new Intl.NumberFormat(undefined, { style: "currency", currency: currency || "AUD" }).format(n);
-    } catch {
-      return `${(amountMinor / 100).toFixed(2)} ${currency || "AUD"}`;
+  async function doExactSearch() {
+    setResultOne(null);
+    setErr(null);
+
+    const s = q.trim();
+    if (!s) return;
+
+    // 纯数字 → 尝试 /api/orders/:id
+    if (/^\d+$/.test(s)) {
+      try {
+        setBusySearch(true);
+        const r = await fetch(`/api/orders/${encodeURIComponent(s)}`, {
+          method: "GET",
+          credentials: "include",
+          headers: { accept: "application/json" },
+          cache: "no-store",
+        });
+        if (!r.ok) {
+          const t = await r.text().catch(() => "");
+          throw new Error(`/api/orders/${s} ${r.status}: ${t}`);
+        }
+        const data = await r.json();
+        // 后端返回结构：{ ok: true, order, items, payments, ... }
+        if (data?.order) {
+          const o = data.order as any;
+          const shaped: OrderRow = {
+            id: Number(o.id),
+            order_number: o.order_number ?? null,
+            email: o.email ?? null,
+            currency: o.currency ?? "AUD",
+            total_minor: Number(o.grand_total_minor ?? o.total_minor ?? 0) | 0,
+            status: o.status ?? null,
+            created_at: o.created_at ?? null,
+            item_count: Array.isArray(data.items) ? data.items.reduce((acc: number, it: any) => acc + (Number(it?.qty ?? 0) | 0), 0) : 0,
+          };
+          setResultOne(shaped);
+        } else {
+          setResultOne(null);
+          setErr("Not found");
+        }
+      } catch (e: any) {
+        setErr(e?.message || String(e));
+      } finally {
+        setBusySearch(false);
+      }
+      return;
     }
-  };
 
-  const StatusBadge = ({ status }: { status: string | null }) => {
-    const s = (status || "paid").toLowerCase();
-    // 简单的映射：按你的实际状态自由扩展
-    const color =
-      s === "paid" || s === "captured"
-        ? "bg-emerald-100 text-emerald-700"
-        : s === "pending"
-        ? "bg-amber-100 text-amber-700"
-        : s === "cancelled" || s === "refunded"
-        ? "bg-rose-100 text-rose-700"
-        : "bg-slate-100 text-slate-700";
-    return <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${color}`}>{s}</span>;
-  };
-
-  // Loading skeleton（可选）
-  if (loading) {
-    return (
-      <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <div className="relative w-64">
-            <Input disabled placeholder="Order Number (e.g. 1024)" />
-            <SearchIcon className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 opacity-50" />
-          </div>
-          <Button variant="outline" disabled size="sm">Search</Button>
-        </div>
-        <div className="border rounded divide-y">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div className="p-3 flex items-center justify-between" key={i}>
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-36" />
-                <Skeleton className="h-3 w-64" />
-              </div>
-              <div className="space-y-2 text-right">
-                <Skeleton className="h-4 w-20 ml-auto" />
-                <Skeleton className="h-3 w-16 ml-auto" />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
+    // 非纯数字：清空“精确结果”，靠本地过滤结果
+    setResultOne(null);
   }
-
-  // 未登录 / 无订单
-  if (error === "UNAUTHENTICATED") {
-    return <p className="text-sm text-muted-foreground">Please sign in to view your orders.</p>;
-  }
-
-  const hasOrders = filtered.length > 0;
 
   return (
-    <div className="space-y-3">
+    <div className="px-4 pb-4">
       {/* 搜索行 */}
-      <div className="flex items-center gap-2">
-        <div className="relative w-64">
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Order Number (e.g. 1024)"
-            className="pr-9"
-          />
-          <SearchIcon className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 opacity-50" />
-        </div>
-        <Button variant="outline" size="sm" onClick={() => setQuery("")}>Clear</Button>
+      <div className="flex items-center gap-2 mb-3">
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="按订单号 / ID 过滤列表（本地过滤）"
+          className="h-9 w-full rounded-md border px-3 text-sm outline-none focus:ring-2 focus:ring-black/10"
+        />
+        <button
+          onClick={doExactSearch}
+          disabled={busySearch}
+          className="h-9 rounded-md border px-3 text-sm hover:bg-neutral-50 disabled:opacity-50"
+        >
+          Search
+        </button>
       </div>
 
-      {/* 列表或空状态 */}
-      {!hasOrders ? (
-        <p className="text-sm text-muted-foreground">You have placed no orders.</p>
-      ) : (
-        <ul className="divide-y border rounded">
-          {filtered.map((o) => {
-            const orderLabel = o.order_number ? `#${o.order_number}` : `#${o.id}`;
-            return (
-              <li key={`${o.id}-${o.order_number ?? "no"}`} className="p-3 flex items-center justify-between">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">{orderLabel}</span>
-                    {/* 如果你有 Badge 组件，替换上面的 span */}
-                    {/* <Badge variant="secondary" className="text-xs">{orderLabel}</Badge> */}
-                    <StatusBadge status={o.status} />
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {o.created_at} · {o.item_count} item{o.item_count === 1 ? "" : "s"}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-sm">{fmtMoney(o.total_minor, (o.currency || "AUD").toUpperCase())}</div>
-                  <Link
-                    href={`/profile/orders/${o.id}`}
-                    className="inline-flex items-center gap-1 text-xs underline mt-1"
-                    title="View details"
-                  >
-                    View <ExternalLink className="h-3 w-3" />
-                  </Link>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+      {/* 错误提示 */}
+      {err && (
+        <div className="mb-3 text-sm text-red-600">{err}</div>
       )}
 
-      {/* 加载失败 */}
-      {!!error && error !== "UNAUTHENTICATED" && (
-        <p className="text-xs text-red-500">Failed to load orders: {error}</p>
+      {/* 加载中 */}
+      {loading && (
+        <div className="text-sm text-neutral-500">Loading orders…</div>
+      )}
+
+      {/* 精确单条结果（当输入纯数字并点击 Search 时） */}
+      {resultOne && (
+        <div className="mb-4 rounded-lg border p-3">
+          <div className="text-sm mb-2 font-medium">精确匹配</div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-left text-neutral-500">
+                <tr>
+                  <th className="py-2 pr-4">订单号 / ID</th>
+                  <th className="py-2 pr-4">创建时间</th>
+                  <th className="py-2 pr-4">金额</th>
+                  <th className="py-2 pr-4">状态</th>
+                  <th className="py-2 pr-4">件数</th>
+                  <th className="py-2 pr-4">链接</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-t">
+                  <td className="py-2 pr-4">
+                    <div className="font-medium">
+                      {resultOne.order_number || "-"}
+                    </div>
+                    <div className="text-xs text-neutral-500">#{resultOne.id}</div>
+                  </td>
+                  <td className="py-2 pr-4">{fmtDate(resultOne.created_at)}</td>
+                  <td className="py-2 pr-4">{fmtCurrency(resultOne.total_minor, resultOne.currency)}</td>
+                  <td className="py-2 pr-4">{resultOne.status || "-"}</td>
+                  <td className="py-2 pr-4">{resultOne.item_count}</td>
+                  <td className="py-2 pr-4">
+                    <a
+                      className="text-blue-600 hover:underline"
+                      href={`/orders/${encodeURIComponent(resultOne.id)}`}
+                    >
+                      View
+                    </a>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* 我的订单列表（本地过滤） */}
+      {!loading && orders && (
+        <div className="overflow-x-auto rounded-lg border">
+          <table className="w-full text-sm">
+            <thead className="text-left text-neutral-500">
+              <tr>
+                <th className="py-2 pl-3 pr-4">订单号 / ID</th>
+                <th className="py-2 pr-4">创建时间</th>
+                <th className="py-2 pr-4">金额</th>
+                <th className="py-2 pr-4">状态</th>
+                <th className="py-2 pr-4">件数</th>
+                <th className="py-2 pr-3">链接</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td className="py-6 pl-3 pr-4 text-neutral-500" colSpan={6}>
+                    暂无订单。
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((o) => (
+                  <tr key={o.id} className="border-t">
+                    <td className="py-2 pl-3 pr-4">
+                      <div className="font-medium">{o.order_number || "-"}</div>
+                      <div className="text-xs text-neutral-500">#{o.id}</div>
+                    </td>
+                    <td className="py-2 pr-4">{fmtDate(o.created_at)}</td>
+                    <td className="py-2 pr-4">{fmtCurrency(o.total_minor, o.currency)}</td>
+                    <td className="py-2 pr-4">{o.status || "-"}</td>
+                    <td className="py-2 pr-4">{o.item_count}</td>
+                    <td className="py-2 pr-3">
+                      <a
+                        className="text-blue-600 hover:underline"
+                        href={`/orders/${encodeURIComponent(o.id)}`}
+                      >
+                        View
+                      </a>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
