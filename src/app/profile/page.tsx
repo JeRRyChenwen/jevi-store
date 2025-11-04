@@ -30,14 +30,12 @@ type SessionUser = {
   name: string | null;
 };
 
-/** 读取本次请求 Cookie（你的类型里 cookies() 是 Promise，所以这里用 await） */
 async function readUserFromCookies(): Promise<SessionUser | null> {
   const jar = await cookies();
   const rawUser = jar.get("sp_user")?.value || "";
   const hasPresence = jar.get("sp_has_session")?.value === "1";
   const jwt = jar.get("sp_session")?.value || "";
 
-  // 1) 优先 sp_user（base64 JSON）
   if (rawUser) {
     try {
       const json = Buffer.from(rawUser, "base64").toString("utf8");
@@ -51,7 +49,6 @@ async function readUserFromCookies(): Promise<SessionUser | null> {
     } catch {}
   }
 
-  // 2) 兜底：解析 JWT payload
   if (hasPresence && jwt) {
     const parts = jwt.split(".");
     if (parts.length === 3) {
@@ -69,7 +66,6 @@ async function readUserFromCookies(): Promise<SessionUser | null> {
   return null;
 }
 
-/** 服务端携带当前请求 Cookie 调同域 API */
 async function apiGet<T>(path: string): Promise<T> {
   const cookieHeader = (await cookies()).toString();
   const res = await fetch(path, {
@@ -96,13 +92,13 @@ type MeResp = {
 };
 
 export default async function ProfilePage() {
-  // A) 从 cookie 读取
+  // A) 先从 cookie 取
   let user = await readUserFromCookies();
   if (!user) {
     redirect("/auth/login?next=/profile");
   }
 
-  // B) cookie 没有 name → 调 /api/auth/me 补全
+  // B) cookie 没有 name → 从后端 /auth/me 兜底拉取
   if (user && (!user.name || !user.name.trim())) {
     try {
       const me = await apiGet<MeResp>("/api/auth/me");
@@ -114,7 +110,6 @@ export default async function ProfilePage() {
         };
       }
     } catch {
-      // 忽略错误，回退邮箱前缀
       user = {
         ...user!,
         name: user?.name?.trim() || user?.email?.split("@")[0] || null,
@@ -125,7 +120,6 @@ export default async function ProfilePage() {
   const displayName =
     (user?.name || "").trim() || (user?.email ? user.email.split("@")[0] : "") || "User";
 
-  // 从 name 粗略猜测 first/last（仅用于 EditProfileCard 初值）
   const [guessedFirst, guessedLast] = (() => {
     const n = (user?.name || "").trim();
     if (!n) return ["", ""];
@@ -133,25 +127,10 @@ export default async function ProfilePage() {
     return [parts[0] || "", parts.slice(1).join(" ") || ""];
   })();
 
-  // === UI：保持你的原有结构，Orders 信息渲染在 Orders 折叠里 ===
+  // === UI ===
   return (
     <main className="px-4 md:px-8 py-8 max-w-3xl mx-auto">
       <h1 className="text-2xl font-semibold mb-6">Hi, {displayName}</h1>
-
-      {/* 个人信息（摘要） */}
-      <div className="rounded-lg border p-4 space-y-3">
-        <div className="text-sm text-neutral-600">邮箱</div>
-        <div className="text-base font-medium">{user?.email}</div>
-
-        <div className="h-px bg-neutral-200 my-2" />
-
-        <div className="text-sm text-neutral-600">昵称 / 名称</div>
-        <div className="text-base font-medium">{displayName || "（未设置）"}</div>
-      </div>
-
-      <p className="text-xs text-neutral-500 mt-4">
-        该页面仅展示从登录会话/后端读取到的基本资料。修改资料的功能可以之后再接到后端接口。
-      </p>
 
       {/* 折叠区块 */}
       <div className="mt-6 border rounded-lg divide-y">
@@ -172,7 +151,7 @@ export default async function ProfilePage() {
           />
         </details>
 
-        {/* Orders —— 在该折叠里渲染订单信息 */}
+        {/* Orders */}
         <details open className="group">
           <summary className="flex items-center justify-between px-4 py-3 cursor-pointer list-none hover:bg-neutral-50">
             <span className="flex items-center gap-2">
