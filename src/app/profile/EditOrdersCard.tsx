@@ -103,49 +103,57 @@ export default function EditOrdersCard() {
     const s = q.trim();
     if (!s) return;
 
-    // 纯数字 → 尝试 /api/orders/:id
-    if (/^\d+$/.test(s)) {
-      try {
-        setBusySearch(true);
-        const r = await fetch(`/api/orders/${encodeURIComponent(s)}`, {
-          method: "GET",
-          credentials: "include",
-          headers: { accept: "application/json" },
-          cache: "no-store",
-        });
-        if (!r.ok) {
-          const t = await r.text().catch(() => "");
-          throw new Error(`/api/orders/${s} ${r.status}: ${t}`);
-        }
-        const data = await r.json();
-        // 后端返回结构：{ ok: true, order, items, payments, ... }
-        if (data?.order) {
-          const o = data.order as any;
-          const shaped: OrderRow = {
-            id: Number(o.id),
-            order_number: o.order_number ?? null,
-            email: o.email ?? null,
-            currency: o.currency ?? "AUD",
-            total_minor: Number(o.grand_total_minor ?? o.total_minor ?? 0) | 0,
-            status: o.status ?? null,
-            created_at: o.created_at ?? null,
-            item_count: Array.isArray(data.items) ? data.items.reduce((acc: number, it: any) => acc + (Number(it?.qty ?? 0) | 0), 0) : 0,
-          };
-          setResultOne(shaped);
-        } else {
-          setResultOne(null);
-          setErr("Not found");
-        }
-      } catch (e: any) {
-        setErr(e?.message || String(e));
-      } finally {
-        setBusySearch(false);
-      }
+    // 识别两类可精确查询的输入：
+    // 1) 纯数字 ID： /^\d+$/
+    // 2) 订单号（字母/数字/短横线组合）：/^[A-Za-z0-9-]{3,}$/
+    const isNumericId = /^\d+$/.test(s);
+    const isOrderNumber = /^[A-Za-z0-9-]{3,}$/.test(s) && !isNumericId;
+
+    if (!(isNumericId || isOrderNumber)) {
+      // 其它情况：清空精确结果，依赖下方“本地过滤”表格
+      setResultOne(null);
       return;
     }
 
-    // 非纯数字：清空“精确结果”，靠本地过滤结果
-    setResultOne(null);
+    try {
+      setBusySearch(true);
+      const endpoint = `/api/orders/${encodeURIComponent(s)}`;
+      const r = await fetch(endpoint, {
+        method: "GET",
+        credentials: "include",
+        headers: { accept: "application/json" },
+        cache: "no-store",
+      });
+      if (!r.ok) {
+        const t = await r.text().catch(() => "");
+        throw new Error(`${endpoint} ${r.status}: ${t}`);
+      }
+      const data = await r.json();
+      // 后端返回结构：{ ok: true, order, items, payments, ... }
+      if (data?.order) {
+        const o = data.order as any;
+        const shaped: OrderRow = {
+          id: Number(o.id),
+          order_number: o.order_number ?? null,
+          email: o.email ?? null,
+          currency: (o.currency ?? "AUD") as string,
+          total_minor: Number(o.grand_total_minor ?? o.total_minor ?? 0) | 0,
+          status: o.status ?? null,
+          created_at: o.created_at ?? null,
+          item_count: Array.isArray(data.items)
+            ? data.items.reduce((acc: number, it: any) => acc + (Number(it?.qty ?? 0) | 0), 0)
+            : 0,
+        };
+        setResultOne(shaped);
+      } else {
+        setResultOne(null);
+        setErr("Not found");
+      }
+    } catch (e: any) {
+      setErr(e?.message || String(e));
+    } finally {
+      setBusySearch(false);
+    }
   }
 
   return (
@@ -155,7 +163,8 @@ export default function EditOrdersCard() {
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="按订单号 / ID 过滤列表（本地过滤）"
+          onKeyDown={(e) => { if (e.key === "Enter") doExactSearch(); }}
+          placeholder="按订单号 / ID 过滤列表（本地过滤；点击 Search 进行精确查询）"
           className="h-9 w-full rounded-md border px-3 text-sm outline-none focus:ring-2 focus:ring-black/10"
         />
         <button

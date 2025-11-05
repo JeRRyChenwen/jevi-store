@@ -573,7 +573,7 @@ function LargeGhostButton({
   );
 }
 
-/* ========= 成功支付后把订单发送给 Worker（返回 order_id） ========= */
+/* ========= 成功支付后把订单发送给 Worker（返回 order 对象） ========= */
 async function sendOrderToServer(args: {
   cart: any[];
   address: Address;
@@ -584,10 +584,11 @@ async function sendOrderToServer(args: {
   grandMinor: number;
   paypalPayload: any;
   deliveryMethod?: "standard" | "express";
-}): Promise<{ ok: boolean; order_id?: number | null }> {
+}): Promise<{ ok: boolean; order?: { id: number; order_number: string | null } }> {
   try {
     const target = "/api/orders";
 
+    // 计算每一行条目（与后端字段对齐）
     const items = (args.cart || []).map((it: any) => {
       const recs = itemToPriceRecs(it);
       const rec = recs.find((r) => r.currency === (args.currency as Currency));
@@ -614,14 +615,20 @@ async function sendOrderToServer(args: {
       };
     });
 
+    // PayPal 交易号尽量稳健地提取
+    const cap =
+      args.paypalPayload?.purchase_units?.[0]?.payments?.captures?.[0] ||
+      args.paypalPayload?.transaction ||
+      null;
     const txnId =
+      cap?.id ||
       args.paypalPayload?.id ||
-      args.paypalPayload?.transaction?.id ||
       args.paypalPayload?.paypalTransactionId ||
       null;
 
     const body = {
-      email: args.address?.email || "",
+      // 邮箱可不传（已登录会从 JWT 自动补），未登录建议传入
+      email: (args.address?.email || "").trim() || "",
       first_name: args.address?.firstName || null,
       last_name: args.address?.lastName || null,
       phone: args.address?.phone || null,
@@ -659,47 +666,32 @@ async function sendOrderToServer(args: {
 
     const res = await fetch(target, {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-debug": "1",
-      },
+      headers: { "content-type": "application/json" },
       credentials: "include",
       keepalive: true,
       body: JSON.stringify(body),
-    }).catch((e) => {
-      console.error("[orders] network error:", e);
-      return null as unknown as Response;
     });
-
-    if (!res) return { ok: false };
 
     let data: any = null;
     let text: string | null = null;
     try {
       data = await res.clone().json();
     } catch {
-      try {
-        text = await res.text();
-      } catch {}
+      try { text = await res.text(); } catch {}
     }
 
-    if (res.ok && data && typeof data.order_id !== "undefined") {
-      return { ok: true, order_id: data.order_id ?? null };
+    // ✅ 新后端已返回完整 order 对象（含 order_number）
+    if (res.ok && data?.ok && data?.order && typeof data.order.id === "number") {
+      return { ok: true, order: { id: data.order.id, order_number: data.order.order_number ?? null } };
     }
 
-    console.error("[orders] server error:", {
-      status: res.status,
-      data,
-      text,
-    });
-
+    console.error("[orders] server error:", { status: res.status, data, text });
     return { ok: false };
   } catch (e) {
     console.error("[orders] persist error:", e);
     return { ok: false };
   }
 }
-
 /* ---------------- 内联 PayPal 按钮 ---------------- */
 function PaypalButtonInline({
   amountMinor,
@@ -1054,10 +1046,12 @@ export default function CheckoutPage() {
 
   const itemsCount = cart.reduce((n, it: any) => n + (it?.qty ?? 1), 0);
 
-  // 支付成功 → 落库 → 预览 → 清空购物车 → 跳转确认页
+  // 支付成功 → 落库（拿到 order_number）→ 预览 → 清空购物车 → 跳转确认页
   const handlePaySucceeded = async (payload?: any) => {
-    let orderId: number | null | undefined = null;
+    let orderId: number | null = null;
+    let orderNumber: string | null = null;
 
+    // 若已登录但地址里没有邮箱，则用 /auth/me 的邮箱兜底
     let orderAddress = { ...address };
     if ((!orderAddress.email || !EMAIL_RE.test((orderAddress.email || "").trim())) && isLoggedIn) {
       const authedEmail = await fetchAuthedEmail();
@@ -1065,12 +1059,11 @@ export default function CheckoutPage() {
         orderAddress.email = authedEmail;
         setAddress(orderAddress);
         setEmailInput((prev) => prev || authedEmail);
-        try {
-          localStorage.setItem(LS_ADDRESS_KEY, JSON.stringify(orderAddress));
-        } catch {}
+        try { localStorage.setItem(LS_ADDRESS_KEY, JSON.stringify(orderAddress)); } catch {}
       }
     }
 
+    // 1) 持久化订单（后端会生成 order_number）
     try {
       const persist = await sendOrderToServer({
         cart,
@@ -1083,17 +1076,22 @@ export default function CheckoutPage() {
         paypalPayload: payload,
         deliveryMethod,
       });
-      orderId = persist.order_id ?? null;
+      if (persist.ok && persist.order) {
+        orderId = persist.order.id ?? null;
+        orderNumber = persist.order.order_number ?? null;
+      }
     } catch (e) {
-      console.warn("[checkout] /orders persist failed, continue to confirmation anyway", e);
+      console.warn("[checkout] /orders persist failed (will continue to confirmation)", e);
     }
 
+    // 2) 把关键信息塞入 sessionStorage，供 /order/confirmation 展示
     try {
       sessionStorage.setItem(
         "last-order-preview",
         JSON.stringify({
           ts: Date.now(),
-          orderId: orderId ?? null,
+          orderId,
+          orderNumber,      // ✅ 新增：前端确认页可以优先显示业务单号
           currency,
           totalMinor,
           items: cart,
@@ -1104,6 +1102,7 @@ export default function CheckoutPage() {
       );
     } catch {}
 
+    // 3) 清空购物车
     try {
       setCart([]);
       localStorage.setItem(LS_CART_KEY, JSON.stringify([]));
@@ -1111,6 +1110,7 @@ export default function CheckoutPage() {
       window.dispatchEvent(new CustomEvent("bag:updated", { detail: {} }));
     } catch {}
 
+    // 4) 发送订阅并跳转确认页
     sendSubscriptionIfNeeded().finally(() => {
       router.push(CONFIRM_PATH);
     });
