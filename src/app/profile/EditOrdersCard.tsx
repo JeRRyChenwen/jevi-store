@@ -199,7 +199,6 @@ export default function EditOrdersCard() {
                   <th className="py-2 pr-4">金额</th>
                   <th className="py-2 pr-4">状态</th>
                   <th className="py-2 pr-4">件数</th>
-                  <th className="py-2 pr-4">链接</th>
                 </tr>
               </thead>
               <tbody>
@@ -214,14 +213,6 @@ export default function EditOrdersCard() {
                   <td className="py-2 pr-4">{fmtCurrency(resultOne.total_minor, resultOne.currency)}</td>
                   <td className="py-2 pr-4">{resultOne.status || "-"}</td>
                   <td className="py-2 pr-4">{resultOne.item_count}</td>
-                  <td className="py-2 pr-4">
-                    <a
-                      className="text-blue-600 hover:underline"
-                      href={`/orders/${encodeURIComponent(resultOne.id)}`}
-                    >
-                      View
-                    </a>
-                  </td>
                 </tr>
               </tbody>
             </table>
@@ -240,13 +231,12 @@ export default function EditOrdersCard() {
                 <th className="py-2 pr-4">金额</th>
                 <th className="py-2 pr-4">状态</th>
                 <th className="py-2 pr-4">件数</th>
-                <th className="py-2 pr-3">链接</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td className="py-6 pl-3 pr-4 text-neutral-500" colSpan={6}>
+                  <td className="py-6 pl-3 pr-4 text-neutral-500" colSpan={5}>
                     暂无订单。
                   </td>
                 </tr>
@@ -255,20 +245,12 @@ export default function EditOrdersCard() {
                   <tr key={o.id} className="border-t">
                     <td className="py-2 pl-3 pr-4">
                       <div className="font-medium">{o.order_number || "-"}</div>
-                      <div className="text-xs text-neutral-500">#{o.id}</div>
+                      {/* <div className="text-xs text-neutral-500">#{o.id}</div> */}
                     </td>
                     <td className="py-2 pr-4">{fmtDate(o.created_at)}</td>
                     <td className="py-2 pr-4">{fmtCurrency(o.total_minor, o.currency)}</td>
                     <td className="py-2 pr-4">{o.status || "-"}</td>
                     <td className="py-2 pr-4">{o.item_count}</td>
-                    <td className="py-2 pr-3">
-                      <a
-                        className="text-blue-600 hover:underline"
-                        href={`/orders/${encodeURIComponent(o.id)}`}
-                      >
-                        View
-                      </a>
-                    </td>
                   </tr>
                 ))
               )}
