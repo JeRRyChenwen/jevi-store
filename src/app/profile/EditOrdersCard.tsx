@@ -23,11 +23,13 @@ type MyOrdersResp = {
 
 function fmtCurrency(minor: number, ccy: string | null) {
   const code = (ccy || "AUD").toUpperCase();
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: code,
+  const major = (minor || 0) / 100;
+  // 为了稳定得到 “AUD 13.80” 的形态，数值与代码分开格式化再拼接
+  const num = new Intl.NumberFormat(undefined, {
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format((minor || 0) / 100);
+  }).format(major);
+  return `${code} ${num}`;
 }
 
 function fmtDate(v: string | number | null) {
@@ -204,10 +206,9 @@ export default function EditOrdersCard() {
               <tbody>
                 <tr className="border-t">
                   <td className="py-2 pr-4">
-                    <div className="font-medium">
+                    <div className="font-medium" title={`ID: ${resultOne.id}`}>
                       {resultOne.order_number || "-"}
                     </div>
-                    <div className="text-xs text-neutral-500">#{resultOne.id}</div>
                   </td>
                   <td className="py-2 pr-4">{fmtDate(resultOne.created_at)}</td>
                   <td className="py-2 pr-4">{fmtCurrency(resultOne.total_minor, resultOne.currency)}</td>
@@ -244,8 +245,9 @@ export default function EditOrdersCard() {
                 filtered.map((o) => (
                   <tr key={o.id} className="border-t">
                     <td className="py-2 pl-3 pr-4">
-                      <div className="font-medium">{o.order_number || "-"}</div>
-                      {/* <div className="text-xs text-neutral-500">#{o.id}</div> */}
+                      <div className="font-medium" title={`ID: ${o.id}`}>
+                        {o.order_number || "-"}
+                      </div>
                     </td>
                     <td className="py-2 pr-4">{fmtDate(o.created_at)}</td>
                     <td className="py-2 pr-4">{fmtCurrency(o.total_minor, o.currency)}</td>
