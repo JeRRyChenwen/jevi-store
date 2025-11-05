@@ -223,7 +223,8 @@ export default async function CategoryPage({
         </div>
       )}
 
-      {/* 列表：把顶级的 docId 列表传下去，子级则不传 */}
+      {/* 列表：把顶级的 docId 列表传下去，子级则不传
+          👉 这里新增 displayCurrency，CategoryGridClient 内部使用 src/lib/strapiPrice.ts 计算并展示 */}
       <div className="mt-2">
         <CategoryGridClient
           slug={slug}
@@ -231,6 +232,7 @@ export default async function CategoryPage({
           total={totalForUI}
           pageSize={40}
           categoryDocIds={categoryDocIds}
+          displayCurrency="AUD"   // ★ 新增：明确用哪个币种展示（与 pickPriceForCurrency 对齐）
         />
       </div>
     </main>

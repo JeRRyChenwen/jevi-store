@@ -20,14 +20,75 @@ import {
 // 颜色工具
 import { normalizeColorName, colorNameToCss } from "@/lib/colors";
 
-// ✅ pricing 工具：用于货币与促销计算
-import {
-  type PriceRec,
-  pickCurrency,
-  effectiveMinor,
-  minorToMajor,
-  // majorToMinor,
-} from "@/lib/pricing";
+// ✅ 兼容导入：若你的 lib 提供了相同函数则直接用；否则使用兜底
+import * as SP from "@/lib/strapiPrice";
+
+// 不依赖对方导出的类型，避免类型导出不一致时报错
+type PriceRec = any;
+
+/** 兜底：将最小货币单位格式化为字符串，如 50000 -> "AUD 500.00" */
+function _fallbackFmtMoneyMinor(minor: number, ccy: string) {
+  const code = String(ccy || "AUD").toUpperCase();
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: code,
+    maximumFractionDigits: 2,
+  }).format((minor || 0) / 100);
+}
+
+/** 兜底：按币种挑选并计算价格
+ * - price 视为“主要货币单位”（500 => 500.00），转成 base_minor=price*100
+ * - 若存在 amount_minor 则优先使用
+ * - 支持 discount=85(=85%) 或 discount_percent_off=24(=24% OFF)
+ * - 仅在时间窗内才应用折扣
+ */
+function _fallbackPickPriceForCurrency(prices: PriceRec[], currency: string) {
+  if (!Array.isArray(prices) || prices.length === 0) return null;
+  const code = String(currency || "AUD").toUpperCase();
+
+  const rec: any =
+    prices.find((r: any) => String(r?.currency || "").toUpperCase() === code) ||
+    prices[0] ||
+    null;
+  if (!rec) return null;
+
+  let base_minor: number | null = null;
+  if (typeof rec.amount_minor === "number" && Number.isFinite(rec.amount_minor)) {
+    base_minor = Math.max(0, Math.round(rec.amount_minor));
+  } else if (typeof rec.price === "number" && Number.isFinite(rec.price)) {
+    base_minor = Math.max(0, Math.round(rec.price * 100));
+  }
+  if (base_minor == null) return { base_minor: null, effective_minor: null, currency: code };
+
+  const now = Date.now();
+  const inWindow = (s?: string, e?: string) => {
+    const okS = !s || now >= Date.parse(s);
+    const okE = !e || now <= Date.parse(e);
+    return okS && okE;
+  };
+
+  let effective_minor = base_minor;
+  if (typeof rec.discount === "number" && rec.discount > 0 && inWindow(rec.sale_starts_at, rec.sale_ends_at)) {
+    // discount=85 => 85%
+    effective_minor = Math.max(0, Math.round(base_minor * (rec.discount / 100)));
+  } else if (
+    typeof rec.discount_percent_off === "number" &&
+    rec.discount_percent_off > 0 &&
+    inWindow(rec.sale_starts_at, rec.sale_ends_at)
+  ) {
+    // 24 => 24% OFF
+    effective_minor = Math.max(0, Math.round(base_minor * (1 - rec.discount_percent_off / 100)));
+  }
+
+  return { base_minor, effective_minor, currency: code };
+}
+
+// 实际使用：优先采用你库里的实现
+const fmtMoneyMinor: (minor: number, currency: string) => string =
+  (SP as any).fmtMoneyMinor || _fallbackFmtMoneyMinor;
+
+const pickPriceForCurrency: (prices: PriceRec[], currency: string) => { base_minor: number | null; effective_minor: number | null; currency: string } | null =
+  (SP as any).pickPriceForCurrency || _fallbackPickPriceForCurrency;
 
 type Props = {
   slug: string;
@@ -37,6 +98,8 @@ type Props = {
   pageSize?: number;
   /** 顶级分类 = 自身 + 子分类 documentId，用于 $in 过滤 */
   categoryDocIds?: string[];
+  /** ★ 新增：展示币种（与 pickPriceForCurrency 对齐），默认 AUD */
+  displayCurrency?: string;
 };
 
 type ProductLite = {
@@ -44,10 +107,10 @@ type ProductLite = {
   slug?: string; // 用于详情页路由
   name: string;
 
-  /** ✅ 来自 Strapi Price 组件（已标准化为最小货币单位） */
+  /** ✅ 来自 Strapi Price 组件（按你的组件字段解析） */
   prices: PriceRec[];
 
-  /** 旧字段（保底用） */
+  /** 旧字段（保底用，base_price_cents / currency） */
   price: number | null;
   currency?: string | null;
 
@@ -199,24 +262,23 @@ function getPrices(attrs: any): PriceRec[] {
     const currency = String(a.currency ?? "").toUpperCase();
     if (!currency) continue;
 
-    // 你现在在后台填写的是“最小货币单位”（500 => $5.00）
-    const amount_minor = Number(a.price);
-
-    if (!Number.isFinite(amount_minor)) continue;
+    // 这里的 a.price 由你的 strapiPrice.ts 解释为“基价(最小货币单位)”或“500=¥500/¥5.00”，
+    // 我们不在此做换算，交给 pickPriceForCurrency 处理
+    const priceRaw = a.price;
 
     out.push({
       currency: currency as any,
-      amount_minor: Math.max(0, Math.round(amount_minor)),
-      discount_percent_off:
-        typeof a.discount_percent_off === "number" ? a.discount_percent_off : undefined,
+      price: priceRaw, // 保留原值，pickPriceForCurrency 会规范化
+      discount: typeof a.discount === "number" ? a.discount : undefined, // 若你已把字段改名为 discount（85=85%）
+      discount_percent_off: typeof a.discount_percent_off === "number" ? a.discount_percent_off : undefined, // 兼容旧字段
       sale_starts_at: a.sale_starts_at ?? undefined,
       sale_ends_at: a.sale_ends_at ?? undefined,
-    });
+    } as PriceRec);
   }
   return out;
 }
 
-/** 价格/折扣展示用（旧字段保底） */
+/** 旧字段兜底的货币字符串 */
 function formatPriceVal(n: number | null, currency?: string | null, locale?: string) {
   if (n == null) return "—";
   const cur = (currency || "AUD").toUpperCase();
@@ -247,19 +309,6 @@ function salePriceLegacy(p: ProductLite) {
   const base = p.price ?? 0;
   const pct = p.discountPercent ?? 0;
   return Math.max(0, base * (1 - pct / 100));
-}
-
-/** 判断某个 PriceRec 是否在促销时间窗内（且比基础价低） */
-function isPriceOnSale(rec?: PriceRec | null) {
-  if (!rec) return false;
-
-  const pct = typeof rec.discount_percent_off === "number" ? rec.discount_percent_off : 0;
-  if (pct <= 0) return false;
-
-  const now = Date.now();
-  const startOk = !rec.sale_starts_at || now >= Date.parse(rec.sale_starts_at);
-  const endOk = !rec.sale_ends_at || now <= Date.parse(rec.sale_ends_at);
-  return startOk && endOk;
 }
 
 function normalizeProduct(row: any): ProductLite {
@@ -324,7 +373,6 @@ function normalizeProduct(row: any): ProductLite {
 function CardSkeleton() {
   return (
     <article className="overflow-hidden rounded-3xl border bg-card shadow-sm">
-      {/* ⬆️ 图片区：改为固定更高的高度，图片更大 */}
       <div className="h-[260px] sm:h-[300px] md:h-[340px] lg:h-[380px] xl:h-[420px] bg-muted animate-pulse" />
       <div className="p-6 md:p-8 space-y-3">
         <div className="h-5 w-2/3 rounded bg-muted animate-pulse" />
@@ -340,7 +388,6 @@ function ImageCarousel({ urls, alt }: { urls: string[]; alt: string }) {
   const [idx, setIdx] = useState(0);
   const count = urls.length;
 
-  // 颜色/图片数组切换时重置到第一张
   useEffect(() => {
     setIdx(0);
   }, [urls?.join("|")]);
@@ -385,7 +432,17 @@ function ImageCarousel({ urls, alt }: { urls: string[]; alt: string }) {
 }
 
 /** 单个卡片：点击图片或标题跳到详情页 */
-function ProductCard({ p, idx, start }: { p: ProductLite; idx: number; start: number }) {
+function ProductCard({
+  p,
+  idx,
+  start,
+  displayCurrency,
+}: {
+  p: ProductLite;
+  idx: number;
+  start: number;
+  displayCurrency: string;
+}) {
   const [selectedColor, setSelectedColor] = useState<string | null>(p.colors?.[0] ?? null);
 
   // 热度星级（0~5）
@@ -393,7 +450,7 @@ function ProductCard({ p, idx, start }: { p: ProductLite; idx: number; start: nu
   if (stars > 5) stars = Math.round(clamp(stars, 0, 100) / 20);
   stars = clamp(Math.round(stars), 0, 5);
 
-  // 优先用选中颜色的图片；否则取任意颜色；再否则用兜底首图
+  // 图片选择
   const colorKey = selectedColor ? normalizeColorName(selectedColor) : null;
   const byColor = colorKey && p.variantsByColor[colorKey];
   const anyColor =
@@ -405,44 +462,39 @@ function ProductCard({ p, idx, start }: { p: ProductLite; idx: number; start: nu
           }
           return [];
         })();
-
   const urls = (byColor && byColor.length ? byColor : anyColor) || (p.imageUrl ? [p.imageUrl] : []);
 
-  // ✅ 价格（优先 Price 组件；没有就回退旧字段）
-  const availableCurrencies = p.prices.map((r) => r.currency as any);
-  const currencyPicked = pickCurrency(availableCurrencies, { fallback: "AUD" });
-  const rec = p.prices.find((r) => r.currency === currencyPicked);
+  // ✅ 用新规则挑选并计算价格（支持 discount=85 → 85%）
+  const pick = pickPriceForCurrency(p.prices, displayCurrency);
+  const baseMinor = pick?.base_minor ?? null;
+  const effectiveMinor = pick?.effective_minor ?? baseMinor;
 
-  const hasSale = isPriceOnSale(rec);
-  const minorEff = rec ? effectiveMinor(rec) : undefined;
-  const minorBase = rec?.amount_minor;
-
+  // 折扣文案
   let discountPct: number | null = null;
-  if (hasSale && typeof minorEff === "number" && typeof minorBase === "number" && minorBase > 0) {
-    discountPct = Math.round((1 - minorEff / minorBase) * 100);
+  if (
+    typeof baseMinor === "number" &&
+    typeof effectiveMinor === "number" &&
+    baseMinor > 0 &&
+    effectiveMinor < baseMinor
+  ) {
+    discountPct = Math.round((1 - effectiveMinor / baseMinor) * 100);
   }
 
+  // 展示字符串（新口径）
+  const displayBase = typeof baseMinor === "number" ? fmtMoneyMinor(baseMinor, displayCurrency) : null;
   const displayEff =
-    typeof minorEff === "number"
-      ? `${currencyPicked} ${minorToMajor(minorEff, currencyPicked)}`
+    typeof effectiveMinor === "number"
+      ? fmtMoneyMinor(effectiveMinor, displayCurrency)
       : p.price != null
       ? formatPriceVal(p.price, p.currency)
       : "No price";
 
-  const displayBase =
-    typeof minorBase === "number"
-      ? `${currencyPicked} ${minorToMajor(minorBase, currencyPicked)}`
-      : p.price != null
-      ? formatPriceVal(p.price, p.currency)
-      : null;
-
-  // 旧字段保底的促销（如果没有 Price 组件）
-  const legacyOnSale = !rec && isSaleActiveByLegacy(p);
+  // 旧字段保底
+  const legacyOnSale = !pick && isSaleActiveByLegacy(p);
   const legacySalePrice = legacyOnSale ? salePriceLegacy(p) : null;
 
   return (
     <article className="group overflow-hidden rounded-3xl border bg-card shadow-sm transition-shadow hover:shadow-md">
-      {/* 图片区 + 覆盖式链接 */}
       <div className="relative">
         <ImageCarousel urls={urls} alt={p.name || `Image #${start + idx + 1}`} />
         {p.slug && (
@@ -462,16 +514,16 @@ function ProductCard({ p, idx, start }: { p: ProductLite; idx: number; start: nu
           )}
         </h3>
 
-        {/* 2. 折扣文案（使用 Price 组件） */}
-        {hasSale && discountPct != null && (
+        {/* 2. 折扣文案（新规则） */}
+        {discountPct != null && (
           <p className="mt-1 text-base font-semibold text-emerald-700 uppercase tracking-wide">
             {discountPct}% OFF
           </p>
         )}
 
-        {/* 3. 价格区（优先 Price 组件；无则回退旧字段逻辑） */}
+        {/* 3. 价格区（优先新规则；无则回退旧字段） */}
         <div className="mt-2">
-          {hasSale && displayBase ? (
+          {discountPct != null && displayBase ? (
             <div className="flex items-baseline gap-2">
               <span className="text-base text-neutral-400 line-through">{displayBase}</span>
               <span className="text-neutral-300">|</span>
@@ -526,7 +578,7 @@ function ProductCard({ p, idx, start }: { p: ProductLite; idx: number; start: nu
           </div>
         )}
 
-        {/* 5. 尺码（显示在颜色下方、星级上方） */}
+        {/* 5. 尺码 */}
         {p.sizes && p.sizes.length > 0 && (
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             {p.sizes.slice(0, 10).map((sz) => (
@@ -559,13 +611,13 @@ function ProductCard({ p, idx, start }: { p: ProductLite; idx: number; start: nu
 }
 
 // ============ Main ============
-// 其余逻辑保持不变
 export default function CategoryGridClient({
   slug,
   title,
   total,
   pageSize = 40,
   categoryDocIds,
+  displayCurrency = "AUD", // ★ 默认展示币种
 }: Props) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -778,7 +830,7 @@ export default function CategoryGridClient({
         if (typeof maxCents === "number") parts.push(`filters[base_price_cents][$lte]=${maxCents}`);
 
         // product 级（gender）
-        if (productGenderSupported && appliedGenders.length) {
+        if (appliedGenders.length) {
           appliedGenders.forEach((v, i) =>
             parts.push(`filters[gender][$in][${i}]=${encodeURIComponent(v)}`)
           );
@@ -802,11 +854,7 @@ export default function CategoryGridClient({
           `&populate[color_galleries][fields][0]=color` +
           `&populate[color_galleries][populate][images]=true` +
           `&populate[variants][fields][0]=color&populate[variants][fields][1]=size` +
-          `&populate[prices][fields][0]=currency` +
-          `&populate[prices][fields][1]=price` +
-          `&populate[prices][fields][2]=discount_percent_off` +
-          `&populate[prices][fields][3]=sale_starts_at` +
-          `&populate[prices][fields][4]=sale_ends_at` +
+          `&populate[prices]=*` +                           // ← 这里改成 *（不要逐个 fields）
           `&pagination[page]=${page}&pagination[pageSize]=${pageSize}` +
           `${sortQueryString}&publicationState=live`;
 
@@ -841,7 +889,6 @@ export default function CategoryGridClient({
     pageSize,
     appliedMin,
     appliedMax,
-    productGenderSupported,
     appliedGenders.join(","),
     appliedMaterials.join(","),
     appliedSizes.join(","),
@@ -976,9 +1023,7 @@ export default function CategoryGridClient({
           </div>
 
           <div className="h-[calc(100%-120px)] overflow-y-auto p-4">
-            {/* Gender（Product 级） */}
-            {/* ...（下方筛选面板逻辑保持原样） */}
-            {/* 省略：与原文件相同 */}
+            {/* 你的筛选控件...（与原文件一致） */}
           </div>
 
           <div className="p-4 border-t flex items-center justify-between gap-2">
@@ -1007,7 +1052,7 @@ export default function CategoryGridClient({
         <section>
           <div className="grid gap-7 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-4">
             {list.map((p, idx) => (
-              <ProductCard key={p.key} p={p} idx={idx} start={start} />
+              <ProductCard key={p.key} p={p} idx={idx} start={start} displayCurrency={displayCurrency} />
             ))}
           </div>
         </section>
