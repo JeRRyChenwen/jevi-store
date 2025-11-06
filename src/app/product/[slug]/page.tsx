@@ -7,12 +7,7 @@ import SizeClient from "../_components/SizeClient";
 import AddToBagClient from "../_components/AddToBagClient";
 import { normalizeColorName, colorNameToCss } from "@/lib/colors";
 
-import {
-  type PriceRec,
-  pickCurrency,
-  effectiveMinor,
-  minorToMajor,
-} from "@/lib/pricing";
+import { type PriceRec, pickCurrency } from "@/lib/pricing";
 
 /** Next.js 15: params / searchParams 是 Promise，需要 await */
 type PageProps = {
@@ -155,22 +150,31 @@ function getPrices(attrs: any): PriceRec[] {
     : Array.isArray(attrs?.prices?.data)
     ? attrs.prices.data
     : [];
+
   const out: PriceRec[] = [];
   for (const p of arr) {
     const a = p?.attributes ?? p ?? {};
     const currency = String(a.currency ?? "").toUpperCase();
-    const amount_minor = Number(a.price); // 你的 Price 组件里字段名是 price（最小货币单位）
-    if (!currency || !Number.isInteger(amount_minor)) continue;
+    if (!currency) continue;
 
-    const rec: PriceRec = {
-      currency: currency as any,
-      amount_minor,
-      discount_percent_off:
-        typeof a.discount_percent_off === "number" ? a.discount_percent_off : undefined,
+    const amountMinorNum = Number(a.amount_minor);
+    const priceNum = Number(a.price);
+    const discountNum = Number(a.discount);
+    const dpoNum = Number(a.discount_percent_off);
+
+    out.push({
+      currency,
+      // 若有 amount_minor 优先用；否则保留 price（单位：元），后面做 *100 兜底
+      amount_minor: Number.isFinite(amountMinorNum) ? Math.round(amountMinorNum) : undefined,
+      price: Number.isFinite(priceNum) ? priceNum : undefined,
+
+      // 两种折扣字段都兼容
+      discount: Number.isFinite(discountNum) ? discountNum : undefined,                // 85 => 85%
+      discount_percent_off: Number.isFinite(dpoNum) ? dpoNum : undefined,             // 24 => 24% OFF
+
       sale_starts_at: a.sale_starts_at ?? undefined,
       sale_ends_at: a.sale_ends_at ?? undefined,
-    };
-    out.push(rec);
+    } as PriceRec);
   }
   return out;
 }
@@ -193,11 +197,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     `&populate[variants][fields][0]=color` +
     `&populate[variants][fields][1]=size` +
     `&populate[variants][fields][2]=stock` +
-    `&populate[prices][fields][0]=currency` +
-    `&populate[prices][fields][1]=price` +
-    `&populate[prices][fields][2]=discount_percent_off` +
-    `&populate[prices][fields][3]=sale_starts_at` +
-    `&populate[prices][fields][4]=sale_ends_at` +
+    `&populate[prices]=*` +                // ★ 关键：用 *，不要点名 fields，避免 400
     `&publicationState=live`;
 
   const json = await api(qs, { noCache: true });
@@ -209,28 +209,62 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
 
   // ✅ 新价格：优先使用 Price 组件
   const prices = getPrices(attrs);
+
+  // 可用币种 + 选币（沿用你的 pickCurrency）
   const availableCurrencies = prices.map((r) => r.currency);
   const currencyPicked =
     availableCurrencies.length > 0
       ? pickCurrency(availableCurrencies, { fallback: "AUD" })
       : ((attrs.currency ?? "AUD") as string);
 
-  const rec = prices.find((r) => r.currency === currencyPicked);
-  const minorBase = rec?.amount_minor;
-  const minorEff = rec ? effectiveMinor(rec) : undefined;
+  // 取到该币种条目
+  const rec = prices.find(
+    (r) => String(r.currency).toUpperCase() === String(currencyPicked).toUpperCase()
+  );
 
-  // 转成主货币“数字”给 UI/购物袋使用
-  const priceFromPrices =
-    typeof minorBase === "number" ? Number(minorToMajor(minorBase, currencyPicked as any)) : null;
-  const effFromPrices =
-    typeof minorEff === "number" ? Number(minorToMajor(minorEff, currencyPicked as any)) : null;
+  // —— 统一得到 baseMinor（分）——
+  let baseMinor: number | null = null;
+  if (rec) {
+    if (typeof (rec as any).amount_minor === "number" && Number.isFinite((rec as any).amount_minor)) {
+      baseMinor = Math.max(0, Math.round((rec as any).amount_minor));
+    } else if (typeof (rec as any).price === "number" && Number.isFinite((rec as any).price)) {
+      // price 视为“元”
+      baseMinor = Math.max(0, Math.round((rec as any).price * 100));
+    }
+  }
 
-  // 折扣百分比（由 Price 组件实时算，避免 100% 错）
+  // —— 计算有效价 effectiveMinor（分），支持 discount / discount_percent_off + 时间窗 —— 
+  let effectiveMinor: number | null = baseMinor;
+  if (rec && baseMinor != null) {
+    const now = Date.now();
+    const inWindow = (s?: string, e?: string) => {
+      const okS = !s || now >= Date.parse(s);
+      const okE = !e || now <= Date.parse(e);
+      return okS && okE;
+    };
+    const s = (rec as any).sale_starts_at;
+    const e = (rec as any).sale_ends_at;
+    if (inWindow(s, e)) {
+      const d = Number((rec as any).discount);
+      const off = Number((rec as any).discount_percent_off);
+      if (Number.isFinite(d) && d > 0 && d <= 100) {
+        // 85 => 按 85% 售卖
+        effectiveMinor = Math.max(0, Math.round(baseMinor * (d / 100)));
+      } else if (Number.isFinite(off) && off > 0 && off < 100) {
+        // 24 => 24% OFF
+        effectiveMinor = Math.max(0, Math.round(baseMinor * (1 - off / 100)));
+      }
+    }
+  }
+
+  // —— 转为“元”供 UI 使用 —— 
+  const priceFromPrices = baseMinor != null ? baseMinor / 100 : null;
+  const effFromPrices = effectiveMinor != null ? effectiveMinor / 100 : null;
+
+  // 折扣百分比（仅当小于原价时）
   const discountFromPrices =
-    typeof minorBase === "number" &&
-    typeof minorEff === "number" &&
-    minorEff < minorBase
-      ? Math.round((1 - minorEff / minorBase) * 100)
+    baseMinor != null && effectiveMinor != null && effectiveMinor < baseMinor
+      ? Math.round((1 - effectiveMinor / baseMinor) * 100)
       : null;
 
   // ⛳️ 旧字段（仅作为兜底）
