@@ -23,6 +23,8 @@ const DELIVERY_FREE_THRESHOLD = 100;
 const DELIVERY_FLAT = 10;
 const DISPLAY_CURRENCY: Currency = "AUD";
 const CONFIRM_PATH = "/order/confirmation";
+const LS_BILLING_ADDR = "sp.checkout.billingAddress";
+const LS_SAME_AS_DELIVERY = "sp.checkout.sameAsDelivery";
 
 /* 工具：本地 /api 优先（需要远端时单独指定） */
 const apiURL = (path: string) => `/api${path}`;
@@ -421,6 +423,73 @@ function AddressForm({
   );
 }
 
+/* ---------------- Billing 表单（精简，无邮箱/保存） ---------------- */
+function BillingForm({
+  billing,
+  setBilling,
+  showErrors,
+}: {
+  billing: Address;
+  setBilling: (a: Address) => void;
+  showErrors: boolean;
+}) {
+  const baseInput =
+    "w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-neutral-900/10";
+  const cls = (bad: boolean) =>
+    showErrors && bad ? `${baseInput} border-red-500` : `${baseInput} border-neutral-300`;
+
+  const on =
+    (k: keyof Address) =>
+    (e: React.ChangeEvent<HTMLInputElement>) =>
+      setBilling({ ...billing, [k]: e.target.value });
+
+  return (
+    <section className="rounded-xl border" id="billing-section">
+      <div className="border-b px-4 py-3 font-semibold">Billing Address</div>
+      <div className="p-4 space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-neutral-700">First Name</label>
+            <input className={cls(!billing.firstName)} value={billing.firstName || ""} onChange={on("firstName")} />
+          </div>
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-neutral-700">Last Name</label>
+            <input className={cls(!billing.lastName)} value={billing.lastName || ""} onChange={on("lastName")} />
+          </div>
+          <div className="md:col-span-2 space-y-1">
+            <label className="block text-sm font-medium text-neutral-700">Phone</label>
+            <input className={cls(!billing.phone)} value={billing.phone || ""} onChange={on("phone")} />
+          </div>
+          <div className="md:col-span-2 space-y-1">
+            <label className="block text-sm font-medium text-neutral-700">Address Line 1</label>
+            <input className={cls(!billing.line1)} value={billing.line1 || ""} onChange={on("line1")} />
+          </div>
+          <div className="md:col-span-2 space-y-1">
+            <label className="block text-sm font-medium text-neutral-700">Address Line 2 (optional)</label>
+            <input className={baseInput + " border-neutral-300"} value={billing.line2 || ""} onChange={on("line2")} />
+          </div>
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-neutral-700">City</label>
+            <input className={cls(!billing.city)} value={billing.city || ""} onChange={on("city")} />
+          </div>
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-neutral-700">State/Region</label>
+            <input className={cls(!billing.state)} value={billing.state || ""} onChange={on("state")} />
+          </div>
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-neutral-700">Postcode</label>
+            <input className={cls(!billing.postcode)} value={billing.postcode || ""} onChange={on("postcode")} />
+          </div>
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-neutral-700">Country</label>
+            <input className={cls(!billing.country)} value={billing.country || ""} onChange={on("country")} />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /* ---------------- Delivery ---------------- */
 type DeliveryMethod = "standard" | "express";
 const METHOD_META: Record<DeliveryMethod, { label: string; eta: string }> = {
@@ -574,9 +643,10 @@ function LargeGhostButton({
 }
 
 /* ========= 成功支付后把订单发送给 Worker（返回 order 对象） ========= */
+/* ========= 成功支付后把订单发送给 Worker（返回 order 对象） ========= */
 async function sendOrderToServer(args: {
   cart: any[];
-  address: Address;
+  address: Address;                    // 收货地址（delivery）
   currency: string;
   itemsMinor: number;
   deliveryFeeMinor: number;
@@ -584,11 +654,15 @@ async function sendOrderToServer(args: {
   grandMinor: number;
   paypalPayload: any;
   deliveryMethod?: "standard" | "express";
+
+  /** 新增：账单地址相关 */
+  billingAddress?: Address | null;     // 账单地址（如果与收货地址不同）
+  sameAsDelivery?: boolean;            // true = 同收货地址
 }): Promise<{ ok: boolean; order?: { id: number; order_number: string | null } }> {
   try {
     const target = "/api/orders";
 
-    // 计算每一行条目（与后端字段对齐）
+    // ① 计算每一行条目（与后端字段对齐）
     const items = (args.cart || []).map((it: any) => {
       const recs = itemToPriceRecs(it);
       const rec = recs.find((r) => r.currency === (args.currency as Currency));
@@ -615,7 +689,7 @@ async function sendOrderToServer(args: {
       };
     });
 
-    // PayPal 交易号尽量稳健地提取
+    // ② PayPal 交易号尽量稳健地提取
     const cap =
       args.paypalPayload?.purchase_units?.[0]?.payments?.captures?.[0] ||
       args.paypalPayload?.transaction ||
@@ -626,8 +700,13 @@ async function sendOrderToServer(args: {
       args.paypalPayload?.paypalTransactionId ||
       null;
 
+    // ③ 计算账单地址：同收货地址 or 独立账单地址
+    const billing =
+      (args.sameAsDelivery ? args.address : (args.billingAddress || args.address)) || {};
+
+    // ④ 组装请求体
     const body = {
-      // 邮箱可不传（已登录会从 JWT 自动补），未登录建议传入
+      // —— 顾客 / 收货信息（delivery） ——
       email: (args.address?.email || "").trim() || "",
       first_name: args.address?.firstName || null,
       last_name: args.address?.lastName || null,
@@ -639,6 +718,22 @@ async function sendOrderToServer(args: {
       addr_postcode: args.address?.postcode || null,
       addr_country: args.address?.country || null,
 
+      // —— 新增：账单地址（billing） ——
+      billing_address: {
+        first_name: billing.firstName || null,
+        last_name:  billing.lastName  || null,
+        email:      (billing.email || "").trim() || null,
+        phone:      billing.phone     || null,
+        line1:      billing.line1     || null,
+        line2:      billing.line2     || null,
+        city:       billing.city      || null,
+        state:      billing.state     || null,
+        postcode:   billing.postcode  || null,
+        country:    billing.country   || null,
+        same_as_delivery: !!args.sameAsDelivery,   // 给后端一个标记，便于存储
+      },
+
+      // —— 金额相关 ——
       currency: args.currency,
       items_total_minor: Number(args.itemsMinor) || 0,
       delivery_fee_minor: Number(args.deliveryFeeMinor) || 0,
@@ -646,8 +741,8 @@ async function sendOrderToServer(args: {
       tax_minor: Number(args.taxMinor || 0),
       grand_total_minor: Number(args.grandMinor) || 0,
 
+      // —— 其他 ——
       delivery_method: args.deliveryMethod ?? "standard",
-
       items,
 
       payment: {
@@ -664,6 +759,7 @@ async function sendOrderToServer(args: {
       meta: { step: "payment", path: "/checkout" },
     };
 
+    // ⑤ 发起请求
     const res = await fetch(target, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -672,6 +768,7 @@ async function sendOrderToServer(args: {
       body: JSON.stringify(body),
     });
 
+    // ⑥ 解析响应
     let data: any = null;
     let text: string | null = null;
     try {
@@ -680,7 +777,7 @@ async function sendOrderToServer(args: {
       try { text = await res.text(); } catch {}
     }
 
-    // ✅ 新后端已返回完整 order 对象（含 order_number）
+    // ✅ 成功：返回 order（含 order_number）
     if (res.ok && data?.ok && data?.order && typeof data.order.id === "number") {
       return { ok: true, order: { id: data.order.id, order_number: data.order.order_number ?? null } };
     }
@@ -740,7 +837,25 @@ export default function CheckoutPage() {
   const [loaded, setLoaded] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [address, setAddress] = useState<Address>({});
+  
+  // Billing 地址与“同收货地址”开关  ←← 在这里插入
+  const [billingAddress, setBillingAddress] = useState<Address>({
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    line1: "",
+    line2: "",
+    city: "",
+    state: "",
+    postcode: "",
+    country: "",
+  });
+  const [sameAsDelivery, setSameAsDelivery] = useState<boolean>(true);
+
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>("standard");
+
+    
 
   // 勾选 & 邮箱本地状态
   const [marketingOptIn, setMarketingOptIn] = useState(false);
@@ -813,6 +928,14 @@ export default function CheckoutPage() {
         setEmailInput(a?.email || "");
       }
     } catch {}
+    // 读取 Billing 地址 & “同收货地址”开关
+    try {
+      const rawBilling = localStorage.getItem(LS_BILLING_ADDR);
+      if (rawBilling) setBillingAddress(JSON.parse(rawBilling));
+      const rawSame = localStorage.getItem(LS_SAME_AS_DELIVERY);
+      if (rawSame) setSameAsDelivery(JSON.parse(rawSame));
+    } catch {}
+
     readLoginFromCookie();
 
     (async () => {
@@ -836,6 +959,19 @@ export default function CheckoutPage() {
     setLoaded(true);
     return () => window.removeEventListener("focus", readLoginFromCookie);
   }, []);
+
+  // 勾选“同收货地址”时，实时用 delivery 覆盖 billing
+  useEffect(() => {
+    if (sameAsDelivery) setBillingAddress(address);
+  }, [sameAsDelivery, address]);
+
+  // 将 billingAddress 和 sameAsDelivery 写回本地存储
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_BILLING_ADDR, JSON.stringify(billingAddress));
+      localStorage.setItem(LS_SAME_AS_DELIVERY, JSON.stringify(sameAsDelivery));
+    } catch {}
+  }, [billingAddress, sameAsDelivery]);
 
   // 同步购物车 & 广播
   useEffect(() => {
@@ -1075,6 +1211,10 @@ export default function CheckoutPage() {
         grandMinor: totalMinor,
         paypalPayload: payload,
         deliveryMethod,
+
+        // ★ 新增 ↓
+        billingAddress,          // 你在页面 state 里已有
+        sameAsDelivery,          // 你在页面 state 里已有
       });
       if (persist.ok && persist.order) {
         orderId = persist.order.id ?? null;
@@ -1204,24 +1344,51 @@ export default function CheckoutPage() {
           )}
 
           {/* Address */}
-          {step === "address" && (
-            <AddressForm
-              address={address}
-              setAddress={setAddress}
-              emailInput={emailInput}
-              setEmailInput={setEmailInput}
-              marketingOptIn={marketingOptIn}
-              setMarketingOptIn={setMarketingOptIn}
+{step === "address" && (
+  <>
+    <AddressForm
+      address={address}
+      setAddress={setAddress}
+      emailInput={emailInput}
+      setEmailInput={setEmailInput}
+      marketingOptIn={marketingOptIn}
+      setMarketingOptIn={setMarketingOptIn}
+      showErrors={addressShowErrors}
+      errs={addressErrs}
+      errorBanner={addressShowErrors ? "Some required fields are missing or invalid." : null}
+      onEmailCommit={(email) => sendSubscriptionIfNeeded(email)}
+      onOptInChanged={(_opt) => sendSubscriptionIfNeeded()}
+      hideYourDetails={isLoggedIn}
+      onSaveDefault={isLoggedIn ? handleSaveDefaultAddress : undefined}
+      saveMsg={saveMsg}
+    />
+
+    {/* Billing 同收货地址开关 */}
+          <div className="rounded-xl border p-4 mt-6">
+            <label className="flex items-start gap-3 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={sameAsDelivery}
+                onChange={(e) => setSameAsDelivery(e.currentTarget.checked)}
+              />
+              <span>Billing address is the same as delivery address</span>
+            </label>
+            <p className="mt-2 text-xs text-neutral-500">
+              If unchecked, you can enter a different billing address below.
+            </p>
+          </div>
+
+          {/* 不同则显示 Billing 表单 */}
+          {!sameAsDelivery && (
+            <BillingForm
+              billing={billingAddress}
+              setBilling={setBillingAddress}
               showErrors={addressShowErrors}
-              errs={addressErrs}
-              errorBanner={addressShowErrors ? "Some required fields are missing or invalid." : null}
-              onEmailCommit={(email) => sendSubscriptionIfNeeded(email)}
-              onOptInChanged={(_opt) => sendSubscriptionIfNeeded()}
-              hideYourDetails={isLoggedIn}
-              onSaveDefault={isLoggedIn ? handleSaveDefaultAddress : undefined}
-              saveMsg={saveMsg}
             />
           )}
+        </>
+      )}
 
           {/* Delivery */}
           {step === "delivery" && (
