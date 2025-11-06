@@ -61,23 +61,27 @@ function _fallbackPickPriceForCurrency(prices: PriceRec[], currency: string) {
   if (base_minor == null) return { base_minor: null, effective_minor: null, currency: code };
 
   const now = Date.now();
+
+  let effective_minor = base_minor;
+
   const inWindow = (s?: string, e?: string) => {
     const okS = !s || now >= Date.parse(s);
     const okE = !e || now <= Date.parse(e);
     return okS && okE;
   };
 
-  let effective_minor = base_minor;
-  if (typeof rec.discount === "number" && rec.discount > 0 && inWindow(rec.sale_starts_at, rec.sale_ends_at)) {
-    // discount=85 => 85%
-    effective_minor = Math.max(0, Math.round(base_minor * (rec.discount / 100)));
-  } else if (
-    typeof rec.discount_percent_off === "number" &&
-    rec.discount_percent_off > 0 &&
-    inWindow(rec.sale_starts_at, rec.sale_ends_at)
-  ) {
-    // 24 => 24% OFF
-    effective_minor = Math.max(0, Math.round(base_minor * (1 - rec.discount_percent_off / 100)));
+  // —— 折扣（两种口径都支持），仅在有效期内生效 ——
+  if (inWindow(rec.sale_starts_at, rec.sale_ends_at)) {
+    const d = Number(rec.discount);
+    const off = Number(rec.discount_percent_off);
+
+    if (Number.isFinite(d) && d > 0 && d <= 100) {
+      // discount = 85  →  85%
+      effective_minor = Math.max(0, Math.round(base_minor * (d / 100)));
+    } else if (Number.isFinite(off) && off > 0 && off < 100) {
+      // discount_percent_off = 24 → 24% OFF
+      effective_minor = Math.max(0, Math.round(base_minor * (1 - off / 100)));
+    }
   }
 
   return { base_minor, effective_minor, currency: code };
@@ -87,8 +91,54 @@ function _fallbackPickPriceForCurrency(prices: PriceRec[], currency: string) {
 const fmtMoneyMinor: (minor: number, currency: string) => string =
   (SP as any).fmtMoneyMinor || _fallbackFmtMoneyMinor;
 
-const pickPriceForCurrency: (prices: PriceRec[], currency: string) => { base_minor: number | null; effective_minor: number | null; currency: string } | null =
-  (SP as any).pickPriceForCurrency || _fallbackPickPriceForCurrency;
+type PickRes =
+  | { base_minor: number | null; effective_minor: number | null; currency: string }
+  | null;
+
+/**
+ * 适配器：
+ * - 若存在 SP.pickPriceForCurrency（返回 baseMajor/effectiveMajor），先用它
+ * - 把 major 转成 minor
+ * - 若库函数没产生折扣（effective==base），再用兜底规则重算一次折扣
+ * - 否则直接退回兜底
+ */
+const pickPriceForCurrency: (prices: PriceRec[], currency: string) => PickRes = (prices, currency) => {
+  const ccy = String(currency || "AUD").toUpperCase();
+  const libPick = (SP as any)?.pickPriceForCurrency;
+
+  if (typeof libPick === "function") {
+    try {
+      // 期望库函数返回 { currency, baseMajor, effectiveMajor, badge? }
+      const r = libPick(prices, ccy);
+      if (r) {
+        const baseMinor =
+          Number.isFinite(Number(r.baseMajor)) ? Math.round(Number(r.baseMajor) * 100) : null;
+        let effMinor =
+          Number.isFinite(Number(r.effectiveMajor)) ? Math.round(Number(r.effectiveMajor) * 100) : baseMinor;
+        const outCcy = String(r.currency || ccy).toUpperCase();
+
+        // 如果库函数没有算出折扣（eff==base），用兜底规则再试一遍
+        if (baseMinor != null && effMinor === baseMinor) {
+          const fb = _fallbackPickPriceForCurrency(prices, outCcy);
+          if (
+            fb &&
+            typeof fb.base_minor === "number" &&
+            typeof fb.effective_minor === "number" &&
+            fb.effective_minor < fb.base_minor
+          ) {
+            return fb; // 用兜底折扣结果
+          }
+        }
+        return { base_minor: baseMinor, effective_minor: effMinor, currency: outCcy };
+      }
+    } catch {
+      // 忽略并走兜底
+    }
+  }
+
+  // 没有库函数或调用失败 → 兜底
+  return _fallbackPickPriceForCurrency(prices, ccy);
+};
 
 type Props = {
   slug: string;
@@ -248,7 +298,7 @@ function getVariantSizes(attrs: any): string[] {
   return sortSizes(Array.from(set));
 }
 
-/** ✅ 从 Strapi attributes 解析 Price 组件数组（与你当前的组件字段匹配） */
+/** ✅ 从 Strapi attributes 解析 Price 组件数组（强制数值化） */
 function getPrices(attrs: any): PriceRec[] {
   const arr: any[] = Array.isArray(attrs?.prices)
     ? attrs.prices
@@ -259,18 +309,27 @@ function getPrices(attrs: any): PriceRec[] {
   const out: PriceRec[] = [];
   for (const p of arr) {
     const a = p?.attributes ?? p ?? {};
+
     const currency = String(a.currency ?? "").toUpperCase();
     if (!currency) continue;
 
-    // 这里的 a.price 由你的 strapiPrice.ts 解释为“基价(最小货币单位)”或“500=¥500/¥5.00”，
-    // 我们不在此做换算，交给 pickPriceForCurrency 处理
-    const priceRaw = a.price;
+    // 统一数值化（有些后端会返回 "85" 这样的字符串）
+    const amountMinorNum = Number(a.amount_minor);
+    const priceNum = Number(a.price);
+    const discountNum = Number(a.discount);
+    const dpoNum = Number(a.discount_percent_off);
 
     out.push({
-      currency: currency as any,
-      price: priceRaw, // 保留原值，pickPriceForCurrency 会规范化
-      discount: typeof a.discount === "number" ? a.discount : undefined, // 若你已把字段改名为 discount（85=85%）
-      discount_percent_off: typeof a.discount_percent_off === "number" ? a.discount_percent_off : undefined, // 兼容旧字段
+      currency, // e.g. "AUD"
+
+      // 若有 amount_minor 优先用（单位：分）；否则保留 price（单位：元），兜底函数会处理
+      amount_minor: Number.isFinite(amountMinorNum) ? Math.round(amountMinorNum) : undefined,
+      price: Number.isFinite(priceNum) ? priceNum : undefined,
+
+      // 两种折扣字段都兼容
+      discount: Number.isFinite(discountNum) ? discountNum : undefined,                   // 85 => 85%
+      discount_percent_off: Number.isFinite(dpoNum) ? dpoNum : undefined,                // 24 => 24% OFF
+
       sale_starts_at: a.sale_starts_at ?? undefined,
       sale_ends_at: a.sale_ends_at ?? undefined,
     } as PriceRec);
@@ -464,12 +523,19 @@ function ProductCard({
         })();
   const urls = (byColor && byColor.length ? byColor : anyColor) || (p.imageUrl ? [p.imageUrl] : []);
 
-  // ✅ 用新规则挑选并计算价格（支持 discount=85 → 85%）
-  const pick = pickPriceForCurrency(p.prices, displayCurrency);
-  const baseMinor = pick?.base_minor ?? null;
-  const effectiveMinor = pick?.effective_minor ?? baseMinor;
+  // ✅ 选中币种并计算原价/折后价
+  const pick = pickPriceForCurrency(p.prices, displayCurrency) || null;
 
-  // 折扣文案
+  // 原价（最小货币单位）
+  const baseMinor: number | null =
+    pick?.base_minor ??
+    (typeof p.price === "number" ? Math.round(Math.max(0, p.price) * 100) : null);
+
+  // 折后价（最小货币单位）
+  const effectiveMinor: number | null =
+    pick?.effective_minor ?? baseMinor;
+
+  // 折扣百分比（仅当有折扣且小于原价才显示）
   let discountPct: number | null = null;
   if (
     typeof baseMinor === "number" &&
@@ -480,16 +546,23 @@ function ProductCard({
     discountPct = Math.round((1 - effectiveMinor / baseMinor) * 100);
   }
 
-  // 展示字符串（新口径）
-  const displayBase = typeof baseMinor === "number" ? fmtMoneyMinor(baseMinor, displayCurrency) : null;
-  const displayEff =
-    typeof effectiveMinor === "number"
-      ? fmtMoneyMinor(effectiveMinor, displayCurrency)
+  // 展示字符串
+const showCcy = pick?.currency || displayCurrency;
+
+const displayBase = typeof baseMinor === "number" ? fmtMoneyMinor(baseMinor, showCcy) : null;
+
+const displayEff =
+  typeof effectiveMinor === "number"
+    ? fmtMoneyMinor(effectiveMinor, showCcy)
       : p.price != null
-      ? formatPriceVal(p.price, p.currency)
+      ? new Intl.NumberFormat(undefined, {
+          style: "currency",
+          currency: (p.currency || "AUD").toUpperCase(),
+          maximumFractionDigits: 2,
+        }).format(Number(p.price))
       : "No price";
 
-  // 旧字段保底
+  // 旧字段保底（如果没拿到 pick 并且有旧折扣窗口）
   const legacyOnSale = !pick && isSaleActiveByLegacy(p);
   const legacySalePrice = legacyOnSale ? salePriceLegacy(p) : null;
 
@@ -523,6 +596,7 @@ function ProductCard({
 
         {/* 3. 价格区（优先新规则；无则回退旧字段） */}
         <div className="mt-2">
+          {/* 新规则：有折扣 => 原价加删除线 + 竖线 + 折后价 */}
           {discountPct != null && displayBase ? (
             <div className="flex items-baseline gap-2">
               <span className="text-base text-neutral-400 line-through">{displayBase}</span>
@@ -530,6 +604,7 @@ function ProductCard({
               <span className="text-base font-bold text-emerald-700">{displayEff}</span>
             </div>
           ) : legacyOnSale && legacySalePrice != null ? (
+            // 旧字段兜底逻辑
             <div className="flex items-baseline gap-2">
               <span className="text-base text-neutral-400 line-through">
                 {formatPriceVal(p.price, p.currency)}
@@ -540,6 +615,7 @@ function ProductCard({
               </span>
             </div>
           ) : (
+            // 无折扣：仅展示一个价格
             <div className="text-base font-bold">{displayEff}</div>
           )}
         </div>
