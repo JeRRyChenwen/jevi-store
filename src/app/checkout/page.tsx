@@ -103,6 +103,38 @@ function validateAddress(a: Address, emailInput: string, ignoreEmail = false) {
   return { valid, errs };
 }
 
+/* ✅ 在这里粘贴 */
+function toApiAddress(a: Address) {
+  return {
+    first_name: (a.firstName || "").trim(),
+    last_name:  (a.lastName  || "").trim(),
+    phone:      (a.phone     || "").trim(),
+    line1:      (a.line1     || "").trim(),
+    line2:      (a.line2     || "").trim() || null,
+    city:       (a.city      || "").trim(),
+    state:      (a.state     || "").trim(),
+    postcode:   (a.postcode  || "").trim(),
+    country:    (a.country   || "").trim(),
+  };
+}
+
+/** Billing 单字段有效性（不校验 email，line2 可空） */
+function isFieldValid(k: keyof Address, v: string | undefined) {
+  const s = (v ?? "").trim();
+  switch (k) {
+    case "line2":
+      return true;                 // 可选
+    case "phone":
+      return PHONE_RE.test(s);
+    case "postcode":
+      return POSTCODE_RE.test(s);
+    case "email":
+      return true;                 // Billing 不用
+    default:
+      return s.length > 0;
+  }
+}
+
 /* ---------------- Stepper ---------------- */
 type StepKey = "bag" | "address" | "delivery" | "payment";
 const STEP_LIST: { key: StepKey; label: string }[] = [
@@ -193,6 +225,8 @@ function AddressForm({
   hideYourDetails = false,
   onSaveDefault,
   saveMsg,
+  variant = "section",         // ★ 新增：'section' | 'bare'
+  title = "Address",           // ★ 仅 section 模式显示
 }: {
   address: Address;
   setAddress: (a: Address) => void;
@@ -208,6 +242,8 @@ function AddressForm({
   hideYourDetails?: boolean;
   onSaveDefault?: () => Promise<void> | void;
   saveMsg?: { kind: "error" | "success"; text: string } | null;
+  variant?: "section" | "bare";
+  title?: string;
 }) {
   const on =
     (k: keyof Address) =>
@@ -219,206 +255,208 @@ function AddressForm({
   const cls = (bad: boolean) =>
     showErrors && bad ? `${baseInput} border-red-500` : `${baseInput} border-neutral-300`;
 
-  return (
-    <section className="rounded-xl border" id="address-section">
-      <div className="border-b px-4 py-3 font-semibold">Address</div>
-
-      <div className="p-4 space-y-6">
-        {/* 表单主体 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-1">
-            <label htmlFor="addr-first" className="block text-sm font-medium text-neutral-700">
-              First Name
-            </label>
-            <input
-              id="addr-first"
-              className={cls(errs.firstName)}
-              autoComplete="given-name"
-              value={address.firstName || ""}
-              onChange={on("firstName")}
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label htmlFor="addr-last" className="block text-sm font-medium text-neutral-700">
-              Last Name
-            </label>
-            <input
-              id="addr-last"
-              className={cls(errs.lastName)}
-              autoComplete="family-name"
-              value={address.lastName || ""}
-              onChange={on("lastName")}
-            />
-          </div>
-
-          <div className="md:col-span-2 space-y-1">
-            <label htmlFor="addr-phone" className="block text-sm font-medium text-neutral-700">
-              Phone
-            </label>
-            <input
-              id="addr-phone"
-              className={cls(errs.phone)}
-              autoComplete="tel"
-              value={address.phone || ""}
-              onChange={on("phone")}
-            />
-          </div>
-
-          <div className="md:col-span-2 space-y-1">
-            <label htmlFor="addr-line1" className="block text-sm font-medium text-neutral-700">
-              Address Line 1
-            </label>
-            <input
-              id="addr-line1"
-              className={cls(errs.line1)}
-              autoComplete="address-line1"
-              value={address.line1 || ""}
-              onChange={on("line1")}
-            />
-          </div>
-
-          <div className="md:col-span-2 space-y-1">
-            <label htmlFor="addr-line2" className="block text-sm font-medium text-neutral-700">
-              Address Line 2 (optional)
-            </label>
-            <input
-              id="addr-line2"
-              className={baseInput + " border-neutral-300"}
-              autoComplete="address-line2"
-              value={address.line2 || ""}
-              onChange={on("line2")}
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label htmlFor="addr-city" className="block text-sm font-medium text-neutral-700">
-              City
-            </label>
-            <input
-              id="addr-city"
-              className={cls(errs.city)}
-              autoComplete="address-level2"
-              value={address.city || ""}
-              onChange={on("city")}
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label htmlFor="addr-state" className="block text-sm font-medium text-neutral-700">
-              State/Region
-            </label>
-            <input
-              id="addr-state"
-              className={cls(errs.state)}
-              autoComplete="address-level1"
-              value={address.state || ""}
-              onChange={on("state")}
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label htmlFor="addr-postcode" className="block text-sm font-medium text-neutral-700">
-              Postcode
-            </label>
-            <input
-              id="addr-postcode"
-              className={cls(errs.postcode)}
-              autoComplete="postal-code"
-              value={address.postcode || ""}
-              onChange={on("postcode")}
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label htmlFor="addr-country" className="block text-sm font-medium text-neutral-700">
-              Country
-            </label>
-            <input
-              id="addr-country"
-              className={cls(errs.country)}
-              autoComplete="country-name"
-              value={address.country || ""}
-              onChange={on("country")}
-            />
-          </div>
+  const Inner = (
+    <div className="p-4 space-y-6">
+      {/* 表单主体 */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-1">
+          <label htmlFor="addr-first" className="block text-sm font-medium text-neutral-700">
+            First Name
+          </label>
+          <input
+            id="addr-first"
+            className={cls(errs.firstName)}
+            autoComplete="given-name"
+            value={address.firstName || ""}
+            onChange={on("firstName")}
+          />
         </div>
 
-        {/* 保存为默认地址区域：按钮始终可点；只在有 saveMsg 时显示提示 */}
-        {onSaveDefault && (
-          <div className="pt-1 flex flex-col items-end gap-2">
-            <button
-              type="button"
-              onClick={() => onSaveDefault()}
-              className="rounded-full border bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
-            >
-              Save address and set as default address
-            </button>
+        <div className="space-y-1">
+          <label htmlFor="addr-last" className="block text-sm font-medium text-neutral-700">
+            Last Name
+          </label>
+          <input
+            id="addr-last"
+            className={cls(errs.lastName)}
+            autoComplete="family-name"
+            value={address.lastName || ""}
+            onChange={on("lastName")}
+          />
+        </div>
 
-            {saveMsg ? (
-              <div
-                className={
-                  "text-xs " + (saveMsg.kind === "success" ? "text-emerald-700" : "text-red-600")
-                }
-                aria-live="polite"
-              >
-                {saveMsg.text}
-              </div>
-            ) : null}
-          </div>
-        )}
+        <div className="md:col-span-2 space-y-1">
+          <label htmlFor="addr-phone" className="block text-sm font-medium text-neutral-700">
+            Phone
+          </label>
+          <input
+            id="addr-phone"
+            className={cls(errs.phone)}
+            autoComplete="tel"
+            value={address.phone || ""}
+            onChange={on("phone")}
+          />
+        </div>
 
-        {/* 已登录则隐藏 “Your Details” 区域 */}
-        {!hideYourDetails && (
-          <div className="border rounded-lg p-4">
-            <h3 className="text-base font-medium mb-2">Your Details</h3>
-            <p className="text-sm text-neutral-600 mb-3">
-              Please enter your email address, we'll send your order confirmation here
-            </p>
+        <div className="md:col-span-2 space-y-1">
+          <label htmlFor="addr-line1" className="block text-sm font-medium text-neutral-700">
+            Address Line 1
+          </label>
+          <input
+            id="addr-line1"
+            className={cls(errs.line1)}
+            autoComplete="address-line1"
+            value={address.line1 || ""}
+            onChange={on("line1")}
+          />
+        </div>
 
-            <label htmlFor="addr-email" className="block text-sm font-medium mb-1">
-              Email Address
-            </label>
-            <input
-              id="addr-email"
-              type="email"
-              className={cls(errs.email)}
-              autoComplete="email"
-              value={emailInput}
-              onChange={(e) => {
-                const v = e.currentTarget.value;
-                setEmailInput(v);
-                setAddress({ ...address, email: v });
-              }}
-              onBlur={(e) => onEmailCommit?.(e.currentTarget.value)}
-            />
+        <div className="md:col-span-2 space-y-1">
+          <label htmlFor="addr-line2" className="block text-sm font-medium text-neutral-700">
+            Address Line 2 (optional)
+          </label>
+          <input
+            id="addr-line2"
+            className={baseInput + " border-neutral-300"}
+            autoComplete="address-line2"
+            value={address.line2 || ""}
+            onChange={on("line2")}
+          />
+        </div>
 
-            <p className="mt-1 text-xs text-neutral-500">You can create an account after checkout</p>
+        <div className="space-y-1">
+          <label htmlFor="addr-city" className="block text-sm font-medium text-neutral-700">
+            City
+          </label>
+          <input
+            id="addr-city"
+            className={cls(errs.city)}
+            autoComplete="address-level2"
+            value={address.city || ""}
+            onChange={on("city")}
+          />
+        </div>
 
-            <label className="mt-3 flex items-start gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="mt-1"
-                checked={marketingOptIn}
-                onChange={(e) => {
-                  const v = e.currentTarget.checked;
-                  setMarketingOptIn(v);
-                  onOptInChanged?.(v);
-                }}
-              />
-              <span>Email me updates on New Arrivals, Sale and Offers</span>
-            </label>
+        <div className="space-y-1">
+          <label htmlFor="addr-state" className="block text-sm font-medium text-neutral-700">
+            State/Region
+          </label>
+          <input
+            id="addr-state"
+            className={cls(errs.state)}
+            autoComplete="address-level1"
+            value={address.state || ""}
+            onChange={on("state")}
+          />
+        </div>
 
-            <p className="mt-3 text-xs text-neutral-500">
-              * We treat your personal data with care, view our{" "}
-              <a className="underline" href="/privacy">
-                Privacy Policy
-              </a>
-              .
-            </p>
-          </div>
-        )}
+        <div className="space-y-1">
+          <label htmlFor="addr-postcode" className="block text-sm font-medium text-neutral-700">
+            Postcode
+          </label>
+          <input
+            id="addr-postcode"
+            className={cls(errs.postcode)}
+            autoComplete="postal-code"
+            value={address.postcode || ""}
+            onChange={on("postcode")}
+          />
+        </div>
+
+        <div className="space-y-1">
+          <label htmlFor="addr-country" className="block text-sm font-medium text-neutral-700">
+            Country
+          </label>
+          <input
+            id="addr-country"
+            className={cls(errs.country)}
+            autoComplete="country-name"
+            value={address.country || ""}
+            onChange={on("country")}
+          />
+        </div>
       </div>
+
+      {/* 保存为默认地址 */}
+      {/* {onSaveDefault && (
+        <div className="pt-1 flex flex-col items-end gap-2">
+          <button
+            type="button"
+            onClick={() => onSaveDefault()}
+            className="rounded-full border bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
+          >
+            Save address and set as default address
+          </button>
+          {saveMsg ? (
+            <div
+              className={"text-xs " + (saveMsg.kind === "success" ? "text-emerald-700" : "text-red-600")}
+              aria-live="polite"
+            >
+              {saveMsg.text}
+            </div>
+          ) : null}
+        </div>
+      )} */}
+
+      {/* 未登录才显示 Your Details */}
+      {!hideYourDetails && (
+        <div className="border rounded-lg p-4">
+          <h3 className="text-base font-medium mb-2">Your Details</h3>
+          <p className="text-sm text-neutral-600 mb-3">
+            Please enter your email address, we'll send your order confirmation here
+          </p>
+
+          <label htmlFor="addr-email" className="block text-sm font-medium mb-1">
+            Email Address
+          </label>
+          <input
+            id="addr-email"
+            type="email"
+            className={cls(errs.email)}
+            autoComplete="email"
+            value={emailInput}
+            onChange={(e) => {
+              const v = e.currentTarget.value;
+              setEmailInput(v);
+              setAddress({ ...address, email: v });
+            }}
+            onBlur={(e) => onEmailCommit?.(e.currentTarget.value)}
+          />
+
+          <p className="mt-1 text-xs text-neutral-500">You can create an account after checkout</p>
+
+          <label className="mt-3 flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={marketingOptIn}
+              onChange={(e) => {
+                const v = e.currentTarget.checked;
+                setMarketingOptIn(v);
+                onOptInChanged?.(v);
+              }}
+            />
+            <span>Email me updates on New Arrivals, Sale and Offers</span>
+          </label>
+
+          <p className="mt-3 text-xs text-neutral-500">
+            * We treat your personal data with care, view our{" "}
+            <a className="underline" href="/privacy">
+              Privacy Policy
+            </a>
+            .
+          </p>
+        </div>
+      )}
+    </div>
+  );
+
+  if (variant === "bare") return <>{Inner}</>;
+
+  return (
+    <section className="rounded-xl border" id="address-section">
+      <div className="border-b px-4 py-3 font-semibold">{title}</div>
+      {Inner}
     </section>
   );
 }
@@ -428,10 +466,18 @@ function BillingForm({
   billing,
   setBilling,
   showErrors,
+  errs,
+  onFieldChange,            // ★ 新增
+  variant = "section",
+  title = "Billing Address",
 }: {
   billing: Address;
   setBilling: (a: Address) => void;
   showErrors: boolean;
+  errs: AddressErr;
+  onFieldChange?: (k: keyof Address, v: string) => void;  // ★ 新增
+  variant?: "section" | "bare";
+  title?: string;
 }) {
   const baseInput =
     "w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-neutral-900/10";
@@ -439,53 +485,62 @@ function BillingForm({
     showErrors && bad ? `${baseInput} border-red-500` : `${baseInput} border-neutral-300`;
 
   const on =
-    (k: keyof Address) =>
-    (e: React.ChangeEvent<HTMLInputElement>) =>
-      setBilling({ ...billing, [k]: e.target.value });
+  (k: keyof Address) =>
+  (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value;
+    setBilling({ ...billing, [k]: v });
+    if (showErrors && (errs as any)[k] === true) onFieldChange?.(k, v); // 仅当该字段当前为错时尝试清错
+  };
+
+  const Inner = (
+    <div className="p-4 space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-1">
+          <label className="block text-sm font-medium text-neutral-700">First Name</label>
+          <input className={cls(errs.firstName)} value={billing.firstName || ""} onChange={on("firstName")} />
+        </div>
+        <div className="space-y-1">
+          <label className="block text-sm font-medium text-neutral-700">Last Name</label>
+          <input className={cls(errs.lastName)} value={billing.lastName || ""} onChange={on("lastName")} />
+        </div>
+        <div className="md:col-span-2 space-y-1">
+          <label className="block text-sm font-medium text-neutral-700">Phone</label>
+          <input className={cls(errs.phone)} value={billing.phone || ""} onChange={on("phone")} />
+        </div>
+        <div className="md:col-span-2 space-y-1">
+          <label className="block text-sm font-medium text-neutral-700">Address Line 1</label>
+          <input className={cls(errs.line1)} value={billing.line1 || ""} onChange={on("line1")} />
+        </div>
+        <div className="md:col-span-2 space-y-1">
+          <label className="block text-sm font-medium text-neutral-700">Address Line 2 (optional)</label>
+          <input className={baseInput + " border-neutral-300"} value={billing.line2 || ""} onChange={on("line2")} />
+        </div>
+        <div className="space-y-1">
+          <label className="block text-sm font-medium text-neutral-700">City</label>
+          <input className={cls(errs.city)} value={billing.city || ""} onChange={on("city")} />
+        </div>
+        <div className="space-y-1">
+          <label className="block text-sm font-medium text-neutral-700">State/Region</label>
+          <input className={cls(errs.state)} value={billing.state || ""} onChange={on("state")} />
+        </div>
+        <div className="space-y-1">
+          <label className="block text-sm font-medium text-neutral-700">Postcode</label>
+          <input className={cls(errs.postcode)} value={billing.postcode || ""} onChange={on("postcode")} />
+        </div>
+        <div className="space-y-1">
+          <label className="block text-sm font-medium text-neutral-700">Country</label>
+          <input className={cls(errs.country)} value={billing.country || ""} onChange={on("country")} />
+        </div>
+      </div>
+    </div>
+  );
+
+  if (variant === "bare") return <>{Inner}</>;
 
   return (
     <section className="rounded-xl border" id="billing-section">
-      <div className="border-b px-4 py-3 font-semibold">Billing Address</div>
-      <div className="p-4 space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-neutral-700">First Name</label>
-            <input className={cls(!billing.firstName)} value={billing.firstName || ""} onChange={on("firstName")} />
-          </div>
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-neutral-700">Last Name</label>
-            <input className={cls(!billing.lastName)} value={billing.lastName || ""} onChange={on("lastName")} />
-          </div>
-          <div className="md:col-span-2 space-y-1">
-            <label className="block text-sm font-medium text-neutral-700">Phone</label>
-            <input className={cls(!billing.phone)} value={billing.phone || ""} onChange={on("phone")} />
-          </div>
-          <div className="md:col-span-2 space-y-1">
-            <label className="block text-sm font-medium text-neutral-700">Address Line 1</label>
-            <input className={cls(!billing.line1)} value={billing.line1 || ""} onChange={on("line1")} />
-          </div>
-          <div className="md:col-span-2 space-y-1">
-            <label className="block text-sm font-medium text-neutral-700">Address Line 2 (optional)</label>
-            <input className={baseInput + " border-neutral-300"} value={billing.line2 || ""} onChange={on("line2")} />
-          </div>
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-neutral-700">City</label>
-            <input className={cls(!billing.city)} value={billing.city || ""} onChange={on("city")} />
-          </div>
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-neutral-700">State/Region</label>
-            <input className={cls(!billing.state)} value={billing.state || ""} onChange={on("state")} />
-          </div>
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-neutral-700">Postcode</label>
-            <input className={cls(!billing.postcode)} value={billing.postcode || ""} onChange={on("postcode")} />
-          </div>
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-neutral-700">Country</label>
-            <input className={cls(!billing.country)} value={billing.country || ""} onChange={on("country")} />
-          </div>
-        </div>
-      </div>
+      <div className="border-b px-4 py-3 font-semibold">{title}</div>
+      {Inner}
     </section>
   );
 }
@@ -871,6 +926,29 @@ export default function CheckoutPage() {
   // 地址校验状态（用于 Continue 按钮的显错）
   const [addressShowErrors, setAddressShowErrors] = useState(false);
   const [addressErrs, setAddressErrs] = useState<AddressErr>(emptyErr);
+  const [billingErrs, setBillingErrs] = useState<AddressErr>(emptyErr);
+
+
+  // ✅ 就在这里粘贴 ↓↓↓
+  // Billing 字段实时清错：输入后若该字段有效，立刻把对应错误位清除
+  function handleBillingFieldChange(k: keyof Address, v: string) {
+    const ok = isFieldValid(k, v);        // isFieldValid 定义在组件外面即可
+    setBillingErrs(prev => {
+      const next = { ...prev };
+      if (k === "firstName") next.firstName = !ok;
+      else if (k === "lastName") next.lastName = !ok;
+      else if (k === "phone") next.phone = !ok;
+      else if (k === "line1") next.line1 = !ok;
+      else if (k === "city") next.city = !ok;
+      else if (k === "state") next.state = !ok;
+      else if (k === "postcode") next.postcode = !ok;
+      else if (k === "country") next.country = !ok;
+      // email / line2 不参与
+      return next;
+    });
+  }
+  // ✅ 到此为止 ↑↑↑
+
 
   // 保存默认地址提示（点击保存后才可能出现）
   const [saveMsg, setSaveMsg] = useState<{ kind: "error" | "success"; text: string } | null>(null);
@@ -962,8 +1040,10 @@ export default function CheckoutPage() {
 
   // 勾选“同收货地址”时，实时用 delivery 覆盖 billing
   useEffect(() => {
-    if (sameAsDelivery) setBillingAddress(address);
-  }, [sameAsDelivery, address]);
+    if (sameAsDelivery) {
+      setBillingErrs(emptyErr);   // 隐藏时顺便清空错误
+    }
+  }, [sameAsDelivery]);
 
   // 将 billingAddress 和 sameAsDelivery 写回本地存储
   useEffect(() => {
@@ -1097,88 +1177,102 @@ export default function CheckoutPage() {
 
   // 保存为默认地址：按钮可点，点击时才校验 & 提示
   const handleSaveDefaultAddress = async () => {
-    const { valid, errs } = validateAddress(address, "", true);
-    if (!valid) {
-      setAddressErrs(errs);
-      setAddressShowErrors(true);
-      setSaveMsg({ kind: "error", text: "Please complete all required address fields before saving." });
-      document.getElementById("address-section")
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  // 1) 校验 delivery
+  const { valid: dValid, errs: dErrs } = validateAddress(address, "", true);
+  if (!dValid) {
+    setAddressErrs(dErrs);
+    setAddressShowErrors(true);
+    setSaveMsg({ kind: "error", text: "Please complete all required delivery address fields before saving." });
+    document.getElementById("address-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+
+  // 2) 如非“同收货地址”，再校验 billing（不校验邮箱）
+  if (!sameAsDelivery) {
+    const { valid: bValid, errs: bErrs } = validateAddress(billingAddress, "", true);
+    setBillingErrs(bErrs);  // ★ 同步显示红框
+    if (!bValid) {
+      setSaveMsg({ kind: "error", text: "Please complete all required billing address fields before saving." });
+      document.getElementById("billing-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+  }
+
+  try {
+    // 3) 组装 payload：同收货 → same_as_delivery；否则同时提交两份
+    const payload = sameAsDelivery
+      ? { delivery: toApiAddress(address), same_as_delivery: true }
+      : { delivery: toApiAddress(address), billing: toApiAddress(billingAddress) };
+
+    const res = await fetch(apiURL("/addresses"), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(payload),
+    });
+
+    let data: any = null;
+    try { data = await res.clone().json(); } catch {}
+
+    if (!res.ok) {
+      if (res.status === 401) {
+        try {
+          const who = await fetch("/api/__whoami?debug=1", {
+            credentials: "include",
+            headers: { accept: "application/json" },
+          }).then(r => r.json());
+          const reason = who?.diag?.reason || "UNKNOWN";
+          const cookies = JSON.stringify(who?.diag?.cookie_present || {});
+          setSaveMsg({ kind: "error", text: `Unauthorized (401). reason=${reason}; cookies=${cookies}` });
+        } catch {
+          setSaveMsg({ kind: "error", text: "Unauthorized (401)" });
+        }
+      } else {
+        const msg = data?.error || data?.message || `HTTP ${res.status}`;
+        setSaveMsg({ kind: "error", text: msg });
+      }
       return;
     }
 
-    try {
-      const payload = {
-        first_name: (address.firstName || "").trim(),
-        last_name: (address.lastName || "").trim(),
-        phone: (address.phone || "").trim(),
-        line1: (address.line1 || "").trim(),
-        line2: (address.line2 || "").trim(),
-        city: (address.city || "").trim(),
-        state: (address.state || "").trim(),
-        postcode: (address.postcode || "").trim(),
-        country: (address.country || "").trim(),
-      };
-
-      const res = await fetch(apiURL("/addresses"), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(payload),
-      });
-
-      let data: any = null;
-      try { data = await res.clone().json(); } catch {}
-
-      if (!res.ok) {
-        // 401 时追加 whoami 诊断，便于你在页面上直接看到原因
-        if (res.status === 401) {
-          try {
-            const who = await fetch("/api/__whoami?debug=1", {
-              credentials: "include",
-              headers: { accept: "application/json" },
-            }).then(r => r.json());
-            const reason = who?.diag?.reason || "UNKNOWN";
-            const cookies = JSON.stringify(who?.diag?.cookie_present || {});
-            setSaveMsg({
-              kind: "error",
-              text: `Unauthorized (401). reason=${reason}; cookies=${cookies}`,
-            });
-          } catch {
-            setSaveMsg({ kind: "error", text: "Unauthorized (401)" });
-          }
-        } else {
-          const msg = data?.error || data?.message || `HTTP ${res.status}`;
-          setSaveMsg({ kind: "error", text: msg });
-        }
-        return;
-      }
-
-      setSaveMsg({ kind: "success", text: "Saved as your default address." });
-    } catch (e: any) {
-      setSaveMsg({ kind: "error", text: e?.message || "Failed to save address" });
-    }
-  };
+    // 可选：你也可以在这里检查 data.delivery / data.billing 是否返回
+    setSaveMsg({ kind: "success", text: "Saved as your default address." });
+  } catch (e: any) {
+    setSaveMsg({ kind: "error", text: e?.message || "Failed to save address" });
+  }
+};
 
   // 点击 Continue：Address 步骤改为“提交时校验”
   const handleContinue = () => {
-    if (step === "address") {
-      const ignoreEmail = isLoggedIn || !!(address.email && address.email.trim());
-      const { valid, errs } = validateAddress(address, "", ignoreEmail);
-      if (!valid) {
-        setAddressErrs(errs);
-        setAddressShowErrors(true);
-        const el = document.getElementById("address-section");
-        el?.scrollIntoView({ behavior: "smooth", block: "start" });
-        return;
-      }
-      setAddressShowErrors(false);
-      setAddressErrs(emptyErr);
+  if (step === "address") {
+    // —— 1) 校验 Delivery ——（邮箱：登录后或已填时可忽略）
+    const ignoreEmail = isLoggedIn || !!(address.email && address.email.trim());
+    const deliveryRes = validateAddress(address, "", ignoreEmail);
 
-      if (!isLoggedIn) void sendSubscriptionIfNeeded();
+    // —— 2) 校验 Billing ——（若同收货则直接视为有效；不校验邮箱）
+    const billingRes = sameAsDelivery
+      ? { valid: true, errs: emptyErr }
+      : validateAddress(billingAddress, "", true);
+
+    // —— 3) 设置错误态 & 阻止继续 —— 
+    setAddressErrs(deliveryRes.errs);
+    setBillingErrs(billingRes.errs);
+    if (!deliveryRes.valid || !billingRes.valid) {
+      setAddressShowErrors(true);
+      // 优先滚动到 Delivery；如想优先 Billing，可替换为 billing-section
+      const el = document.getElementById("address-section");
+      el?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
     }
-    nextStepCore();
-  };
+
+    // —— 4) 通过校验，清理错误并继续 —— 
+    setAddressShowErrors(false);
+    setAddressErrs(emptyErr);
+    setBillingErrs(emptyErr);
+
+    if (!isLoggedIn) void sendSubscriptionIfNeeded();
+  }
+  nextStepCore();
+};
 
   const itemsCount = cart.reduce((n, it: any) => n + (it?.qty ?? 1), 0);
 
@@ -1344,51 +1438,96 @@ export default function CheckoutPage() {
           )}
 
           {/* Address */}
+{/* Address + Billing（合并成一个卡片） */}
 {step === "address" && (
-  <>
-    <AddressForm
-      address={address}
-      setAddress={setAddress}
-      emailInput={emailInput}
-      setEmailInput={setEmailInput}
-      marketingOptIn={marketingOptIn}
-      setMarketingOptIn={setMarketingOptIn}
-      showErrors={addressShowErrors}
-      errs={addressErrs}
-      errorBanner={addressShowErrors ? "Some required fields are missing or invalid." : null}
-      onEmailCommit={(email) => sendSubscriptionIfNeeded(email)}
-      onOptInChanged={(_opt) => sendSubscriptionIfNeeded()}
-      hideYourDetails={isLoggedIn}
-      onSaveDefault={isLoggedIn ? handleSaveDefaultAddress : undefined}
-      saveMsg={saveMsg}
-    />
+  <section className="rounded-xl border pb-8" id="address-section">{/* ← 多加 pb-8 增加底部空白 */}
+    <div className="border-b px-4 py-3 font-semibold">Address & Billing</div>
 
-    {/* Billing 同收货地址开关 */}
-          <div className="rounded-xl border p-4 mt-6">
-            <label className="flex items-start gap-3 text-sm">
-              <input
-                type="checkbox"
-                className="mt-1"
-                checked={sameAsDelivery}
-                onChange={(e) => setSameAsDelivery(e.currentTarget.checked)}
-              />
-              <span>Billing address is the same as delivery address</span>
-            </label>
-            <p className="mt-2 text-xs text-neutral-500">
+    <div className="p-4 space-y-6">
+      {/* 1) Delivery Address */}
+      <div className="space-y-2">
+        <h3 className="text-base font-medium">Delivery Address</h3>
+        <AddressForm
+          address={address}
+          setAddress={setAddress}
+          emailInput={emailInput}
+          setEmailInput={setEmailInput}
+          marketingOptIn={marketingOptIn}
+          setMarketingOptIn={setMarketingOptIn}
+          showErrors={addressShowErrors}
+          errs={addressErrs}
+          errorBanner={addressShowErrors ? "Some required fields are missing or invalid." : null}
+          onEmailCommit={(email) => sendSubscriptionIfNeeded(email)}
+          onOptInChanged={(_opt) => sendSubscriptionIfNeeded()}
+          hideYourDetails={isLoggedIn}
+          onSaveDefault={isLoggedIn ? handleSaveDefaultAddress : undefined}
+          saveMsg={saveMsg}
+          variant="bare"
+        />
+      </div>
+
+      {/* 2) Billing 同收货地址开关 */}
+      <div className="rounded-lg border p-4">
+        <label className="flex items-start gap-3 text-sm">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={sameAsDelivery}
+            onChange={(e) => setSameAsDelivery(e.currentTarget.checked)}
+          />
+          <span>
+            Billing address is the same as delivery address
+            <p className="mt-1 text-xs text-neutral-500">
               If unchecked, you can enter a different billing address below.
             </p>
-          </div>
+          </span>
+        </label>
+      </div>
 
-          {/* 不同则显示 Billing 表单 */}
-          {!sameAsDelivery && (
-            <BillingForm
-              billing={billingAddress}
-              setBilling={setBillingAddress}
-              showErrors={addressShowErrors}
-            />
-          )}
-        </>
+      {/* 3) Billing Address */}
+      {!sameAsDelivery && (
+        <div className="space-y-2">
+          <h3 className="text-base font-medium">Billing Address</h3>
+          <BillingForm
+            billing={billingAddress}
+            setBilling={setBillingAddress}
+            showErrors={addressShowErrors}
+            errs={billingErrs}
+            onFieldChange={handleBillingFieldChange}   // ★ 新增
+            variant="bare"
+          />
+        </div>
       )}
+
+      {/* 4) 统一的“保存默认地址”按钮 —— 现在在内层容器里 */}
+      {isLoggedIn && (
+        <div className="flex justify-end -mt-2 mr-6">{/* ↑上移一点  ↑向左移一点（增加右侧外边距） */}
+          <div className="flex flex-col items-end gap-2">
+            <button
+              type="button"
+              onClick={handleSaveDefaultAddress}
+              className="rounded-full border bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
+            >
+              Save delivery address and billing address as default
+            </button>
+
+            {saveMsg ? (
+              <div
+                className={
+                  "text-xs " +
+                  (saveMsg.kind === "success" ? "text-emerald-700" : "text-red-600")
+                }
+                aria-live="polite"
+              >
+                {saveMsg.text}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      )}
+    </div>
+  </section>
+)}
 
           {/* Delivery */}
           {step === "delivery" && (
