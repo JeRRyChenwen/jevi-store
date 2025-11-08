@@ -845,7 +845,7 @@ wrangler d1 migrations apply socialplatform --remote
 wrangler d1 migrations apply socialplatform --local
 
 清库
-wrangler d1 execute socialplatform --remote --command "PRAGMA foreign_keys=OFF; DROP TRIGGER IF EXISTS trg_users_updated_at; DROP TABLE IF EXISTS user_addresses; DROP TABLE IF EXISTS order_payments; DROP TABLE IF EXISTS order_items; DROP TABLE IF EXISTS orders; DROP TABLE IF EXISTS email_subscriptions; DROP TABLE IF EXISTS password_resets; DROP TABLE IF EXISTS users; DROP TABLE IF EXISTS d1_migrations; PRAGMA foreign_keys=ON;"
+wrangler d1 execute socialplatform --remote --command "PRAGMA foreign_keys=OFF;DROP TRIGGER IF EXISTS trg_users_updated_at;DROP TRIGGER IF EXISTS trg_orders_updated_at;DROP TRIGGER IF EXISTS trg_orders_set_order_number;DROP TRIGGER IF EXISTS trg_order_items_copy_order_no;DROP TRIGGER IF EXISTS trg_order_payments_copy_order_no;DROP TRIGGER IF EXISTS trg_gift_cards_updated_at;DROP TRIGGER IF EXISTS trg_fit_prefs_updated_at;DROP TRIGGER IF EXISTS trg_user_addresses_updated_at;DROP TABLE IF EXISTS gift_card_txns;DROP TABLE IF EXISTS gift_cards;DROP TABLE IF EXISTS order_payments;DROP TABLE IF EXISTS order_items;DROP TABLE IF EXISTS orders;DROP TABLE IF EXISTS user_addresses;DROP TABLE IF EXISTS fit_preferences;DROP TABLE IF EXISTS email_subscriptions;DROP TABLE IF EXISTS password_resets;DROP TABLE IF EXISTS users;PRAGMA foreign_keys=ON;"
 
 await fetch('/api/auth/login', {
 method: 'POST',
@@ -944,6 +944,8 @@ Gift Card
 运输费用不同地区免费的标准也不一样
 
 地址保存 2 次，重复保存
+
+前端 A currecny
 
 # ============================================================================
 
