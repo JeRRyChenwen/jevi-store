@@ -91,6 +91,27 @@ function _fallbackPickPriceForCurrency(prices: PriceRec[], currency: string) {
 const fmtMoneyMinor: (minor: number, currency: string) => string =
   (SP as any).fmtMoneyMinor || _fallbackFmtMoneyMinor;
 
+// ★ 卡片专用价格格式：AUD -> "AUD $425.00"
+function formatPriceForCard(minor: number, currency: string) {
+  const code = String(currency || "AUD").toUpperCase();
+  const major = (minor || 0) / 100;
+
+  // 只格式化数字部分
+  const numStr = new Intl.NumberFormat(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(major); // 425.0 -> "425.00"
+
+  // AUD 特殊：想要 "AUD $425.00"
+  if (code === "AUD") {
+    return `AUD $${numStr}`;
+  }
+
+  // 其他币种：比如 "USD 425.00"
+  return `${code} ${numStr}`;
+}
+
+
 type PickRes =
   | { base_minor: number | null; effective_minor: number | null; currency: string }
   | null;
@@ -547,19 +568,19 @@ function ProductCard({
   }
 
   // 展示字符串
-const showCcy = pick?.currency || displayCurrency;
+  const showCcy = pick?.currency || displayCurrency;
 
-const displayBase = typeof baseMinor === "number" ? fmtMoneyMinor(baseMinor, showCcy) : null;
+  const displayBase =
+    typeof baseMinor === "number" ? formatPriceForCard(baseMinor, showCcy) : null;
 
-const displayEff =
-  typeof effectiveMinor === "number"
-    ? fmtMoneyMinor(effectiveMinor, showCcy)
+  const displayEff =
+    typeof effectiveMinor === "number"
+      ? formatPriceForCard(effectiveMinor, showCcy)
       : p.price != null
-      ? new Intl.NumberFormat(undefined, {
-          style: "currency",
-          currency: (p.currency || "AUD").toUpperCase(),
-          maximumFractionDigits: 2,
-        }).format(Number(p.price))
+      ? formatPriceForCard(
+          Math.round(Number(p.price) * 100),
+          (p.currency || showCcy || "AUD") as string
+        )
       : "No price";
 
   // 旧字段保底（如果没拿到 pick 并且有旧折扣窗口）
