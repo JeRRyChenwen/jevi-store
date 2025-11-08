@@ -1656,17 +1656,34 @@ export default function CheckoutPage() {
               <div className="p-4">
                 <div className="mx-auto w-[300px]">
                   {step !== "payment" ? null : (
-                    (amountInMajorUnit > 0 || isPayProcessing) ? (
+                    // 1) 金额为 0 且没有在处理支付：提示“不能付”
+                    amountInMajorUnit <= 0 && !isPayProcessing ? (
+                      <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700 text-center">
+                        Your total is $0. Add items to proceed with payment.
+                      </div>
+                    )
+                    // 2) 正在处理支付（onApprove -> 你自己的 handlePaySucceeded 正在跑）
+                    : isPayProcessing ? (
+                      <div
+                        className="
+                          flex h-[45px] items-center justify-center
+                          rounded-md border
+                          bg-[#FFC439] border-[#FFC439]
+                          text-sm font-semibold text-[#111111]
+                          shadow-sm
+                        "
+                      >
+                        Processing your payment…
+                      </div>
+                    )
+                    // 3) 正常渲染 PayPal 按钮
+                    : (
                       <BraintreePayPalOnly
                         amount={amountInMajorUnit}
                         currency="AUD"
                         onInitiate={handlePayInitiated}
                         onSucceeded={(r) => handlePaySucceeded(r)}
                       />
-                    ) : (
-                      <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700 text-center">
-                        Your total is $0. Add items to proceed with payment.
-                      </div>
                     )
                   )}
                 </div>
