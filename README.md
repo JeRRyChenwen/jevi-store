@@ -896,36 +896,9 @@ sort 按钮：
 
 delivery 需要多少天才能抵达
 
-“add to bag” 按钮
-“Bag” ，“Address” ，“Delivery” ，以及 “Payment” 的内容区
-
-checkout 页面里的 payment 页面里的 private policy
-
-用户邮箱和是否接受 email，等信息，该如何储存？
-
-checkout 页面里的每个页面都是依次点击的
-
-返回上一页，正则化
-
-注册账号的时候勾选是否 subscribe
-
-如果注册账号的时候邮箱已经被使用，弹出提示
-
-结账的时候把结账信息储存到数据库中 （currency）
-
 结账的时候自动发 order confirmation email
 
-每个账号缓存的 bag 里的物品不一样，还有爱心 icon wishlist
-
 设置默认地址
-
-账号是否需要保持登录状态（假设用户已经很久没上过网站了）
-
-很好，在此基础上，我打算把我的用户账号功能和我的 email_subscriptions 结合在一起，我给你的第一张截图和第二张截图是我的 d1 数据库中的两张表，第一张截图是我的 users 表，负责储存用户的账号信息，例如账号的邮箱，密码之类的信息，然后第二张截图就是我们刚才使用的 email_subscriptions 表，负责储存 email_subscriptions 的信息
-
-目前我的 email_subscriptions 表中有一个 collumn 名为 user_id，我是这么想的，我觉得如果用户是以游客的身份购物的话，那就需要用户在 checkout 页面结账的时候在 address 页面里填写自己的邮箱信息，以及自己是否 subscribe，但是如果用户已经登录的话，就不需要再让用户去填写自己的邮箱信息，以及自己是否 subscribe 了，因为用户已经登录了（登录只能用自己的邮箱去登录），
-
-付费中途断网怎么办
 
 我的想法是这样的其实，目前用户登录之后不是会把用户的 email 显示在个人资料页面里吗，我们就像个人资料页面一样，我们获得了用户的 email 之后可以通过用户的 email （email 是唯一的）去在 D1 数据库里的 users 表中检索这个 email 的对应的 id，我们获取到 email 以及 id 之后，我们再把这 2 个 collumn 的数据结合订单的信息一起放到 orders 表中，因为 orders 表中的 user_id 其实就是 users 表中的 id，这是 primary key
 
@@ -935,17 +908,11 @@ checkout 页面里的每个页面都是依次点击的
 
 样式：我在 styles 里做了基础可读性设置（Braintree 会把输入框放到 iframe 里，外层容器需要有固定高度）。
 
-禁用 PayPal 卡入口：BraintreePayPalOnly.tsx 里 loadPayPalSDK 已建议加 disable-funding: "card,credit,venmo,paylater"，避免重复入口。
-
 很好！然后我还想修改一下我的个人资料页面，也就是我的 profile 页面
 My Fit Preferences
 Gift Card
 
 运输费用不同地区免费的标准也不一样
-
-地址保存 2 次，重复保存
-
-前端 A currecny
 
 # ============================================================================
 
