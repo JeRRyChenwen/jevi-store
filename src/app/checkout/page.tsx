@@ -7,12 +7,11 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import CartList from "@/components/cart/CartList";
 import type { CartItem as CartListItem } from "@/components/cart/CartList";
-
-import { PayPalButtons, usePayPalScriptReducer } from "@paypal/react-paypal-js";
-
 import { selectCurrencyAndTotals } from "@/lib/cartPricing";
 import { effectiveMinor, type PriceRec, type Currency } from "@/lib/pricing";
 import { fetchAuthedEmail, isLoggedInViaCookie } from "@/lib/auth";
+import BraintreePayPalOnly from "@/app/checkout/_components/BraintreePayPalOnly";
+
 
 type CartItem = CartListItem;
 
@@ -698,7 +697,6 @@ function LargeGhostButton({
 }
 
 /* ========= 成功支付后把订单发送给 Worker（返回 order 对象） ========= */
-/* ========= 成功支付后把订单发送给 Worker（返回 order 对象） ========= */
 async function sendOrderToServer(args: {
   cart: any[];
   address: Address;                    // 收货地址（delivery）
@@ -710,8 +708,8 @@ async function sendOrderToServer(args: {
   paypalPayload: any;
   deliveryMethod?: "standard" | "express";
 
-  /** 新增：账单地址相关 */
-  billingAddress?: Address | null;     // 账单地址（如果与收货地址不同）
+  // 账单地址相关（可选）
+  billingAddress?: Address | null;
   sameAsDelivery?: boolean;            // true = 同收货地址
 }): Promise<{ ok: boolean; order?: { id: number; order_number: string | null } }> {
   try {
@@ -729,7 +727,8 @@ async function sendOrderToServer(args: {
         product_id: it?.id ?? null,
         product_sku: it?.sku ?? null,
         product_title: String(it?.title || it?.name || "Item"),
-        variant_title: it?.variant || [it?.color, it?.size].filter(Boolean).join(" / ") || null,
+        variant_title:
+          it?.variant || [it?.color, it?.size].filter(Boolean).join(" / ") || null,
         qty,
         currency: args.currency,
         unit_price_minor: unitMinor,
@@ -739,7 +738,11 @@ async function sendOrderToServer(args: {
         snapshot: {
           slug: it?.slug ?? null,
           image: it?.image || it?.img || null,
-          attrs: { color: it?.color ?? null, size: it?.size ?? null, ...(it?.attrs || {}) },
+          attrs: {
+            color: it?.color ?? null,
+            size: it?.size ?? null,
+            ...(it?.attrs || {}),
+          },
         },
       };
     });
@@ -755,13 +758,27 @@ async function sendOrderToServer(args: {
       args.paypalPayload?.paypalTransactionId ||
       null;
 
-    // ③ 计算账单地址：同收货地址 or 独立账单地址
+    // ③ 计算账单地址：同收货地址 or 独立账单地址（只用来放到 meta 里，不顶层发给后端）
     const billing =
       (args.sameAsDelivery ? args.address : (args.billingAddress || args.address)) || {};
 
-    // ④ 组装请求体
+    const billingMeta = {
+      first_name: billing.firstName || null,
+      last_name: billing.lastName || null,
+      email: (billing.email || "").trim() || null,
+      phone: billing.phone || null,
+      line1: billing.line1 || null,
+      line2: billing.line2 || null,
+      city: billing.city || null,
+      state: billing.state || null,
+      postcode: billing.postcode || null,
+      country: billing.country || null,
+      same_as_delivery: !!args.sameAsDelivery,
+    };
+
+    // ④ 组装请求体（⚠️ 不再有顶层 billing_address 字段，保持兼容）
     const body = {
-      // —— 顾客 / 收货信息（delivery） ——
+      // —— 顾客 / 收货信息（delivery） —— 这些字段保持和你原来的 Worker 一致
       email: (args.address?.email || "").trim() || "",
       first_name: args.address?.firstName || null,
       last_name: args.address?.lastName || null,
@@ -773,22 +790,7 @@ async function sendOrderToServer(args: {
       addr_postcode: args.address?.postcode || null,
       addr_country: args.address?.country || null,
 
-      // —— 新增：账单地址（billing） ——
-      billing_address: {
-        first_name: billing.firstName || null,
-        last_name:  billing.lastName  || null,
-        email:      (billing.email || "").trim() || null,
-        phone:      billing.phone     || null,
-        line1:      billing.line1     || null,
-        line2:      billing.line2     || null,
-        city:       billing.city      || null,
-        state:      billing.state     || null,
-        postcode:   billing.postcode  || null,
-        country:    billing.country   || null,
-        same_as_delivery: !!args.sameAsDelivery,   // 给后端一个标记，便于存储
-      },
-
-      // —— 金额相关 ——
+      // —— 金额相关 —— 
       currency: args.currency,
       items_total_minor: Number(args.itemsMinor) || 0,
       delivery_fee_minor: Number(args.deliveryFeeMinor) || 0,
@@ -796,7 +798,7 @@ async function sendOrderToServer(args: {
       tax_minor: Number(args.taxMinor || 0),
       grand_total_minor: Number(args.grandMinor) || 0,
 
-      // —— 其他 ——
+      // —— 其他 —— 
       delivery_method: args.deliveryMethod ?? "standard",
       items,
 
@@ -810,8 +812,14 @@ async function sendOrderToServer(args: {
         raw: args.paypalPayload || null,
       },
 
+      // ⚠️ 这里把账单地址塞进 meta，后端一般会当作 JSON 存下来，不会报 schema 错
+      meta: {
+        step: "payment",
+        path: "/checkout",
+        billing_address: billingMeta,
+      },
+
       notes: null,
-      meta: { step: "payment", path: "/checkout" },
     };
 
     // ⑤ 发起请求
@@ -829,59 +837,30 @@ async function sendOrderToServer(args: {
     try {
       data = await res.clone().json();
     } catch {
-      try { text = await res.text(); } catch {}
+      try {
+        text = await res.text();
+      } catch {}
     }
 
-    // ✅ 成功：返回 order（含 order_number）
     if (res.ok && data?.ok && data?.order && typeof data.order.id === "number") {
-      return { ok: true, order: { id: data.order.id, order_number: data.order.order_number ?? null } };
+      return {
+        ok: true,
+        order: {
+          id: data.order.id,
+          order_number: data.order.order_number ?? null,
+        },
+      };
     }
 
-    console.error("[orders] server error:", { status: res.status, data, text });
+    // 这里可以改成 warn，这样 console 不会出现红色 error，但还是能看到信息
+    console.warn("[orders] server error:", { status: res.status, data, text });
     return { ok: false };
   } catch (e) {
-    console.error("[orders] persist error:", e);
+    console.warn("[orders] persist error:", e);
     return { ok: false };
   }
 }
-/* ---------------- 内联 PayPal 按钮 ---------------- */
-function PaypalButtonInline({
-  amountMinor,
-  currency,
-  onInitiate,
-  onSucceeded,
-}: {
-  amountMinor: number;
-  currency: string;
-  onInitiate: () => void;
-  onSucceeded: (payload?: any) => void;
-}) {
-  const [{ isResolved }] = usePayPalScriptReducer();
-  if (!isResolved) return null;
 
-  const value = (amountMinor / 100).toFixed(2);
-
-  return (
-    <PayPalButtons
-      style={{ layout: "vertical", shape: "rect", label: "paypal" }}
-      forceReRender={[value, currency]}
-      createOrder={(data, actions) => {
-        onInitiate?.();
-        return actions.order.create({
-          intent: "CAPTURE",
-          purchase_units: [{ amount: { value, currency_code: currency } }],
-        });
-      }}
-      onApprove={async (_data, actions) => {
-        const details = await actions.order!.capture();
-        onSucceeded?.(details);
-      }}
-      onError={(err) => {
-        console.error("PayPal error:", err);
-      }}
-    />
-  );
-}
 
 /* ---------------- Page ---------------- */
 export default function CheckoutPage() {
@@ -909,6 +888,7 @@ export default function CheckoutPage() {
   const [sameAsDelivery, setSameAsDelivery] = useState<boolean>(true);
 
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>("standard");
+  const [isPayProcessing, setIsPayProcessing] = useState(false);   // ✅ 是否正在处理支付
 
     
 
@@ -1278,6 +1258,7 @@ export default function CheckoutPage() {
 
   // 支付成功 → 落库（拿到 order_number）→ 预览 → 清空购物车 → 跳转确认页
   const handlePaySucceeded = async (payload?: any) => {
+    setIsPayProcessing(true);   // ✅ 标记：支付已成功，正在处理后续逻辑
     let orderId: number | null = null;
     let orderNumber: string | null = null;
 
@@ -1435,6 +1416,31 @@ export default function CheckoutPage() {
                 </div>
               </div>
             </section>
+          )}
+
+          {/* Bag 步骤：隐藏的 PayPal / Braintree 预加载实例 */}
+          {step === "bag" && amountInMajorUnit > 0 && (
+            <div
+              aria-hidden="true"
+              style={{
+                position: "fixed",
+                bottom: 0,
+                left: 0,
+                width: 1,
+                height: 1,
+                opacity: 0,
+                pointerEvents: "none",
+                zIndex: -1,
+              }}
+            >
+              <BraintreePayPalOnly
+                amount={amountInMajorUnit}
+                currency="AUD"
+                // 预加载只是提前拉起 SDK，不做任何业务回调
+                onInitiate={() => {}}
+                onSucceeded={() => {}}
+              />
+            </div>
           )}
 
           {/* Address */}
@@ -1649,17 +1655,19 @@ export default function CheckoutPage() {
               {/* PayPal 按钮 */}
               <div className="p-4">
                 <div className="mx-auto w-[300px]">
-                  {amountInMajorUnit > 0 ? (
-                    <PaypalButtonInline
-                      amountMinor={totalMinor}
-                      currency="AUD"
-                      onInitiate={handlePayInitiated}
-                      onSucceeded={handlePaySucceeded}
-                    />
-                  ) : (
-                    <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700 text-center">
-                      Your total is $0. Add items to proceed with payment.
-                    </div>
+                  {step !== "payment" ? null : (
+                    (amountInMajorUnit > 0 || isPayProcessing) ? (
+                      <BraintreePayPalOnly
+                        amount={amountInMajorUnit}
+                        currency="AUD"
+                        onInitiate={handlePayInitiated}
+                        onSucceeded={(r) => handlePaySucceeded(r)}
+                      />
+                    ) : (
+                      <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700 text-center">
+                        Your total is $0. Add items to proceed with payment.
+                      </div>
+                    )
                   )}
                 </div>
               </div>
