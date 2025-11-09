@@ -22,21 +22,20 @@ export default function EditProfileCard({
   const [email, setEmail] = useState(initialEmail);
 
   const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  // 外部 props 变化时（例如从 /auth/me 刷新回来），同步一次
+  // 只在外部 props 变化时同步，避免每次退出编辑都把最新 name 覆盖掉
   useEffect(() => {
-    if (!editing) {
-      setName(initialName || "");
-      setEmail(initialEmail || "");
-    }
-  }, [initialName, initialEmail, editing]);
+    setName(initialName || "");
+    setEmail(initialEmail || "");
+  }, [initialName, initialEmail]);
 
   async function onSave() {
+    if (!editing || saving) return;
+
     setSaving(true);
-    setMsg(null);
     setErr(null);
+
     try {
       const body: PatchBody = {
         name: name?.trim() || undefined,
@@ -53,18 +52,26 @@ export default function EditProfileCard({
         body: JSON.stringify(body),
       });
 
-      const data = await r.json().catch(() => ({}));
+      const data = await r.json().catch(() => ({} as any));
       if (!r.ok || data?.ok === false) {
         throw new Error(data?.error || `PATCH /api/auth/profile ${r.status}`);
       }
 
-      setMsg("Saved.");
-      setEditing(false);
+      // 优先使用后端返回的最新 user 信息，其次用刚提交的 body
+      const newName = (data?.user?.name as string | undefined) ?? body.name ?? name;
+      const newEmail = (data?.user?.email as string | undefined) ?? body.email ?? email;
 
-      // 名字/邮箱可能影响 SSR 显示；保存后刷新一次页面
-      setTimeout(() => {
-        window.location.reload();
-      }, 300);
+      setName(newName || "");
+      setEmail(newEmail || "");
+
+      // 更新顶部 "Hi, xxx" 的显示（ProfilePage 里给这个 span 一个 id="profile-header-name"）
+      const headerNameEl = document.querySelector<HTMLElement>("#profile-header-name");
+      if (headerNameEl && newName) {
+        headerNameEl.textContent = newName;
+      }
+
+      setEditing(false);
+      // 不再 reload，JWT 里已经是最新的 name/email 了
     } catch (e: any) {
       setErr(e?.message || "Save failed");
     } finally {
@@ -90,12 +97,15 @@ export default function EditProfileCard({
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => setEditing(true)}
+              onClick={() => {
+                setEditing(true);
+                setErr(null);
+              }}
               className="min-w-[96px] px-5 py-2 rounded-full border text-sm font-semibold hover:bg-neutral-50"
             >
               Edit
             </button>
-            {/* 非编辑状态下 Save 置灰、不可点击 */}
+            {/* 非编辑状态下 Save 置灰、不可点击，保持 UI 一致 */}
             <button
               type="button"
               onClick={onSave}
@@ -104,7 +114,6 @@ export default function EditProfileCard({
             >
               {saving ? "Saving..." : "Save"}
             </button>
-            {msg ? <span className="text-xs text-green-600">{msg}</span> : null}
             {err ? <span className="text-xs text-red-600">{err}</span> : null}
           </div>
         </>
@@ -137,10 +146,10 @@ export default function EditProfileCard({
               type="button"
               onClick={() => {
                 setEditing(false);
+                // 取消时还原回 props 的值
                 setName(initialName || "");
                 setEmail(initialEmail || "");
                 setErr(null);
-                setMsg(null);
               }}
               className="min-w-[96px] px-5 py-2 rounded-full border text-sm font-semibold hover:bg-neutral-50"
             >
