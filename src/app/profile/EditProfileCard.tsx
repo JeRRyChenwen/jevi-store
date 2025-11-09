@@ -46,7 +46,10 @@ export default function EditProfileCard({
       const r = await fetch("/api/auth/profile", {
         method: "PATCH",
         credentials: "include",
-        headers: { "content-type": "application/json", accept: "application/json" },
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json",
+        },
         body: JSON.stringify(body),
       });
 
@@ -88,17 +91,18 @@ export default function EditProfileCard({
             <button
               type="button"
               onClick={() => setEditing(true)}
-              className="px-5 py-2 rounded-full border text-sm font-semibold hover:bg-neutral-50"
+              className="min-w-[96px] px-5 py-2 rounded-full border text-sm font-semibold hover:bg-neutral-50"
             >
               Edit
             </button>
+            {/* 非编辑状态下 Save 置灰、不可点击 */}
             <button
               type="button"
               onClick={onSave}
-              disabled={saving}
-              className="px-6 py-2 rounded-full bg-black text-white text-sm font-semibold hover:bg-neutral-800 disabled:opacity-50"
+              disabled={!editing || saving}
+              className="min-w-[96px] px-5 py-2 rounded-full bg-black text-white text-sm font-semibold hover:bg-neutral-800 disabled:opacity-50"
             >
-              Save
+              {saving ? "Saving..." : "Save"}
             </button>
             {msg ? <span className="text-xs text-green-600">{msg}</span> : null}
             {err ? <span className="text-xs text-red-600">{err}</span> : null}
@@ -138,15 +142,16 @@ export default function EditProfileCard({
                 setErr(null);
                 setMsg(null);
               }}
-              className="px-5 py-2 rounded-full border text-sm font-semibold hover:bg-neutral-50"
+              className="min-w-[96px] px-5 py-2 rounded-full border text-sm font-semibold hover:bg-neutral-50"
             >
               Cancel
             </button>
+            {/* 编辑状态下 Save 纯黑，可点击；点击后显示 Saving... */}
             <button
               type="button"
               onClick={onSave}
               disabled={saving}
-              className="px-6 py-2 rounded-full bg-black text-white text-sm font-semibold hover:bg-neutral-800 disabled:opacity-50"
+              className="min-w-[96px] px-5 py-2 rounded-full bg-black text-white text-sm font-semibold hover:bg-neutral-800 disabled:opacity-50"
             >
               {saving ? "Saving..." : "Save"}
             </button>

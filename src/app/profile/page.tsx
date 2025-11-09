@@ -11,6 +11,8 @@ import {
   ChevronDown,
 } from "lucide-react";
 import EditOrdersCard from "./EditOrdersCard";
+import EditAddressCard from "./EditAddressCard";
+
 
 /** base64url -> string */
 function b64urlToString(input: string): string {
@@ -162,23 +164,30 @@ export default async function ProfilePage() {
           <EditOrdersCard />
         </details>
 
-        {/* 其他占位 */}
-        {[{ label: "Delivery Address", icon: MapPin }, { label: "Subscriptions", icon: Mail }].map(
-          (item) => {
-            const Icon = item.icon;
-            return (
-              <details key={item.label} className="group">
-                <summary className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-neutral-50">
-                  <span className="flex items-center gap-2">
-                    <Icon className="h-4 w-4 text-neutral-700" />
-                    <span>{item.label}</span>
-                  </span>
-                  <ChevronDown className="h-4 w-4 text-neutral-500 group-open:rotate-180 transition-transform" />
-                </summary>
-              </details>
-            );
-          }
-        )}
+        {/* Address */}
+        <details className="group">
+          <summary className="flex items-center justify-between px-4 py-3 cursor-pointer list-none hover:bg-neutral-50">
+            <span className="flex items-center gap-2">
+              <MapPin className="h-4 w-4 text-neutral-700" />
+              <span>Address</span>
+            </span>
+            <ChevronDown className="h-4 w-4 text-neutral-500 group-open:rotate-180 transition-transform" />
+          </summary>
+
+          <EditAddressCard />
+        </details>
+
+        {/* Subscriptions（暂时占位） */}
+        <details className="group">
+          <summary className="flex items-center justify-between px-4 py-3 cursor-pointer list-none hover:bg-neutral-50">
+            <span className="flex items-center gap-2">
+              <Mail className="h-4 w-4 text-neutral-700" />
+              <span>Subscriptions</span>
+            </span>
+            <ChevronDown className="h-4 w-4 text-neutral-500 group-open:rotate-180 transition-transform" />
+          </summary>
+          {/* 以后可以在这里接邮箱订阅列表 */}
+        </details>
       </div>
 
       {/* 退出登录 */}
