@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import EditOrdersCard from "./EditOrdersCard";
 import EditAddressCard from "./EditAddressCard";
-
+import EditSubscriptionCard from "./EditSubscriptionCard";
 
 /** base64url -> string */
 function b64urlToString(input: string): string {
@@ -47,7 +47,7 @@ async function readUserFromCookies(): Promise<SessionUser | null> {
         email: typeof u?.email === "string" ? u.email : null,
         name: typeof u?.name === "string" ? u.name : null,
       };
-      if (shaped.email) return shaped;
+        if (shaped.email) return shaped;
     } catch {}
   }
 
@@ -81,7 +81,9 @@ async function apiGet<T>(path: string): Promise<T> {
       detail = await res.json();
     } catch {}
     throw new Error(
-      `GET ${path} failed: ${res.status} ${res.statusText} ${detail ? JSON.stringify(detail) : ""}`
+      `GET ${path} failed: ${res.status} ${res.statusText} ${
+        detail ? JSON.stringify(detail) : ""
+      }`
     );
   }
   return (await res.json()) as T;
@@ -108,7 +110,10 @@ export default async function ProfilePage() {
         user = {
           id: me.user.id ?? user.id,
           email: me.user.email ?? user.email,
-          name: (me.user.name ?? "").trim() || user.email?.split("@")[0] || null,
+          name:
+            (me.user.name ?? "").trim() ||
+            user.email?.split("@")[0] ||
+            null,
         };
       }
     } catch {
@@ -120,7 +125,9 @@ export default async function ProfilePage() {
   }
 
   const displayName =
-    (user?.name || "").trim() || (user?.email ? user.email.split("@")[0] : "") || "User";
+    (user?.name || "").trim() ||
+    (user?.email ? user.email.split("@")[0] : "") ||
+    "User";
 
   const [guessedFirst, guessedLast] = (() => {
     const n = (user?.name || "").trim();
@@ -132,7 +139,10 @@ export default async function ProfilePage() {
   // === UI ===
   return (
     <main className="px-4 md:px-8 py-8 max-w-3xl mx-auto">
-      <h1 className="text-2xl font-semibold mb-6">Hi, {displayName}</h1>
+      {/* 👇 给名字加一个 id，EditProfileCard 保存后好更新 */}
+      <h1 className="text-2xl font-semibold mb-6">
+        Hi, <span id="profile-header-name">{displayName}</span>
+      </h1>
 
       {/* 折叠区块 */}
       <div className="mt-6 border rounded-lg divide-y">
@@ -147,7 +157,9 @@ export default async function ProfilePage() {
           </summary>
 
           <EditProfileCard
-            initialName={(user?.name || user?.email?.split("@")[0] || "").trim()}
+            initialName={
+              (user?.name || user?.email?.split("@")[0] || "").trim()
+            }
             initialEmail={user?.email || ""}
           />
         </details>
@@ -177,7 +189,7 @@ export default async function ProfilePage() {
           <EditAddressCard />
         </details>
 
-        {/* Subscriptions（暂时占位） */}
+        {/* Subscriptions */}
         <details className="group">
           <summary className="flex items-center justify-between px-4 py-3 cursor-pointer list-none hover:bg-neutral-50">
             <span className="flex items-center gap-2">
@@ -186,17 +198,18 @@ export default async function ProfilePage() {
             </span>
             <ChevronDown className="h-4 w-4 text-neutral-500 group-open:rotate-180 transition-transform" />
           </summary>
-          {/* 以后可以在这里接邮箱订阅列表 */}
+          {/* 传当前用户的邮箱下去 */}
+          <EditSubscriptionCard userEmail={user?.email || ""} />
         </details>
       </div>
 
-      {/* 退出登录 */}
+      {/* Logout */}
       <form action={logoutAction} className="mt-6">
         <button
           type="submit"
           className="rounded-full border px-5 py-2 text-sm font-semibold hover:bg-neutral-50"
         >
-          退出登录
+          Log out
         </button>
       </form>
     </main>
