@@ -3,42 +3,7 @@
 
 import { useEffect, useState } from "react";
 
-type AddressRow = {
-  id: number;
-  first_name: string | null;
-  last_name: string | null;
-  phone: string | null;
-
-  line1: string;
-  line2: string | null;
-  city: string;
-  state: string;
-  postcode: string;
-  country: string;
-
-  is_default?: boolean | null;
-
-  created_at_ts?: number | null;
-  updated_at_ts?: number | null;
-  created_at_cn?: string | null;
-  updated_at_cn?: string | null;
-};
-
-type AddressesResp =
-  | {
-      ok: true;
-      delivery: AddressRow | null;
-      billing: AddressRow | null;
-      worker_version?: string;
-    }
-  | {
-      ok?: false;
-      error?: string;
-      worker_version?: string;
-    };
-
-// 前端编辑使用的表单数据类型
-type AddressFormData = {
+type Address = {
   first_name: string;
   last_name: string;
   phone: string;
@@ -48,361 +13,774 @@ type AddressFormData = {
   state: string;
   postcode: string;
   country: string;
+  is_default?: boolean | number | null;
 };
 
-function fromRowToForm(row: AddressRow | null): AddressFormData {
+type AddressesResp = {
+  ok: boolean;
+  delivery: any | null;
+  billing: any | null;
+  worker_version?: string;
+};
+
+type FieldErrors = Partial<Record<keyof Address, string>>;
+
+const EMPTY_ADDRESS: Address = {
+  first_name: "",
+  last_name: "",
+  phone: "",
+  line1: "",
+  line2: "",
+  city: "",
+  state: "",
+  postcode: "",
+  country: "Australia",
+};
+
+function shapeAddress(raw: any | null): Address {
+  if (!raw) return { ...EMPTY_ADDRESS };
   return {
-    first_name: row?.first_name ?? "",
-    last_name: row?.last_name ?? "",
-    phone: row?.phone ?? "",
-    line1: row?.line1 ?? "",
-    line2: row?.line2 ?? "",
-    city: row?.city ?? "",
-    state: row?.state ?? "",
-    postcode: row?.postcode ?? "",
-    country: row?.country ?? "",
+    first_name: raw.first_name || "",
+    last_name: raw.last_name || "",
+    phone: raw.phone || "",
+    line1: raw.line1 || "",
+    line2: raw.line2 || "",
+    city: raw.city || "",
+    state: raw.state || "",
+    postcode: raw.postcode || "",
+    country: raw.country || "Australia",
+    is_default:
+      raw.is_default != null ? !!raw.is_default : (raw.type ? true : null),
   };
 }
 
-type CardProps = {
-  label: string;
-  kind: "delivery" | "billing";
-  addr: AddressRow | null;
-  onSave: (kind: "delivery" | "billing", data: AddressFormData) => Promise<void>;
-  globalSavingKind: "delivery" | "billing" | null;
-};
+function validateAddress(
+  addr: Address,
+  kind: "delivery" | "billing"
+): { ok: boolean; errors: FieldErrors; message: string } {
+  const required: (keyof Address)[] = [
+    "first_name",
+    "last_name",
+    "phone",
+    "line1",
+    "city",
+    "state",
+    "postcode",
+    "country",
+  ];
 
-function AddressCard({ label, kind, addr, onSave, globalSavingKind }: CardProps) {
-  const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState<AddressFormData>(fromRowToForm(addr));
-  const [localErr, setLocalErr] = useState<string | null>(null);
-
-  // 外部地址变了时，如果当前不是编辑状态，则同步一下表单
-  useEffect(() => {
-    if (!editing) {
-      setForm(fromRowToForm(addr));
-    }
-  }, [addr, editing]);
-
-  if (!addr) {
-    return (
-      <div className="rounded-lg border border-dashed border-neutral-300 bg-white px-4 py-3 text-sm text-neutral-500">
-        No {label.toLowerCase()} saved yet.
-      </div>
-    );
+  const errors: FieldErrors = {};
+  for (const key of required) {
+    const v = (addr[key] ?? "").toString().trim();
+    if (!v) errors[key] = "Required";
   }
 
-  const baseField =
-    "mt-1 w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-black/10";
-  const readOnlyField = baseField + " bg-neutral-50 cursor-default";
-  const editableField = baseField + " bg-white";
+  const ok = Object.keys(errors).length === 0;
+  const message = ok
+    ? ""
+    : `Please complete all required ${kind} address fields before saving.`;
 
-  const saving = globalSavingKind === kind;
-
-  async function handleSave() {
-    if (!editing) return;
-    setLocalErr(null);
-    try {
-      await onSave(kind, form);
-      setEditing(false);
-    } catch (e: any) {
-      setLocalErr(e?.message || "Save failed");
-    }
-  }
-
-  return (
-    <div className="rounded-lg border border-neutral-200 bg-white px-4 py-4 text-sm space-y-4">
-      {/* 标题 + Default 标记 */}
-      <div className="flex items-center justify-between">
-        <div className="font-medium">{label}</div>
-        {addr.is_default ? (
-          <span className="inline-flex items-center rounded-full bg-black text-white px-2 py-0.5 text-xs">
-            Default
-          </span>
-        ) : null}
-      </div>
-
-      {/* 表单布局：两列 + 单列 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* First / Last Name */}
-        <div>
-          <label className="text-xs text-neutral-500">First Name</label>
-          <input
-            readOnly={!editing}
-            value={form.first_name}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, first_name: e.target.value }))
-            }
-            className={editing ? editableField : readOnlyField}
-          />
-        </div>
-        <div>
-          <label className="text-xs text-neutral-500">Last Name</label>
-          <input
-            readOnly={!editing}
-            value={form.last_name}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, last_name: e.target.value }))
-            }
-            className={editing ? editableField : readOnlyField}
-          />
-        </div>
-
-        {/* Phone */}
-        <div className="md:col-span-2">
-          <label className="text-xs text-neutral-500">Phone</label>
-          <input
-            readOnly={!editing}
-            value={form.phone}
-            onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-            className={editing ? editableField : readOnlyField}
-          />
-        </div>
-
-        {/* Address Line 1 */}
-        <div className="md:col-span-2">
-          <label className="text-xs text-neutral-500">Address Line 1</label>
-          <input
-            readOnly={!editing}
-            value={form.line1}
-            onChange={(e) => setForm((f) => ({ ...f, line1: e.target.value }))}
-            className={editing ? editableField : readOnlyField}
-          />
-        </div>
-
-        {/* Address Line 2 */}
-        <div className="md:col-span-2">
-          <label className="text-xs text-neutral-500">
-            Address Line 2 (optional)
-          </label>
-          <input
-            readOnly={!editing}
-            value={form.line2}
-            onChange={(e) => setForm((f) => ({ ...f, line2: e.target.value }))}
-            className={editing ? editableField : readOnlyField}
-          />
-        </div>
-
-        {/* City / State */}
-        <div>
-          <label className="text-xs text-neutral-500">City</label>
-          <input
-            readOnly={!editing}
-            value={form.city}
-            onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
-            className={editing ? editableField : readOnlyField}
-          />
-        </div>
-        <div>
-          <label className="text-xs text-neutral-500">State/Region</label>
-          <input
-            readOnly={!editing}
-            value={form.state}
-            onChange={(e) => setForm((f) => ({ ...f, state: e.target.value }))}
-            className={editing ? editableField : readOnlyField}
-          />
-        </div>
-
-        {/* Postcode / Country */}
-        <div>
-          <label className="text-xs text-neutral-500">Postcode</label>
-          <input
-            readOnly={!editing}
-            value={form.postcode}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, postcode: e.target.value }))
-            }
-            className={editing ? editableField : readOnlyField}
-          />
-        </div>
-        <div>
-          <label className="text-xs text-neutral-500">Country</label>
-          <input
-            readOnly={!editing}
-            value={form.country}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, country: e.target.value }))
-            }
-            className={editing ? editableField : readOnlyField}
-          />
-        </div>
-      </div>
-
-      {/* 错误提示（每块地址自己的） */}
-      {localErr && (
-        <div className="text-xs text-red-600">
-          {localErr}
-        </div>
-      )}
-
-      {/* 按钮区域：和 EditProfileCard 的按钮风格保持一致 */}
-      <div className="flex items-center gap-3 pt-1">
-        <button
-          type="button"
-          onClick={() => {
-            if (editing) {
-              // 取消编辑：还原为 addr 内容
-              setForm(fromRowToForm(addr));
-              setEditing(false);
-              setLocalErr(null);
-            } else {
-              setEditing(true);
-              setLocalErr(null);
-            }
-          }}
-          className="min-w-[96px] px-5 py-2 rounded-full border text-sm font-semibold hover:bg-neutral-50"
-        >
-          {editing ? "Cancel" : "Edit"}
-        </button>
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={!editing || saving}
-          className="min-w-[96px] px-5 py-2 rounded-full bg-black text-white text-sm font-semibold hover:bg-neutral-800 disabled:opacity-50"
-        >
-          {saving ? "Saving..." : "Save"}
-        </button>
-      </div>
-    </div>
-  );
+  return { ok, errors, message };
 }
 
+const baseInputClass =
+  "mt-1 w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-black/10";
+const readOnlyClass = " bg-neutral-50";
+const errorClass = " border-red-400";
+
 export default function EditAddressCard() {
-  const [delivery, setDelivery] = useState<AddressRow | null>(null);
-  const [billing, setBilling] = useState<AddressRow | null>(null);
   const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const [savingKind, setSavingKind] = useState<"delivery" | "billing" | null>(
-    null
-  );
+  const [globalErr, setGlobalErr] = useState<string | null>(null);
 
-  async function fetchAddresses() {
-    const res = await fetch("/api/addresses", {
-      method: "GET",
-      credentials: "include",
-      headers: { accept: "application/json" },
-      cache: "no-store",
-    });
+  const [delivery, setDelivery] = useState<Address>({ ...EMPTY_ADDRESS });
+  const [billing, setBilling] = useState<Address>({ ...EMPTY_ADDRESS });
 
-    if (!res.ok) {
-      const txt = await res.text().catch(() => "");
-      throw new Error(`/api/addresses ${res.status}: ${txt}`);
-    }
+  const [editingDelivery, setEditingDelivery] = useState(false);
+  const [editingBilling, setEditingBilling] = useState(false);
 
-    const data = (await res.json()) as AddressesResp;
+  const [savingDelivery, setSavingDelivery] = useState(false);
+  const [savingBilling, setSavingBilling] = useState(false);
 
-    if ("ok" in data && data.ok === false) {
-      throw new Error(data.error || "failed to load addresses");
-    }
+  const [deliveryErrors, setDeliveryErrors] = useState<FieldErrors>({});
+  const [billingErrors, setBillingErrors] = useState<FieldErrors>({});
 
-    setDelivery((data as any).delivery ?? null);
-    setBilling((data as any).billing ?? null);
-  }
+  const [deliveryMsg, setDeliveryMsg] = useState<string | null>(null);
+  const [billingMsg, setBillingMsg] = useState<string | null>(null);
 
+  // 初次加载地址
   useEffect(() => {
     let dead = false;
-
     (async () => {
       try {
         setLoading(true);
-        setErr(null);
-        await fetchAddresses();
+        setGlobalErr(null);
+        const r = await fetch("/api/addresses", {
+          method: "GET",
+          credentials: "include",
+          headers: { accept: "application/json" },
+          cache: "no-store",
+        });
+        if (!r.ok) {
+          const t = await r.text().catch(() => "");
+          throw new Error(`/api/addresses ${r.status}: ${t}`);
+        }
+        const data = (await r.json()) as AddressesResp;
+        if (dead) return;
+        setDelivery(shapeAddress(data.delivery));
+        setBilling(shapeAddress(data.billing));
       } catch (e: any) {
-        if (!dead) setErr(e?.message || "Failed to load addresses");
+        if (!dead) setGlobalErr(e?.message || String(e));
       } finally {
         if (!dead) setLoading(false);
       }
     })();
-
     return () => {
       dead = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleSave(kind: "delivery" | "billing", data: AddressFormData) {
-    setSavingKind(kind);
-    setErr(null);
+  async function saveAddress(kind: "delivery" | "billing") {
+    const addr = kind === "delivery" ? delivery : billing;
+    const { ok, errors, message } = validateAddress(addr, kind);
+
+    // 本地校验不通过 → 不发请求
+    if (!ok) {
+      if (kind === "delivery") {
+        setDeliveryErrors(errors);
+        setDeliveryMsg(message);
+      } else {
+        setBillingErrors(errors);
+        setBillingMsg(message);
+      }
+      return;
+    }
+
+    // 清除旧错误
+    if (kind === "delivery") {
+      setDeliveryErrors({});
+      setDeliveryMsg(null);
+      setSavingDelivery(true);
+    } else {
+      setBillingErrors({});
+      setBillingMsg(null);
+      setSavingBilling(true);
+    }
+    setGlobalErr(null);
+
     try {
-      // 🌟 这里是关键：把编辑后的地址提交给后端
-      // 假设 d1-worker 的 /addresses 支持这种 body：
-      // { type: "delivery" | "billing", first_name, last_name, phone, line1, line2, city, state, postcode, country }
-      const res = await fetch("/api/addresses", {
+      const body = {
+        type: kind,
+        ...addr,
+        is_default: addr.is_default ?? true,
+      };
+
+      const r = await fetch("/api/addresses", {
         method: "POST",
         credentials: "include",
         headers: {
           "content-type": "application/json",
           accept: "application/json",
         },
-        body: JSON.stringify({
-          type: kind,
-          ...data,
-        }),
+        body: JSON.stringify(body),
       });
 
-      const json = await res.json().catch(() => ({}));
+      const data = await r.json().catch(() => ({} as any));
 
-      if (!res.ok || (json && json.ok === false)) {
-        throw new Error(json?.error || `POST /api/addresses ${res.status}`);
+      if (!r.ok || (data as any)?.error) {
+        throw new Error(
+          (data as any)?.error ||
+            `POST /api/addresses ${r.status} ${r.statusText}`
+        );
       }
 
-      // 保存成功后重新从后端获取一次最新的地址
-      await fetchAddresses();
+      // 后端会返回 { ok, delivery, billing }
+      if (data.delivery) {
+        setDelivery(shapeAddress(data.delivery));
+      }
+      if (data.billing) {
+        setBilling(shapeAddress(data.billing));
+      }
+
+      if (kind === "delivery") {
+        setEditingDelivery(false);
+      } else {
+        setEditingBilling(false);
+      }
     } catch (e: any) {
-      setErr(e?.message || "Save failed");
-      // 抛出给子组件，让它显示自己的 localErr
-      throw e;
+      const msg = e?.message || "Failed to save address";
+      if (kind === "delivery") {
+        setDeliveryMsg(msg);
+      } else {
+        setBillingMsg(msg);
+      }
     } finally {
-      setSavingKind(null);
+      if (kind === "delivery") setSavingDelivery(false);
+      else setSavingBilling(false);
     }
   }
 
-  return (
-    <div className="px-4 pb-4 space-y-4">
-      {err && <div className="text-sm text-red-600 mb-2">{err}</div>}
+  const hasAnyAddress =
+    Object.values(delivery).some((v) => `${v ?? ""}`.trim()) ||
+    Object.values(billing).some((v) => `${v ?? ""}`.trim());
 
+  return (
+    <div className="px-4 pb-4 space-y-6">
       {loading && (
         <div className="text-sm text-neutral-500">Loading addresses…</div>
       )}
+      {globalErr && (
+        <div className="text-sm text-red-600">{globalErr}</div>
+      )}
 
-      {!loading && !err && !delivery && !billing && (
-        <div className="text-sm text-neutral-500">
-          You have not saved any addresses yet.
-          <br />
-          You can save a default delivery and billing address during checkout, and they
-          will appear here.
+      {!hasAnyAddress && !loading && (
+        <div className="mb-3 text-xs text-neutral-500">
+          You have not saved any addresses yet. You can save a default delivery
+          and billing address during checkout, and they will appear here.
         </div>
       )}
 
-      {delivery || (!loading && !err) ? (
-        <div className="space-y-2">
-          <div className="text-xs font-semibold uppercase text-neutral-500">
-            Delivery Address
-          </div>
-          <AddressCard
-            label="Delivery address"
-            kind="delivery"
-            addr={delivery}
-            onSave={handleSave}
-            globalSavingKind={savingKind}
-          />
+      {/* DELIVERY ADDRESS */}
+      <section className="rounded-lg border bg-white">
+        <div className="border-b px-4 py-3 text-xs font-semibold text-neutral-500">
+          DELIVERY ADDRESS
         </div>
-      ) : null}
+        <div className="p-4 space-y-4">
+          <div className="flex items-center justify-between text-xs text-neutral-500">
+            <span>Delivery address</span>
+            {delivery.is_default && (
+              <span className="rounded-full bg-black px-2 py-0.5 text-[10px] font-medium text-white">
+                Default
+              </span>
+            )}
+          </div>
 
-      {billing || (!loading && !err) ? (
-        <div className="space-y-2">
-          <div className="text-xs font-semibold uppercase text-neutral-500">
-            Billing Address
+          {/* name row */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs text-neutral-500">
+                First name<span className="text-red-500">*</span>
+              </label>
+              <input
+                disabled={!editingDelivery}
+                value={delivery.first_name || ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setDelivery((prev) => ({ ...prev, first_name: v }));
+                  setDeliveryErrors((prev) => ({
+                    ...prev,
+                    first_name: undefined,
+                  }));
+                }}
+                className={
+                  baseInputClass +
+                  (!editingDelivery ? readOnlyClass : "") +
+                  (deliveryErrors.first_name ? errorClass : "")
+                }
+              />
+            </div>
+            <div>
+              <label className="text-xs text-neutral-500">
+                Last name<span className="text-red-500">*</span>
+              </label>
+              <input
+                disabled={!editingDelivery}
+                value={delivery.last_name || ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setDelivery((prev) => ({ ...prev, last_name: v }));
+                  setDeliveryErrors((prev) => ({
+                    ...prev,
+                    last_name: undefined,
+                  }));
+                }}
+                className={
+                  baseInputClass +
+                  (!editingDelivery ? readOnlyClass : "") +
+                  (deliveryErrors.last_name ? errorClass : "")
+                }
+              />
+            </div>
           </div>
-          <AddressCard
-            label="Billing address"
-            kind="billing"
-            addr={billing}
-            onSave={handleSave}
-            globalSavingKind={savingKind}
-          />
+
+          {/* phone */}
+          <div>
+            <label className="text-xs text-neutral-500">
+              Phone<span className="text-red-500">*</span>
+            </label>
+            <input
+              disabled={!editingDelivery}
+              value={delivery.phone || ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                setDelivery((prev) => ({ ...prev, phone: v }));
+                setDeliveryErrors((prev) => ({
+                  ...prev,
+                  phone: undefined,
+                }));
+              }}
+              className={
+                baseInputClass +
+                (!editingDelivery ? readOnlyClass : "") +
+                (deliveryErrors.phone ? errorClass : "")
+              }
+            />
+          </div>
+
+          {/* line1 */}
+          <div>
+            <label className="text-xs text-neutral-500">
+              Address line 1<span className="text-red-500">*</span>
+            </label>
+            <input
+              disabled={!editingDelivery}
+              value={delivery.line1 || ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                setDelivery((prev) => ({ ...prev, line1: v }));
+                setDeliveryErrors((prev) => ({
+                  ...prev,
+                  line1: undefined,
+                }));
+              }}
+              className={
+                baseInputClass +
+                (!editingDelivery ? readOnlyClass : "") +
+                (deliveryErrors.line1 ? errorClass : "")
+              }
+            />
+          </div>
+
+          {/* line2 optional */}
+          <div>
+            <label className="text-xs text-neutral-500">
+              Address line 2 (optional)
+            </label>
+            <input
+              disabled={!editingDelivery}
+              value={delivery.line2 || ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                setDelivery((prev) => ({ ...prev, line2: v }));
+              }}
+              className={
+                baseInputClass + (!editingDelivery ? readOnlyClass : "")
+              }
+            />
+          </div>
+
+          {/* city / state */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs text-neutral-500">
+                City<span className="text-red-500">*</span>
+              </label>
+              <input
+                disabled={!editingDelivery}
+                value={delivery.city || ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setDelivery((prev) => ({ ...prev, city: v }));
+                  setDeliveryErrors((prev) => ({
+                    ...prev,
+                    city: undefined,
+                  }));
+                }}
+                className={
+                  baseInputClass +
+                  (!editingDelivery ? readOnlyClass : "") +
+                  (deliveryErrors.city ? errorClass : "")
+                }
+              />
+            </div>
+            <div>
+              <label className="text-xs text-neutral-500">
+                State/Region<span className="text-red-500">*</span>
+              </label>
+              <input
+                disabled={!editingDelivery}
+                value={delivery.state || ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setDelivery((prev) => ({ ...prev, state: v }));
+                  setDeliveryErrors((prev) => ({
+                    ...prev,
+                    state: undefined,
+                  }));
+                }}
+                className={
+                  baseInputClass +
+                  (!editingDelivery ? readOnlyClass : "") +
+                  (deliveryErrors.state ? errorClass : "")
+                }
+              />
+            </div>
+          </div>
+
+          {/* postcode / country */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs text-neutral-500">
+                Postcode<span className="text-red-500">*</span>
+              </label>
+              <input
+                disabled={!editingDelivery}
+                value={delivery.postcode || ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setDelivery((prev) => ({ ...prev, postcode: v }));
+                  setDeliveryErrors((prev) => ({
+                    ...prev,
+                    postcode: undefined,
+                  }));
+                }}
+                className={
+                  baseInputClass +
+                  (!editingDelivery ? readOnlyClass : "") +
+                  (deliveryErrors.postcode ? errorClass : "")
+                }
+              />
+            </div>
+            <div>
+              <label className="text-xs text-neutral-500">
+                Country<span className="text-red-500">*</span>
+              </label>
+              <input
+                disabled={!editingDelivery}
+                value={delivery.country || ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setDelivery((prev) => ({ ...prev, country: v }));
+                  setDeliveryErrors((prev) => ({
+                    ...prev,
+                    country: undefined,
+                  }));
+                }}
+                className={
+                  baseInputClass +
+                  (!editingDelivery ? readOnlyClass : "") +
+                  (deliveryErrors.country ? errorClass : "")
+                }
+              />
+            </div>
+          </div>
+
+          {/* buttons + message */}
+          <div className="mt-3 flex items-center gap-3">
+            {!editingDelivery ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingDelivery(true);
+                  setDeliveryMsg(null);
+                  setDeliveryErrors({});
+                }}
+                className="min-w-[96px] rounded-full border px-5 py-2 text-sm font-semibold hover:bg-neutral-50"
+              >
+                Edit
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // 取消：回到初始状态（重新拉一次比较简单）
+                    setEditingDelivery(false);
+                    setDeliveryErrors({});
+                    setDeliveryMsg(null);
+                    // 简单起见从服务器再拉一遍
+                    // 也可以缓存初始值，这里为了代码短一点就直接刷新
+                    location.reload();
+                  }}
+                  className="min-w-[96px] rounded-full border px-5 py-2 text-sm font-semibold hover:bg-neutral-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={savingDelivery}
+                  onClick={() => saveAddress("delivery")}
+                  className="min-w-[96px] rounded-full bg-black px-5 py-2 text-sm font-semibold text-white hover:bg-neutral-800 disabled:opacity-50"
+                >
+                  {savingDelivery ? "Saving…" : "Save"}
+                </button>
+              </>
+            )}
+          </div>
+          {deliveryMsg && (
+            <p className="mt-2 text-xs text-red-600">{deliveryMsg}</p>
+          )}
         </div>
-      ) : null}
+      </section>
+
+      {/* BILLING ADDRESS */}
+      <section className="rounded-lg border bg-white">
+        <div className="border-b px-4 py-3 text-xs font-semibold text-neutral-500">
+          BILLING ADDRESS
+        </div>
+        <div className="p-4 space-y-4">
+          <div className="flex items-center justify-between text-xs text-neutral-500">
+            <span>Billing address</span>
+            {billing.is_default && (
+              <span className="rounded-full bg-black px-2 py-0.5 text-[10px] font-medium text-white">
+                Default
+              </span>
+            )}
+          </div>
+
+          {/* name row */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs text-neutral-500">
+                First name<span className="text-red-500">*</span>
+              </label>
+              <input
+                disabled={!editingBilling}
+                value={billing.first_name || ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setBilling((prev) => ({ ...prev, first_name: v }));
+                  setBillingErrors((prev) => ({
+                    ...prev,
+                    first_name: undefined,
+                  }));
+                }}
+                className={
+                  baseInputClass +
+                  (!editingBilling ? readOnlyClass : "") +
+                  (billingErrors.first_name ? errorClass : "")
+                }
+              />
+            </div>
+            <div>
+              <label className="text-xs text-neutral-500">
+                Last name<span className="text-red-500">*</span>
+              </label>
+              <input
+                disabled={!editingBilling}
+                value={billing.last_name || ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setBilling((prev) => ({ ...prev, last_name: v }));
+                  setBillingErrors((prev) => ({
+                    ...prev,
+                    last_name: undefined,
+                  }));
+                }}
+                className={
+                  baseInputClass +
+                  (!editingBilling ? readOnlyClass : "") +
+                  (billingErrors.last_name ? errorClass : "")
+                }
+              />
+            </div>
+          </div>
+
+          {/* phone */}
+          <div>
+            <label className="text-xs text-neutral-500">
+              Phone<span className="text-red-500">*</span>
+            </label>
+            <input
+              disabled={!editingBilling}
+              value={billing.phone || ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                setBilling((prev) => ({ ...prev, phone: v }));
+                setBillingErrors((prev) => ({
+                  ...prev,
+                  phone: undefined,
+                }));
+              }}
+              className={
+                baseInputClass +
+                (!editingBilling ? readOnlyClass : "") +
+                (billingErrors.phone ? errorClass : "")
+              }
+            />
+          </div>
+
+          {/* line1 */}
+          <div>
+            <label className="text-xs text-neutral-500">
+              Address line 1<span className="text-red-500">*</span>
+            </label>
+            <input
+              disabled={!editingBilling}
+              value={billing.line1 || ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                setBilling((prev) => ({ ...prev, line1: v }));
+                setBillingErrors((prev) => ({
+                  ...prev,
+                  line1: undefined,
+                }));
+              }}
+              className={
+                baseInputClass +
+                (!editingBilling ? readOnlyClass : "") +
+                (billingErrors.line1 ? errorClass : "")
+              }
+            />
+          </div>
+
+          {/* line2 optional */}
+          <div>
+            <label className="text-xs text-neutral-500">
+              Address line 2 (optional)
+            </label>
+            <input
+              disabled={!editingBilling}
+              value={billing.line2 || ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                setBilling((prev) => ({ ...prev, line2: v }));
+              }}
+              className={
+                baseInputClass + (!editingBilling ? readOnlyClass : "")
+              }
+            />
+          </div>
+
+          {/* city / state */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs text-neutral-500">
+                City<span className="text-red-500">*</span>
+              </label>
+              <input
+                disabled={!editingBilling}
+                value={billing.city || ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setBilling((prev) => ({ ...prev, city: v }));
+                  setBillingErrors((prev) => ({
+                    ...prev,
+                    city: undefined,
+                  }));
+                }}
+                className={
+                  baseInputClass +
+                  (!editingBilling ? readOnlyClass : "") +
+                  (billingErrors.city ? errorClass : "")
+                }
+              />
+            </div>
+            <div>
+              <label className="text-xs text-neutral-500">
+                State/Region<span className="text-red-500">*</span>
+              </label>
+              <input
+                disabled={!editingBilling}
+                value={billing.state || ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setBilling((prev) => ({ ...prev, state: v }));
+                  setBillingErrors((prev) => ({
+                    ...prev,
+                    state: undefined,
+                  }));
+                }}
+                className={
+                  baseInputClass +
+                  (!editingBilling ? readOnlyClass : "") +
+                  (billingErrors.state ? errorClass : "")
+                }
+              />
+            </div>
+          </div>
+
+          {/* postcode / country */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs text-neutral-500">
+                Postcode<span className="text-red-500">*</span>
+              </label>
+              <input
+                disabled={!editingBilling}
+                value={billing.postcode || ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setBilling((prev) => ({ ...prev, postcode: v }));
+                  setBillingErrors((prev) => ({
+                    ...prev,
+                    postcode: undefined,
+                  }));
+                }}
+                className={
+                  baseInputClass +
+                  (!editingBilling ? readOnlyClass : "") +
+                  (billingErrors.postcode ? errorClass : "")
+                }
+              />
+            </div>
+            <div>
+              <label className="text-xs text-neutral-500">
+                Country<span className="text-red-500">*</span>
+              </label>
+              <input
+                disabled={!editingBilling}
+                value={billing.country || ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setBilling((prev) => ({ ...prev, country: v }));
+                  setBillingErrors((prev) => ({
+                    ...prev,
+                    country: undefined,
+                  }));
+                }}
+                className={
+                  baseInputClass +
+                  (!editingBilling ? readOnlyClass : "") +
+                  (billingErrors.country ? errorClass : "")
+                }
+              />
+            </div>
+          </div>
+
+          {/* buttons + message */}
+          <div className="mt-3 flex items-center gap-3">
+            {!editingBilling ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingBilling(true);
+                  setBillingMsg(null);
+                  setBillingErrors({});
+                }}
+                className="min-w-[96px] rounded-full border px-5 py-2 text-sm font-semibold hover:bg-neutral-50"
+              >
+                Edit
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingBilling(false);
+                    setBillingErrors({});
+                    setBillingMsg(null);
+                    location.reload();
+                  }}
+                  className="min-w-[96px] rounded-full border px-5 py-2 text-sm font-semibold hover:bg-neutral-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={savingBilling}
+                  onClick={() => saveAddress("billing")}
+                  className="min-w-[96px] rounded-full bg-black px-5 py-2 text-sm font-semibold text-white hover:bg-neutral-800 disabled:opacity-50"
+                >
+                  {savingBilling ? "Saving…" : "Save"}
+                </button>
+              </>
+            )}
+          </div>
+          {billingMsg && (
+            <p className="mt-2 text-xs text-red-600">{billingMsg}</p>
+          )}
+        </div>
+      </section>
     </div>
   );
 }
