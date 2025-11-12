@@ -241,9 +241,9 @@ export default function EditAddressCard() {
 
       {/* DELIVERY ADDRESS */}
       <section className="rounded-lg border bg-white">
-        <div className="border-b px-4 py-3 text-xs font-semibold text-neutral-500">
+        {/* <div className="border-b px-4 py-3 text-xs font-semibold text-neutral-500">
           DELIVERY ADDRESS
-        </div>
+        </div> */}
         <div className="p-4 space-y-4">
           <div className="flex items-center justify-between text-xs text-neutral-500">
             <span>Delivery address</span>
@@ -514,9 +514,9 @@ export default function EditAddressCard() {
 
       {/* BILLING ADDRESS */}
       <section className="rounded-lg border bg-white">
-        <div className="border-b px-4 py-3 text-xs font-semibold text-neutral-500">
+        {/* <div className="border-b px-4 py-3 text-xs font-semibold text-neutral-500">
           BILLING ADDRESS
-        </div>
+        </div> */}
         <div className="p-4 space-y-4">
           <div className="flex items-center justify-between text-xs text-neutral-500">
             <span>Billing address</span>

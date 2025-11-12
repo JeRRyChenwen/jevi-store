@@ -1,4 +1,5 @@
 // src/app/profile/page.tsx
+import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { logoutAction } from "./_actions";
@@ -47,7 +48,7 @@ async function readUserFromCookies(): Promise<SessionUser | null> {
         email: typeof u?.email === "string" ? u.email : null,
         name: typeof u?.name === "string" ? u.name : null,
       };
-        if (shaped.email) return shaped;
+      if (shaped.email) return shaped;
     } catch {}
   }
 
@@ -110,10 +111,7 @@ export default async function ProfilePage() {
         user = {
           id: me.user.id ?? user.id,
           email: me.user.email ?? user.email,
-          name:
-            (me.user.name ?? "").trim() ||
-            user.email?.split("@")[0] ||
-            null,
+          name: (me.user.name ?? "").trim() || user.email?.split("@")[0] || null,
         };
       }
     } catch {
@@ -129,17 +127,17 @@ export default async function ProfilePage() {
     (user?.email ? user.email.split("@")[0] : "") ||
     "User";
 
-  const [guessedFirst, guessedLast] = (() => {
-    const n = (user?.name || "").trim();
-    if (!n) return ["", ""];
-    const parts = n.split(/\s+/);
-    return [parts[0] || "", parts.slice(1).join(" ") || ""];
-  })();
-
   // === UI ===
   return (
     <main className="px-4 md:px-8 py-8 max-w-3xl mx-auto">
-      {/* 👇 给名字加一个 id，EditProfileCard 保存后好更新 */}
+      {/* ✅ 面包屑：Home › Profile */}
+      <nav className="mb-4 text-sm text-neutral-600" aria-label="Breadcrumb">
+        <Link href="/" className="hover:underline">Home</Link>
+        <span className="mx-2 text-neutral-400">›</span>
+        <span className="text-neutral-900">Profile</span>
+      </nav>
+
+      {/* 标题 */}
       <h1 className="text-2xl font-semibold mb-6">
         Hi, <span id="profile-header-name">{displayName}</span>
       </h1>
@@ -157,9 +155,7 @@ export default async function ProfilePage() {
           </summary>
 
           <EditProfileCard
-            initialName={
-              (user?.name || user?.email?.split("@")[0] || "").trim()
-            }
+            initialName={(user?.name || user?.email?.split("@")[0] || "").trim()}
             initialEmail={user?.email || ""}
           />
         </details>

@@ -952,15 +952,7 @@ AUD，CAD，EUR，GBP，USD
 
 我想问下这样做的话，当买家付钱给我（当然买家可能会来自不同的地区用不同的 currency 结算），是不是会自动通过 paypal 转换汇率成 AUD 打到我的 paypal 账户中
 
-order history
-
 add to bag 字体
-
-checkou 页面 continue 按钮下面提示“Please complete all required delivery address fields before saving.”
-
-item detail 页面完善
-
-BILLING ADDRESS title 要删掉
 
 如果你没有储存 address 的话，请先 fill out address
 
