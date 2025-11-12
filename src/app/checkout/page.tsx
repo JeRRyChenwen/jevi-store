@@ -117,6 +117,24 @@ function toApiAddress(a: Address) {
   };
 }
 
+
+/** 把 /api/addresses 返回的地址转成前端 Address 结构 */
+function fromApiAddress(raw: any): Address {
+  if (!raw) return {};
+  return {
+    firstName: raw.first_name ?? "",
+    lastName:  raw.last_name  ?? "",
+    email:     raw.email      ?? "",
+    phone:     raw.phone      ?? "",
+    line1:     raw.line1      ?? raw.addr_line1 ?? "",
+    line2:     raw.line2      ?? raw.addr_line2 ?? "",
+    city:      raw.city       ?? raw.addr_city  ?? "",
+    state:     raw.state      ?? raw.addr_state ?? "",
+    postcode:  raw.postcode   ?? raw.addr_postcode ?? "",
+    country:   raw.country    ?? raw.addr_country  ?? "",
+  };
+}
+
 /** Billing 单字段有效性（不校验 email，line2 可空） */
 function isFieldValid(k: keyof Address, v: string | undefined) {
   const s = (v ?? "").trim();
@@ -885,10 +903,21 @@ export default function CheckoutPage() {
     postcode: "",
     country: "",
   });
-  const [sameAsDelivery, setSameAsDelivery] = useState<boolean>(true);
+  const [sameAsDelivery, setSameAsDelivery] = useState<boolean>(false);
+  // 新增：控制是否使用已保存的地址
+  const [useSavedDelivery, setUseSavedDelivery] = useState(false);
+  const [useSavedBilling, setUseSavedBilling] = useState(false);
 
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>("standard");
   const [isPayProcessing, setIsPayProcessing] = useState(false);   // ✅ 是否正在处理支付
+
+  // 服务器端是否存在保存的默认地址（登录用户）
+  const [hasSavedDelivery, setHasSavedDelivery] = useState(false);
+  const [hasSavedBilling,  setHasSavedBilling]  = useState(false);
+
+  // 取回来的默认地址（用于一键回填）
+  const [savedDeliveryAddr, setSavedDeliveryAddr] = useState<Address | null>(null);
+  const [savedBillingAddr,  setSavedBillingAddr]  = useState<Address | null>(null);
 
     
 
@@ -932,6 +961,9 @@ export default function CheckoutPage() {
 
   // 保存默认地址提示（点击保存后才可能出现）
   const [saveMsg, setSaveMsg] = useState<{ kind: "error" | "success"; text: string } | null>(null);
+
+  // ✅ 新增：Continue 按钮下方的错误提示
+  const [continueErrMsg, setContinueErrMsg] = useState<string | null>(null);
 
   // URL 步骤
   const initialStepFromURL = (() => {
@@ -1017,6 +1049,52 @@ export default function CheckoutPage() {
     setLoaded(true);
     return () => window.removeEventListener("focus", readLoginFromCookie);
   }, []);
+
+
+
+  useEffect(() => {
+  // 仅已登录才请求 /api/addresses
+  if (!isLoggedInViaCookie()) {
+    setHasSavedDelivery(false);
+    setHasSavedBilling(false);
+    setSavedDeliveryAddr(null);
+    setSavedBillingAddr(null);
+    return;
+  }
+
+  let dead = false;
+  (async () => {
+    try {
+      const r = await fetch("/api/addresses", {
+        method: "GET",
+        credentials: "include",
+        headers: { accept: "application/json" },
+        cache: "no-store",
+      });
+      if (!r.ok) return;
+      const data = await r.json().catch(() => ({}));
+      if (dead) return;
+
+      const d = data?.delivery || null;
+      const b = data?.billing  || null;
+
+      const fd = d ? fromApiAddress(d) : null;
+      const fb = b ? fromApiAddress(b) : null;
+
+      setHasSavedDelivery(!!fd);
+      setHasSavedBilling(!!fb);
+      setSavedDeliveryAddr(fd);
+      setSavedBillingAddr(fb);
+    } catch {}
+  })();
+
+  return () => { dead = true; };
+}, [isLoggedIn]); // 登录状态变化时重新拉取
+
+
+
+
+
 
   // 勾选“同收货地址”时，实时用 delivery 覆盖 billing
   useEffect(() => {
@@ -1156,103 +1234,128 @@ export default function CheckoutPage() {
   }
 
   // 保存为默认地址：按钮可点，点击时才校验 & 提示
+  // ✨ 替换整段函数：仅保存需要保存的那一侧；避免误改另一侧
   const handleSaveDefaultAddress = async () => {
-  // 1) 校验 delivery
-  const { valid: dValid, errs: dErrs } = validateAddress(address, "", true);
-  if (!dValid) {
-    setAddressErrs(dErrs);
-    setAddressShowErrors(true);
-    setSaveMsg({ kind: "error", text: "Please complete all required delivery address fields before saving." });
-    document.getElementById("address-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    return;
-  }
+    // 计算三种保存意图：
+    // A) 只保存 Delivery（勾了 useSavedBilling）
+    // B) 只保存 Billing（勾了 useSavedDelivery）
+    // C) 同时保存两者 / 或 sameAsDelivery 情况
+    const saveDeliveryOnly = !useSavedDelivery && useSavedBilling;
+    const saveBillingOnly  =  useSavedDelivery && !useSavedBilling;
+    const saveBothOrSame   = !useSavedDelivery && !useSavedBilling; // 两侧都不是“用已保存”，说明两侧都在你手里
 
-  // 2) 如非“同收货地址”，再校验 billing（不校验邮箱）
-  if (!sameAsDelivery) {
-    const { valid: bValid, errs: bErrs } = validateAddress(billingAddress, "", true);
-    setBillingErrs(bErrs);  // ★ 同步显示红框
-    if (!bValid) {
-      setSaveMsg({ kind: "error", text: "Please complete all required billing address fields before saving." });
-      document.getElementById("billing-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      return;
-    }
-  }
-
-  try {
-    // 3) 组装 payload：同收货 → same_as_delivery；否则同时提交两份
-    const payload = sameAsDelivery
-      ? { delivery: toApiAddress(address), same_as_delivery: true }
-      : { delivery: toApiAddress(address), billing: toApiAddress(billingAddress) };
-
-    const res = await fetch(apiURL("/addresses"), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify(payload),
-    });
-
-    let data: any = null;
-    try { data = await res.clone().json(); } catch {}
-
-    if (!res.ok) {
-      if (res.status === 401) {
-        try {
-          const who = await fetch("/api/__whoami?debug=1", {
-            credentials: "include",
-            headers: { accept: "application/json" },
-          }).then(r => r.json());
-          const reason = who?.diag?.reason || "UNKNOWN";
-          const cookies = JSON.stringify(who?.diag?.cookie_present || {});
-          setSaveMsg({ kind: "error", text: `Unauthorized (401). reason=${reason}; cookies=${cookies}` });
-        } catch {
-          setSaveMsg({ kind: "error", text: "Unauthorized (401)" });
-        }
-      } else {
-        const msg = data?.error || data?.message || `HTTP ${res.status}`;
-        setSaveMsg({ kind: "error", text: msg });
+    // 1) 校验：只校验需要编辑/保存的那一侧
+    if (saveDeliveryOnly || saveBothOrSame) {
+      const { valid, errs } = validateAddress(address, "", true);
+      if (!valid) {
+        setAddressErrs(errs);
+        setAddressShowErrors(true);
+        setSaveMsg({ kind: "error", text: "Please complete all required delivery address fields before saving." });
+        document.getElementById("address-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
       }
-      return;
+    }
+    if (saveBillingOnly || (saveBothOrSame && !sameAsDelivery)) {
+      const { valid, errs } = validateAddress(billingAddress, "", true);
+      setBillingErrs(errs);
+      if (!valid) {
+        setSaveMsg({ kind: "error", text: "Please complete all required billing address fields before saving." });
+        document.getElementById("billing-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
     }
 
-    // 可选：你也可以在这里检查 data.delivery / data.billing 是否返回
-    setSaveMsg({ kind: "success", text: "Saved as your default address." });
-  } catch (e: any) {
-    setSaveMsg({ kind: "error", text: e?.message || "Failed to save address" });
-  }
-};
+    // 2) 组装 payload：严格只发需要保存的字段
+    let payload: any = {};
+
+    if (saveDeliveryOnly) {
+      // 只更新 Delivery；不带 same_as_delivery，避免覆盖 Billing
+      payload = { delivery: toApiAddress(address) };
+    } else if (saveBillingOnly) {
+      // 只更新 Billing；不带 Delivery，避免覆盖 Delivery
+      payload = { billing: toApiAddress(billingAddress) };
+    } else {
+      // 两侧都在编辑区里：
+      // - 如果 sameAsDelivery=true，则更新 delivery 并附 same_as_delivery 让后端同步到 billing
+      // - 如果 sameAsDelivery=false，则两份都各自保存
+      if (sameAsDelivery) {
+        payload = { delivery: toApiAddress(address), same_as_delivery: true };
+      } else {
+        payload = { delivery: toApiAddress(address), billing: toApiAddress(billingAddress) };
+      }
+    }
+
+    try {
+      const res = await fetch(apiURL("/addresses"), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+
+      let data: any = null;
+      try { data = await res.clone().json(); } catch {}
+
+      if (!res.ok) {
+        if (res.status === 401) {
+          try {
+            const who = await fetch("/api/__whoami?debug=1", {
+              credentials: "include",
+              headers: { accept: "application/json" },
+            }).then(r => r.json());
+            const reason = who?.diag?.reason || "UNKNOWN";
+            const cookies = JSON.stringify(who?.diag?.cookie_present || {});
+            setSaveMsg({ kind: "error", text: `Unauthorized (401). reason=${reason}; cookies=${cookies}` });
+          } catch {
+            setSaveMsg({ kind: "error", text: "Unauthorized (401)" });
+          }
+        } else {
+          const msg = data?.error || data?.message || `HTTP ${res.status}`;
+          setSaveMsg({ kind: "error", text: msg });
+        }
+        return;
+      }
+
+      setSaveMsg({ kind: "success", text: "Saved as your default address." });
+    } catch (e: any) {
+      setSaveMsg({ kind: "error", text: e?.message || "Failed to save address" });
+    }
+  };
 
   // 点击 Continue：Address 步骤改为“提交时校验”
   const handleContinue = () => {
-  if (step === "address") {
-    // —— 1) 校验 Delivery ——（邮箱：登录后或已填时可忽略）
-    const ignoreEmail = isLoggedIn || !!(address.email && address.email.trim());
-    const deliveryRes = validateAddress(address, "", ignoreEmail);
+    if (step === "address") {
+      const ignoreEmail = isLoggedIn || !!(address.email && address.email.trim());
+      const deliveryRes = validateAddress(address, "", ignoreEmail);
+      const billingRes = sameAsDelivery
+        ? { valid: true, errs: emptyErr }
+        : validateAddress(billingAddress, "", true);
 
-    // —— 2) 校验 Billing ——（若同收货则直接视为有效；不校验邮箱）
-    const billingRes = sameAsDelivery
-      ? { valid: true, errs: emptyErr }
-      : validateAddress(billingAddress, "", true);
+      setAddressErrs(deliveryRes.errs);
+      setBillingErrs(billingRes.errs);
 
-    // —— 3) 设置错误态 & 阻止继续 —— 
-    setAddressErrs(deliveryRes.errs);
-    setBillingErrs(billingRes.errs);
-    if (!deliveryRes.valid || !billingRes.valid) {
-      setAddressShowErrors(true);
-      // 优先滚动到 Delivery；如想优先 Billing，可替换为 billing-section
-      const el = document.getElementById("address-section");
-      el?.scrollIntoView({ behavior: "smooth", block: "start" });
-      return;
+      if (!deliveryRes.valid || !billingRes.valid) {
+        setAddressShowErrors(true);
+
+        // ✅ 新增：给 Continue 区域也放同款文案
+        setContinueErrMsg("Please complete all required delivery address fields before saving.");
+
+        const el = document.getElementById("address-section");
+        el?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+
+      // ✅ 通过校验后清空
+      setContinueErrMsg(null);
+
+      setAddressShowErrors(false);
+      setAddressErrs(emptyErr);
+      setBillingErrs(emptyErr);
+
+      if (!isLoggedIn) void sendSubscriptionIfNeeded();
     }
-
-    // —— 4) 通过校验，清理错误并继续 —— 
-    setAddressShowErrors(false);
-    setAddressErrs(emptyErr);
-    setBillingErrs(emptyErr);
-
-    if (!isLoggedIn) void sendSubscriptionIfNeeded();
-  }
-  nextStepCore();
-};
+    nextStepCore();
+  };
 
   const itemsCount = cart.reduce((n, it: any) => n + (it?.qty ?? 1), 0);
 
@@ -1444,96 +1547,156 @@ export default function CheckoutPage() {
           )}
 
           {/* Address */}
-{/* Address + Billing（合并成一个卡片） */}
-{step === "address" && (
-  <section className="rounded-xl border pb-8" id="address-section">{/* ← 多加 pb-8 增加底部空白 */}
-    <div className="border-b px-4 py-3 font-semibold">Address & Billing</div>
+          {step === "address" && (
+            <>
+              {/* === 置顶：Use Saved Addresses（独立卡片） === */}
+              {(hasSavedDelivery || hasSavedBilling) && (
+                <section className="rounded-xl border" id="use-saved-addresses">
+                  <div className="border-b px-4 py-3 font-semibold">Use Saved Addresses</div>
+                  <div className="p-4 space-y-3">
+                    <p className="text-sm text-neutral-600">
+                      You can choose to use your saved Delivery and/or Billing addresses below.
+                    </p>
 
-    <div className="p-4 space-y-6">
-      {/* 1) Delivery Address */}
-      <div className="space-y-2">
-        <h3 className="text-base font-medium">Delivery Address</h3>
-        <AddressForm
-          address={address}
-          setAddress={setAddress}
-          emailInput={emailInput}
-          setEmailInput={setEmailInput}
-          marketingOptIn={marketingOptIn}
-          setMarketingOptIn={setMarketingOptIn}
-          showErrors={addressShowErrors}
-          errs={addressErrs}
-          errorBanner={addressShowErrors ? "Some required fields are missing or invalid." : null}
-          onEmailCommit={(email) => sendSubscriptionIfNeeded(email)}
-          onOptInChanged={(_opt) => sendSubscriptionIfNeeded()}
-          hideYourDetails={isLoggedIn}
-          onSaveDefault={isLoggedIn ? handleSaveDefaultAddress : undefined}
-          saveMsg={saveMsg}
-          variant="bare"
-        />
-      </div>
+                    <div className="flex flex-col gap-2 mt-2">
+                      {hasSavedDelivery && (
+                        <label className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={useSavedDelivery}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setUseSavedDelivery(checked);
+                              if (checked && savedDeliveryAddr) {
+                                setAddress(savedDeliveryAddr);
+                                setAddressShowErrors(false);
+                                setAddressErrs(emptyErr);
+                              }
+                            }}
+                          />
+                          Use saved <strong>Delivery Address</strong>
+                        </label>
+                      )}
 
-      {/* 2) Billing 同收货地址开关 */}
-      <div className="rounded-lg border p-4">
-        <label className="flex items-start gap-3 text-sm">
-          <input
-            type="checkbox"
-            className="mt-1"
-            checked={sameAsDelivery}
-            onChange={(e) => setSameAsDelivery(e.currentTarget.checked)}
-          />
-          <span>
-            Billing address is the same as delivery address
-            <p className="mt-1 text-xs text-neutral-500">
-              If unchecked, you can enter a different billing address below.
-            </p>
-          </span>
-        </label>
-      </div>
+                      {hasSavedBilling && (
+                        <label className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={useSavedBilling}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setUseSavedBilling(checked);
+                              if (checked && savedBillingAddr) {
+                                setBillingAddress(savedBillingAddr);
+                                setBillingErrs(emptyErr);
+                              }
+                            }}
+                          />
+                          Use saved <strong>Billing Address</strong>
+                        </label>
+                      )}
+                    </div>
+                  </div>
+                </section>
+              )}
 
-      {/* 3) Billing Address */}
-      {!sameAsDelivery && (
-        <div className="space-y-2">
-          <h3 className="text-base font-medium">Billing Address</h3>
-          <BillingForm
-            billing={billingAddress}
-            setBilling={setBillingAddress}
-            showErrors={addressShowErrors}
-            errs={billingErrs}
-            onFieldChange={handleBillingFieldChange}   // ★ 新增
-            variant="bare"
-          />
-        </div>
-      )}
+              {/* 与上方区块分隔一点空间 */}
+              <div className="h-4" />
 
-      {/* 4) 统一的“保存默认地址”按钮 —— 现在在内层容器里 */}
-      {isLoggedIn && (
-        <div className="flex justify-end -mt-2 mr-6">{/* ↑上移一点  ↑向左移一点（增加右侧外边距） */}
-          <div className="flex flex-col items-end gap-2">
-            <button
-              type="button"
-              onClick={handleSaveDefaultAddress}
-              className="rounded-full border bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
-            >
-              Save delivery address and billing address as default
-            </button>
+              {/* ✅ 当两边都使用已保存地址时，隐藏整个“Address & Billing”区域 */}
+              {!(useSavedDelivery && useSavedBilling) && (
+                <section className="rounded-xl border pb-8" id="address-section">
+                  <div className="border-b px-4 py-3 font-semibold">Address & Billing</div>
 
-            {saveMsg ? (
-              <div
-                className={
-                  "text-xs " +
-                  (saveMsg.kind === "success" ? "text-emerald-700" : "text-red-600")
-                }
-                aria-live="polite"
-              >
-                {saveMsg.text}
-              </div>
-            ) : null}
-          </div>
-        </div>
-      )}
-    </div>
-  </section>
-)}
+                  <div className="p-4 space-y-6">
+                    {/* 1) Delivery Address（当未勾选“用已保存 Delivery”时才显示可编辑表单） */}
+                    {!useSavedDelivery && (
+                      <div className="space-y-2">
+                        <h3 className="text-base font-medium">Delivery Address</h3>
+                        <AddressForm
+                          address={address}
+                          setAddress={setAddress}
+                          emailInput={emailInput}
+                          setEmailInput={setEmailInput}
+                          marketingOptIn={marketingOptIn}
+                          setMarketingOptIn={setMarketingOptIn}
+                          showErrors={addressShowErrors}
+                          errs={addressErrs}
+                          errorBanner={addressShowErrors ? "Some required fields are missing or invalid." : null}
+                          onEmailCommit={(email) => sendSubscriptionIfNeeded(email)}
+                          onOptInChanged={(_opt) => sendSubscriptionIfNeeded()}
+                          hideYourDetails={isLoggedIn}
+                          onSaveDefault={isLoggedIn ? handleSaveDefaultAddress : undefined}
+                          saveMsg={saveMsg}
+                          variant="bare"
+                        />
+                      </div>
+                    )}
+
+                    {/* 2) Billing 同收货地址开关（当未选择使用已保存 Billing 时才有意义） */}
+                    {!useSavedBilling && (
+                      <div className="rounded-lg border p-4">
+                        <label className="flex items-start gap-3 text-sm">
+                          <input
+                            type="checkbox"
+                            className="mt-1"
+                            checked={sameAsDelivery}
+                            onChange={(e) => setSameAsDelivery(e.currentTarget.checked)}
+                          />
+                          <span>
+                            Billing address is the same as delivery address
+                            <p className="mt-1 text-xs text-neutral-500">
+                              If unchecked, you can enter a different billing address below.
+                            </p>
+                          </span>
+                        </label>
+                      </div>
+                    )}
+
+                    {/* 3) Billing Address（当不同于收货地址且未勾选“用已保存 Billing”时） */}
+                    {!sameAsDelivery && !useSavedBilling && (
+                      <div className="space-y-2">
+                        <h3 className="text-base font-medium">Billing Address</h3>
+                        <BillingForm
+                          billing={billingAddress}
+                          setBilling={setBillingAddress}
+                          showErrors={addressShowErrors}
+                          errs={billingErrs}
+                          onFieldChange={handleBillingFieldChange}
+                          variant="bare"
+                        />
+                      </div>
+                    )}
+
+                    {/* 4) “保存默认地址”按钮（当至少有一侧是可编辑时才显示） */}
+                    {isLoggedIn && !(useSavedDelivery && useSavedBilling) && (
+                      <div className="flex justify-end -mt-2 mr-6">
+                        <div className="flex flex-col items-end gap-2">
+                          <button
+                            type="button"
+                            onClick={handleSaveDefaultAddress}
+                            className="rounded-full border bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
+                          >
+                            Save delivery address and billing address as default
+                          </button>
+                          {saveMsg ? (
+                            <div
+                              className={
+                                "text-xs " + (saveMsg.kind === "success" ? "text-emerald-700" : "text-red-600")
+                              }
+                              aria-live="polite"
+                            >
+                              {saveMsg.text}
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </section>
+              )}
+            </>
+          )}
 
           {/* Delivery */}
           {step === "delivery" && (
@@ -1710,29 +1873,40 @@ export default function CheckoutPage() {
 
         {/* 底部操作条 */}
         {step !== "payment" && (
-          <div className="mt-6 flex justify-end">
-            {step === "bag" ? (
-              <div className={isLoggedIn ? "w-[320px] max-w-full" : "w-[660px] max-w-full flex gap-3 justify-end"}>
-                {!isLoggedIn && (
+          <>
+            <div className="mt-6 flex justify-end">
+              {step === "bag" ? (
+                <div className={isLoggedIn ? "w-[320px] max-w-full" : "w-[660px] max-w-full flex gap-3 justify-end"}>
+                  {!isLoggedIn && (
+                    <div className="w-[320px]">
+                      <LargeGhostButton onClick={handleLoginAndContinue}>
+                        Login / Sign up and Continue
+                      </LargeGhostButton>
+                    </div>
+                  )}
                   <div className="w-[320px]">
-                    <LargeGhostButton onClick={handleLoginAndContinue}>
-                      Login / Sign up and Continue
-                    </LargeGhostButton>
+                    <LargePrimaryButton onClick={handleContinue}>Continue</LargePrimaryButton>
                   </div>
-                )}
-                <div className="w-[320px]">
-                  <LargePrimaryButton onClick={handleContinue}>Continue</LargePrimaryButton>
+                </div>
+              ) : (
+                <div className="w-[660px] max-w-full flex gap-3 justify-end">
+                  <LargeBackButton onClick={prevStep} />
+                  <LargePrimaryButton onClick={handleContinue}>
+                    Continue
+                  </LargePrimaryButton>
+                </div>
+              )}
+            </div>
+
+            {/* ✅ Address 步骤 Continue 按钮下方的错误提示 */}
+            {step === "address" && continueErrMsg && (
+              <div className="mt-2 flex justify-end">
+                <div className="w-[660px] max-w-full text-right">
+                  <p className="text-xs text-red-600">{continueErrMsg}</p>
                 </div>
               </div>
-            ) : (
-              <div className="w-[660px] max-w-full flex gap-3 justify-end">
-                <LargeBackButton onClick={prevStep} />
-                <LargePrimaryButton onClick={handleContinue}>
-                  Continue
-                </LargePrimaryButton>
-              </div>
             )}
-          </div>
+          </>
         )}
       </div>
     </main>

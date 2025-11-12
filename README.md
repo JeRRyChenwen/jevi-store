@@ -958,7 +958,11 @@ add to bag 字体
 
 checkou 页面 continue 按钮下面提示“Please complete all required delivery address fields before saving.”
 
-item detail 页面
+item detail 页面完善
+
+BILLING ADDRESS title 要删掉
+
+如果你没有储存 address 的话，请先 fill out address
 
 # ============================================================================
 
@@ -994,3 +998,26 @@ terms and conditions
 By clicking Create an Account, you agree to yd.'s privacy policy, terms & conditions and cookie policy
 
 By subscribing you agree to our Terms and Conditions and Privacy Policy. Applies to Full Price product only. Minimum spend of $80. Excludes sale items, gift cards, alterations, delivery costs.
+
+其实我的想法是单独做一个区域让用户去使用默认地址，截图是我们目前做好的 checkout 页面里的 address 页面的内容，我的想法是，在红圈区域上面加一个单独的区域，让用户自己去选择用不用已经储存好的 billing address 和 delivery address （当然，他们可以选择用或者不用，或者只使用已经储存好的 billing address 而不使用 delivery address，反之亦然）
+
+如果用户只选择使用已经储存好的 billing address 而不使用已经储存好的 delivery address 的话，截图中的红圈部分就只显示让用户 delivery address 区域就好，因为只需要让用户输入 delivery address 信息了，而如果用户只选择使用已经储存好的 delivery address 而不使用已经储存好的 billing address 的话，截图中的红圈部分就只显示让用户 billing address 区域就好，因为只需要让用户输入 billing address 信息了，如果用户选择直接使用已经储存好的 billing address 和 delivery address 的话，那就不用显示红圈中的内容了，而如果用户几部选择使用已经储存好的 billing address 也不 选择使用已经储存好的 delivery address 的话，那就需要像显示完整的截图中的红圈中的内容了
+
+我说的可能比较复杂，不知道你能不能理解我想做什么
+
+我完全懂你想做的 👌
+你要的是：
+
+上面一块独立区域 让用户勾选「使用已保存的 Delivery / Billing 地址」
+
+下面整个大卡片（你红圈的那块）根据勾选情况，显示不同的表单
+
+四种情况：
+
+用 saved Billing，不用 saved Delivery → 只让 TA 填 Delivery
+
+用 saved Delivery，不用 saved Billing → 只让 TA 填 Billing
+
+两个 saved 都用 → 下面整块表单不显示
+
+两个 saved 都不用 → 下面整块完整显示（现在的样子）

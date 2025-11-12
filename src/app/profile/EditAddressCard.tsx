@@ -34,23 +34,23 @@ const EMPTY_ADDRESS: Address = {
   city: "",
   state: "",
   postcode: "",
-  country: "Australia",
+  country: "",         // ✅ 改为空字符串
 };
 
 function shapeAddress(raw: any | null): Address {
   if (!raw) return { ...EMPTY_ADDRESS };
   return {
     first_name: raw.first_name || "",
-    last_name: raw.last_name || "",
-    phone: raw.phone || "",
-    line1: raw.line1 || "",
-    line2: raw.line2 || "",
-    city: raw.city || "",
-    state: raw.state || "",
-    postcode: raw.postcode || "",
-    country: raw.country || "Australia",
-    is_default:
-      raw.is_default != null ? !!raw.is_default : (raw.type ? true : null),
+    last_name:  raw.last_name  || "",
+    phone:      raw.phone      || "",
+    line1:      raw.line1      || "",
+    line2:      raw.line2      || "",
+    city:       raw.city       || "",
+    state:      raw.state      || "",
+    postcode:   raw.postcode   || "",
+    country:    raw.country    || "",     // ✅ 不再给 "Australia"
+    is_default: raw.is_default != null ? !!raw.is_default
+               : (raw.type ? true : null),
   };
 }
 
