@@ -11,6 +11,9 @@ import { selectCurrencyAndTotals } from "@/lib/cartPricing";
 import { effectiveMinor, type PriceRec, type Currency } from "@/lib/pricing";
 import { fetchAuthedEmail, isLoggedInViaCookie } from "@/lib/auth";
 import BraintreePayPalOnly from "@/app/checkout/_components/BraintreePayPalOnly";
+import BagStep from "./_components/BagStep";
+import AddressStep from "./_components/AddressStep";
+
 
 
 type CartItem = CartListItem;
@@ -223,342 +226,6 @@ function CheckoutSteps({
         })}
       </div>
     </div>
-  );
-}
-
-/* ---------------- Address 表单 ---------------- */
-function AddressForm({
-  address,
-  setAddress,
-  emailInput,
-  setEmailInput,
-  marketingOptIn,
-  setMarketingOptIn,
-  showErrors,
-  errs,
-  errorBanner,
-  onEmailCommit,
-  onOptInChanged,
-  hideYourDetails = false,
-  onSaveDefault,
-  saveMsg,
-  variant = "section",         // ★ 新增：'section' | 'bare'
-  title = "Address",           // ★ 仅 section 模式显示
-}: {
-  address: Address;
-  setAddress: (a: Address) => void;
-  emailInput: string;
-  setEmailInput: (v: string) => void;
-  marketingOptIn: boolean;
-  setMarketingOptIn: (v: boolean) => void;
-  showErrors: boolean;
-  errs: AddressErr;
-  errorBanner?: string | null;
-  onEmailCommit?: (email: string) => void;
-  onOptInChanged?: (opt: boolean) => void;
-  hideYourDetails?: boolean;
-  onSaveDefault?: () => Promise<void> | void;
-  saveMsg?: { kind: "error" | "success"; text: string } | null;
-  variant?: "section" | "bare";
-  title?: string;
-}) {
-  const on =
-    (k: keyof Address) =>
-    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-      setAddress({ ...address, [k]: e.target.value });
-
-  const baseInput =
-    "w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-neutral-900/10";
-  const cls = (bad: boolean) =>
-    showErrors && bad ? `${baseInput} border-red-500` : `${baseInput} border-neutral-300`;
-
-  const Inner = (
-    <div className="p-4 space-y-6">
-      {/* 表单主体 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-1">
-          <label htmlFor="addr-first" className="block text-sm font-medium text-neutral-700">
-            First Name
-          </label>
-          <input
-            id="addr-first"
-            className={cls(errs.firstName)}
-            autoComplete="given-name"
-            value={address.firstName || ""}
-            onChange={on("firstName")}
-          />
-        </div>
-
-        <div className="space-y-1">
-          <label htmlFor="addr-last" className="block text-sm font-medium text-neutral-700">
-            Last Name
-          </label>
-          <input
-            id="addr-last"
-            className={cls(errs.lastName)}
-            autoComplete="family-name"
-            value={address.lastName || ""}
-            onChange={on("lastName")}
-          />
-        </div>
-
-        <div className="md:col-span-2 space-y-1">
-          <label htmlFor="addr-phone" className="block text-sm font-medium text-neutral-700">
-            Phone
-          </label>
-          <input
-            id="addr-phone"
-            className={cls(errs.phone)}
-            autoComplete="tel"
-            value={address.phone || ""}
-            onChange={on("phone")}
-          />
-        </div>
-
-        <div className="md:col-span-2 space-y-1">
-          <label htmlFor="addr-line1" className="block text-sm font-medium text-neutral-700">
-            Address Line 1
-          </label>
-          <input
-            id="addr-line1"
-            className={cls(errs.line1)}
-            autoComplete="address-line1"
-            value={address.line1 || ""}
-            onChange={on("line1")}
-          />
-        </div>
-
-        <div className="md:col-span-2 space-y-1">
-          <label htmlFor="addr-line2" className="block text-sm font-medium text-neutral-700">
-            Address Line 2 (optional)
-          </label>
-          <input
-            id="addr-line2"
-            className={baseInput + " border-neutral-300"}
-            autoComplete="address-line2"
-            value={address.line2 || ""}
-            onChange={on("line2")}
-          />
-        </div>
-
-        <div className="space-y-1">
-          <label htmlFor="addr-city" className="block text-sm font-medium text-neutral-700">
-            City
-          </label>
-          <input
-            id="addr-city"
-            className={cls(errs.city)}
-            autoComplete="address-level2"
-            value={address.city || ""}
-            onChange={on("city")}
-          />
-        </div>
-
-        <div className="space-y-1">
-          <label htmlFor="addr-state" className="block text-sm font-medium text-neutral-700">
-            State/Region
-          </label>
-          <input
-            id="addr-state"
-            className={cls(errs.state)}
-            autoComplete="address-level1"
-            value={address.state || ""}
-            onChange={on("state")}
-          />
-        </div>
-
-        <div className="space-y-1">
-          <label htmlFor="addr-postcode" className="block text-sm font-medium text-neutral-700">
-            Postcode
-          </label>
-          <input
-            id="addr-postcode"
-            className={cls(errs.postcode)}
-            autoComplete="postal-code"
-            value={address.postcode || ""}
-            onChange={on("postcode")}
-          />
-        </div>
-
-        <div className="space-y-1">
-          <label htmlFor="addr-country" className="block text-sm font-medium text-neutral-700">
-            Country
-          </label>
-          <input
-            id="addr-country"
-            className={cls(errs.country)}
-            autoComplete="country-name"
-            value={address.country || ""}
-            onChange={on("country")}
-          />
-        </div>
-      </div>
-
-      {/* 保存为默认地址 */}
-      {/* {onSaveDefault && (
-        <div className="pt-1 flex flex-col items-end gap-2">
-          <button
-            type="button"
-            onClick={() => onSaveDefault()}
-            className="rounded-full border bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
-          >
-            Save address and set as default address
-          </button>
-          {saveMsg ? (
-            <div
-              className={"text-xs " + (saveMsg.kind === "success" ? "text-emerald-700" : "text-red-600")}
-              aria-live="polite"
-            >
-              {saveMsg.text}
-            </div>
-          ) : null}
-        </div>
-      )} */}
-
-      {/* 未登录才显示 Your Details */}
-      {!hideYourDetails && (
-        <div className="border rounded-lg p-4">
-          <h3 className="text-base font-medium mb-2">Your Details</h3>
-          <p className="text-sm text-neutral-600 mb-3">
-            Please enter your email address, we'll send your order confirmation here
-          </p>
-
-          <label htmlFor="addr-email" className="block text-sm font-medium mb-1">
-            Email Address
-          </label>
-          <input
-            id="addr-email"
-            type="email"
-            className={cls(errs.email)}
-            autoComplete="email"
-            value={emailInput}
-            onChange={(e) => {
-              const v = e.currentTarget.value;
-              setEmailInput(v);
-              setAddress({ ...address, email: v });
-            }}
-            onBlur={(e) => onEmailCommit?.(e.currentTarget.value)}
-          />
-
-          <p className="mt-1 text-xs text-neutral-500">You can create an account after checkout</p>
-
-          <label className="mt-3 flex items-start gap-2 text-sm">
-            <input
-              type="checkbox"
-              className="mt-1"
-              checked={marketingOptIn}
-              onChange={(e) => {
-                const v = e.currentTarget.checked;
-                setMarketingOptIn(v);
-                onOptInChanged?.(v);
-              }}
-            />
-            <span>Email me updates on New Arrivals, Sale and Offers</span>
-          </label>
-
-          <p className="mt-3 text-xs text-neutral-500">
-            * We treat your personal data with care, view our{" "}
-            <a className="underline" href="/privacy">
-              Privacy Policy
-            </a>
-            .
-          </p>
-        </div>
-      )}
-    </div>
-  );
-
-  if (variant === "bare") return <>{Inner}</>;
-
-  return (
-    <section className="rounded-xl border" id="address-section">
-      <div className="border-b px-4 py-3 font-semibold">{title}</div>
-      {Inner}
-    </section>
-  );
-}
-
-/* ---------------- Billing 表单（精简，无邮箱/保存） ---------------- */
-function BillingForm({
-  billing,
-  setBilling,
-  showErrors,
-  errs,
-  onFieldChange,            // ★ 新增
-  variant = "section",
-  title = "Billing Address",
-}: {
-  billing: Address;
-  setBilling: (a: Address) => void;
-  showErrors: boolean;
-  errs: AddressErr;
-  onFieldChange?: (k: keyof Address, v: string) => void;  // ★ 新增
-  variant?: "section" | "bare";
-  title?: string;
-}) {
-  const baseInput =
-    "w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-neutral-900/10";
-  const cls = (bad: boolean) =>
-    showErrors && bad ? `${baseInput} border-red-500` : `${baseInput} border-neutral-300`;
-
-  const on =
-  (k: keyof Address) =>
-  (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = e.target.value;
-    setBilling({ ...billing, [k]: v });
-    if (showErrors && (errs as any)[k] === true) onFieldChange?.(k, v); // 仅当该字段当前为错时尝试清错
-  };
-
-  const Inner = (
-    <div className="p-4 space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-1">
-          <label className="block text-sm font-medium text-neutral-700">First Name</label>
-          <input className={cls(errs.firstName)} value={billing.firstName || ""} onChange={on("firstName")} />
-        </div>
-        <div className="space-y-1">
-          <label className="block text-sm font-medium text-neutral-700">Last Name</label>
-          <input className={cls(errs.lastName)} value={billing.lastName || ""} onChange={on("lastName")} />
-        </div>
-        <div className="md:col-span-2 space-y-1">
-          <label className="block text-sm font-medium text-neutral-700">Phone</label>
-          <input className={cls(errs.phone)} value={billing.phone || ""} onChange={on("phone")} />
-        </div>
-        <div className="md:col-span-2 space-y-1">
-          <label className="block text-sm font-medium text-neutral-700">Address Line 1</label>
-          <input className={cls(errs.line1)} value={billing.line1 || ""} onChange={on("line1")} />
-        </div>
-        <div className="md:col-span-2 space-y-1">
-          <label className="block text-sm font-medium text-neutral-700">Address Line 2 (optional)</label>
-          <input className={baseInput + " border-neutral-300"} value={billing.line2 || ""} onChange={on("line2")} />
-        </div>
-        <div className="space-y-1">
-          <label className="block text-sm font-medium text-neutral-700">City</label>
-          <input className={cls(errs.city)} value={billing.city || ""} onChange={on("city")} />
-        </div>
-        <div className="space-y-1">
-          <label className="block text-sm font-medium text-neutral-700">State/Region</label>
-          <input className={cls(errs.state)} value={billing.state || ""} onChange={on("state")} />
-        </div>
-        <div className="space-y-1">
-          <label className="block text-sm font-medium text-neutral-700">Postcode</label>
-          <input className={cls(errs.postcode)} value={billing.postcode || ""} onChange={on("postcode")} />
-        </div>
-        <div className="space-y-1">
-          <label className="block text-sm font-medium text-neutral-700">Country</label>
-          <input className={cls(errs.country)} value={billing.country || ""} onChange={on("country")} />
-        </div>
-      </div>
-    </div>
-  );
-
-  if (variant === "bare") return <>{Inner}</>;
-
-  return (
-    <section className="rounded-xl border" id="billing-section">
-      <div className="border-b px-4 py-3 font-semibold">{title}</div>
-      {Inner}
-    </section>
   );
 }
 
@@ -936,6 +603,16 @@ export default function CheckoutPage() {
   const [addressShowErrors, setAddressShowErrors] = useState(false);
   const [addressErrs, setAddressErrs] = useState<AddressErr>(emptyErr);
   const [billingErrs, setBillingErrs] = useState<AddressErr>(emptyErr);
+
+
+  // 提供给 AddressStep，用来一键清空错误状态
+  const clearAddressErrors = () => {
+    setAddressShowErrors(false);
+    setAddressErrs(emptyErr);
+  };
+  const clearBillingErrors = () => {
+    setBillingErrs(emptyErr);
+  };
 
 
   // ✅ 就在这里粘贴 ↓↓↓
@@ -1456,246 +1133,51 @@ export default function CheckoutPage() {
         <div className="space-y-6">
           {/* Bag */}
           {step === "bag" && (
-            <section className="rounded-xl border">
-              <div className="border-b px-4 py-3 font-semibold">Your Bag</div>
-              <div className="p-4">
-                <CartList
-                  cart={cart}
-                  onInc={(k) =>
-                    setCart((p) =>
-                      p.map((x) =>
-                        x.key === k ? { ...x, qty: Math.min(x.qty + 1, x.stock) } : x
-                      )
-                    )
-                  }
-                  onDec={(k) =>
-                    setCart((p) =>
-                      p.map((x) =>
-                        x.key === k ? { ...x, qty: Math.max(1, x.qty - 1) } : x
-                      )
-                    )
-                  }
-                  onRemove={(k) => setCart((p) => p.filter((x) => x.key !== k))}
-                />
-              </div>
-              <div className="border-t p-4">
-                <div className="mb-2 text-sm font-semibold">Order Summary</div>
-                <div className="space-y-2 text-sm">
-                  <Row label="Subtotal" value={fmtPrice(itemsTotals.itemsMajor, currency)} strongRight />
-                  {savedMajor > 0 && (
-                    <Row
-                      label="You saved"
-                      value={fmtPrice(savedMajor, currency)}
-                      valueClass="text-emerald-700 font-semibold"
-                    />
-                  )}
-                  {hasItems && (
-                    <Row
-                      label="Delivery fee"
-                      value={
-                        itemsTotals.itemsMajor >= DELIVERY_FREE_THRESHOLD
-                          ? "FREE for over $100"
-                          : fmtPrice(DELIVERY_FLAT, currency)
-                      }
-                      valueClass={
-                        itemsTotals.itemsMajor >= DELIVERY_FREE_THRESHOLD ? "text-emerald-700 font-semibold" : undefined
-                      }
-                    />
-                  )}
-                  <div className="pt-1">
-                    <Row
-                      label="Total"
-                      value={fmtPrice(
-                        itemsTotals.itemsMajor +
-                          (hasItems && itemsTotals.itemsMajor < DELIVERY_FREE_THRESHOLD ? DELIVERY_FLAT : 0),
-                        currency
-                      )}
-                      strongLeft
-                      strongRight
-                      bigRight
-                    />
-                    <div className="mt-1 text-xs text-neutral-500">Including GST</div>
-                  </div>
-                </div>
-              </div>
-            </section>
-          )}
-
-          {/* Bag 步骤：隐藏的 PayPal / Braintree 预加载实例 */}
-          {step === "bag" && amountInMajorUnit > 0 && (
-            <div
-              aria-hidden="true"
-              style={{
-                position: "fixed",
-                bottom: 0,
-                left: 0,
-                width: 1,
-                height: 1,
-                opacity: 0,
-                pointerEvents: "none",
-                zIndex: -1,
-              }}
-            >
-              <BraintreePayPalOnly
-                amount={amountInMajorUnit}
-                currency="AUD"
-                // 预加载只是提前拉起 SDK，不做任何业务回调
-                onInitiate={() => {}}
-                onSucceeded={() => {}}
-              />
-            </div>
+            <BagStep
+              cart={cart}
+              setCart={setCart}
+              currency={currency}
+              itemsMajor={itemsTotals.itemsMajor}
+              savedMajor={savedMajor}
+              hasItems={hasItems}
+              deliveryThreshold={DELIVERY_FREE_THRESHOLD}
+              deliveryFlat={DELIVERY_FLAT}
+              amountInMajorUnit={amountInMajorUnit}
+            />
           )}
 
           {/* Address */}
           {step === "address" && (
-            <>
-              {/* === 置顶：Use Saved Addresses（独立卡片） === */}
-              {(hasSavedDelivery || hasSavedBilling) && (
-                <section className="rounded-xl border" id="use-saved-addresses">
-                  <div className="border-b px-4 py-3 font-semibold">Use Saved Addresses</div>
-                  <div className="p-4 space-y-3">
-                    <p className="text-sm text-neutral-600">
-                      You can choose to use your saved Delivery and/or Billing addresses below.
-                    </p>
-
-                    <div className="flex flex-col gap-2 mt-2">
-                      {hasSavedDelivery && (
-                        <label className="flex items-center gap-2 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={useSavedDelivery}
-                            onChange={(e) => {
-                              const checked = e.target.checked;
-                              setUseSavedDelivery(checked);
-                              if (checked && savedDeliveryAddr) {
-                                setAddress(savedDeliveryAddr);
-                                setAddressShowErrors(false);
-                                setAddressErrs(emptyErr);
-                              }
-                            }}
-                          />
-                          Use saved <strong>Delivery Address</strong>
-                        </label>
-                      )}
-
-                      {hasSavedBilling && (
-                        <label className="flex items-center gap-2 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={useSavedBilling}
-                            onChange={(e) => {
-                              const checked = e.target.checked;
-                              setUseSavedBilling(checked);
-                              if (checked && savedBillingAddr) {
-                                setBillingAddress(savedBillingAddr);
-                                setBillingErrs(emptyErr);
-                              }
-                            }}
-                          />
-                          Use saved <strong>Billing Address</strong>
-                        </label>
-                      )}
-                    </div>
-                  </div>
-                </section>
-              )}
-
-              {/* 与上方区块分隔一点空间 */}
-              <div className="h-4" />
-
-              {/* ✅ 当两边都使用已保存地址时，隐藏整个“Address & Billing”区域 */}
-              {!(useSavedDelivery && useSavedBilling) && (
-                <section className="rounded-xl border pb-8" id="address-section">
-                  <div className="border-b px-4 py-3 font-semibold">Address & Billing</div>
-
-                  <div className="p-4 space-y-6">
-                    {/* 1) Delivery Address（当未勾选“用已保存 Delivery”时才显示可编辑表单） */}
-                    {!useSavedDelivery && (
-                      <div className="space-y-2">
-                        <h3 className="text-base font-medium">Delivery Address</h3>
-                        <AddressForm
-                          address={address}
-                          setAddress={setAddress}
-                          emailInput={emailInput}
-                          setEmailInput={setEmailInput}
-                          marketingOptIn={marketingOptIn}
-                          setMarketingOptIn={setMarketingOptIn}
-                          showErrors={addressShowErrors}
-                          errs={addressErrs}
-                          errorBanner={addressShowErrors ? "Some required fields are missing or invalid." : null}
-                          onEmailCommit={(email) => sendSubscriptionIfNeeded(email)}
-                          onOptInChanged={(_opt) => sendSubscriptionIfNeeded()}
-                          hideYourDetails={isLoggedIn}
-                          onSaveDefault={isLoggedIn ? handleSaveDefaultAddress : undefined}
-                          saveMsg={saveMsg}
-                          variant="bare"
-                        />
-                      </div>
-                    )}
-
-                    {/* 2) Billing 同收货地址开关（当未选择使用已保存 Billing 时才有意义） */}
-                    {!useSavedBilling && (
-                      <div className="rounded-lg border p-4">
-                        <label className="flex items-start gap-3 text-sm">
-                          <input
-                            type="checkbox"
-                            className="mt-1"
-                            checked={sameAsDelivery}
-                            onChange={(e) => setSameAsDelivery(e.currentTarget.checked)}
-                          />
-                          <span>
-                            Billing address is the same as delivery address
-                            <p className="mt-1 text-xs text-neutral-500">
-                              If unchecked, you can enter a different billing address below.
-                            </p>
-                          </span>
-                        </label>
-                      </div>
-                    )}
-
-                    {/* 3) Billing Address（当不同于收货地址且未勾选“用已保存 Billing”时） */}
-                    {!sameAsDelivery && !useSavedBilling && (
-                      <div className="space-y-2">
-                        <h3 className="text-base font-medium">Billing Address</h3>
-                        <BillingForm
-                          billing={billingAddress}
-                          setBilling={setBillingAddress}
-                          showErrors={addressShowErrors}
-                          errs={billingErrs}
-                          onFieldChange={handleBillingFieldChange}
-                          variant="bare"
-                        />
-                      </div>
-                    )}
-
-                    {/* 4) “保存默认地址”按钮（当至少有一侧是可编辑时才显示） */}
-                    {isLoggedIn && !(useSavedDelivery && useSavedBilling) && (
-                      <div className="flex justify-end -mt-2 mr-6">
-                        <div className="flex flex-col items-end gap-2">
-                          <button
-                            type="button"
-                            onClick={handleSaveDefaultAddress}
-                            className="rounded-full border bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
-                          >
-                            Save delivery address and billing address as default
-                          </button>
-                          {saveMsg ? (
-                            <div
-                              className={
-                                "text-xs " + (saveMsg.kind === "success" ? "text-emerald-700" : "text-red-600")
-                              }
-                              aria-live="polite"
-                            >
-                              {saveMsg.text}
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </section>
-              )}
-            </>
+            <AddressStep
+              isLoggedIn={isLoggedIn}
+              address={address}
+              setAddress={setAddress}
+              billingAddress={billingAddress}
+              setBillingAddress={setBillingAddress}
+              sameAsDelivery={sameAsDelivery}
+              setSameAsDelivery={setSameAsDelivery}
+              hasSavedDelivery={hasSavedDelivery}
+              hasSavedBilling={hasSavedBilling}
+              savedDeliveryAddr={savedDeliveryAddr}
+              savedBillingAddr={savedBillingAddr}
+              useSavedDelivery={useSavedDelivery}
+              setUseSavedDelivery={setUseSavedDelivery}
+              useSavedBilling={useSavedBilling}
+              setUseSavedBilling={setUseSavedBilling}
+              addressShowErrors={addressShowErrors}
+              addressErrs={addressErrs}
+              billingErrs={billingErrs}
+              handleBillingFieldChange={handleBillingFieldChange}
+              clearAddressErrors={clearAddressErrors}
+              clearBillingErrors={clearBillingErrors}
+              saveMsg={saveMsg}
+              onSaveDefault={handleSaveDefaultAddress}
+              marketingOptIn={marketingOptIn}
+              setMarketingOptIn={setMarketingOptIn}
+              emailInput={emailInput}
+              setEmailInput={setEmailInput}
+              sendSubscriptionIfNeeded={sendSubscriptionIfNeeded}
+            />
           )}
 
           {/* Delivery */}
