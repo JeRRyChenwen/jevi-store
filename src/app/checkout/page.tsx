@@ -5,21 +5,20 @@ import { useEffect, useMemo, useState } from "react";
 import { Check } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import CartList from "@/components/cart/CartList";
 import type { CartItem as CartListItem } from "@/components/cart/CartList";
 import { selectCurrencyAndTotals } from "@/lib/cartPricing";
 import { effectiveMinor, type PriceRec, type Currency } from "@/lib/pricing";
 import { fetchAuthedEmail, isLoggedInViaCookie } from "@/lib/auth";
-import BraintreePayPalOnly from "@/app/checkout/_components/BraintreePayPalOnly";
 import BagStep from "./_components/BagStep";
 import AddressStep from "./_components/AddressStep";
-
+import DeliveryStep from "./_components/DeliveryStep";
+import PaymentStep from "./_components/PaymentStep";
+import { useCart } from "./(hooks)/useCart";
 
 
 type CartItem = CartListItem;
 
 /* ---------------- 常量 ---------------- */
-const LS_CART_KEY = "bag:v1";
 const LS_ADDRESS_KEY = "sp.checkout.address";
 const DELIVERY_FREE_THRESHOLD = 100;
 const DELIVERY_FLAT = 10;
@@ -231,43 +230,6 @@ function CheckoutSteps({
 
 /* ---------------- Delivery ---------------- */
 type DeliveryMethod = "standard" | "express";
-const METHOD_META: Record<DeliveryMethod, { label: string; eta: string }> = {
-  standard: { label: "Standard delivery", eta: "Arrives in 3–5 business days" },
-  express: { label: "Express delivery", eta: "Arrives in 1–2 business days" },
-};
-function DeliverySection({
-  deliveryMethod,
-  setDeliveryMethod,
-}: {
-  deliveryMethod: DeliveryMethod;
-  setDeliveryMethod: (v: DeliveryMethod) => void;
-}) {
-  return (
-    <section className="rounded-xl border">
-      <div className="border-b px-4 py-3 font-semibold">Delivery</div>
-      <div className="p-4 space-y-3">
-        {(["standard", "express"] as DeliveryMethod[]).map((m) => (
-          <label
-            key={m}
-            className="flex items-start gap-3 rounded-lg border p-3 has-[:checked]:border-neutral-900 cursor-pointer"
-          >
-            <input
-              type="radio"
-              name="deliveryMethod"
-              className="mt-1"
-              checked={deliveryMethod === m}
-              onChange={() => setDeliveryMethod(m)}
-            />
-            <div className="flex-1">
-              <div className="font-medium">{METHOD_META[m].label}</div>
-              <div className="text-sm text-neutral-600">{METHOD_META[m].eta}</div>
-            </div>
-          </label>
-        ))}
-      </div>
-    </section>
-  );
-}
 
 /* ---------------- 价格工具 ---------------- */
 function itemToPriceRecs(it: any): PriceRec[] {
@@ -546,15 +508,13 @@ async function sendOrderToServer(args: {
   }
 }
 
-
 /* ---------------- Page ---------------- */
 export default function CheckoutPage() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const [loaded, setLoaded] = useState(false);
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const { cart, setCart, itemsCount, hasItems, clearCart } = useCart();
   const [address, setAddress] = useState<Address>({});
   
   // Billing 地址与“同收货地址”开关  ←← 在这里插入
@@ -684,10 +644,6 @@ export default function CheckoutPage() {
   // 初始化本地缓存 & 登录态 & 回填邮箱
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(LS_CART_KEY);
-      if (raw) setCart(JSON.parse(raw));
-    } catch {}
-    try {
       const rawAddr = localStorage.getItem(LS_ADDRESS_KEY);
       if (rawAddr) {
         const a = JSON.parse(rawAddr);
@@ -723,11 +679,8 @@ export default function CheckoutPage() {
     })();
 
     window.addEventListener("focus", readLoginFromCookie);
-    setLoaded(true);
     return () => window.removeEventListener("focus", readLoginFromCookie);
   }, []);
-
-
 
   useEffect(() => {
   // 仅已登录才请求 /api/addresses
@@ -768,11 +721,6 @@ export default function CheckoutPage() {
   return () => { dead = true; };
 }, [isLoggedIn]); // 登录状态变化时重新拉取
 
-
-
-
-
-
   // 勾选“同收货地址”时，实时用 delivery 覆盖 billing
   useEffect(() => {
     if (sameAsDelivery) {
@@ -788,17 +736,6 @@ export default function CheckoutPage() {
     } catch {}
   }, [billingAddress, sameAsDelivery]);
 
-  // 同步购物车 & 广播
-  useEffect(() => {
-    if (!loaded) return;
-    try {
-      localStorage.setItem(LS_CART_KEY, JSON.stringify(cart));
-      const count = cart.reduce((acc, it) => acc + (Number(it.qty) || 0), 0);
-      window.dispatchEvent(new CustomEvent("bag:count", { detail: { count } }));
-      window.dispatchEvent(new CustomEvent("bag:updated", { detail: {} }));
-    } catch {}
-  }, [cart, loaded]);
-
   // 地址写回：每次地址变化清空保存提示
   useEffect(() => {
     try {
@@ -806,8 +743,6 @@ export default function CheckoutPage() {
     } catch {}
     setSaveMsg(null);
   }, [address]);
-
-  const hasItems = cart.length > 0;
 
   // 统一用 AUD 计算与展示
   const pricingInput = useMemo(
@@ -1034,8 +969,6 @@ export default function CheckoutPage() {
     nextStepCore();
   };
 
-  const itemsCount = cart.reduce((n, it: any) => n + (it?.qty ?? 1), 0);
-
   // 支付成功 → 落库（拿到 order_number）→ 预览 → 清空购物车 → 跳转确认页
   const handlePaySucceeded = async (payload?: any) => {
     setIsPayProcessing(true);   // ✅ 标记：支付已成功，正在处理后续逻辑
@@ -1097,13 +1030,9 @@ export default function CheckoutPage() {
       );
     } catch {}
 
-    // 3) 清空购物车
-    try {
-      setCart([]);
-      localStorage.setItem(LS_CART_KEY, JSON.stringify([]));
-      window.dispatchEvent(new CustomEvent("bag:count", { detail: { count: 0 } }));
-      window.dispatchEvent(new CustomEvent("bag:updated", { detail: {} }));
-    } catch {}
+
+    // 3) 清空购物车（用 hook 提供的方法）
+    clearCart();
 
     // 4) 发送订阅并跳转确认页
     sendSubscriptionIfNeeded().finally(() => {
@@ -1182,166 +1111,29 @@ export default function CheckoutPage() {
 
           {/* Delivery */}
           {step === "delivery" && (
-            <>
-              {hasItems && itemsTotals.itemsMajor >= DELIVERY_FREE_THRESHOLD && (
-                <div className="rounded-xl border px-4 py-3 text-sm">
-                  <div className="mb-2 font-medium">Congratulations! You have reached free shipping</div>
-                  <div className="h-1 w-full overflow-hidden rounded bg-neutral-200">
-                    <div className="h-full w-full bg-emerald-600" />
-                  </div>
-                </div>
-              )}
-              <DeliverySection
-                deliveryMethod={deliveryMethod}
-                setDeliveryMethod={setDeliveryMethod}
-              />
-            </>
+            <DeliveryStep
+              deliveryMethod={deliveryMethod}
+              setDeliveryMethod={setDeliveryMethod}
+              showFreeShipping={
+                hasItems && itemsTotals.itemsMajor >= DELIVERY_FREE_THRESHOLD
+              }
+            />
           )}
 
-          {/* Payment（始终挂载） */}
-          <section
-            className="rounded-xl border"
-            aria-hidden={step !== "payment"}
-            style={
-              step === "payment"
-                ? undefined
-                : {
-                    position: "fixed",
-                    left: 0,
-                    bottom: 0,
-                    width: "300px",
-                    height: "1px",
-                    opacity: 0.01,
-                    pointerEvents: "none",
-                    zIndex: 0,
-                  }
-            }
-          >
-            <div className="px-4 py-3 border-b font-semibold">How would you like to pay?</div>
-
-            <div className="p-4 space-y-6">
-              {/* Payment Options（只显示 PayPal） */}
-              <div className="border rounded-lg p-4">
-                <h2 className="text-lg font-medium mb-4">Payment Options</h2>
-                <label className="flex items-center gap-3 w-full border rounded-md px-3 py-3 cursor-pointer border-black ring-1 ring-black">
-                  <input type="radio" name="payment" className="mt-0.5" checked readOnly />
-                  <div className="flex-1 flex items-center justify-between gap-3">
-                    <div className="font-medium">PayPal</div>
-                    <div className="flex items-center gap-2 opacity-80">
-                      <img src="https://www.paypalobjects.com/webstatic/icon/pp258.png" alt="PayPal" className="h-5" />
-                    </div>
-                  </div>
-                </label>
-              </div>
-
-              {/* 蓝色提示 */}
-              <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm">
-                <div className="flex items-start gap-2">
-                  <span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-white">
-                    <Check size={14} />
-                  </span>
-                </div>
-                <div className="font-medium">Make sure your delivery address is correct!</div>
-                <div className="text-gray-600">You can go back to the Address step to make changes.</div>
-              </div>
-
-              {/* Delivery Details（摘要） */}
-              <div className="border rounded-lg p-4">
-                <h3 className="text-base font-medium mb-3">Delivery Details</h3>
-                {address?.firstName || address?.lastName ? (
-                  <div className="text-sm leading-6 text-gray-800">
-                    <div>{[address.firstName, address.lastName].filter(Boolean).join(" ")}</div>
-                    <div>
-                      {address.line1}
-                      {address.line2 ? ` ${address.line2}` : ""}
-                    </div>
-                    <div>
-                      {address.city} {address.state} {address.postcode}
-                    </div>
-                    <div>{address.country}</div>
-                    {address.email && <div className="mt-2">{address.email}</div>}
-                    {address.phone && <div>{address.phone}</div>}
-                  </div>
-                ) : (
-                  <div className="text-sm text-gray-500">
-                    No delivery address found. Please complete the <b>Address</b> step.
-                  </div>
-                )}
-              </div>
-
-              {/* 订单摘要 */}
-              <div className="border rounded-lg p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm text-gray-600">Items</div>
-                  <div className="text-base font-medium">
-                    {itemsCount} item{itemsCount > 1 ? "s" : ""}
-                  </div>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="text-sm text-gray-600">Subtotal</div>
-                  <div className="text-base font-medium">
-                    {fmtMoneyMinor(itemsTotals.itemsMinor, currency)}
-                  </div>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="text-sm text-gray-600">Delivery</div>
-                  <div className="text-base font-medium">
-                    {deliveryFeeMinor === 0 ? "FREE" : fmtMoneyMinor(deliveryFeeMinor, currency)}
-                  </div>
-                </div>
-                <div className="border-t pt-3 flex items-center justify-between">
-                  <div className="text-lg font-semibold">Total</div>
-                  <div className="text-xl font-bold">
-                    {fmtMoneyMinor(totalMinor, currency)}
-                  </div>
-                </div>
-              </div>
-
-              {/* PayPal 按钮 */}
-              <div className="p-4">
-                <div className="mx-auto w-[300px]">
-                  {step !== "payment" ? null : (
-                    // 1) 金额为 0 且没有在处理支付：提示“不能付”
-                    amountInMajorUnit <= 0 && !isPayProcessing ? (
-                      <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700 text-center">
-                        Your total is $0. Add items to proceed with payment.
-                      </div>
-                    )
-                    // 2) 正在处理支付（onApprove -> 你自己的 handlePaySucceeded 正在跑）
-                    : isPayProcessing ? (
-                      <div
-                        className="
-                          flex h-[45px] items-center justify-center
-                          rounded-md border
-                          bg-[#FFC439] border-[#FFC439]
-                          text-sm font-semibold text-[#111111]
-                          shadow-sm
-                        "
-                      >
-                        Processing your payment…
-                      </div>
-                    )
-                    // 3) 正常渲染 PayPal 按钮
-                    : (
-                      <BraintreePayPalOnly
-                        amount={amountInMajorUnit}
-                        currency="AUD"
-                        onInitiate={handlePayInitiated}
-                        onSucceeded={(r) => handlePaySucceeded(r)}
-                      />
-                    )
-                  )}
-                </div>
-              </div>
-
-              <p className="mt-2 text-xs text-gray-500">
-                All charges are processed in <b>AUD</b>. Your bank or PayPal may apply currency conversion and fees.
-              </p>
-              <p className="mt-1 text-xs text-gray-500">
-                * Pay in 4 availability is determined by PayPal and may vary by account and region.
-              </p>
-            </div>
-          </section>
+          {/* Payment（始终挂载，由 PaymentStep 自己决定显示 / 隐藏） */}
+          <PaymentStep
+            visible={step === "payment"}
+            amountInMajorUnit={amountInMajorUnit}
+            isPayProcessing={isPayProcessing}
+            address={address}
+            itemsCount={itemsCount}
+            itemsMinor={itemsTotals.itemsMinor}
+            deliveryFeeMinor={deliveryFeeMinor}
+            totalMinor={totalMinor}
+            currency={currency}
+            onPayInitiated={handlePayInitiated}
+            onPaySucceeded={handlePaySucceeded}
+          />
 
           {/* Back 按钮（只在 payment 步骤显示） */}
           {step === "payment" && (
