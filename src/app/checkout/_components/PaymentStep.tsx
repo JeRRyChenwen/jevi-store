@@ -1,9 +1,9 @@
 // src/app/checkout/_components/PaymentStep.tsx
 "use client";
 
-import React from "react";
+import React, { useState, useCallback } from "react";
 import { Check } from "lucide-react";
-import BraintreePayPalOnly from "@/app/checkout/_components/BraintreePayPalOnly";
+import BraintreeDropIn from "@/app/checkout/_components/BraintreeDropIn";
 
 /* ========== 类型 ========== */
 type Address = {
@@ -20,41 +20,20 @@ type Address = {
 };
 
 type PaymentStepProps = {
-  /** 当前是否处于 payment 步骤，用来决定显示 / 隐藏，但组件始终挂载 */
   visible: boolean;
-
-  /** 订单总金额（单位：Major，例如 123.45 就传 123.45） */
   amountInMajorUnit: number;
-
-  /** 是否正在处理支付（onApprove → handlePaySucceeded 跑的那段） */
   isPayProcessing: boolean;
-
-  /** 收货地址（用于 Delivery Details 摘要） */
   address: Address;
-
-  /** 购物车里商品数量 */
   itemsCount: number;
-
-  /** 商品小计（minor 单位） */
   itemsMinor: number;
-
-  /** 运费（minor 单位） */
   deliveryFeeMinor: number;
-
-  /** 总价（minor 单位） */
   totalMinor: number;
-
-  /** 货币代码，例如 "AUD" */
   currency: string;
-
-  /** 用户点击 PayPal 按钮开始支付时触发 */
   onPayInitiated: () => void;
-
-  /** 支付成功时回调（把 Braintree/PayPal 返回的 payload 往上抛） */
   onPaySucceeded: (payload?: any) => void;
 };
 
-/* ========== 金额格式化小工具（只在这个组件内部用） ========== */
+/* ========== 金额格式化小工具 ========== */
 function fmtPrice(n: number, currency: string, locale?: string) {
   return new Intl.NumberFormat(locale, {
     style: "currency",
@@ -82,6 +61,32 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   onPayInitiated,
   onPaySucceeded,
 }) => {
+  const [payFn, setPayFn] = useState<(() => void) | null>(null);
+  const [canPay, setCanPay] = useState(false);
+
+  const safeCurrency = (currency || "AUD").toUpperCase();
+
+  // ✅ 用 useCallback 固定回调引用，避免无限 render 循环
+  const handleExposePay = useCallback((pay: () => void) => {
+    console.log("[PaymentStep] onExposePay called, got pay function:", pay);
+    setPayFn(() => pay);
+  }, []);
+
+  const handleCanPayChange = useCallback((can: boolean) => {
+    console.log("[PaymentStep] onCanPayChange:", can);
+    setCanPay(can);
+  }, []);
+
+  const handleClickPay = () => {
+    if (!payFn) {
+      console.log("[PaymentStep] handleClickPay but payFn is null");
+      return;
+    }
+    onPayInitiated();
+    console.log("[PaymentStep] calling payFn()…");
+    payFn();
+  };
+
   return (
     <section
       className="rounded-xl border"
@@ -90,7 +95,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
         visible
           ? undefined
           : {
-              // ⚠️ 和原来一样：不在当前 step 时仍然挂载，只是挪到屏幕外并禁用交互
               position: "fixed",
               left: 0,
               bottom: 0,
@@ -107,13 +111,13 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
       </div>
 
       <div className="p-4 space-y-6">
-        {/* Payment Options（只显示 PayPal） */}
+        {/* Payment Options */}
         <div className="border rounded-lg p-4">
           <h2 className="text-lg font-medium mb-4">Payment Options</h2>
           <label className="flex items-center gap-3 w-full border rounded-md px-3 py-3 cursor-pointer border-black ring-1 ring-black">
             <input type="radio" name="payment" className="mt-0.5" checked readOnly />
             <div className="flex-1 flex items-center justify-between gap-3">
-              <div className="font-medium">PayPal</div>
+              <div className="font-medium">Card or PayPal</div>
               <div className="flex items-center gap-2 opacity-80">
                 <img
                   src="https://www.paypalobjects.com/webstatic/icon/pp258.png"
@@ -142,15 +146,13 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
           </div>
         </div>
 
-        {/* Delivery Details（摘要） */}
+        {/* Delivery Details */}
         <div className="border rounded-lg p-4">
           <h3 className="text-base font-medium mb-3">Delivery Details</h3>
           {address?.firstName || address?.lastName ? (
             <div className="text-sm leading-6 text-gray-800">
               <div>
-                {[address.firstName, address.lastName]
-                  .filter(Boolean)
-                  .join(" ")}
+                {[address.firstName, address.lastName].filter(Boolean).join(" ")}
               </div>
               <div>
                 {address.line1}
@@ -165,8 +167,8 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
             </div>
           ) : (
             <div className="text-sm text-gray-500">
-              No delivery address found. Please complete the{" "}
-              <b>Address</b> step.
+              No delivery address found. Please complete the <b>Address</b>{" "}
+              step.
             </div>
           )}
         </div>
@@ -182,7 +184,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
           <div className="flex items-center justify-between">
             <div className="text-sm text-gray-600">Subtotal</div>
             <div className="text-base font-medium">
-              {fmtMoneyMinor(itemsMinor, currency)}
+              {fmtMoneyMinor(itemsMinor, safeCurrency)}
             </div>
           </div>
           <div className="flex items-center justify-between">
@@ -190,55 +192,103 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
             <div className="text-base font-medium">
               {deliveryFeeMinor === 0
                 ? "FREE"
-                : fmtMoneyMinor(deliveryFeeMinor, currency)}
+                : fmtMoneyMinor(deliveryFeeMinor, safeCurrency)}
             </div>
           </div>
           <div className="border-t pt-3 flex items-center justify-between">
             <div className="text-lg font-semibold">Total</div>
             <div className="text-xl font-bold">
-              {fmtMoneyMinor(totalMinor, currency)}
+              {fmtMoneyMinor(totalMinor, safeCurrency)}
             </div>
           </div>
         </div>
 
-        {/* PayPal 按钮 */}
+        {/* 支付区域：Braintree Drop-in + 自定义 Pay 按钮 */}
         <div className="p-4">
           <div className="mx-auto w-[300px]">
-            {!visible ? null : (
-              // 1) 金额为 0 且没有在处理支付：提示“不能付”
-              amountInMajorUnit <= 0 && !isPayProcessing ? (
-                <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700 text-center">
-                  Your total is $0. Add items to proceed with payment.
-                </div>
-              ) : // 2) 正在处理支付（onApprove -> 你自己的 handlePaySucceeded 正在跑）
-              isPayProcessing ? (
-                <div
-                  className="
-                    flex h-[45px] items-center justify-center
-                    rounded-md border
-                    bg-[#FFC439] border-[#FFC439]
-                    text-sm font-semibold text-[#111111]
-                    shadow-sm
-                  "
-                >
-                  Processing your payment…
-                </div>
-              ) : (
-                // 3) 正常渲染 PayPal 按钮
-                <BraintreePayPalOnly
+            {!visible ? null : amountInMajorUnit <= 0 && !isPayProcessing ? (
+              <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700 text-center">
+                Your total is $0. Add items to proceed with payment.
+              </div>
+            ) : isPayProcessing ? (
+              <div
+                className="
+                  flex h-[45px] items-center justify-center
+                  rounded-md border
+                  bg-[#FFC439] border-[#FFC439]
+                  text-sm font-semibold text-[#111111]
+                  shadow-sm
+                "
+              >
+                Processing your payment…
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <BraintreeDropIn
                   amount={amountInMajorUnit}
-                  currency="AUD"
-                  onInitiate={onPayInitiated}
-                  onSucceeded={(r) => onPaySucceeded(r)}
+                  currency={safeCurrency}
+                  enableCard={true}
+                  hideSubmitButton={true}
+                  onExposePay={handleExposePay}
+                  onCanPayChange={handleCanPayChange}
+                  onSucceeded={(r) => {
+                    console.log(
+                      "[PaymentStep] Braintree onSucceeded raw data:",
+                      r
+                    );
+
+                    const payload = {
+                      provider: "braintree" as const,
+                      paymentMethod:
+                        (r as any).paymentMethod ||
+                        (r as any).method ||
+                        ((r as any).paypalAccount ? "paypal" : "card"),
+                      cardBrand:
+                        (r as any).cardBrand ||
+                        (r as any).cardType ||
+                        (r as any).card?.brand ||
+                        (r as any).creditCard?.cardType ||
+                        null,
+                      cardLast4:
+                        (r as any).cardLast4 ||
+                        (r as any).last4 ||
+                        (r as any).card?.last4 ||
+                        (r as any).creditCard?.last4 ||
+                        null,
+                      provider_txn_id:
+                        (r as any).id ||
+                        (r as any).transactionId ||
+                        (r as any).txnId ||
+                        null,
+                      raw: r,
+                    };
+
+                    console.log("[PaymentStep] normalized payload:", payload);
+                    onPaySucceeded(payload);
+                  }}
                 />
-              )
+
+                <button
+                  type="button"
+                  disabled={!payFn || !canPay}
+                  onClick={handleClickPay}
+                  className={[
+                    "w-full rounded-full px-6 py-3 text-sm font-semibold",
+                    !payFn || !canPay
+                      ? "bg-neutral-200 text-neutral-500 cursor-not-allowed"
+                      : "bg-neutral-900 text-white hover:bg-neutral-800",
+                  ].join(" ")}
+                >
+                  Pay now
+                </button>
+              </div>
             )}
           </div>
         </div>
 
         <p className="mt-2 text-xs text-gray-500">
-          All charges are processed in <b>AUD</b>. Your bank or PayPal may
-          apply currency conversion and fees.
+          All charges are processed in <b>{safeCurrency}</b>. Your bank or
+          PayPal may apply currency conversion and fees.
         </p>
         <p className="mt-1 text-xs text-gray-500">
           * Pay in 4 availability is determined by PayPal and may vary by

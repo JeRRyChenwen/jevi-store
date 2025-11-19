@@ -1,6 +1,10 @@
 // next.config.js
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // 🔑 关键：关闭 React Strict Mode，避免 dev 环境下 useEffect 执行两次，
+  // 让 Braintree Drop-in 只初始化一次
+  reactStrictMode: false,
+
   images: {
     remotePatterns: [
       { protocol: "http", hostname: "127.0.0.1", port: "1337", pathname: "/uploads/**" },

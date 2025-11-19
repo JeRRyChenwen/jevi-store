@@ -854,6 +854,16 @@ credentials: 'include', // 一定要有！
 body: JSON.stringify({ login: 'lancechen1998@gmail.com', password: 'Cwxzhasdk1234' })
 }).then(r => r.json()).then(console.log)
 
+最标准的 Braintree Sandbox 测试卡：
+Card Number：4111111111111111
+Expiration Date：12/30（任何未来日期都行）
+CVV：123（任何 3 位数都行）
+
+其它常用品牌：
+Visa 4111 1111 1111 1111 任意三位，例如 123
+MasterCard 5555 5555 5555 4444 任意三位
+AMEX 3782 822463 10005 任意四位 CVV，例如 1234
+
 # ============================================================================
 
 # ============================================================================
@@ -956,13 +966,34 @@ add to bag 字体
 
 如果你没有储存 address 的话，请先 fill out address
 
-
-/src/app/checkout/(hooks)/ 
-├─ useCart.ts 
-├─ useAddress.ts 
-├─ useDelivery.ts 
-├─ usePayment.ts 
+/src/app/checkout/(hooks)/
+├─ useCart.ts
+├─ useAddress.ts
+├─ useDelivery.ts
+├─ usePayment.ts
 └─ usePricing.ts
+
+手机端的前端
+
+在订单详情里显示 Payment method: Visa ending 1111、Status: Settling
+
+把 transactionId 存进 order_payments 表
+
+或者做一个“支付失败”回退页面 / 重试逻辑
+
+用户的信用卡信息要不要放进数据库里，paypal 信息
+
+支付失败界面
+
+退款，return policy
+
+客服
+
+支付宝，微信
+
+远端数据库只储存 1 年，可以储存在本地
+
+profile 页面修改 email
 
 # ============================================================================
 

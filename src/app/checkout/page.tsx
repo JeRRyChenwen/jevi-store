@@ -197,21 +197,34 @@ function LargeGhostButton({
 /* ========= 成功支付后把订单发送给 Worker（返回 order 对象） ========= */
 async function sendOrderToServer(args: {
   cart: any[];
-  address: Address; // 收货地址（delivery）
+  address: Address;
   currency: string;
   itemsMinor: number;
   deliveryFeeMinor: number;
   taxMinor?: number;
   grandMinor: number;
-  paypalPayload: any;
-  deliveryMethod?: "standard" | "express";
 
-  // 账单地址相关（可选）
+  // 💳 通用支付结果（PayPal / Braintree）
+  payment: any;
+  paymentProvider?: "paypal" | "braintree";
+
+  deliveryMethod?: "standard" | "express";
   billingAddress?: Address | null;
-  sameAsDelivery?: boolean; // true = 同收货地址
+  sameAsDelivery?: boolean;
 }): Promise<{ ok: boolean; order?: { id: number; order_number: string | null } }> {
   try {
     const target = "/api/orders";
+
+    // 🔍 log：入口参数
+    console.log("[orders] sendOrderToServer() args =", {
+      cartCount: (args.cart || []).length,
+      currency: args.currency,
+      itemsMinor: args.itemsMinor,
+      deliveryFeeMinor: args.deliveryFeeMinor,
+      grandMinor: args.grandMinor,
+      payment: args.payment,
+      paymentProviderHint: args.paymentProvider,
+    });
 
     // ① 计算每一行条目（与后端字段对齐）
     const items = (args.cart || []).map((it: any) => {
@@ -245,16 +258,60 @@ async function sendOrderToServer(args: {
       };
     });
 
-    // ② PayPal 交易号尽量稳健地提取
-    const cap =
-      args.paypalPayload?.purchase_units?.[0]?.payments?.captures?.[0] ||
-      args.paypalPayload?.transaction ||
-      null;
-    const txnId =
-      cap?.id ||
-      args.paypalPayload?.id ||
-      args.paypalPayload?.paypalTransactionId ||
-      null;
+    // ② 识别支付提供方 & 提取交易号 + 卡信息
+    const pay = args.payment || null;
+
+    const provider: "paypal" | "braintree" =
+      args.paymentProvider ||
+      (pay && (pay.paymentMethod || pay.cardBrand || pay.cardLast4 || pay.provider === "braintree")
+        ? "braintree"
+        : "paypal");
+
+    let provider_txn_id: string | null = null;
+    let payment_method: string | null = null;
+    let card_brand: string | null = null;
+    let card_last4: string | null = null;
+    let raw: any = pay || null;
+
+    if (provider === "braintree") {
+      // 来自 BraintreeDropIn.onSucceeded 的对象
+      provider_txn_id =
+        pay?.provider_txn_id ||
+        pay?.transactionId ||
+        pay?.id ||
+        pay?.txnId ||
+        null;
+      payment_method =
+        pay?.paymentMethod ||
+        (pay?.cardBrand || pay?.cardLast4 ? "card" : "paypal");
+      card_brand = pay?.cardBrand ?? null;
+      card_last4 = pay?.cardLast4 ?? null;
+      raw = pay?.raw ?? pay ?? null;
+    } else {
+      // 兼容原来的 PayPal JS SDK 结果
+      const cap =
+        pay?.purchase_units?.[0]?.payments?.captures?.[0] ||
+        pay?.transaction ||
+        null;
+      provider_txn_id =
+        cap?.id ||
+        pay?.id ||
+        pay?.paypalTransactionId ||
+        null;
+      payment_method = "paypal";
+      card_brand = null;
+      card_last4 = null;
+      raw = pay ?? null;
+    }
+
+    // 🔍 log：归一化后的支付字段
+    console.log("[orders] normalized payment fields =", {
+      provider,
+      provider_txn_id,
+      payment_method,
+      card_brand,
+      card_last4,
+    });
 
     // ③ 计算账单地址（只放到 meta 里）
     const billing =
@@ -297,14 +354,20 @@ async function sendOrderToServer(args: {
       delivery_method: args.deliveryMethod ?? "standard",
       items,
 
+      // ⭐ 统一的 payment 结构（兼容 PayPal / Braintree）
       payment: {
-        provider: "paypal",
-        provider_txn_id: txnId,
+        provider, // "paypal" | "braintree"
+        provider_txn_id,
         amount_minor: Number(args.grandMinor) || 0,
         currency: args.currency,
         status: "captured",
         captured_at: Math.floor(Date.now() / 1000),
-        raw: args.paypalPayload || null,
+
+        payment_method,
+        card_brand,
+        card_last4,
+
+        raw,
       },
 
       meta: {
@@ -315,6 +378,9 @@ async function sendOrderToServer(args: {
 
       notes: null,
     };
+
+    // 🔍 log：真正发给 /api/orders 的 payment payload
+    console.log("[orders] POST /api/orders body.payment =", body.payment);
 
     const res = await fetch(target, {
       method: "POST",
@@ -335,6 +401,7 @@ async function sendOrderToServer(args: {
     }
 
     if (res.ok && data?.ok && data?.order && typeof data.order.id === "number") {
+      console.log("[orders] server created order =", data.order); // 🔍 log
       return {
         ok: true,
         order: {
@@ -451,7 +518,7 @@ export default function CheckoutPage() {
       const rawAddr = localStorage.getItem(LS_ADDRESS_KEY);
       if (rawAddr) {
         const a = JSON.parse(rawAddr);
-        setAddress((prev) => Object.keys(prev || {}).length ? prev : a);
+        setAddress((prev) => (Object.keys(prev || {}).length ? prev : a));
         setEmailInput(a?.email || "");
       }
     } catch {}
@@ -509,7 +576,7 @@ export default function CheckoutPage() {
     );
   };
 
-  // ---------- 时区标记 ----------  
+  // ---------- 时区标记 ----------
   const clientTZ =
     (typeof Intl !== "undefined" &&
       Intl.DateTimeFormat().resolvedOptions().timeZone) ||
@@ -603,6 +670,9 @@ export default function CheckoutPage() {
 
   // 支付成功 → 落库 → 清空购物车 → 跳转确认页
   const handlePaySucceeded = async (payload?: any) => {
+    // 🔍 log：看看从 PaymentStep 传上来的是什么
+    console.log("[checkout] handlePaySucceeded() payload =", payload);
+
     setIsPayProcessing(true);
     let orderId: number | null = null;
     let orderNumber: string | null = null;
@@ -626,6 +696,13 @@ export default function CheckoutPage() {
     }
 
     try {
+      const provider: "paypal" | "braintree" =
+        payload && (payload.paymentMethod || payload.cardBrand || payload.cardLast4 || payload.provider === "braintree")
+          ? "braintree"
+          : "paypal";
+
+      console.log("[checkout] determined provider for persist =", provider); // 🔍 log
+
       const persist = await sendOrderToServer({
         cart,
         address: orderAddress,
@@ -634,11 +711,15 @@ export default function CheckoutPage() {
         deliveryFeeMinor,
         taxMinor: 0,
         grandMinor: totalMinor,
-        paypalPayload: payload,
+        payment: payload,
+        paymentProvider: provider,
         deliveryMethod,
         billingAddress,
         sameAsDelivery,
       });
+
+      console.log("[checkout] sendOrderToServer result =", persist); // 🔍 log
+
       if (persist.ok && persist.order) {
         orderId = persist.order.id ?? null;
         orderNumber = persist.order.order_number ?? null;
