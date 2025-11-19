@@ -4,6 +4,7 @@
 import React, { useState, useCallback } from "react";
 import { Check } from "lucide-react";
 import BraintreeDropIn from "@/app/checkout/_components/BraintreeDropIn";
+import BraintreeHostedFields from "@/app/checkout/_components/BraintreeHostedFields";
 
 /* ========== 类型 ========== */
 type Address = {
@@ -63,33 +64,36 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
 }) => {
   const [payFn, setPayFn] = useState<(() => void) | null>(null);
   const [canPay, setCanPay] = useState(false);
+  const [method, setMethod] = useState<"card" | "paypal">("card");
 
   const safeCurrency = (currency || "AUD").toUpperCase();
 
-  // ✅ 用 useCallback 固定回调引用，避免无限 render 循环
+  // PayPal 模式：暴露 BraintreeDropIn 的 pay()
   const handleExposePay = useCallback((pay: () => void) => {
-    console.log("[PaymentStep] onExposePay called, got pay function:", pay);
     setPayFn(() => pay);
   }, []);
 
   const handleCanPayChange = useCallback((can: boolean) => {
-    console.log("[PaymentStep] onCanPayChange:", can);
     setCanPay(can);
   }, []);
 
   const handleClickPay = () => {
-    if (!payFn) {
-      console.log("[PaymentStep] handleClickPay but payFn is null");
-      return;
-    }
+    if (!payFn || !visible) return;
     onPayInitiated();
-    console.log("[PaymentStep] calling payFn()…");
     payFn();
   };
 
+  const hasAddress =
+    address?.firstName ||
+    address?.lastName ||
+    address?.line1 ||
+    address?.city ||
+    address?.state ||
+    address?.postcode;
+
   return (
     <section
-      className="rounded-xl border"
+      className="rounded-xl border bg-white"
       aria-hidden={!visible}
       style={
         visible
@@ -106,168 +110,262 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
             }
       }
     >
-      <div className="px-4 py-3 border-b font-semibold">
-        How would you like to pay?
+      {/* 头部 */}
+      <div className="px-4 py-3 border-b flex items-center justify-between">
+        <div>
+          <div className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">
+            Step 4
+          </div>
+          <div className="text-base font-semibold text-neutral-900">
+            Payment Options
+          </div>
+        </div>
+        <div className="flex items-center gap-1 text-xs text-emerald-600">
+          <Check className="w-4 h-4" />
+          <span>Secure checkout</span>
+        </div>
       </div>
 
-      <div className="p-4 space-y-6">
-        {/* Payment Options */}
-        <div className="border rounded-lg p-4">
-          <h2 className="text-lg font-medium mb-4">Payment Options</h2>
-          <label className="flex items-center gap-3 w-full border rounded-md px-3 py-3 cursor-pointer border-black ring-1 ring-black">
-            <input type="radio" name="payment" className="mt-0.5" checked readOnly />
-            <div className="flex-1 flex items-center justify-between gap-3">
-              <div className="font-medium">Card or PayPal</div>
-              <div className="flex items-center gap-2 opacity-80">
-                <img
-                  src="https://www.paypalobjects.com/webstatic/icon/pp258.png"
-                  alt="PayPal"
-                  className="h-5"
-                />
-              </div>
+      <div className="p-4 space-y-4">
+        {/* 地址提醒 */}
+        <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800 flex gap-2">
+          <span className="mt-0.5 text-base">ℹ️</span>
+          <div>
+            <div className="font-medium">
+              Make sure your delivery address is correct!
             </div>
-          </label>
+            <div className="text-xs text-blue-900">
+              You can go back to the Address step to make changes.
+            </div>
+          </div>
         </div>
 
-        {/* 蓝色提示 */}
-        <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm">
-          <div className="flex items-start gap-2">
-            <span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-white">
-              <Check size={14} />
-            </span>
-            <div>
-              <div className="font-medium">
-                Make sure your delivery address is correct!
+        {/* Delivery Details + Summary */}
+        <div className="grid gap-4 md:grid-cols-[minmax(0,2fr)_minmax(0,1.5fr)]">
+          {/* Delivery Details */}
+          <div className="border rounded-lg p-4">
+            <h3 className="text-base font-medium mb-3">Delivery Details</h3>
+            {hasAddress ? (
+              <div className="text-sm leading-6 text-gray-800 space-y-0.5">
+                <div>
+                  {[address.firstName, address.lastName]
+                    .filter(Boolean)
+                    .join(" ")}
+                </div>
+                {address.line1 && (
+                  <div>
+                    {address.line1}
+                    {address.line2 ? ` ${address.line2}` : ""}
+                  </div>
+                )}
+                {(address.city || address.state || address.postcode) && (
+                  <div>
+                    {[address.city, address.state, address.postcode]
+                      .filter(Boolean)
+                      .join(" ")}
+                  </div>
+                )}
+                {address.country && <div>{address.country}</div>}
+                {address.email && <div className="mt-2">{address.email}</div>}
+                {address.phone && <div>{address.phone}</div>}
               </div>
-              <div className="text-gray-600">
-                You can go back to the Address step to make changes.
+            ) : (
+              <div className="text-sm text-gray-500">
+                No delivery address found. Please complete the <b>Address</b>{" "}
+                step.
+              </div>
+            )}
+          </div>
+
+          {/* Order Summary */}
+          <div className="border rounded-lg p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-gray-600">Items</div>
+              <div className="text-base font-medium">
+                {itemsCount} item{itemsCount > 1 ? "s" : ""}
+              </div>
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-gray-600">Subtotal</div>
+              <div className="text-base font-medium">
+                {fmtMoneyMinor(itemsMinor, safeCurrency)}
+              </div>
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-gray-600">Delivery</div>
+              <div className="text-base font-medium">
+                {deliveryFeeMinor === 0
+                  ? "FREE"
+                  : fmtMoneyMinor(deliveryFeeMinor, safeCurrency)}
+              </div>
+            </div>
+            <div className="border-t pt-3 flex items-center justify-between">
+              <div className="text-lg font-semibold">Total</div>
+              <div className="text-xl font-bold">
+                {fmtMoneyMinor(totalMinor, safeCurrency)}
               </div>
             </div>
           </div>
         </div>
 
-        {/* Delivery Details */}
-        <div className="border rounded-lg p-4">
-          <h3 className="text-base font-medium mb-3">Delivery Details</h3>
-          {address?.firstName || address?.lastName ? (
-            <div className="text-sm leading-6 text-gray-800">
-              <div>
-                {[address.firstName, address.lastName].filter(Boolean).join(" ")}
-              </div>
-              <div>
-                {address.line1}
-                {address.line2 ? ` ${address.line2}` : ""}
-              </div>
-              <div>
-                {address.city} {address.state} {address.postcode}
-              </div>
-              <div>{address.country}</div>
-              {address.email && <div className="mt-2">{address.email}</div>}
-              {address.phone && <div>{address.phone}</div>}
+        {/* 支付方式 + 右侧内容 */}
+        <div className="mt-2">
+          {!visible ? null : amountInMajorUnit <= 0 && !isPayProcessing ? (
+            <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700 text-center">
+              Your total is $0. Add items to proceed with payment.
+            </div>
+          ) : isPayProcessing ? (
+            <div
+              className="
+                flex h-[45px] items-center justify-center
+                rounded-md border
+                bg-[#FFC439] border-[#FFC439]
+                text-sm font-semibold text-[#111111]
+                shadow-sm
+              "
+            >
+              Processing your payment…
             </div>
           ) : (
-            <div className="text-sm text-gray-500">
-              No delivery address found. Please complete the <b>Address</b>{" "}
-              step.
+            // ★★★ 这里加了 min-h，使整个区域高度固定一点
+            <div
+              className="
+                border rounded-lg p-4
+                lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] lg:gap-6
+                min-h-[340px]
+              "
+            >
+              {/* 左边：选择方式 */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-neutral-900">
+                  Choose a way to pay
+                </h3>
+
+                {/* Card */}
+                <button
+                  type="button"
+                  onClick={() => setMethod("card")}
+                  className={[
+                    "w-full flex items-center justify-between rounded-md border px-3 py-3 text-sm text-left",
+                    method === "card"
+                      ? "border-neutral-900 bg-neutral-50"
+                      : "border-neutral-300 hover:bg-neutral-50",
+                  ].join(" ")}
+                >
+                  <span className="font-medium">Card</span>
+                  <span className="text-xs text-neutral-500">
+                    Visa · Mastercard · Amex
+                  </span>
+                </button>
+
+                {/* PayPal */}
+                <button
+                  type="button"
+                  onClick={() => setMethod("paypal")}
+                  className={[
+                    "w-full flex items-center justify-between rounded-md border px-3 py-3 text-sm text-left",
+                    method === "paypal"
+                      ? "border-neutral-900 bg-neutral-50"
+                      : "border-neutral-300 hover:bg-neutral-50",
+                  ].join(" ")}
+                >
+                  <span className="font-medium">PayPal</span>
+                  <span className="text-xs text-neutral-500">
+                    Pay with your PayPal account
+                  </span>
+                </button>
+              </div>
+
+              {/* 右边：根据选择渲染具体内容 */}
+              {/* ★★★ 这里加 h-full + flex，让右侧内容在固定高度里贴顶显示 */}
+              <div className="mt-4 lg:mt-0 h-full flex items-start">
+                <div className="w-full">
+                  {method === "card" ? (
+                    <BraintreeHostedFields
+                      amount={amountInMajorUnit}
+                      currency={safeCurrency}
+                      onInitiate={() => {
+                        onPayInitiated();
+                      }}
+                      onSucceeded={(r) => {
+                      const anyR = r as any;
+
+                      const txId =
+                        anyR?.transactionId ||
+                        anyR?.id ||
+                        null;
+
+                      const payload = {
+                        provider: "braintree" as const,
+                        // 如果 Braintree 返回了 paymentMethod，就用它，否则默认 card
+                        paymentMethod: (anyR?.paymentMethod || "card") as "card" | "paypal",
+                        provider_txn_id: txId,
+                        // ⭐ 关键：把卡品牌和末 4 位一起传给下单接口
+                        cardBrand:
+                          anyR?.cardBrand ??
+                          anyR?.card_brand ??
+                          null,
+                        cardLast4:
+                          anyR?.cardLast4 ??
+                          anyR?.card_last4 ??
+                          null,
+                        raw: r,
+                      };
+
+                      onPaySucceeded(payload);
+                    }}
+                    />
+                  ) : (
+                    <BraintreeDropIn
+                      amount={amountInMajorUnit}
+                      currency={safeCurrency}
+                      enableCard={false} // 只展示 PayPal
+                      hideSubmitButton={true}
+                      onExposePay={handleExposePay}
+                      onCanPayChange={handleCanPayChange}
+                      onSucceeded={(r) => {
+                        const payload = {
+                          provider: "braintree" as const,
+                          paymentMethod:
+                            (r as any).paymentMethod ||
+                            (r as any).method ||
+                            ((r as any).paypalAccount ? "paypal" : "card"),
+                          cardBrand:
+                            (r as any).cardBrand ||
+                            (r as any).cardType ||
+                            (r as any).card?.brand ||
+                            (r as any).creditCard?.cardType ||
+                            null,
+                          cardLast4:
+                            (r as any).cardLast4 ||
+                            (r as any).last4 ||
+                            (r as any).card?.last4 ||
+                            (r as any).creditCard?.last4 ||
+                            null,
+                          provider_txn_id:
+                            (r as any).id ||
+                            (r as any).transactionId ||
+                            (r as any).txnId ||
+                            null,
+                          raw: r,
+                        };
+                        onPaySucceeded(payload);
+                      }}
+                    />
+                  )}
+                </div>
+              </div>
             </div>
           )}
         </div>
 
-        {/* 订单摘要 */}
-        <div className="border rounded-lg p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-gray-600">Items</div>
-            <div className="text-base font-medium">
-              {itemsCount} item{itemsCount > 1 ? "s" : ""}
-            </div>
-          </div>
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-gray-600">Subtotal</div>
-            <div className="text-base font-medium">
-              {fmtMoneyMinor(itemsMinor, safeCurrency)}
-            </div>
-          </div>
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-gray-600">Delivery</div>
-            <div className="text-base font-medium">
-              {deliveryFeeMinor === 0
-                ? "FREE"
-                : fmtMoneyMinor(deliveryFeeMinor, safeCurrency)}
-            </div>
-          </div>
-          <div className="border-t pt-3 flex items-center justify-between">
-            <div className="text-lg font-semibold">Total</div>
-            <div className="text-xl font-bold">
-              {fmtMoneyMinor(totalMinor, safeCurrency)}
-            </div>
-          </div>
-        </div>
-
-        {/* 支付区域：Braintree Drop-in + 自定义 Pay 按钮 */}
-        <div className="p-4">
-          <div className="mx-auto w-[300px]">
-            {!visible ? null : amountInMajorUnit <= 0 && !isPayProcessing ? (
-              <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700 text-center">
-                Your total is $0. Add items to proceed with payment.
-              </div>
-            ) : isPayProcessing ? (
-              <div
-                className="
-                  flex h-[45px] items-center justify-center
-                  rounded-md border
-                  bg-[#FFC439] border-[#FFC439]
-                  text-sm font-semibold text-[#111111]
-                  shadow-sm
-                "
-              >
-                Processing your payment…
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <BraintreeDropIn
-                  amount={amountInMajorUnit}
-                  currency={safeCurrency}
-                  enableCard={true}
-                  hideSubmitButton={true}
-                  onExposePay={handleExposePay}
-                  onCanPayChange={handleCanPayChange}
-                  onSucceeded={(r) => {
-                    console.log(
-                      "[PaymentStep] Braintree onSucceeded raw data:",
-                      r
-                    );
-
-                    const payload = {
-                      provider: "braintree" as const,
-                      paymentMethod:
-                        (r as any).paymentMethod ||
-                        (r as any).method ||
-                        ((r as any).paypalAccount ? "paypal" : "card"),
-                      cardBrand:
-                        (r as any).cardBrand ||
-                        (r as any).cardType ||
-                        (r as any).card?.brand ||
-                        (r as any).creditCard?.cardType ||
-                        null,
-                      cardLast4:
-                        (r as any).cardLast4 ||
-                        (r as any).last4 ||
-                        (r as any).card?.last4 ||
-                        (r as any).creditCard?.last4 ||
-                        null,
-                      provider_txn_id:
-                        (r as any).id ||
-                        (r as any).transactionId ||
-                        (r as any).txnId ||
-                        null,
-                      raw: r,
-                    };
-
-                    console.log("[PaymentStep] normalized payload:", payload);
-                    onPaySucceeded(payload);
-                  }}
-                />
-
+        {/* 底部按钮区域：只有 PayPal 模式用外部 Pay now；Card 模式使用表单里的按钮 */}
+        {visible &&
+          amountInMajorUnit > 0 &&
+          !isPayProcessing &&
+          method === "paypal" && (
+            <div className="pt-3 flex justify-end">
+              <div className="w-[260px] max-w-full">
                 <button
                   type="button"
                   disabled={!payFn || !canPay}
@@ -282,10 +380,17 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                   Pay now
                 </button>
               </div>
-            )}
-          </div>
-        </div>
+            </div>
+          )}
 
+        {method === "card" && amountInMajorUnit > 0 && (
+          <p className="pt-2 text-xs text-neutral-500 text-right">
+            Use the <strong>Pay</strong> button inside the card form to complete
+            your payment.
+          </p>
+        )}
+
+        {/* 底部说明 */}
         <p className="mt-2 text-xs text-gray-500">
           All charges are processed in <b>{safeCurrency}</b>. Your bank or
           PayPal may apply currency conversion and fees.
