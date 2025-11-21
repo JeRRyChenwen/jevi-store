@@ -1058,3 +1058,8 @@ By subscribing you agree to our Terms and Conditions and Privacy Policy. Applies
 两个 saved 都用 → 下面整块表单不显示
 
 两个 saved 都不用 → 下面整块完整显示（现在的样子）
+
+=======
+@echo off
+set "path_to_pem=<!Change it to your directory where you've put the key at!>\ECS_Media360.pem"
+start cmd /k ssh -i "%path_to_pem%" ecs-user@47.236.42.31
