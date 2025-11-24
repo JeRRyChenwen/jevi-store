@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useState, useCallback } from "react";
+import Image from "next/image";
 import { Check } from "lucide-react";
 import BraintreeDropIn from "@/app/checkout/_components/BraintreeDropIn";
 import BraintreeHostedFields from "@/app/checkout/_components/BraintreeHostedFields";
@@ -257,46 +258,30 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                 >
                   <span className="font-medium">Card</span>
 
-                  {/* 右侧：Visa / Mastercard 图标 + 文本 */}
+                  {/* 右侧：Visa / Mastercard 官方 logo（统一尺寸） */}
                   <div className="flex items-center gap-1">
                     {/* Visa */}
-                    <span className="inline-flex items-center gap-1 rounded-sm border border-neutral-300 bg-white px-1.5 py-0.5">
-                      <svg
-                        aria-hidden="true"
-                        viewBox="0 0 32 20"
-                        className="h-3 w-5"
-                      >
-                        <rect width="32" height="20" rx="2" fill="#1a4ab9" />
-                        <text
-                          x="50%"
-                          y="60%"
-                          textAnchor="middle"
-                          fontSize="9"
-                          fontFamily="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-                          fill="#ffffff"
-                        >
-                          VISA
-                        </text>
-                      </svg>
-                      <span className="text-[10px] font-semibold tracking-wide text-neutral-700">
-                        Visa
-                      </span>
+                    <span className="inline-flex items-center rounded-sm border border-neutral-300 bg-white px-1.5 py-0.5">
+                      <div className="relative h-6 w-14">
+                        <Image
+                          src="/cards/visa.svg"
+                          alt="Visa"
+                          fill
+                          className="object-contain scale-100 origin-center"
+                        />
+                      </div>
                     </span>
 
                     {/* Mastercard */}
-                    <span className="inline-flex items-center gap-1 rounded-sm border border-neutral-300 bg-white px-1.5 py-0.5">
-                      <svg
-                        aria-hidden="true"
-                        viewBox="0 0 32 20"
-                        className="h-3 w-5"
-                      >
-                        <rect width="32" height="20" rx="2" fill="#133b7a" />
-                        <circle cx="13" cy="10" r="5.5" fill="#f79e1b" />
-                        <circle cx="19" cy="10" r="5.5" fill="#eb001b" />
-                      </svg>
-                      <span className="text-[10px] font-semibold tracking-wide text-neutral-700">
-                        Mastercard
-                      </span>
+                    <span className="inline-flex items-center rounded-sm border border-neutral-300 bg-white px-1.5 py-0.5">
+                      <div className="relative h-6 w-14">
+                        <Image
+                          src="/cards/mastercard.svg"
+                          alt="Mastercard"
+                          fill
+                          className="object-contain scale-100 origin-center"
+                        />
+                      </div>
                     </span>
                   </div>
                 </button>
@@ -313,8 +298,17 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                   ].join(" ")}
                 >
                   <span className="font-medium">PayPal</span>
-                  <span className="text-xs text-neutral-500">
-                    Pay with your PayPal account
+
+                  {/* 右侧：PayPal 官方 logo（统一为 h-4 w-10） */}
+                  <span className="inline-flex items-center rounded-sm border border-neutral-300 bg-white px-1.5 py-0.5">
+                    <div className="relative h-6 w-14">
+                      <Image
+                        src="/cards/paypal.svg"
+                        alt="PayPal"
+                        fill
+                        className="object-contain scale-100 origin-center"
+                      />
+                    </div>
                   </span>
                 </button>
               </div>
