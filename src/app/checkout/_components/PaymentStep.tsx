@@ -68,7 +68,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
 
   const safeCurrency = (currency || "AUD").toUpperCase();
 
-  // PayPal 模式：暴露 BraintreeDropIn 的 pay()
+  // 当前显示的方法（card 或 paypal）会通过这个回调把 pay() 暴露出来
   const handleExposePay = useCallback((pay: () => void) => {
     setPayFn(() => pay);
   }, []);
@@ -79,7 +79,10 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
 
   const handleClickPay = () => {
     if (!payFn || !visible) return;
-    onPayInitiated();
+    // PayPal 走外层 onPayInitiated；Card 在 HostedFields 内部已经调用 onInitiate
+    if (method === "paypal") {
+      onPayInitiated();
+    }
     payFn();
   };
 
@@ -227,7 +230,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
               Processing your payment…
             </div>
           ) : (
-            // ★★★ 这里加了 min-h，使整个区域高度固定一点
+            // 固定高度区域
             <div
               className="
                 border rounded-lg p-4
@@ -253,9 +256,49 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                   ].join(" ")}
                 >
                   <span className="font-medium">Card</span>
-                  <span className="text-xs text-neutral-500">
-                    Visa · Mastercard · Amex
-                  </span>
+
+                  {/* 右侧：Visa / Mastercard 图标 + 文本 */}
+                  <div className="flex items-center gap-1">
+                    {/* Visa */}
+                    <span className="inline-flex items-center gap-1 rounded-sm border border-neutral-300 bg-white px-1.5 py-0.5">
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 32 20"
+                        className="h-3 w-5"
+                      >
+                        <rect width="32" height="20" rx="2" fill="#1a4ab9" />
+                        <text
+                          x="50%"
+                          y="60%"
+                          textAnchor="middle"
+                          fontSize="9"
+                          fontFamily="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+                          fill="#ffffff"
+                        >
+                          VISA
+                        </text>
+                      </svg>
+                      <span className="text-[10px] font-semibold tracking-wide text-neutral-700">
+                        Visa
+                      </span>
+                    </span>
+
+                    {/* Mastercard */}
+                    <span className="inline-flex items-center gap-1 rounded-sm border border-neutral-300 bg-white px-1.5 py-0.5">
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 32 20"
+                        className="h-3 w-5"
+                      >
+                        <rect width="32" height="20" rx="2" fill="#133b7a" />
+                        <circle cx="13" cy="10" r="5.5" fill="#f79e1b" />
+                        <circle cx="19" cy="10" r="5.5" fill="#eb001b" />
+                      </svg>
+                      <span className="text-[10px] font-semibold tracking-wide text-neutral-700">
+                        Mastercard
+                      </span>
+                    </span>
+                  </div>
                 </button>
 
                 {/* PayPal */}
@@ -277,7 +320,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
               </div>
 
               {/* 右边：根据选择渲染具体内容 */}
-              {/* ★★★ 这里加 h-full + flex，让右侧内容在固定高度里贴顶显示 */}
               <div className="mt-4 lg:mt-0 h-full flex items-start">
                 <div className="w-full">
                   {method === "card" ? (
@@ -287,33 +329,36 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                       onInitiate={() => {
                         onPayInitiated();
                       }}
+                      // ⭐ Card 也通过统一的 exposePay / canPay 接口暴露给外部
+                      onExposePay={handleExposePay}
+                      onCanPayChange={handleCanPayChange}
                       onSucceeded={(r) => {
-                      const anyR = r as any;
+                        const anyR = r as any;
 
-                      const txId =
-                        anyR?.transactionId ||
-                        anyR?.id ||
-                        null;
+                        const txId =
+                          anyR?.transactionId ||
+                          anyR?.id ||
+                          null;
 
-                      const payload = {
-                        provider: "braintree" as const,
-                        // 如果 Braintree 返回了 paymentMethod，就用它，否则默认 card
-                        paymentMethod: (anyR?.paymentMethod || "card") as "card" | "paypal",
-                        provider_txn_id: txId,
-                        // ⭐ 关键：把卡品牌和末 4 位一起传给下单接口
-                        cardBrand:
-                          anyR?.cardBrand ??
-                          anyR?.card_brand ??
-                          null,
-                        cardLast4:
-                          anyR?.cardLast4 ??
-                          anyR?.card_last4 ??
-                          null,
-                        raw: r,
-                      };
+                        const payload = {
+                          provider: "braintree" as const,
+                          paymentMethod: (anyR?.paymentMethod || "card") as
+                            | "card"
+                            | "paypal",
+                          provider_txn_id: txId,
+                          cardBrand:
+                            anyR?.cardBrand ??
+                            anyR?.card_brand ??
+                            null,
+                          cardLast4:
+                            anyR?.cardLast4 ??
+                            anyR?.card_last4 ??
+                            null,
+                          raw: r,
+                        };
 
-                      onPaySucceeded(payload);
-                    }}
+                        onPaySucceeded(payload);
+                      }}
                     />
                   ) : (
                     <BraintreeDropIn
@@ -359,11 +404,10 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
           )}
         </div>
 
-        {/* 底部按钮区域：只有 PayPal 模式用外部 Pay now；Card 模式使用表单里的按钮 */}
+        {/* 统一的 Pay now 按钮：Card / PayPal 共用 */}
         {visible &&
           amountInMajorUnit > 0 &&
-          !isPayProcessing &&
-          method === "paypal" && (
+          !isPayProcessing && (
             <div className="pt-3 flex justify-end">
               <div className="w-[260px] max-w-full">
                 <button
@@ -382,13 +426,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
               </div>
             </div>
           )}
-
-        {method === "card" && amountInMajorUnit > 0 && (
-          <p className="pt-2 text-xs text-neutral-500 text-right">
-            Use the <strong>Pay</strong> button inside the card form to complete
-            your payment.
-          </p>
-        )}
 
         {/* 底部说明 */}
         <p className="mt-2 text-xs text-gray-500">

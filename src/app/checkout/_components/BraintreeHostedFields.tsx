@@ -11,8 +11,11 @@ import {
 type Props = {
   amount: number;
   currency: string;
-  onSucceeded?: (r: { id: string }) => void;
+  onSucceeded?: (r: { id: string } | any) => void;
   onInitiate?: () => void;
+  // 统一使用外层 Pay now 按钮
+  onExposePay?: (pay: () => void) => void;
+  onCanPayChange?: (can: boolean) => void;
 };
 
 declare global {
@@ -57,26 +60,47 @@ async function ensureTokenOnce(): Promise<string> {
   }
 }
 
+type FieldErrors = {
+  number: boolean;
+  expirationDate: boolean;
+  cvv: boolean;
+};
+
 export default function BraintreeHostedFields({
   amount,
   currency,
   onSucceeded,
   onInitiate,
+  onExposePay,
+  onCanPayChange,
 }: Props) {
   const [ready, setReady] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // ✅ 新增：Cardholder Name 普通输入框
+  // ✅ Cardholder Name 普通输入框
   const [cardholderName, setCardholderName] = useState("");
 
+  // ✅ 提交时统一校验用：记录哪些字段有错误
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({
+    number: false,
+    expirationDate: false,
+    cvv: false,
+  });
+
   const hfRef = useRef<any>(null);
-  const onSucceededRef =
-    useRef<Props["onSucceeded"] | undefined>(undefined);
-  const onInitiateRef =
-    useRef<Props["onInitiate"] | undefined>(undefined);
+
+  const onSucceededRef = useRef<Props["onSucceeded"] | undefined>(undefined);
+  const onInitiateRef = useRef<Props["onInitiate"] | undefined>(undefined);
+  const onExposePayRef = useRef<Props["onExposePay"] | undefined>(undefined);
+  const onCanPayChangeRef = useRef<Props["onCanPayChange"] | undefined>(
+    undefined
+  );
+
   onSucceededRef.current = onSucceeded;
   onInitiateRef.current = onInitiate;
+  onExposePayRef.current = onExposePay;
+  onCanPayChangeRef.current = onCanPayChange;
 
   // mount hosted fields
   useEffect(() => {
@@ -111,8 +135,8 @@ export default function BraintreeHostedFields({
             color: "#111827",
           },
           ":focus": { color: "#111827" },
-          // ✅ 保留 invalid 的红色，valid 改回正常颜色，避免绿色数字
-          ".invalid": { color: "#EF4444" },
+          // ❗ 不再使用内置 invalid 颜色，避免一边输入一边变红
+          ".invalid": { color: "#111827" },
           ".valid": { color: "#111827" },
           "::-ms-clear": { display: "none" },
         },
@@ -126,8 +150,6 @@ export default function BraintreeHostedFields({
             placeholder: "MM/YY",
           },
           cvv: { selector: "#bf-cvv", placeholder: "CVC" },
-          // ❌ 不再需要 Postcode
-          // postalCode: { selector: "#bf-postal-code", placeholder: "Postcode" },
         },
       });
 
@@ -156,20 +178,56 @@ export default function BraintreeHostedFields({
     };
   }, [amount, currency]);
 
+  // === 内部真正的支付逻辑（点击 Pay now 时调用） ===
   const onPay = async () => {
     if (!hfRef.current || submitting) return;
     setSubmitting(true);
     setError(null);
 
     try {
+      // 每次提交前先清空上一次的 field error
+      setFieldErrors({
+        number: false,
+        expirationDate: false,
+        cvv: false,
+      });
+
+      // ✅ 提交时统一校验：先看 HostedFields 的状态，不合法就直接提示
+      try {
+        const state = hfRef.current.getState?.();
+        const f = state?.fields;
+
+        if (f) {
+          const nextErrors: FieldErrors = {
+            number: !f.number?.isValid,
+            expirationDate: !f.expirationDate?.isValid,
+            cvv: !f.cvv?.isValid,
+          };
+
+          if (
+            nextErrors.number ||
+            nextErrors.expirationDate ||
+            nextErrors.cvv ||
+            !cardholderName.trim()
+          ) {
+            setFieldErrors(nextErrors);
+            setError("Please check your card details and try again.");
+            setSubmitting(false);
+            return;
+          }
+        }
+      } catch {
+        // getState 失败就退回到后面的 tokenization 校验
+      }
+
       onInitiateRef.current?.();
 
-      // 1) tokenize（取 nonce），把 cardholderName 一起传给 Braintree
+      // 通过本地校验后，再 tokenize（取 nonce）
       const { nonce, details } = await hfRef.current.tokenize({
         cardholderName: cardholderName || undefined,
       });
 
-      // 2) 调你现有的结算 API（与 PayPal 一样）
+      // 调现有结算 API
       const res = await fetch("/api/braintree/checkout", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -191,11 +249,8 @@ export default function BraintreeHostedFields({
         throw new Error(out?.error || `Payment failed (${res.status})`);
       }
 
-      // ⭐ 把更多信息往外传，后面 PaymentStep 才能写入 card_brand / card_last4
-      const txId =
-        out?.transactionId ||
-        out?.id ||
-        null;
+      // 把更多信息往外传，给订单写入 card_brand / card_last4 用
+      const txId = out?.transactionId || out?.id || null;
 
       const cardBrand =
         out?.cardBrand ??
@@ -229,7 +284,21 @@ export default function BraintreeHostedFields({
     }
   };
 
+  // 外部 Pay now 是否可点击（不依赖字段合法性，只要字段 mounted + 有姓名）
   const disabled = !ready || submitting || !cardholderName.trim();
+
+  // 把 pay 函数暴露给外部（PaymentStep 会用统一的 Pay now 按钮调用）
+  useEffect(() => {
+    if (!onExposePayRef.current) return;
+    onExposePayRef.current(() => {
+      void onPay();
+    });
+  }, [ready, submitting, cardholderName]);
+
+  // 把是否可支付状态告诉外部，用来控制 Pay now 的 disabled
+  useEffect(() => {
+    onCanPayChangeRef.current?.(!disabled);
+  }, [disabled]);
 
   return (
     <div className="space-y-3">
@@ -237,7 +306,7 @@ export default function BraintreeHostedFields({
         Pay with debit or credit card
       </div>
 
-      {/* ✅ Cardholder Name 普通输入框 */}
+      {/* Cardholder Name 普通输入框 */}
       <div>
         <label className="block text-sm text-gray-600 mb-1">
           Cardholder Name
@@ -261,14 +330,22 @@ export default function BraintreeHostedFields({
             </label>
             <div
               id="bf-card-number"
-              className="h-10 rounded-md border border-gray-300 px-3 flex items-center bg-white"
+              className={[
+                "h-10 rounded-md border px-3 flex items-center bg-white",
+                fieldErrors.number ? "border-red-500" : "border-gray-300",
+              ].join(" ")}
             />
           </div>
           <div>
             <label className="block text-sm text-gray-600 mb-1">Expiry</label>
             <div
               id="bf-expiration-date"
-              className="h-10 rounded-md border border-gray-300 px-3 flex items-center bg-white"
+              className={[
+                "h-10 rounded-md border px-3 flex items-center bg-white",
+                fieldErrors.expirationDate
+                  ? "border-red-500"
+                  : "border-gray-300",
+              ].join(" ")}
             />
           </div>
         </div>
@@ -278,33 +355,16 @@ export default function BraintreeHostedFields({
             <label className="block text-sm text-gray-600 mb-1">CVC</label>
             <div
               id="bf-cvv"
-              className="h-10 rounded-md border border-gray-300 px-3 flex items-center bg-white"
+              className={[
+                "h-10 rounded-md border px-3 flex items-center bg-white",
+                fieldErrors.cvv ? "border-red-500" : "border-gray-300",
+              ].join(" ")}
             />
           </div>
-
-          {/* ❌ Postcode 整块删除 */}
-          {/* <div>
-            <label className="block text-sm text-gray-600 mb-1">Postcode</label>
-            <div
-              id="bf-postal-code"
-              className="h-10 rounded-md border border-gray-300 px-3 flex items-center bg-white"
-            />
-          </div> */}
         </div>
       </div>
 
-      <button
-        type="button"
-        onClick={onPay}
-        disabled={disabled}
-        className="inline-flex h-10 items-center justify-center rounded-md bg-black px-4 text-sm font-semibold text-white disabled:opacity-60"
-        aria-busy={submitting}
-      >
-        {submitting
-          ? "Processing..."
-          : `Pay ${currency.toUpperCase()} ${amount.toFixed(2)}`}
-      </button>
-
+      {/* 不再在这里渲染按钮，统一用外层的 “Pay now” */}
       {error && (
         <div className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-600">
           {error}
