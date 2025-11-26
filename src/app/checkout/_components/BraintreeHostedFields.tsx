@@ -102,11 +102,17 @@ export default function BraintreeHostedFields({
   onExposePayRef.current = onExposePay;
   onCanPayChangeRef.current = onCanPayChange;
 
-  // mount hosted fields
+  // ========== 初始化 Hosted Fields ==========
   useEffect(() => {
     let cancelled = false;
 
     const boot = async () => {
+      // 如果已经有实例了（可能是 StrictMode 第二次执行），直接跳过
+      if (hfRef.current) {
+        setReady(true);
+        return;
+      }
+
       setError(null);
       setReady(false);
 
@@ -124,6 +130,14 @@ export default function BraintreeHostedFields({
       const braintree = await import("braintree-web");
       const client = await braintree.client.create({ authorization: auth });
 
+      // ⚠️ 保险：创建之前把容器里的旧 iframe 清空一下
+      ["bf-card-number", "bf-expiration-date", "bf-cvv"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.innerHTML = "";
+        }
+      });
+
       const hf = await braintree.hostedFields.create({
         client,
         styles: {
@@ -135,7 +149,6 @@ export default function BraintreeHostedFields({
             color: "#111827",
           },
           ":focus": { color: "#111827" },
-          // ❗ 不再使用内置 invalid 颜色，避免一边输入一边变红
           ".invalid": { color: "#111827" },
           ".valid": { color: "#111827" },
           "::-ms-clear": { display: "none" },
@@ -176,7 +189,8 @@ export default function BraintreeHostedFields({
         hf?.teardown?.();
       } catch {}
     };
-  }, [amount, currency]);
+    // 这里只依赖挂载/卸载，不再因为 amount/currency 变化而重复创建
+  }, []);
 
   // === 内部真正的支付逻辑（点击 Pay now 时调用） ===
   const onPay = async () => {
@@ -364,7 +378,6 @@ export default function BraintreeHostedFields({
         </div>
       </div>
 
-      {/* 不再在这里渲染按钮，统一用外层的 “Pay now” */}
       {error && (
         <div className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-600">
           {error}
