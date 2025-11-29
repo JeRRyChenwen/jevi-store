@@ -999,14 +999,6 @@ back 按钮改成一个组件
 
 信用卡错误信息红色字体需要修改
 
-visa master 的信用卡 icon 需要添加
-
-很好，我弄好了，不过我又发现一个问题，就是当我点击 Choose a way to pay 下面的 card 或者 paypal 进行切换支付方式的时候，我发现底下的这些 text 会上下移动：
-
-All charges are processed in AUD. Your bank or PayPal may apply currency conversion and fees.
-
-- Pay in 4 availability is determined by PayPal and may vary by account and region.
-
 然后 最底下的 Back 按钮也会上下移动，能不能帮我固定
 
 checkout 页面的 payment 页面里的 All charges are processed in AUD. Your bank or PayPal may apply currency conversion and fees. 需要改成动态变量

@@ -21,6 +21,8 @@ import {
   validateAddress,
   EMAIL_RE,
 } from "./(hooks)/useAddress";
+import AddressErrorHint from "./_components/AddressErrorHint";
+
 
 type CartItem = CartListItem;
 
@@ -900,9 +902,9 @@ export default function CheckoutPage() {
             {/* Address 步骤 Continue 按钮下方的错误提示 */}
             {step === "address" && continueErrMsg && (
               <div className="mt-2 flex justify-end">
-                <div className="w-[660px] max-w-full text-right">
-                  <p className="text-xs text-red-600">{continueErrMsg}</p>
-                </div>
+                <AddressErrorHint>
+                  {continueErrMsg}
+                </AddressErrorHint>
               </div>
             )}
           </>

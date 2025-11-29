@@ -2,6 +2,7 @@
 "use client";
 
 import React from "react";
+import AddressErrorHint from "@/app/checkout/_components/AddressErrorHint";
 
 /* ====== 本组件内部使用的类型（结构要和 page.tsx 里的一样） ====== */
 type Address = {
@@ -602,17 +603,18 @@ const AddressStep: React.FC<AddressStepProps> = ({
                   >
                     Save delivery address and billing address as default
                   </button>
-                  {saveMsg ? (
-                    <div
-                      className={
-                        "text-xs " +
-                        (saveMsg.kind === "success" ? "text-emerald-700" : "text-red-600")
-                      }
-                      aria-live="polite"
-                    >
+                  {saveMsg &&
+                  (saveMsg.kind === "success" ? (
+                    // ✅ 成功信息维持绿色普通文本
+                    <div className="mt-1 text-xs text-emerald-700" aria-live="polite">
                       {saveMsg.text}
                     </div>
-                  ) : null}
+                  ) : (
+                    // ❌ 错误信息使用与你支付页一致的红色提示卡片
+                    <AddressErrorHint className="mt-1">
+                      {saveMsg.text}
+                    </AddressErrorHint>
+                  ))}
                 </div>
               </div>
             )}
