@@ -78,8 +78,17 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     setCanPay(can);
   }, []);
 
+  // ✅ 统一的支付成功处理：打 log + 调父组件
+  const handlePaySucceeded = useCallback(
+    (payload: any) => {
+      console.log("[checkout] handlePaySucceeded payload", payload);
+      onPaySucceeded(payload);
+    },
+    [onPaySucceeded]
+  );
+
   const handleClickPay = () => {
-    if (!payFn || !visible) return;
+    if (!payFn || !visible || isPayProcessing) return; // 防止多次点击
     // 这里只负责 Card 的支付；PayPal 走 PayPalBigButton 自己的流程
     if (method === "card") {
       onPayInitiated();
@@ -256,7 +265,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                           raw: r,
                         };
 
-                        onPaySucceeded(payload);
+                        handlePaySucceeded(payload);
                       }}
                     />
                   </>
@@ -337,49 +346,58 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
               </div>
 
               {/* Pay now / Pay with PayPal */}
-              {visible &&
-                amountInMajorUnit > 0 &&
-                !isPayProcessing && (
-                  <div className="pt-0 flex justify-end">
-                    <div className="w-[260px] max-w-full">
-                      {method === "paypal" ? (
-                        <PayPalBigButton
-                          amount={amountInMajorUnit}
-                          currency={safeCurrency}
-                          onInitiate={onPayInitiated}
-                          onSucceeded={(details) => {
-                            const payload = {
-                              provider: "paypal" as const,
-                              paymentMethod: "paypal" as const,
-                              provider_txn_id:
-                                (details as any)?.id ??
-                                (details as any)?.transactionId ??
-                                null,
-                              cardBrand: null,
-                              cardLast4: null,
-                              raw: details,
-                            };
-                            onPaySucceeded(payload);
-                          }}
-                        />
-                      ) : (
-                        <button
-                          type="button"
-                          disabled={!payFn || !canPay}
-                          onClick={handleClickPay}
-                          className={[
-                            "w-full rounded-full px-6 py-3 text-sm font-semibold",
-                            !payFn || !canPay
-                              ? "bg-neutral-200 text-neutral-500 cursor-not-allowed"
-                              : "bg-neutral-900 text-white hover:bg-neutral-800",
-                          ].join(" ")}
-                        >
-                          Pay now
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
+              {visible && amountInMajorUnit > 0 && (
+              <div className="pt-0 flex justify-end">
+                <div className="w-[260px] max-w-full">
+                  {method === "paypal" ? (
+                    isPayProcessing ? (
+                      // ✅ PayPal 支付进行中：显示“Processing payment...”
+                      <button
+                        type="button"
+                        disabled
+                        className="w-full rounded-full px-6 py-3 text-sm font-semibold bg-[#FFC439] text-[#111827] opacity-70 cursor-not-allowed"
+                      >
+                        Processing payment...
+                      </button>
+                    ) : (
+                      // ✅ 正常状态：显示真正的 PayPal 按钮
+                      <PayPalBigButton
+                        amount={amountInMajorUnit}
+                        currency={safeCurrency}
+                        onInitiate={onPayInitiated}
+                        onSucceeded={(details) => {
+                          // 这里保持你原来的逻辑即可
+                          onPaySucceeded({
+                            provider: "paypal" as const,
+                            paymentMethod: "paypal" as const,
+                            provider_txn_id:
+                              (details as any)?.id ?? (details as any)?.transactionId ?? null,
+                            cardBrand: null,
+                            cardLast4: null,
+                            raw: details,
+                          });
+                        }}
+                      />
+                    )
+                  ) : (
+                    // 💳 信用卡按钮逻辑保持不变
+                    <button
+                      type="button"
+                      disabled={!payFn || !canPay || isPayProcessing}
+                      onClick={handleClickPay}
+                      className={[
+                        "w-full rounded-full px-6 py-3 text-sm font-semibold",
+                        !payFn || !canPay || isPayProcessing
+                          ? "bg-neutral-200 text-neutral-500 cursor-not-allowed"
+                          : "bg-neutral-900 text-white hover:bg-neutral-800",
+                      ].join(" ")}
+                    >
+                      {isPayProcessing ? "Processing payment..." : "Pay now"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
             </div>
           </div>
         </div>
