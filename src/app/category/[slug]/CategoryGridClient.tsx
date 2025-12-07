@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import type { CSSProperties } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Pagination from "@/components/pagination/Pagination";
 import { api, mediaUrl } from "@/lib/strapi";
@@ -995,6 +996,17 @@ export default function CategoryGridClient({
 
   const start = (page - 1) * pageSize;
 
+  // === 固定“画布高度”：按 40 个商品、4 列来估算一页高度 ===
+  const desktopColumns = 4;                  // 桌面端默认 4 列
+  const rowsForFullPage = Math.ceil(pageSize / desktopColumns); // 40 / 4 = 10 行
+  const approxRowHeight = 520;               // 每一行大约高度（px），可按视觉微调
+  const fullPageHeightPx = rowsForFullPage * approxRowHeight;
+
+  // 让商品区域至少有“40 个商品排满”的高度，但不要拉伸卡片
+  const sectionMinHeightStyle: CSSProperties = {
+    minHeight: fullPageHeightPx,
+  };
+
   const hrefForPage = useMemo(
     () => (p: number) => {
       const u = new URL(window.location.href);
@@ -1136,7 +1148,7 @@ export default function CategoryGridClient({
       {error ? (
         <div className="py-20 text-center text-red-600">{error}</div>
       ) : loading ? (
-        <section>
+        <section style={sectionMinHeightStyle}>
           <div className="grid gap-7 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-4">
             {Array.from({ length: Math.min(pageSize, filteredTotal - start) || 8 }).map((_, i) => (
               <CardSkeleton key={i} />
@@ -1146,10 +1158,16 @@ export default function CategoryGridClient({
       ) : list.length === 0 ? (
         <div className="py-20 text-center text-muted-foreground">No products yet.</div>
       ) : (
-        <section>
+        <section style={sectionMinHeightStyle}>
           <div className="grid gap-7 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-4">
             {list.map((p, idx) => (
-              <ProductCard key={p.key} p={p} idx={idx} start={start} displayCurrency={displayCurrency} />
+              <ProductCard
+                key={p.key}
+                p={p}
+                idx={idx}
+                start={start}
+                displayCurrency={displayCurrency}
+              />
             ))}
           </div>
         </section>
