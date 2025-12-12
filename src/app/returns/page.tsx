@@ -7,15 +7,10 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-type OrderItem = {
-  id: number;
-  product_title: string | null;
-  variant_title: string | null;
-  qty: number;
-  currency: string | null;
-  unit_price_minor: number;
-  line_total_minor: number;
-};
+import ReturnItemsSelector, {
+  type ReturnOrderDetail,
+  type SelectedReturnLine,
+} from "./_components/ReturnItemsSelector";
 
 type OrderSummary = {
   id: number;
@@ -38,8 +33,15 @@ export default function ReturnsPage() {
 
   const [loading, setLoading] = useState(false);
   const [order, setOrder] = useState<OrderSummary | null>(null);
-  const [items, setItems] = useState<OrderItem[]>([]);
-  const [returnQty, setReturnQty] = useState<Record<number, number>>({});
+
+  // 查到的订单明细（带 items），用于 ReturnItemsSelector
+  const [foundOrder, setFoundOrder] = useState<ReturnOrderDetail | null>(
+    null
+  );
+  // 用户选择退哪些商品、各退多少
+  const [selectedLines, setSelectedLines] = useState<
+    SelectedReturnLine[]
+  >([]);
 
   const [reasonType, setReasonType] = useState("");
   const [reasonDetail, setReasonDetail] = useState("");
@@ -67,13 +69,19 @@ export default function ReturnsPage() {
         setError(data.error || "Failed to find order.");
         return;
       }
+
+      // 简要信息
       setOrder(data.order);
-      setItems(data.items || []);
-      const q: Record<number, number> = {};
-      (data.items || []).forEach((it: OrderItem) => {
-        q[it.id] = 0;
+
+      // 明细信息（带 items）给 ReturnItemsSelector 使用
+      setFoundOrder({
+        ...(data.order || {}),
+        items: data.items || [],
       });
-      setReturnQty(q);
+
+      // 重置已选商品（组件在 order 变化时会自己初始化）
+      setSelectedLines([]);
+
       setStep(2);
     } catch (e: any) {
       setError(e?.message || "Unexpected error");
@@ -89,14 +97,10 @@ export default function ReturnsPage() {
       setError("No order loaded.");
       return;
     }
-    const selectedItems = items
-      .map((it) => ({
-        order_item_id: it.id,
-        qty: returnQty[it.id] || 0,
-      }))
-      .filter((it) => it.qty > 0);
 
-    if (!selectedItems.length) {
+    // 过滤出 qty > 0 的行
+    const lines = selectedLines.filter((l) => l.qty > 0);
+    if (!lines.length) {
       setError("Please choose at least one item to return.");
       return;
     }
@@ -104,6 +108,12 @@ export default function ReturnsPage() {
       setError("Please choose a return reason.");
       return;
     }
+
+    // API 期望的结构：{ order_item_id, qty }
+    const selectedItems = lines.map((l) => ({
+      order_item_id: l.item_id,
+      qty: l.qty,
+    }));
 
     try {
       setSubmitting(true);
@@ -196,53 +206,13 @@ export default function ReturnsPage() {
             </div>
           </Card>
 
-          <Card className="p-4 space-y-3">
-            <h2 className="text-sm font-semibold">
-              Select items to return
-            </h2>
-            <div className="space-y-3">
-              {items.map((it) => (
-                <div
-                  key={it.id}
-                  className="flex items-center justify-between gap-3 border-b pb-2 last:border-b-0"
-                >
-                  <div>
-                    <div className="text-sm font-medium">
-                      {it.product_title}
-                    </div>
-                    {it.variant_title && (
-                      <div className="text-xs text-muted-foreground">
-                        {it.variant_title}
-                      </div>
-                    )}
-                    <div className="text-xs text-muted-foreground">
-                      Purchased qty: {it.qty}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">
-                      Return qty
-                    </span>
-                    <Input
-                      type="number"
-                      className="w-20 h-8"
-                      min={0}
-                      max={it.qty}
-                      value={returnQty[it.id] ?? 0}
-                      onChange={(e) => {
-                        const v = Number(e.target.value || 0);
-                        setReturnQty((prev) => ({
-                          ...prev,
-                          [it.id]:
-                            v < 0 ? 0 : v > it.qty ? it.qty : v,
-                        }));
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
+          {/* 商品选择区域：由 ReturnItemsSelector 负责渲染 */}
+          {foundOrder && (
+            <ReturnItemsSelector
+              order={foundOrder}
+              onSelectionChange={setSelectedLines}
+            />
+          )}
 
           <Card className="p-4 space-y-3">
             <h2 className="text-sm font-semibold">
@@ -333,7 +303,8 @@ export default function ReturnsPage() {
             onClick={() => {
               setStep(1);
               setOrder(null);
-              setItems([]);
+              setFoundOrder(null);
+              setSelectedLines([]);
               setSubmitResult(null);
             }}
           >

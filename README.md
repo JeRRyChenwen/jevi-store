@@ -1015,6 +1015,18 @@ checkout 页面的 payment 页面里的 All charges are processed in AUD. Your b
 
 在 Worker 里接入 Braintree/PayPal 的退款 API，退货单从 approved → refunded 时自动调用退款接口。
 
+本地开发和上线，localhost 要改
+
+我想了想，我感觉还是需要：
+
+1. 展示订单里的商品
+2. 让客户选择退哪些商品
+
+No products yet.
+
+如果你计划很快就写自己的 Admin（Next.js + shadcn/ui）：
+⛔ 可以先别上 Strapi return，直接在 D1 + Worker 做一个简单 /admin/returns 页面即可
+
 # ============================================================================
 
 我有一个前端购物 react 网站项目，cloudflare 的 D1 数据库项目，你能帮我完善一下数据储存功能吗，我在我的 social-platform 也就是我的前端网站中的的 checkout 页面里的 payment 页面里的下方有一个黄色的 paypal 按钮，这个是我的支付功能，点击可以登录 paypal 账号进行付款，我希望当用户在付完款之后（成功付款之后）把订单的信息储存到 cloudflare 的 D1 数据库中，我数据库里的结构和表的结构都放在 d1-worker 项目里的 migration 文件夹中你可以查看一下，然后我的购物网站分为游客和用户（游客就是没有登录的状态，用户是已经登录的状态） 我目前在 cloudflare 的 D1 数据库中已经有 users，orders，order_payments，order_items，email_subscriptions 这几个主要的表，储存的时候记得符合这些表的结构 对了我的 checkout 页面是在我的 这个位置：D:\前端练习\social-platform\src\app\checkout\page.tsx 你可以重点看一下，我觉得我要根据我表格结构也就是这个位置里的文件：D:\前端练习\d1-worker\migrations 然后可能要重点修改 checkout 页面和 d1-worker 里的 src/index.js 文件，我不知道我说的对不对，你可以当做一个参考 social-platform 是我的前端购物 react 网站项目 d1-worker 是我的 cloudflare 的 D1 数据库项目

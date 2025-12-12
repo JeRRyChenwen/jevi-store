@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Check } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import PageBack from "@/components/PageBack";
 import type { CartItem as CartListItem } from "@/components/cart/CartList";
 import { effectiveMinor, type Currency } from "@/lib/pricing";
 import { fetchAuthedEmail, isLoggedInViaCookie } from "@/lib/auth";
@@ -770,10 +771,8 @@ export default function CheckoutPage() {
   return (
     <main className="w-full px-4 sm:px-6 lg:px-8 2xl:px-12 py-6 md:py-8">
       <div className="mx-auto w-full max-w-[2300px]">
-        <div className="mb-5 text-sm text-neutral-600">
-          <Link href="/" className="hover:underline">
-            &larr; Back
-          </Link>
+        <div className="mb-5">
+          <PageBack />
         </div>
 
         <CheckoutSteps step={step} onChange={setStepAndURL} />
