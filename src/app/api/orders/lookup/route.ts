@@ -21,22 +21,18 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // ✅ 直接转发到 Worker 的 /orders/lookup
-  //    Worker 端会负责：
-  //    - 根据 orderNumber / email 精确匹配订单
-  //    - 一次性查出 order + items
+  // ✅ 更稳：上游同时传 order_number + orderNumber（双保险）
   const upstreamUrl =
     `${API_BASE}/orders/lookup` +
-    `?orderNumber=${encodeURIComponent(orderNumber)}` +
+    `?order_number=${encodeURIComponent(orderNumber)}` +
+    `&orderNumber=${encodeURIComponent(orderNumber)}` +
     `&email=${encodeURIComponent(email)}`;
 
   let upstream: Response;
   try {
     upstream = await fetch(upstreamUrl, {
       method: "GET",
-      headers: {
-        accept: "application/json",
-      },
+      headers: { accept: "application/json" },
       cache: "no-store",
     });
   } catch {
@@ -65,12 +61,14 @@ export async function GET(req: NextRequest) {
       {
         ok: false,
         error: data?.error || "lookup_failed",
+        // ✅ 增强调试：你本地看 Network 就能知道上游到底回了什么
+        upstream_status: upstream.status,
+        upstream_error: data?.error,
       },
       { status }
     );
   }
 
-  // ✅ 把 order + items 直接透传给前端 ReturnsPage 使用
   return NextResponse.json(
     {
       ok: true,

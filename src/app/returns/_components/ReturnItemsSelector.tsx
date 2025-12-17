@@ -36,12 +36,38 @@ export function formatMoney(minor: number, currency: string | null | undefined) 
   }).format(major);
 }
 
+function parseVariantTitle(variantTitle?: string | null) {
+  const raw = String(variantTitle ?? "").trim();
+  if (!raw) {
+    return { color: null as string | null, size: null as string | null, raw: "" };
+  }
+
+  // 兼容 "color / size"
+  const parts = raw
+    .split("/")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (parts.length >= 2) {
+    return {
+      color: parts[0] ?? null,
+      size: parts[1] ?? null,
+      raw,
+    };
+  }
+
+  // 只有一个字段，不强行判断是颜色还是尺码，留给兜底显示 raw
+  return { color: null, size: null, raw };
+}
+
 export default function ReturnItemsSelector({
   order,
   onSelectionChange,
+  thumbByItemId,
 }: {
   order: ReturnOrderDetail;
   onSelectionChange?: (lines: SelectedReturnLine[]) => void;
+  thumbByItemId?: Record<number, string | null>;
 }) {
   const [selected, setSelected] = React.useState<Record<number, number>>({});
 
@@ -117,6 +143,20 @@ export default function ReturnItemsSelector({
               className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 border-b last:border-b-0 pb-4 last:pb-0"
             >
               <div className="flex items-start gap-3">
+                {/* ✅ thumbnail */}
+                <div className="w-25 h-30 rounded-xl border border-neutral-200 overflow-hidden bg-neutral-50 shrink-0 flex items-center justify-center">
+                  {thumbByItemId?.[itemId] ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={thumbByItemId[itemId] as string}
+                      alt={item.product_title || "Item"}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="text-[10px] text-neutral-400">No image</div>
+                  )}
+                </div>
+
                 <input
                   type="checkbox"
                   className="mt-1 h-4 w-4 rounded border-neutral-300"
@@ -129,11 +169,39 @@ export default function ReturnItemsSelector({
                   <div className="text-sm font-medium text-neutral-900">
                     {item.product_title || "Item"}
                   </div>
-                  {item.variant_title && (
-                    <div className="text-xs text-neutral-500 mt-0.5">
-                      {item.variant_title}
-                    </div>
-                  )}
+
+                  {(() => {
+                    const { color, size, raw } = parseVariantTitle(item.variant_title);
+
+                    return (
+                      <>
+                        {color && (
+                          <div className="text-xs text-neutral-500 mt-0.5">
+                            Color:{" "}
+                            <span className="text-neutral-900 font-medium">
+                              {color}
+                            </span>
+                          </div>
+                        )}
+
+                        {size && (
+                          <div className="text-xs text-neutral-500 mt-0.5">
+                            Size:{" "}
+                            <span className="text-neutral-900 font-medium">
+                              {size}
+                            </span>
+                          </div>
+                        )}
+
+                        {!color && !size && raw && (
+                          <div className="text-xs text-neutral-500 mt-0.5">
+                            {raw}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+
                   <div className="mt-1 text-xs text-neutral-500">
                     Ordered qty: {maxQty}
                   </div>
