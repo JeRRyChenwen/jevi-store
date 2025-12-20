@@ -18,8 +18,17 @@ type Address = {
 
 type AddressesResp = {
   ok: boolean;
-  delivery: any | null;
-  billing: any | null;
+
+  // ✅ 新结构：Worker 返回 { addresses: { delivery, billing } }
+  addresses?: {
+    delivery?: any | null;
+    billing?: any | null;
+  };
+
+  // ✅ 兼容旧结构（如果你哪天又改回去，也不炸）
+  delivery?: any | null;
+  billing?: any | null;
+
   worker_version?: string;
 };
 
@@ -126,8 +135,14 @@ export default function EditAddressCard() {
         }
         const data = (await r.json()) as AddressesResp;
         if (dead) return;
-        setDelivery(shapeAddress(data.delivery));
-        setBilling(shapeAddress(data.billing));
+        // ✅ 兼容两种返回结构：
+        // 1) { delivery, billing }
+        // 2) { addresses: { delivery, billing } }
+        const d = (data as any)?.delivery ?? (data as any)?.addresses?.delivery ?? null;
+        const b = (data as any)?.billing ?? (data as any)?.addresses?.billing ?? null;
+
+        setDelivery(shapeAddress(d));
+        setBilling(shapeAddress(b));
       } catch (e: any) {
         if (!dead) setGlobalErr(e?.message || String(e));
       } finally {
@@ -193,13 +208,14 @@ export default function EditAddressCard() {
         );
       }
 
-      // 后端会返回 { ok, delivery, billing }
-      if (data.delivery) {
-        setDelivery(shapeAddress(data.delivery));
-      }
-      if (data.billing) {
-        setBilling(shapeAddress(data.billing));
-      }
+      // ✅ 兼容两种返回结构：
+      // 1) { delivery, billing }
+      // 2) { addresses: { delivery, billing } }
+      const d = (data as any)?.delivery ?? (data as any)?.addresses?.delivery ?? null;
+      const b = (data as any)?.billing ?? (data as any)?.addresses?.billing ?? null;
+
+      if (d) setDelivery(shapeAddress(d));
+      if (b) setBilling(shapeAddress(b));
 
       if (kind === "delivery") {
         setEditingDelivery(false);

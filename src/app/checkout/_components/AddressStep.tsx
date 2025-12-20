@@ -470,10 +470,15 @@ const AddressStep: React.FC<AddressStepProps> = ({
   setEmailInput,
   sendSubscriptionIfNeeded,
 }) => {
+  // ✅ 防呆：有时 page.tsx 可能没把 hasSavedDelivery/hasSavedBilling 算对
+  // 只要 savedDeliveryAddr / savedBillingAddr 实际存在，就认为有 saved address
+  const effectiveHasSavedDelivery = hasSavedDelivery || !!savedDeliveryAddr;
+  const effectiveHasSavedBilling = hasSavedBilling || !!savedBillingAddr;
+
   return (
     <>
       {/* 顶部：Use Saved Addresses 区块 */}
-      {(hasSavedDelivery || hasSavedBilling) && (
+      {(effectiveHasSavedDelivery || effectiveHasSavedBilling) && (
         <section className="rounded-xl border" id="use-saved-addresses">
           <div className="border-b px-4 py-3 font-semibold">Use Saved Addresses</div>
           <div className="p-4 space-y-3">
@@ -482,7 +487,7 @@ const AddressStep: React.FC<AddressStepProps> = ({
             </p>
 
             <div className="flex flex-col gap-2 mt-2">
-              {hasSavedDelivery && (
+              {effectiveHasSavedDelivery && (
                 <label className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
@@ -490,6 +495,8 @@ const AddressStep: React.FC<AddressStepProps> = ({
                     onChange={(e) => {
                       const checked = e.target.checked;
                       setUseSavedDelivery(checked);
+
+                      // 勾选时把 saved delivery 写入当前 address
                       if (checked && savedDeliveryAddr) {
                         setAddress(savedDeliveryAddr);
                         clearAddressErrors();
@@ -500,7 +507,7 @@ const AddressStep: React.FC<AddressStepProps> = ({
                 </label>
               )}
 
-              {hasSavedBilling && (
+              {effectiveHasSavedBilling && (
                 <label className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
@@ -508,6 +515,8 @@ const AddressStep: React.FC<AddressStepProps> = ({
                     onChange={(e) => {
                       const checked = e.target.checked;
                       setUseSavedBilling(checked);
+
+                      // 勾选时把 saved billing 写入当前 billingAddress
                       if (checked && savedBillingAddr) {
                         setBillingAddress(savedBillingAddr);
                         clearBillingErrors();
@@ -545,9 +554,7 @@ const AddressStep: React.FC<AddressStepProps> = ({
                   showErrors={addressShowErrors}
                   errs={addressErrs}
                   errorBanner={
-                    addressShowErrors
-                      ? "Some required fields are missing or invalid."
-                      : null
+                    addressShowErrors ? "Some required fields are missing or invalid." : null
                   }
                   onEmailCommit={(email) => sendSubscriptionIfNeeded(email)}
                   onOptInChanged={() => sendSubscriptionIfNeeded()}
@@ -603,18 +610,15 @@ const AddressStep: React.FC<AddressStepProps> = ({
                   >
                     Save delivery address and billing address as default
                   </button>
+
                   {saveMsg &&
-                  (saveMsg.kind === "success" ? (
-                    // ✅ 成功信息维持绿色普通文本
-                    <div className="mt-1 text-xs text-emerald-700" aria-live="polite">
-                      {saveMsg.text}
-                    </div>
-                  ) : (
-                    // ❌ 错误信息使用与你支付页一致的红色提示卡片
-                    <AddressErrorHint className="mt-1">
-                      {saveMsg.text}
-                    </AddressErrorHint>
-                  ))}
+                    (saveMsg.kind === "success" ? (
+                      <div className="mt-1 text-xs text-emerald-700" aria-live="polite">
+                        {saveMsg.text}
+                      </div>
+                    ) : (
+                      <AddressErrorHint className="mt-1">{saveMsg.text}</AddressErrorHint>
+                    ))}
                 </div>
               </div>
             )}

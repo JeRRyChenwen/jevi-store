@@ -444,7 +444,7 @@ export default function ReturnsPage() {
             <div>
               Return ID:{" "}
               <span className="font-mono">
-                {submitResult.return?.id}
+                {submitResult.return?.return_number ?? submitResult.return?.id}
               </span>
             </div>
             <div>

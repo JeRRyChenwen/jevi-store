@@ -226,6 +226,7 @@ export function useAddress(isLoggedIn: boolean) {
     }
 
     let dead = false;
+
     (async () => {
       try {
         const r = await fetch("/api/addresses", {
@@ -234,12 +235,27 @@ export function useAddress(isLoggedIn: boolean) {
           headers: { accept: "application/json" },
           cache: "no-store",
         });
-        if (!r.ok) return;
+
+        // 这里不要静默 return，否则你“看不到报错”，但其实已经失败了
         const data = await r.json().catch(() => ({}));
+
         if (dead) return;
 
-        const d = data?.delivery || null;
-        const b = data?.billing || null;
+        if (!r.ok) {
+          // 让问题可见：至少在 console 里能看到是什么状态码/返回
+          console.error("[useAddress] GET /api/addresses failed:", r.status, data);
+          setHasSavedDelivery(false);
+          setHasSavedBilling(false);
+          setSavedDeliveryAddr(null);
+          setSavedBillingAddr(null);
+          return;
+        }
+
+        // ✅ 兼容两种后端返回：
+        // A) 新版：{ ok:true, addresses:{ delivery, billing } }
+        // B) 旧版：{ ok:true, delivery, billing }
+        const d = data?.addresses?.delivery ?? data?.delivery ?? null;
+        const b = data?.addresses?.billing ?? data?.billing ?? null;
 
         const fd = d ? fromApiAddress(d) : null;
         const fb = b ? fromApiAddress(b) : null;
@@ -248,7 +264,14 @@ export function useAddress(isLoggedIn: boolean) {
         setHasSavedBilling(!!fb);
         setSavedDeliveryAddr(fd);
         setSavedBillingAddr(fb);
-      } catch {}
+      } catch (e: any) {
+        if (dead) return;
+        console.error("[useAddress] GET /api/addresses exception:", e?.message || e);
+        setHasSavedDelivery(false);
+        setHasSavedBilling(false);
+        setSavedDeliveryAddr(null);
+        setSavedBillingAddr(null);
+      }
     })();
 
     return () => {
