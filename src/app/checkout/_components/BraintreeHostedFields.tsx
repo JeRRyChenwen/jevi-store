@@ -3,7 +3,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  readCachedBraintreeToken,
   prefetchBraintreeToken,
   fetchAndOverwriteBraintreeToken,
 } from "@/lib/braintreeToken";
@@ -24,20 +23,63 @@ declare global {
   }
 }
 
-const STORAGE_KEY = "bt:clientToken";
+type FieldErrors = {
+  number: boolean;
+  expirationDate: boolean;
+  cvv: boolean;
+};
 
-// 与 PayPal 组件一致：只在前端会话内取一次 token（并缓存）
+function clearHostedFieldContainers() {
+  ["bf-card-number", "bf-expiration-date", "bf-cvv"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = "";
+  });
+}
+
+/**
+ * 识别“token 过期/失效/授权无效”类错误，用于触发强制刷新 token 并重试一次
+ */
+function isAuthTokenError(e: any): boolean {
+  const msg = String(e?.message || e || "").toLowerCase();
+
+  // 覆盖常见文案：expired / deactivated / invalid authorization
+  if (
+    msg.includes("expired") ||
+    msg.includes("deactivated") ||
+    msg.includes("tokenization key") ||
+    msg.includes("invalid authorization") ||
+    msg.includes("authorization") ||
+    msg.includes("client token") ||
+    msg.includes("clienttoken")
+  ) {
+    return true;
+  }
+
+  // braintree-web 有时会给更结构化的 error
+  const code = String(e?.code || "").toLowerCase();
+  if (
+    code.includes("authorization") ||
+    code.includes("client") ||
+    code.includes("token")
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * 与方案 2 对齐：
+ * - token 缓存由 braintreeToken.ts 管（带 TTL）
+ * - 这里仅做“并发单飞”（避免 StrictMode/并行渲染重复打 token 接口）
+ */
 async function ensureTokenOnce(): Promise<string> {
   if (typeof window === "undefined") return "";
-  const cached =
-    readCachedBraintreeToken?.() || sessionStorage.getItem(STORAGE_KEY);
-  if (cached) return cached;
 
+  // 单飞：同一时刻只发一次请求
   if (window.__btTokenPromise) {
     try {
-      const t = await window.__btTokenPromise;
-      if (t) sessionStorage.setItem(STORAGE_KEY, t);
-      return t || "";
+      return (await window.__btTokenPromise) || "";
     } catch {
       delete window.__btTokenPromise;
       return "";
@@ -45,26 +87,16 @@ async function ensureTokenOnce(): Promise<string> {
   }
 
   window.__btTokenPromise = (async () => {
-    const res = await prefetchBraintreeToken();
-    const token =
-      typeof res === "string" ? res : (res as any)?.clientToken || "";
-    if (token) sessionStorage.setItem(STORAGE_KEY, token);
-    return token;
+    return await prefetchBraintreeToken();
   })();
 
   try {
-    return await window.__btTokenPromise;
+    return (await window.__btTokenPromise) || "";
   } catch {
     delete window.__btTokenPromise;
     return "";
   }
 }
-
-type FieldErrors = {
-  number: boolean;
-  expirationDate: boolean;
-  cvv: boolean;
-};
 
 export default function BraintreeHostedFields({
   amount,
@@ -102,71 +134,72 @@ export default function BraintreeHostedFields({
   onExposePayRef.current = onExposePay;
   onCanPayChangeRef.current = onCanPayChange;
 
-  // ========== 初始化 Hosted Fields ==========
-  useEffect(() => {
-    let cancelled = false;
+  // ✅ 抽出来：可复用的创建 HostedFields 方法
+  const createHostedFields = async (auth: string) => {
+    const braintree = await import("braintree-web");
 
-    const boot = async () => {
-      // 如果已经有实例了（可能是 StrictMode 第二次执行），直接跳过
-      if (hfRef.current) {
-        setReady(true);
-        return;
-      }
+    // 每次创建前都清空旧 iframe，避免重复 mount
+    clearHostedFieldContainers();
 
-      setError(null);
-      setReady(false);
+    const client = await braintree.client.create({ authorization: auth });
 
-      // 1) client token
-      let auth = await ensureTokenOnce();
-      if (!auth) {
-        try {
-          await fetchAndOverwriteBraintreeToken();
-          auth = await ensureTokenOnce();
-        } catch {}
-      }
-      if (!auth) throw new Error("Failed to get clientToken");
-
-      // 2) braintree client + hosted fields
-      const braintree = await import("braintree-web");
-      const client = await braintree.client.create({ authorization: auth });
-
-      // ⚠️ 保险：创建之前把容器里的旧 iframe 清空一下
-      ["bf-card-number", "bf-expiration-date", "bf-cvv"].forEach((id) => {
-        const el = document.getElementById(id);
-        if (el) {
-          el.innerHTML = "";
-        }
-      });
-
-      const hf = await braintree.hostedFields.create({
-        client,
-        styles: {
-          input: {
-            "font-size": "14px",
-            "line-height": "20px",
-            "font-family":
-              "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial",
-            color: "#111827",
-          },
-          ":focus": { color: "#111827" },
-          ".invalid": { color: "#111827" },
-          ".valid": { color: "#111827" },
-          "::-ms-clear": { display: "none" },
+    const hf = await braintree.hostedFields.create({
+      client,
+      styles: {
+        input: {
+          "font-size": "14px",
+          "line-height": "20px",
+          "font-family":
+            "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial",
+          color: "#111827",
         },
-        fields: {
-          number: {
-            selector: "#bf-card-number",
-            placeholder: "4111 1111 1111 1111",
-          },
-          expirationDate: {
-            selector: "#bf-expiration-date",
-            placeholder: "MM/YY",
-          },
-          cvv: { selector: "#bf-cvv", placeholder: "CVC" },
+        ":focus": { color: "#111827" },
+        ".invalid": { color: "#111827" },
+        ".valid": { color: "#111827" },
+        "::-ms-clear": { display: "none" },
+      },
+      fields: {
+        number: {
+          selector: "#bf-card-number",
+          placeholder: "4111 1111 1111 1111",
         },
-      });
+        expirationDate: {
+          selector: "#bf-expiration-date",
+          placeholder: "MM/YY",
+        },
+        cvv: { selector: "#bf-cvv", placeholder: "CVC" },
+      },
+    });
 
-      if (cancelled) {
+    return hf;
+  };
+
+  /**
+   * ✅ 抽出来：初始化 HostedFields（带一次“过期重试刷新”）
+   * 让它既能在 mount 时用，也能在 tokenize 失败后自动恢复时用
+   */
+  const initHostedFieldsWithRetry = async (
+    opts?: { cancelled?: () => boolean }
+  ) => {
+    // 如果已经有实例了（可能是 StrictMode 第二次执行），直接跳过
+    if (hfRef.current) {
+      setReady(true);
+      return;
+    }
+
+    setError(null);
+    setReady(false);
+
+    const isCancelled = opts?.cancelled || (() => false);
+
+    // 第一次：用缓存/TTL token
+    let auth = await ensureTokenOnce();
+    if (!auth) throw new Error("Failed to get clientToken");
+
+    try {
+      const hf = await createHostedFields(auth);
+
+      if (isCancelled()) {
         try {
           hf.teardown();
         } catch {}
@@ -175,9 +208,37 @@ export default function BraintreeHostedFields({
 
       hfRef.current = hf;
       setReady(true);
-    };
+      return;
+    } catch (e: any) {
+      // 命中授权类错误：强制刷新 token 后重试一次
+      if (!isAuthTokenError(e)) throw e;
 
-    boot().catch((e) =>
+      await fetchAndOverwriteBraintreeToken();
+      auth = await ensureTokenOnce();
+      if (!auth) throw e;
+
+      const hf = await createHostedFields(auth);
+
+      if (isCancelled()) {
+        try {
+          hf.teardown();
+        } catch {}
+        return;
+      }
+
+      hfRef.current = hf;
+      setReady(true);
+      return;
+    }
+  };
+
+  // ========== 初始化 Hosted Fields（mount 时） ==========
+  useEffect(() => {
+    let cancelled = false;
+
+    initHostedFieldsWithRetry({
+      cancelled: () => cancelled,
+    }).catch((e) =>
       setError((e as any)?.message || "Failed to init card fields")
     );
 
@@ -191,6 +252,30 @@ export default function BraintreeHostedFields({
     };
     // 这里只依赖挂载/卸载，不再因为 amount/currency 变化而重复创建
   }, []);
+
+  // ✅ 自动恢复：重建 hosted fields（不刷新页面）
+  const recoverPaymentSession = async (reason?: any) => {
+    // 1) teardown 旧实例
+    try {
+      hfRef.current?.teardown?.();
+    } catch {}
+    hfRef.current = null;
+
+    // 2) 清空容器，避免旧 iframe 残留
+    clearHostedFieldContainers();
+
+    // 3) 强制拉新 token 并重建
+    await fetchAndOverwriteBraintreeToken();
+    await initHostedFieldsWithRetry();
+
+    // 4) 给用户一个“软提示”，不自动再扣款（避免重复扣款风险）
+    const msg = String(reason?.message || reason || "").trim();
+    setError(
+      msg
+        ? `Payment session refreshed. Please try again. (${msg})`
+        : "Payment session refreshed. Please try again."
+    );
+  };
 
   // === 内部真正的支付逻辑（点击 Pay now 时调用） ===
   const onPay = async () => {
@@ -237,9 +322,26 @@ export default function BraintreeHostedFields({
       onInitiateRef.current?.();
 
       // 通过本地校验后，再 tokenize（取 nonce）
-      const { nonce, details } = await hfRef.current.tokenize({
-        cardholderName: cardholderName || undefined,
-      });
+      let nonce: string | null = null;
+      let details: any = null;
+
+      try {
+        const r = await hfRef.current.tokenize({
+          cardholderName: cardholderName || undefined,
+        });
+        nonce = r?.nonce;
+        details = r?.details;
+      } catch (e: any) {
+        // ✅ 关键：tokenize 阶段授权失效 => 自动恢复（不刷新页面）
+        if (isAuthTokenError(e)) {
+          await recoverPaymentSession(e);
+          setSubmitting(false);
+          return;
+        }
+        throw e;
+      }
+
+      if (!nonce) throw new Error("Failed to tokenize card.");
 
       // 调现有结算 API
       const res = await fetch("/api/braintree/checkout", {
