@@ -9,6 +9,7 @@ import Pagination from "@/components/pagination/Pagination";
 import { api, mediaUrl } from "@/lib/strapi";
 import { Button } from "@/components/ui/button";
 import { X, Star, ChevronLeft, ChevronRight } from "lucide-react";
+import FilterButton from "@/components/filters/FilterButton";
 import {
   Select,
   SelectTrigger,
@@ -940,9 +941,24 @@ export default function CategoryGridClient({
             parts.push(`filters[variants][${key}][$in][${i}]=${encodeURIComponent(v)}`)
           );
         };
+
+        // ✅✅✅ color 专用：OR + containsi（大小写不敏感、也能容忍 Tan/tan/空格差异）
+        const pushColorORContainsI = (colors: string[]) => {
+          colors
+            .map((v) => String(v || "").trim())
+            .filter(Boolean)
+            .forEach((v, i) => {
+              parts.push(
+                `filters[$or][${i}][variants][color][$containsi]=${encodeURIComponent(v)}`
+              );
+            });
+        };
+
         if (appliedMaterials.length) pushIN("material", appliedMaterials);
         if (appliedSizes.length) pushIN("size", appliedSizes);
-        if (appliedColors.length) pushIN("color", appliedColors);
+
+        // ✅ 仅这一行改变：colors 不再用 $in 精确匹配
+        if (appliedColors.length) pushColorORContainsI(appliedColors);
 
         // ✅ 关键：把 prices 一起取回
         const qs =
@@ -956,6 +972,10 @@ export default function CategoryGridClient({
           `&pagination[page]=${page}&pagination[pageSize]=${pageSize}` +
           `${sortQueryString}&publicationState=live`;
 
+
+        dbg("appliedColors", appliedColors);
+        dbg("parts(color)", parts.filter((p) => p.includes("color")));
+        dbg("final parts count", parts.length);
         dbg("products:GET", qs);
 
         const json = await api(qs, { noCache: true });
@@ -1096,9 +1116,12 @@ export default function CategoryGridClient({
               </Select>
             </div>
 
-            <Button ref={triggerBtnRef} variant="outline" className="rounded-full px-5" onClick={() => setOpen(true)}>
-              Filter
-            </Button>
+            <FilterButton
+              ref={triggerBtnRef}
+              label="Filter"
+              onClick={() => setOpen(true)}
+              className="rounded-full px-5"
+            />
           </div>
         </div>
       </header>
@@ -1131,9 +1154,194 @@ export default function CategoryGridClient({
             </button>
           </div>
 
-          <div className="h-[calc(100%-120px)] overflow-y-auto p-4">
-            {/* 你的筛选控件...（与原文件一致） */}
-          </div>
+          <div className="h-[calc(100%-120px)] overflow-y-auto p-4 space-y-6">
+
+
+          {/* ===== Price ===== */}
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold">Price</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="space-y-1">
+                <div className="text-xs text-neutral-600">Min</div>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  value={typeof draftMin === "number" ? draftMin : ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    const n = v === "" ? undefined : Math.max(0, Number(v));
+                    setDraftMin(Number.isFinite(Number(n)) ? n : undefined);
+                  }}
+                  className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-black/10"
+                  placeholder="0"
+                />
+              </label>
+
+              <label className="space-y-1">
+                <div className="text-xs text-neutral-600">Max</div>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  value={typeof draftMax === "number" ? draftMax : ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    const n = v === "" ? undefined : Math.max(0, Number(v));
+                    setDraftMax(Number.isFinite(Number(n)) ? n : undefined);
+                  }}
+                  className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-black/10"
+                  placeholder="No limit"
+                />
+              </label>
+            </div>
+          </section>
+
+          {/* ===== Gender（product 级） ===== */}
+          {productGenderSupported && facetGenders.length > 0 && (
+            <section className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold">Gender</h3>
+                <span className="text-xs text-neutral-500">{facetGenders.length}</span>
+              </div>
+
+              <div className="space-y-2">
+                {facetGenders.map((g) => {
+                  const checked = draftGenders.has(g);
+                  return (
+                    <label key={g} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          const next = new Set(draftGenders);
+                          if (e.target.checked) next.add(g);
+                          else next.delete(g);
+                          setDraftGenders(next);
+                        }}
+                      />
+                      <span>{g}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {/* ===== Variants filters（material / size / color） ===== */}
+          {variantFiltersSupported && (
+            <>
+              {/* Material */}
+              {facetMaterials.length > 0 && (
+                <section className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold">Material</h3>
+                    <span className="text-xs text-neutral-500">{facetMaterials.length}</span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {facetMaterials.map((m) => {
+                      const checked = draftMaterials.has(m);
+                      return (
+                        <label key={m} className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => {
+                              const next = new Set(draftMaterials);
+                              if (e.target.checked) next.add(m);
+                              else next.delete(m);
+                              setDraftMaterials(next);
+                            }}
+                          />
+                          <span>{m}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+
+              {/* Size */}
+              {facetSizes.length > 0 && (
+                <section className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold">Size</h3>
+                    <span className="text-xs text-neutral-500">{facetSizes.length}</span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {facetSizes.map((s) => {
+                      const active = draftSizes.has(s);
+                      return (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => {
+                            const next = new Set(draftSizes);
+                            if (next.has(s)) next.delete(s);
+                            else next.add(s);
+                            setDraftSizes(next);
+                          }}
+                          className={[
+                            "px-3 py-1.5 rounded-full border text-sm",
+                            active ? "border-black" : "border-neutral-200",
+                            active ? "bg-black text-white" : "bg-white text-neutral-800",
+                          ].join(" ")}
+                        >
+                          {s}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+
+              {/* Color */}
+              {facetColors.length > 0 && (
+                <section className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold">Color</h3>
+                    <span className="text-xs text-neutral-500">{facetColors.length}</span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {facetColors.map((c) => {
+                      const active = draftColors.has(c);
+                      return (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => {
+                            const next = new Set(draftColors);
+                            if (next.has(c)) next.delete(c);
+                            else next.add(c);
+                            setDraftColors(next);
+                          }}
+                          className={[
+                            "px-3 py-1.5 rounded-full border text-sm",
+                            active ? "border-black" : "border-neutral-200",
+                            active ? "bg-black text-white" : "bg-white text-neutral-800",
+                          ].join(" ")}
+                          title={c}
+                        >
+                          {c}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+            </>
+          )}
+
+          {/* ===== 如果 facets 拉不到，这里给你一个可见提示（方便定位） ===== */}
+          {(!variantFiltersSupported || facetMaterials.length + facetSizes.length + facetColors.length === 0) && (
+            <div className="text-xs text-neutral-500">
+              No variant facets available (material/size/color). Check console logs for /api/variants response.
+            </div>
+          )}
+        </div>
 
           <div className="p-4 border-t flex items-center justify-between gap-2">
             <Button variant="ghost" onClick={resetDraft}>

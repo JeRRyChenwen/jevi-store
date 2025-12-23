@@ -1,11 +1,11 @@
 // src/components/filters/FilterButton.tsx
 "use client";
 
-import { useMemo } from "react";
+import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Funnel } from "lucide-react";
 
-type Props = {
+type Props = React.ButtonHTMLAttributes<HTMLButtonElement> & {
   label?: string;
   /** 右侧的小提示，例如 "2 active" / "Date · Amount" */
   badgeText?: string;
@@ -16,23 +16,41 @@ type Props = {
   className?: string;
 };
 
-export default function FilterButton({
-  label = "Filter",
-  badgeText,
-  active = false,
-  className,
-}: Props) {
-  const showBadge = useMemo(() => active && !!badgeText, [active, badgeText]);
+const FilterButton = React.forwardRef<HTMLButtonElement, Props>(
+  (
+    {
+      label = "Filter",
+      badgeText,
+      active = false,
+      className,
+      ...buttonProps
+    },
+    ref
+  ) => {
+    const showBadge = React.useMemo(
+      () => active && !!badgeText,
+      [active, badgeText]
+    );
 
-  return (
-    <Button variant="outline" className={`gap-2 ${className || ""}`}>
-      <Funnel className="h-4 w-4" />
-      {label}
-      {showBadge && (
-        <span className="ml-1 text-xs text-muted-foreground">
-          ({badgeText})
-        </span>
-      )}
-    </Button>
-  );
-}
+    return (
+      <Button
+        ref={ref}
+        variant="outline"
+        className={`gap-2 ${className || ""}`}
+        {...buttonProps}
+      >
+        <Funnel className="h-4 w-4" />
+        {label}
+        {showBadge && (
+          <span className="ml-1 text-xs text-muted-foreground">
+            ({badgeText})
+          </span>
+        )}
+      </Button>
+    );
+  }
+);
+
+FilterButton.displayName = "FilterButton";
+
+export default FilterButton;
