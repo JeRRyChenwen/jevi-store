@@ -1017,13 +1017,6 @@ checkout 页面的 payment 页面里的 All charges are processed in AUD. Your b
 
 本地开发和上线，localhost 要改
 
-我想了想，我感觉还是需要：
-
-1. 展示订单里的商品
-2. 让客户选择退哪些商品
-
-No products yet.
-
 如果你计划很快就写自己的 Admin（Next.js + shadcn/ui）：
 ⛔ 可以先别上 Strapi return，直接在 D1 + Worker 做一个简单 /admin/returns 页面即可
 
