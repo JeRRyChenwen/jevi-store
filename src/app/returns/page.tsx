@@ -839,7 +839,7 @@ export default function ReturnsPage() {
                   </div>
                   <div className="mt-1 text-xs leading-relaxed">
                     It looks like you&apos;ve already submitted a return request for this
-                    item. Please wait for our team to review your existing request and
+                    item or your return request contains items that you've already submitted. Please wait for our team to review your existing request and
                     contact you via email before submitting another one.
                   </div>
                 </div>
