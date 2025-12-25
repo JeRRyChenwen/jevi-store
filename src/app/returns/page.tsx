@@ -74,7 +74,7 @@ type StrapiMediaRel =
 function firstImageUrlFromRel(rel?: StrapiMediaRel): string | null {
   if (!rel) return null;
 
-  // { data: [{ attributes: { url } }]}
+  // { data: [{ attributes: { url } }] }
   const data = (rel as any)?.data;
   if (Array.isArray(data) && data.length) {
     const a: StrapiImage | undefined = data[0]?.attributes;
@@ -155,6 +155,21 @@ export default function ReturnsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitResult, setSubmitResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+
+
+  // ✅ 把后端 error code 转成用户可读文案
+  const displayError = useMemo(() => {
+    if (!error) return "";
+    if (error === "duplicate_return_request") {
+      return (
+        "You have already submitted a return request for this item. " +
+        "Please wait for our team to review your existing request instead of submitting another one."
+      );
+    }
+    return error;
+  }, [error]);
+
+  const isDuplicateError = error === "duplicate_return_request";
 
   // ✅ 页面加载时：调用 bootstrap，决定“登录用户/游客”模式
   useEffect(() => {
@@ -395,6 +410,10 @@ export default function ReturnsPage() {
         console.error("[returns] fetch strapi thumbs failed:", e);
       }
 
+      // ✅ 每次进入 Step 2 之前，把原因表单清空
+      setReasonType("");
+      setReasonDetail("");
+
       setStep(2);
     } catch (e: any) {
       setError(e?.message || "Unexpected error");
@@ -441,10 +460,18 @@ export default function ReturnsPage() {
         }),
       });
       const data = await res.json();
+
       if (!res.ok || !data.ok) {
-        setError(data.error || "Failed to submit return.");
+        const errCode = String(data.error || "");
+        // ✅ 特判重复提交：只标记错误码，后面在按钮下方展示文案
+        if (res.status === 409 || errCode === "duplicate_return_request") {
+          setError("duplicate_return_request");
+        } else {
+          setError(errCode || "Failed to submit return.");
+        }
         return;
       }
+
       setSubmitResult(data);
       setStep(3);
     } catch (e: any) {
@@ -462,7 +489,9 @@ export default function ReturnsPage() {
 
       <h1 className="text-2xl font-semibold mb-4">Returns &amp; Exchanges</h1>
 
-      {error && <div className="mb-4 text-sm text-red-600">{error}</div>}
+      {displayError && !isDuplicateError && (
+        <div className="mb-4 text-sm text-red-600">{displayError}</div>
+      )}
 
       {step === 1 && (
         <div className="space-y-4">
@@ -801,6 +830,21 @@ export default function ReturnsPage() {
                 {submitting ? "Submitting..." : "Submit return request"}
               </Button>
             </div>
+
+            {isDuplicateError && (
+              <div className="mt-6">
+                <div className="border border-red-400/70 bg-red-50 text-red-700 rounded-md px-4 py-3 text-sm">
+                  <div className="font-semibold">
+                    Return request already submitted
+                  </div>
+                  <div className="mt-1 text-xs leading-relaxed">
+                    It looks like you&apos;ve already submitted a return request for this
+                    item. Please wait for our team to review your existing request and
+                    contact you via email before submitting another one.
+                  </div>
+                </div>
+              </div>
+            )}
           </Card>
         </div>
       )}
@@ -834,12 +878,18 @@ export default function ReturnsPage() {
               setSelectedLines([]);
               setSubmitResult(null);
               setThumbByItemId({});
+
+              // ✅ 同时把原因相关的 state 清空
+              setReasonType("");
+              setReasonDetail("");
             }}
           >
             Start another return
           </Button>
         </Card>
       )}
+
+      
     </div>
   );
 }
