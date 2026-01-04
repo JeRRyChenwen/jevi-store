@@ -1,8 +1,6 @@
 // next.config.js
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // 🔑 关键：关闭 React Strict Mode，避免 dev 环境下 useEffect 执行两次，
-  // 让 Braintree Drop-in 只初始化一次
   reactStrictMode: false,
 
   images: {
@@ -13,24 +11,23 @@ const nextConfig = {
   },
 
   async rewrites() {
-    // 只在本地开发且设置了 API_PROXY 时启用代理
     const proxy = process.env.API_PROXY && process.env.API_PROXY.trim();
     if (!proxy) return [];
 
     return [
-      // ① 保留 Braintree 路由给 Next 自己的 API 处理（不转发到 Worker）
+      // ✅ ① Braintree：交给 Next API
       {
         source: "/api/braintree/:path*",
         destination: "/api/braintree/:path*",
       },
 
-      // 如果你之后有 Stripe 相关的 Next API，也可以类似保留：
-      // {
-      //   source: "/api/stripe/:path*",
-      //   destination: "/api/stripe/:path*",
-      // },
+      // ✅ ② Admin API：交给 Next Route Handlers（非常关键）
+      {
+        source: "/api/admin/:path*",
+        destination: "/api/admin/:path*",
+      },
 
-      // ② 其他 /api/* 再转发到 Cloudflare Worker / 远程 API
+      // ✅ ③ 其他 API 才转发到 Worker
       {
         source: "/api/:path*",
         destination: `${proxy}/:path*`,

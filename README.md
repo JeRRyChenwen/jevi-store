@@ -995,8 +995,6 @@ add to bag 字体
 
 profile 页面修改 email，可能需要进一步改进
 
-back 按钮改成一个组件
-
 checkout 页面的 payment 页面里的 All charges are processed in AUD. Your bank or PayPal may apply currency conversion and fees. 需要改成动态变量
 
 ✅ 版本 1：退货申请系统
@@ -1019,6 +1017,8 @@ checkout 页面的 payment 页面里的 All charges are processed in AUD. Your b
 
 如果你计划很快就写自己的 Admin（Next.js + shadcn/ui）：
 ⛔ 可以先别上 Strapi return，直接在 D1 + Worker 做一个简单 /admin/returns 页面即可
+
+admin 平台输入密码
 
 # ============================================================================
 
