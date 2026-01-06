@@ -2,7 +2,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 type ReturnRow = {
   id: number;
@@ -20,6 +20,10 @@ type ReturnRow = {
 
   created_at_ts?: number | null;
   updated_at_ts?: number | null;
+
+  // ✅ d1-worker 计算出来的“建议退款金额(分)” + 币种
+  requested_amount_minor?: number | null;
+  currency?: string | null;
 };
 
 type ReturnItemRow = {
@@ -27,6 +31,14 @@ type ReturnItemRow = {
   return_id: number;
   order_item_id: number;
   qty: number;
+
+  // ✅ d1-worker JOIN order_items 后新增的展示字段
+  product_title?: string | null;
+  variant_title?: string | null;
+  size?: string | null;
+  color?: string | null;
+  variant_sku?: string | null;
+
   created_at_cn?: string | null;
   created_at_ts?: number | null;
 };
@@ -47,6 +59,26 @@ function StatusPill({ value }: { value: string }) {
   );
 }
 
+// ✅ reason_type（后端 enum） -> UI label（前端展示）
+const RETURN_REASON_LABELS: Record<string, string> = {
+  changed_mind: "Changed my mind",
+  wrong_item: "Received wrong item",
+  faulty: "Faulty / damaged",
+  other: "Other",
+};
+
+// ✅ 兜底：如果将来出现新 reason_type，至少能展示成可读的 Title Case
+function titleCaseFromSnake(s: string) {
+  return s
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function getReasonLabel(reasonType: string | null) {
+  if (!reasonType) return "-";
+  return RETURN_REASON_LABELS[reasonType] ?? titleCaseFromSnake(reasonType);
+}
+
 export default function ReturnDetailClient({ id }: { id: string }) {
   const numericId = Number(id);
 
@@ -55,7 +87,6 @@ export default function ReturnDetailClient({ id }: { id: string }) {
   const [data, setData] = useState<ApiPayload | null>(null);
 
   // 你原来就有的表单状态：先保留（方案 A 只是先把“详情页能查到数据”做通）
-  const [approveAmount, setApproveAmount] = useState<string>("");
   const [rejectReason, setRejectReason] = useState<string>("");
   const [saving, setSaving] = useState<null | "approve" | "reject">(null);
   const [toast, setToast] = useState<string>("");
@@ -109,11 +140,7 @@ export default function ReturnDetailClient({ id }: { id: string }) {
 
   // 你原来用 useMemo 来初始化 approveAmount；现在没有 paidAmountMinor 字段了，
   // 所以这里改为：如果为空，先默认 0.00（后续你接入真实退款金额字段再改）
-  useMemo(() => {
-    if (!record) return;
-    if (approveAmount.trim() === "") setApproveAmount("0.00");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [record]);
+
 
   if (loading) {
     return (
@@ -158,11 +185,22 @@ export default function ReturnDetailClient({ id }: { id: string }) {
   }
 
   async function onApproveMock() {
+    if (!record) return; // ✅ 关键：TS 立刻知道 record 不为 null
+
     setToast("");
     setSaving("approve");
     try {
       await new Promise((r) => setTimeout(r, 600));
-      setToast(`Mock: Approved. (amount=${approveAmount})`);
+
+      const minor = record.requested_amount_minor;
+      const currency = record.currency || "";
+
+      const display =
+        typeof minor === "number" && Number.isFinite(minor)
+          ? `${(minor / 100).toFixed(2)}${currency ? ` ${currency}` : ""}`
+          : "N/A";
+
+      setToast(`Mock: Approved. (amount=${display})`);
     } catch (e: any) {
       setToast(`Mock: Approve failed: ${String(e?.message || e)}`);
     } finally {
@@ -220,7 +258,7 @@ export default function ReturnDetailClient({ id }: { id: string }) {
         <div className="mt-2 text-sm text-slate-700">
           <div>
             <span className="text-slate-500">Type:</span>{" "}
-            <span className="font-mono">{record.reason_type || "-"}</span>
+            <span className="font-mono">{getReasonLabel(record.reason_type)}</span>
           </div>
           <div className="mt-1">
             <span className="text-slate-500">Detail:</span>{" "}
@@ -235,19 +273,48 @@ export default function ReturnDetailClient({ id }: { id: string }) {
           <div className="mt-2 text-sm text-slate-600">No items.</div>
         ) : (
           <div className="mt-2 space-y-2">
-            {items.map((it) => (
-              <div
-                key={it.id}
-                className="flex items-center justify-between rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-sm"
-              >
-                <div className="text-slate-700">
-                  order_item_id: <span className="font-mono">{it.order_item_id}</span>
+            {items.map((it) => {
+              const title = it.product_title || `Item #${it.order_item_id}`;
+
+              // 规格信息优先级：
+              // 1) variant_title（通常已经包含 size/color）
+              // 2) size + color（如果后端单独给）
+              // 3) sku（如果有）
+              const parts: string[] = [];
+              if (it.variant_title) parts.push(it.variant_title);
+              else {
+                if (it.size) parts.push(`Size: ${it.size}`);
+                if (it.color) parts.push(`Color: ${it.color}`);
+              }
+              if (it.variant_sku) parts.push(`SKU: ${it.variant_sku}`);
+
+              const meta = parts.filter(Boolean).join(" · ");
+
+              return (
+                <div
+                  key={it.id}
+                  className="flex items-start justify-between gap-4 rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-sm"
+                >
+                  {/* Left: product info */}
+                  <div className="min-w-0">
+                    <div className="font-medium text-slate-900">{title}</div>
+
+                    {meta ? (
+                      <div className="mt-0.5 text-xs text-slate-500">{meta}</div>
+                    ) : (
+                      <div className="mt-0.5 text-xs text-slate-500">
+                        order_item_id: <span className="font-mono">{it.order_item_id}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Right: qty */}
+                  <div className="shrink-0 text-slate-700">
+                    qty: <span className="font-mono">{it.qty}</span>
+                  </div>
                 </div>
-                <div className="text-slate-700">
-                  qty: <span className="font-mono">{it.qty}</span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -257,17 +324,24 @@ export default function ReturnDetailClient({ id }: { id: string }) {
         <div className="text-sm font-medium text-slate-900">Actions</div>
 
         <div className="mt-3 grid gap-4 md:grid-cols-2">
+          {/* Left: Approve */}
           <div className="space-y-2">
-            <div className="text-sm text-slate-600">Approve amount</div>
-            <input
-              value={approveAmount}
-              onChange={(e) => setApproveAmount(e.target.value)}
-              className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
-              placeholder="0.00"
-            />
+            <div className="text-sm text-slate-600">
+              Approve amount {record.currency ? `(${record.currency})` : ""}
+            </div>
+
+            {typeof record.requested_amount_minor === "number" ? (
+              <div className="text-sm text-slate-900 font-medium">
+                {(record.requested_amount_minor / 100).toFixed(2)}
+                {record.currency ? ` ${record.currency}` : ""}
+              </div>
+            ) : (
+              <div className="text-sm text-slate-500">N/A</div>
+            )}
+
             <button
               onClick={onApproveMock}
-              disabled={saving !== null}
+              disabled={saving !== null || typeof record.requested_amount_minor !== "number"}
               className="rounded-md bg-black px-3 py-2 text-sm text-white disabled:opacity-60"
             >
               {saving === "approve" ? "Approving..." : "Approve"}
