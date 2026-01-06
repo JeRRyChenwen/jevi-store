@@ -24,6 +24,10 @@ type ReturnRow = {
   // ✅ d1-worker 计算出来的“建议退款金额(分)” + 币种
   requested_amount_minor?: number | null;
   currency?: string | null;
+
+  // ✅ 最简 approve/reject 需要的字段（后端可选返回）
+  approved_amount_minor?: number | null;
+  reject_reason?: string | null;
 };
 
 type ReturnItemRow = {
@@ -94,7 +98,7 @@ export default function ReturnDetailClient({ id }: { id: string }) {
   useEffect(() => {
     let cancelled = false;
 
-    async function run() {
+    async function loadDetail() {
       setLoading(true);
       setErr("");
       setData(null);
@@ -129,7 +133,7 @@ export default function ReturnDetailClient({ id }: { id: string }) {
       }
     }
 
-    run();
+    loadDetail();
     return () => {
       cancelled = true;
     };
@@ -184,42 +188,96 @@ export default function ReturnDetailClient({ id }: { id: string }) {
     );
   }
 
-  async function onApproveMock() {
-    if (!record) return; // ✅ 关键：TS 立刻知道 record 不为 null
+  async function onApprove() {
+    if (!record) return;
 
     setToast("");
     setSaving("approve");
+
     try {
-      await new Promise((r) => setTimeout(r, 600));
+      // ✅ 最简：直接 approve，不让你手输金额
+      const r = await fetch(
+        `/api/admin/returns/${encodeURIComponent(id)}/approve`,
+        {
+          method: "POST", // 若你 Next route 用 PATCH，这里改 PATCH
+          headers: { "content-type": "application/json" },
+          cache: "no-store",
+          body: JSON.stringify({
+            // 你想固定用建议金额：直接把建议金额传给后端（可选）
+            approved_amount_minor: record.requested_amount_minor ?? null,
+            currency: record.currency ?? null,
+          }),
+        }
+      );
 
-      const minor = record.requested_amount_minor;
-      const currency = record.currency || "";
+      const json = (await r.json().catch(() => null)) as any;
 
-      const display =
-        typeof minor === "number" && Number.isFinite(minor)
-          ? `${(minor / 100).toFixed(2)}${currency ? ` ${currency}` : ""}`
-          : "N/A";
+      if (!r.ok) {
+        const code = json?.error || `HTTP_${r.status}`;
+        throw new Error(code);
+      }
 
-      setToast(`Mock: Approved. (amount=${display})`);
+      // ✅ 成功后刷新详情（拿到最新 status）
+      setToast("Approved.");
+      setRejectReason("");
+      // 重新拉一次详情，确保 status / reject_reason 等是最新
+      // 这里直接复用页面刷新：最简单粗暴
+      window.location.reload();
     } catch (e: any) {
-      setToast(`Mock: Approve failed: ${String(e?.message || e)}`);
+      setToast(`Approve failed: ${String(e?.message || e)}`);
     } finally {
       setSaving(null);
     }
   }
 
-  async function onRejectMock() {
-    setToast("");
-    setSaving("reject");
-    try {
-      await new Promise((r) => setTimeout(r, 600));
-      setToast(`Mock: Rejected. (reason=${rejectReason || "N/A"})`);
-    } catch (e: any) {
-      setToast(`Mock: Reject failed: ${String(e?.message || e)}`);
-    } finally {
-      setSaving(null);
-    }
+  async function onReject() {
+  if (!record) return;
+
+  // ✅ 校验必须在 setSaving 之前，否则会卡死在 Rejecting...
+  const rr = rejectReason.trim();
+  if (!rr) {
+    setToast("Reject reason is required.");
+    return;
   }
+
+  setToast("");
+  setSaving("reject");
+
+  try {
+    const r = await fetch(
+      `/api/admin/returns/${encodeURIComponent(id)}/reject`,
+      {
+        method: "POST", // 如果你 Next API 用的是 PATCH，这里改成 PATCH
+        headers: {
+          "content-type": "application/json",
+        },
+        cache: "no-store",
+        body: JSON.stringify({
+          reject_reason: rr,
+        }),
+      }
+    );
+
+    const json = (await r.json().catch(() => null)) as any;
+
+    if (!r.ok) {
+      const code = json?.error || `HTTP_${r.status}`;
+      throw new Error(code);
+    }
+
+    // ✅ 成功反馈
+    setToast("Rejected.");
+    setRejectReason("");
+
+    // 最简单可靠：刷新页面拿最新 status
+    window.location.reload();
+  } catch (e: any) {
+    setToast(`Reject failed: ${String(e?.message || e)}`);
+  } finally {
+    // ✅ 无论成功 / 失败 / throw，都会恢复按钮状态
+    setSaving(null);
+  }
+}
 
   return (
     <div className="space-y-6">
@@ -326,27 +384,30 @@ export default function ReturnDetailClient({ id }: { id: string }) {
         <div className="mt-3 grid gap-4 md:grid-cols-2">
           {/* Left: Approve */}
           <div className="space-y-2">
-            <div className="text-sm text-slate-600">
-              Approve amount {record.currency ? `(${record.currency})` : ""}
-            </div>
-
-            {typeof record.requested_amount_minor === "number" ? (
-              <div className="text-sm text-slate-900 font-medium">
-                {(record.requested_amount_minor / 100).toFixed(2)}
-                {record.currency ? ` ${record.currency}` : ""}
-              </div>
-            ) : (
-              <div className="text-sm text-slate-500">N/A</div>
-            )}
-
-            <button
-              onClick={onApproveMock}
-              disabled={saving !== null || typeof record.requested_amount_minor !== "number"}
-              className="rounded-md bg-black px-3 py-2 text-sm text-white disabled:opacity-60"
-            >
-              {saving === "approve" ? "Approving..." : "Approve"}
-            </button>
+          <div className="text-sm text-slate-600">
+            Approve amount {record.currency ? `(${record.currency})` : ""}
           </div>
+
+          <div className="text-sm font-semibold text-slate-900">
+            {typeof record.requested_amount_minor === "number"
+              ? `${(record.requested_amount_minor / 100).toFixed(2)}${
+                  record.currency ? ` ${record.currency}` : ""
+                }`
+              : "N/A"}
+          </div>
+
+          <button
+            onClick={onApprove}
+            disabled={
+              saving !== null ||
+              (record.status || "").toLowerCase() !== "pending" ||
+              typeof record.requested_amount_minor !== "number"
+            }
+            className="rounded-md bg-black px-3 py-2 text-sm text-white disabled:opacity-60"
+          >
+            {saving === "approve" ? "Approving..." : "Approve"}
+          </button>
+        </div>
 
           <div className="space-y-2">
             <div className="text-sm text-slate-600">Reject reason</div>
@@ -357,7 +418,7 @@ export default function ReturnDetailClient({ id }: { id: string }) {
               placeholder="Reason..."
             />
             <button
-              onClick={onRejectMock}
+              onClick={onReject}
               disabled={saving !== null}
               className="rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-900 disabled:opacity-60"
             >
