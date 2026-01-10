@@ -80,7 +80,16 @@ export default function AdminReturnsPage() {
         const r = await fetch(`/api/admin/returns?${query}`, {
           method: "GET",
           cache: "no-store",
+          credentials: "include", // ✅ 关键：带上 sp_admin cookie
+          headers: { "content-type": "application/json" },
         });
+
+        // ✅ 未登录：跳转到 admin 登录页（保留回跳）
+        if (r.status === 401) {
+          const next = `/admin/returns${query ? `?${query}` : ""}`;
+          window.location.href = `/admin/login?next=${encodeURIComponent(next)}`;
+          return;
+        }
 
         const data = (await r.json()) as ApiResponse;
 

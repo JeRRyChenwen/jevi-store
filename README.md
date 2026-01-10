@@ -845,6 +845,9 @@ wrangler d1 migrations apply socialplatform --remote
 wrangler d1 migrations apply socialplatform --local
 
 清库
+
+wrangler d1 execute socialplatform --remote --file migrations/0000_reset.sql
+
 wrangler d1 execute socialplatform --remote --command "PRAGMA foreign_keys=OFF;DROP TRIGGER IF EXISTS trg_users_updated_at;DROP TRIGGER IF EXISTS trg_orders_updated_at;DROP TRIGGER IF EXISTS trg_orders_set_order_number;DROP TRIGGER IF EXISTS trg_order_items_copy_order_no;DROP TRIGGER IF EXISTS trg_order_payments_copy_order_no;DROP TRIGGER IF EXISTS trg_gift_cards_updated_at;DROP TRIGGER IF EXISTS trg_fit_prefs_updated_at;DROP TRIGGER IF EXISTS trg_user_addresses_updated_at;DROP TRIGGER IF EXISTS trg_returns_set_return_number;DROP TABLE IF EXISTS gift_card_txns;DROP TABLE IF EXISTS gift_cards;DROP TABLE IF EXISTS order_payments;DROP TABLE IF EXISTS return_items;DROP TABLE IF EXISTS returns;DROP TABLE IF EXISTS order_items;DROP TABLE IF EXISTS orders;DROP TABLE IF EXISTS user_addresses;DROP TABLE IF EXISTS fit_preferences;DROP TABLE IF EXISTS email_subscriptions;DROP TABLE IF EXISTS password_resets;DROP TABLE IF EXISTS users;PRAGMA foreign_keys=ON;"
 
 await fetch('/api/auth/login', {
@@ -1045,6 +1048,16 @@ Stripe / Braintree refund
 失败可重试
 
 refund_id 存表
+
+注册账号的时候，添加隐藏和现实密码的 eye icon
+
+approve 时间不对，approve 成功后改变字体颜色，admin 是谁？显示邮箱
+
+我修改好了，但我有一个疑问，我点击 dashboard 按钮的时候，会有一瞬间显示 dashboard 的内容然后再跳转回 login 页面是怎么回事呢？我点击 return 按钮也是一样的会有一瞬间显示 return 页面的内容，然后再跳转回 login 页面是怎么回事呢？
+
+Return approve → 自动退款 / Stripe / PayPal
+
+Admin Dashboard 指标（今天订单 / 退款额）
 
 # ============================================================================
 

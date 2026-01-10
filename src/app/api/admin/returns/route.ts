@@ -12,28 +12,34 @@ export async function GET(req: NextRequest) {
   const qs = url.searchParams.toString();
   const upstreamUrl = `${WORKER_BASE}/admin/returns${qs ? `?${qs}` : ""}`;
 
-  const adminToken = process.env.ADMIN_TOKEN || "";
-  if (!adminToken) {
+  try {
+    const r = await fetch(upstreamUrl, {
+      method: "GET",
+      headers: {
+        // ✅ 关键：把浏览器带来的 cookie 转发给 worker
+        cookie: req.headers.get("cookie") || "",
+      },
+      cache: "no-store",
+    });
+
+    const text = await r.text();
+    return new NextResponse(text, {
+      status: r.status,
+      headers: {
+        "content-type": r.headers.get("content-type") || "application/json",
+        "cache-control": "no-store",
+      },
+    });
+  } catch (e: any) {
+    // ✅ worker 断开/未启动时，不要直接让 Next 抛 500（会导致前端循环跳转）
     return NextResponse.json(
-      { ok: false, error: "missing_admin_token" },
-      { status: 500 }
+      {
+        ok: false,
+        error: "upstream_unreachable",
+        detail: String(e?.message || e),
+        upstream: upstreamUrl,
+      },
+      { status: 502 }
     );
   }
-
-  const r = await fetch(upstreamUrl, {
-    method: "GET",
-    headers: {
-      "x-admin-token": adminToken,
-    },
-    cache: "no-store",
-  });
-
-  const text = await r.text();
-  return new NextResponse(text, {
-    status: r.status,
-    headers: {
-      "content-type": r.headers.get("content-type") || "application/json",
-      "cache-control": "no-store",
-    },
-  });
 }
