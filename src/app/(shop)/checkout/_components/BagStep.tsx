@@ -4,8 +4,7 @@
 import React from "react";
 import CartList from "@/components/cart/CartList";
 import type { CartItem as CartListItem } from "@/components/cart/CartList";
-import BraintreePayPalOnly from "@/app/checkout/_components/BraintreePayPalOnly";
-
+import BraintreePayPalOnly from "./BraintreePayPalOnly";
 type CartItem = CartListItem;
 
 interface BagStepProps {

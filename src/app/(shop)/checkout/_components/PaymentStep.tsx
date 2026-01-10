@@ -4,8 +4,9 @@
 import React, { useState, useCallback } from "react";
 import Image from "next/image";
 import { Check } from "lucide-react";
-import BraintreeHostedFields from "@/app/checkout/_components/BraintreeHostedFields";
-import PayPalBigButton from "@/app/checkout/_components/PayPalBigButton";
+import BraintreeHostedFields from "./BraintreeHostedFields";
+import PayPalBigButton from "./PayPalBigButton";
+
 
 /* ========== 类型 ========== */
 type Address = {

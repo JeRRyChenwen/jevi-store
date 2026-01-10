@@ -2,7 +2,7 @@
 "use client";
 
 import React from "react";
-import AddressErrorHint from "@/app/checkout/_components/AddressErrorHint";
+import AddressErrorHint from "./AddressErrorHint";
 
 /* ====== 本组件内部使用的类型（结构要和 page.tsx 里的一样） ====== */
 type Address = {
