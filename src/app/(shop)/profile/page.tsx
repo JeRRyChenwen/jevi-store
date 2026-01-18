@@ -4,12 +4,14 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { logoutAction } from "./_actions";
 import EditProfileCard from "./EditProfileCard";
+import EditPasswordCard from "./EditPasswordCard";
 import {
   User as UserIcon,
   ShoppingBag,
   MapPin,
   Mail,
   ChevronDown,
+  KeyRound,
 } from "lucide-react";
 import EditOrdersCard from "./EditOrdersCard";
 import EditAddressCard from "./EditAddressCard";
@@ -132,7 +134,9 @@ export default async function ProfilePage() {
     <main className="px-4 md:px-8 py-8 max-w-3xl mx-auto">
       {/* ✅ 面包屑：Home › Profile */}
       <nav className="mb-4 text-sm text-neutral-600" aria-label="Breadcrumb">
-        <Link href="/" className="hover:underline">Home</Link>
+        <Link href="/" className="hover:underline">
+          Home
+        </Link>
         <span className="mx-2 text-neutral-400">›</span>
         <span className="text-neutral-900">Profile</span>
       </nav>
@@ -158,6 +162,21 @@ export default async function ProfilePage() {
             initialName={(user?.name || user?.email?.split("@")[0] || "").trim()}
             initialEmail={user?.email || ""}
           />
+        </details>
+
+        {/* ✅ Password */}
+        <details className="group">
+          <summary className="flex items-center justify-between px-4 py-3 cursor-pointer list-none hover:bg-neutral-50">
+            <span className="flex items-center gap-2">
+              <KeyRound className="h-4 w-4 text-neutral-700" />
+              <span>Password</span>
+            </span>
+            <ChevronDown className="h-4 w-4 text-neutral-500 group-open:rotate-180 transition-transform" />
+          </summary>
+
+          <div className="px-4 py-4">
+            <EditPasswordCard />
+          </div>
         </details>
 
         {/* Orders */}
