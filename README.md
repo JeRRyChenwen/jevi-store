@@ -1049,17 +1049,11 @@ Stripe / Braintree refund
 
 refund_id 存表
 
-注册账号的时候，添加隐藏和现实密码的 eye icon
-
-approve 时间不对，approve 成功后改变字体颜色，admin 是谁？显示邮箱
-
-我修改好了，但我有一个疑问，我点击 dashboard 按钮的时候，会有一瞬间显示 dashboard 的内容然后再跳转回 login 页面是怎么回事呢？我点击 return 按钮也是一样的会有一瞬间显示 return 页面的内容，然后再跳转回 login 页面是怎么回事呢？
+注册账号，修改密码的时候，添加隐藏和现实密码的 eye icon
 
 Return approve → 自动退款 / Stripe / PayPal
 
 Admin Dashboard 指标（今天订单 / 退款额）
-
-搜索 return request filter
 
 怎么好像购买的物品，instock 的数量有问题，不会减少
 

@@ -7,14 +7,12 @@ import { useEffect, useMemo, useState } from "react";
 type ApiReturnRow = {
   id: number;
 
-  // d1-worker shapeReturnRow 里大概率是 snake_case
   return_number?: string | null;
   order_id?: number | null;
   order_number?: string | null;
   email?: string | null;
   status?: string | null;
 
-  // 可能存在这些之一（你 worker 里返回的字段名取决于 shapeReturnRow）
   created_at_cn?: string | null;
   created_at?: string | null;
   created_at_ts?: number | null;
@@ -29,6 +27,9 @@ type ApiResponse = {
   error?: string;
 };
 
+type SortBy = "return_id" | "order_id" | "created_at";
+type SortDir = "asc" | "desc";
+
 function StatusPill({ value }: { value: string }) {
   const s = (value || "").toLowerCase();
 
@@ -36,8 +37,6 @@ function StatusPill({ value }: { value: string }) {
     pending: "bg-slate-100 text-slate-700",
     approved: "bg-green-100 text-green-700",
     rejected: "bg-red-100 text-red-700",
-
-    // 你后端 schema 里还有这些状态，顺便一起配好（可按你喜好调整）
     received: "bg-blue-100 text-blue-700",
     refunded: "bg-purple-100 text-purple-700",
     cancelled: "bg-slate-200 text-slate-600",
@@ -56,17 +55,21 @@ function StatusPill({ value }: { value: string }) {
 }
 
 function formatCreatedAt(r: ApiReturnRow) {
-  // 优先用你返回的北京时间字符串（最适合直接展示）
   if (r.created_at_cn) return r.created_at_cn;
   if (r.created_at) return r.created_at;
 
-  // 兜底：如果只有 ts（秒），转本地时间展示
   if (typeof r.created_at_ts === "number" && Number.isFinite(r.created_at_ts)) {
     const d = new Date(r.created_at_ts * 1000);
-    // 你可以换成更“澳洲运营”风格的格式
     return d.toISOString().slice(0, 16).replace("T", " ");
   }
   return "—";
+}
+
+function SortIcon({ dir }: { dir: SortDir | null }) {
+  if (!dir) return <span className="ml-1 text-slate-300">↕</span>;
+  return (
+    <span className="ml-1 text-slate-500">{dir === "asc" ? "↑" : "↓"}</span>
+  );
 }
 
 export default function AdminReturnsPage() {
@@ -74,68 +77,146 @@ export default function AdminReturnsPage() {
   const [page, setPage] = useState<number>(1);
   const pageSize = 20;
 
+  const [sortBy, setSortBy] = useState<SortBy>("created_at");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  // ✅ 全量数据：一次性拉取所有 returns（所有 status）
+  const [rows, setRows] = useState<ApiReturnRow[]>([]);
+
+  // ✅ 只在首次加载时 loading；切换 status / 排序 / 翻页都不 loading
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>("");
-  const [rows, setRows] = useState<ApiReturnRow[]>([]);
-  const [total, setTotal] = useState<number>(0);
 
-  const query = useMemo(() => {
-    const sp = new URLSearchParams();
-    if (status.trim()) sp.set("status", status.trim());
-    sp.set("page", String(page));
-    sp.set("page_size", String(pageSize));
-    return sp.toString();
-  }, [status, page]);
-
+  // =========================
+  // Fetch ALL rows (once)
+  // =========================
   useEffect(() => {
     let alive = true;
 
-    async function run() {
+    async function fetchAllOnce() {
       setLoading(true);
       setError("");
 
       try {
-        const r = await fetch(`/api/admin/returns?${query}`, {
-          method: "GET",
-          cache: "no-store",
-          credentials: "include", // ✅ 关键：带上 sp_admin cookie
-          headers: { "content-type": "application/json" },
-        });
+        const all: ApiReturnRow[] = [];
 
-        // ✅ 未登录：跳转到 admin 登录页（保留回跳）
-        if (r.status === 401) {
-          const next = `/admin/returns${query ? `?${query}` : ""}`;
-          window.location.href = `/admin/login?next=${encodeURIComponent(next)}`;
-          return;
-        }
+        // worker page_size 最大 100
+        const serverPageSize = 100;
+        let p = 1;
 
-        const data = (await r.json()) as ApiResponse;
+        while (true) {
+          const sp = new URLSearchParams();
+          // ✅ 关键：不传 status，拉全量
+          sp.set("page", String(p));
+          sp.set("page_size", String(serverPageSize));
 
-        if (!r.ok || !data.ok) {
-          throw new Error(data.error || `request_failed_${r.status}`);
+          const r = await fetch(`/api/admin/returns?${sp.toString()}`, {
+            method: "GET",
+            cache: "no-store",
+            credentials: "include",
+            headers: { "content-type": "application/json" },
+          });
+
+          if (r.status === 401) {
+            const next = `/admin/returns`;
+            window.location.href = `/admin/login?next=${encodeURIComponent(next)}`;
+            return;
+          }
+
+          const data = (await r.json()) as ApiResponse;
+
+          if (!r.ok || !data.ok) {
+            throw new Error(data.error || `request_failed_${r.status}`);
+          }
+
+          const pageRows = Array.isArray(data.returns) ? data.returns : [];
+          all.push(...pageRows);
+
+          if (pageRows.length < serverPageSize) break;
+
+          p += 1;
+          if (p > 200) break; // safety
         }
 
         if (!alive) return;
-        setRows(Array.isArray(data.returns) ? data.returns : []);
-        setTotal(Number(data.total || 0));
+        setRows(all);
+        setPage(1);
       } catch (e: any) {
         if (!alive) return;
         setError(String(e?.message || e));
         setRows([]);
-        setTotal(0);
+        setPage(1);
       } finally {
         if (!alive) return;
         setLoading(false);
       }
     }
 
-    run();
+    fetchAllOnce();
     return () => {
       alive = false;
     };
-  }, [query]);
+  }, []);
 
+  // =========================
+  // Local filter by status (no fetch)
+  // =========================
+  const filteredRows = useMemo(() => {
+    const s = status.trim().toLowerCase();
+    if (!s) return rows;
+    return rows.filter((r) => String(r.status || "").toLowerCase() === s);
+  }, [rows, status]);
+
+  // =========================
+  // Local sort (no fetch)
+  // =========================
+  const sortedRows = useMemo(() => {
+    const copy = [...filteredRows];
+
+    const getKeyNum = (r: ApiReturnRow) => {
+      if (sortBy === "return_id") return Number(r.id || 0);
+      if (sortBy === "order_id") return Number(r.order_id || 0);
+      return Number(r.created_at_ts || 0);
+    };
+
+    copy.sort((a, b) => {
+      const ka = getKeyNum(a);
+      const kb = getKeyNum(b);
+
+      if (ka === kb) {
+        return Number(b.id) - Number(a.id);
+      }
+
+      return sortDir === "asc" ? ka - kb : kb - ka;
+    });
+
+    return copy;
+  }, [filteredRows, sortBy, sortDir]);
+
+  // =========================
+  // Local pagination (no fetch)
+  // =========================
+  const total = sortedRows.length;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
+
+  const pagedRows = useMemo(() => {
+    const safePage = Math.min(Math.max(1, page), pageCount);
+    const start = (safePage - 1) * pageSize;
+    return sortedRows.slice(start, start + pageSize);
+  }, [sortedRows, page, pageCount]);
+
+  function toggleSort(next: SortBy) {
+    setPage(1);
+    if (sortBy === next) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(next);
+      setSortDir("desc");
+    }
+  }
+
+  const headerBtn =
+    "inline-flex items-center select-none hover:text-slate-900";
 
   return (
     <div className="space-y-4">
@@ -155,8 +236,8 @@ export default function AdminReturnsPage() {
             className="rounded-md border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
             value={status}
             onChange={(e) => {
-              setPage(1);
               setStatus(e.target.value);
+              setPage(1); // ✅ 过滤变化回第一页（不触发 loading）
             }}
           >
             <option value="">All</option>
@@ -182,11 +263,45 @@ export default function AdminReturnsPage() {
           <table className="w-full text-left text-sm">
             <thead className="border-b bg-slate-50 text-xs text-slate-600">
               <tr>
-                <th className="px-4 py-3">Return #</th>
-                <th className="px-4 py-3">Order #</th>
+                <th className="px-4 py-3">
+                  <button
+                    type="button"
+                    className={headerBtn}
+                    onClick={() => toggleSort("return_id")}
+                    title="Sort by Return ID"
+                  >
+                    Return #
+                    <SortIcon dir={sortBy === "return_id" ? sortDir : null} />
+                  </button>
+                </th>
+
+                <th className="px-4 py-3">
+                  <button
+                    type="button"
+                    className={headerBtn}
+                    onClick={() => toggleSort("order_id")}
+                    title="Sort by Order ID"
+                  >
+                    Order #
+                    <SortIcon dir={sortBy === "order_id" ? sortDir : null} />
+                  </button>
+                </th>
+
                 <th className="px-4 py-3">Email</th>
                 <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Created At</th>
+
+                <th className="px-4 py-3">
+                  <button
+                    type="button"
+                    className={headerBtn}
+                    onClick={() => toggleSort("created_at")}
+                    title="Sort by Created At"
+                  >
+                    Created At
+                    <SortIcon dir={sortBy === "created_at" ? sortDir : null} />
+                  </button>
+                </th>
+
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
@@ -198,14 +313,14 @@ export default function AdminReturnsPage() {
                     Loading…
                   </td>
                 </tr>
-              ) : rows.length === 0 ? (
+              ) : pagedRows.length === 0 ? (
                 <tr>
                   <td className="px-4 py-4 text-slate-500" colSpan={6}>
                     No return requests.
                   </td>
                 </tr>
               ) : (
-                rows.map((r) => {
+                pagedRows.map((r) => {
                   const returnNo = r.return_number || `#${r.id}`;
                   const orderNo =
                     r.order_number ||
@@ -244,6 +359,7 @@ export default function AdminReturnsPage() {
           <div>
             Total: <span className="font-medium">{total}</span>
           </div>
+
           <div className="flex items-center gap-2">
             <button
               className="rounded border bg-white px-2 py-1 disabled:opacity-50"
@@ -252,9 +368,12 @@ export default function AdminReturnsPage() {
             >
               Prev
             </button>
+
             <span>
-              Page <span className="font-medium">{page}</span> / {pageCount}
+              Page <span className="font-medium">{Math.min(page, pageCount)}</span> /{" "}
+              {pageCount}
             </span>
+
             <button
               className="rounded border bg-white px-2 py-1 disabled:opacity-50"
               disabled={page >= pageCount || loading}
