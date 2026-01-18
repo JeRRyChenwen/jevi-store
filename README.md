@@ -1061,11 +1061,13 @@ Admin Dashboard 指标（今天订单 / 退款额）
 
 搜索 return request filter
 
-订单成功退货，apporved 之后不能重复退货，如果这个 item 已经是 approved 状态，或者 pendding 状态过就不能重复提交 return request，因为 approved 状态代表已经退回 item 了，而 pendding 则是正在审查中，只有 item 的状态为 rejected 的时候才能申请 return request 或者这个 item 从来没申请过 return request
-
 怎么好像购买的物品，instock 的数量有问题，不会减少
 
 忘记密码功能的完善
+
+添加一个新的 collumn，增高的高度
+
+social media 微信小红书链接 icon
 
 ==============================================================================
 千万不要修改我原本的代码里的任何逻辑和语法，和原本的代码内容，千万不要做修改

@@ -143,9 +143,7 @@ export default function ReturnsPage() {
   const [foundOrder, setFoundOrder] = useState<ReturnOrderDetail | null>(null);
 
   // ✅ itemId -> thumbnail url
-  const [thumbByItemId, setThumbByItemId] = useState<
-    Record<number, string | null>
-  >({});
+  const [thumbByItemId, setThumbByItemId] = useState<Record<number, string | null>>({});
 
   // 用户选择退哪些商品、各退多少
   const [selectedLines, setSelectedLines] = useState<SelectedReturnLine[]>([]);
@@ -156,20 +154,40 @@ export default function ReturnsPage() {
   const [submitResult, setSubmitResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // ✅ 两类“不可重复”的错误
+  const isDuplicateError = error === "duplicate_return_request"; // pending 审核中（active）
+  const isAlreadyReturnedError = error === "item_already_returned"; // 曾经 approved（永久禁止）
+
+  // ✅ 若用户调整了选择或原因，则清掉“提示”，避免提示卡住造成误解
+  // - duplicate：用户调整选择/原因很可能是在修正（或者换了 item），应清掉
+  // - already_returned：如果用户换了 item，也应清掉
+  useEffect(() => {
+    if (isDuplicateError || isAlreadyReturnedError) {
+      setError(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedLines, reasonType, reasonDetail]);
 
   // ✅ 把后端 error code 转成用户可读文案
   const displayError = useMemo(() => {
     if (!error) return "";
-    if (error === "duplicate_return_request") {
+
+    if (error === "item_already_returned") {
       return (
-        "You have already submitted a return request for this item. " +
-        "Please wait for our team to review your existing request instead of submitting another one."
+        "This item has already been returned and approved (completed). " +
+        "You cannot submit another return request for an item that has been successfully returned."
       );
     }
+
+    if (error === "duplicate_return_request") {
+      return (
+        "A return request for this item is already in progress (pending). " +
+        "Please wait for our team to review the existing request. If the request is rejected, you may submit again."
+      );
+    }
+
     return error;
   }, [error]);
-
-  const isDuplicateError = error === "duplicate_return_request";
 
   // ✅ 页面加载时：调用 bootstrap，决定“登录用户/游客”模式
   useEffect(() => {
@@ -273,9 +291,7 @@ export default function ReturnsPage() {
       setLoading(true);
 
       const res = await fetch(
-        `/api/returns/lookup?order_number=${encodeURIComponent(on)}&email=${encodeURIComponent(
-          em
-        )}`,
+        `/api/returns/lookup?order_number=${encodeURIComponent(on)}&email=${encodeURIComponent(em)}`,
         { credentials: "include" }
       );
 
@@ -345,10 +361,7 @@ export default function ReturnsPage() {
           console.log("[returns] first product row:", products?.[0]);
 
           // 3) title -> { def, colors }
-          const productIndex: Record<
-            string,
-            { def: string | null; colors: Record<string, string> }
-          > = {};
+          const productIndex: Record<string, { def: string | null; colors: Record<string, string> }> = {};
 
           for (const row of products) {
             const attrs = row?.attributes ?? row; // 兼容
@@ -399,8 +412,7 @@ export default function ReturnsPage() {
             const rawVariant = String(it?.variant_title ?? "");
             const color = rawVariant.split("/")[0]?.trim().toLowerCase();
 
-            nextThumb[itemId] =
-              color && idx?.colors?.[color] ? idx.colors[color] : idx?.def ?? null;
+            nextThumb[itemId] = color && idx?.colors?.[color] ? idx.colors[color] : idx?.def ?? null;
           }
 
           console.log("[returns] nextThumb:", nextThumb);
@@ -459,16 +471,25 @@ export default function ReturnsPage() {
           email: email.trim().toLowerCase(),
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({} as any));
 
       if (!res.ok || !data.ok) {
-        const errCode = String(data.error || "");
-        // ✅ 特判重复提交：只标记错误码，后面在按钮下方展示文案
-        if (res.status === 409 || errCode === "duplicate_return_request") {
-          setError("duplicate_return_request");
-        } else {
-          setError(errCode || "Failed to submit return.");
+        const errCode = String(data?.error || "");
+
+        // ✅ 409：区分 approved(永久禁止) vs pending(审核中)
+        if (res.status === 409) {
+          if (errCode === "item_already_returned") {
+            setError("item_already_returned");
+          } else {
+            // 默认按 pending 冲突处理
+            setError("duplicate_return_request");
+          }
+          return;
         }
+
+        // ✅ 其它错误
+        if (errCode) setError(errCode);
+        else setError("Failed to submit return.");
         return;
       }
 
@@ -481,6 +502,8 @@ export default function ReturnsPage() {
     }
   }
 
+  const showInlineBlock = isDuplicateError || isAlreadyReturnedError;
+
   return (
     <div className="max-w-3xl mx-auto py-8 px-4">
       <div className="mb-3">
@@ -489,7 +512,7 @@ export default function ReturnsPage() {
 
       <h1 className="text-2xl font-semibold mb-4">Returns &amp; Exchanges</h1>
 
-      {displayError && !isDuplicateError && (
+      {displayError && !showInlineBlock && (
         <div className="mb-4 text-sm text-red-600">{displayError}</div>
       )}
 
@@ -497,9 +520,7 @@ export default function ReturnsPage() {
         <div className="space-y-4">
           {bootLoading ? (
             <Card className="p-4">
-              <div className="text-sm text-muted-foreground">
-                Loading your orders…
-              </div>
+              <div className="text-sm text-muted-foreground">Loading your orders…</div>
             </Card>
           ) : authed ? (
             <Card className="p-4 space-y-6">
@@ -512,19 +533,13 @@ export default function ReturnsPage() {
                   </div>
                 </div>
 
-                {bootError && (
-                  <div className="text-sm text-red-600">{bootError}</div>
-                )}
+                {bootError && <div className="text-sm text-red-600">{bootError}</div>}
 
                 <div className="flex items-center justify-end">
                   <DropdownMenu open={filterOpen} onOpenChange={setFilterOpen}>
                     <DropdownMenuTrigger asChild>
                       <div>
-                        <FilterButton
-                          label="Filter"
-                          active={true}
-                          badgeText={badgeText}
-                        />
+                        <FilterButton label="Filter" active={true} badgeText={badgeText} />
                       </div>
                     </DropdownMenuTrigger>
 
@@ -537,9 +552,7 @@ export default function ReturnsPage() {
                         <div className="text-sm font-medium">Sort orders</div>
 
                         <div className="space-y-2">
-                          <div className="text-xs text-muted-foreground">
-                            Sort by
-                          </div>
+                          <div className="text-xs text-muted-foreground">Sort by</div>
                           <div className="flex gap-2">
                             <Button
                               type="button"
@@ -570,9 +583,7 @@ export default function ReturnsPage() {
                         </div>
 
                         <div className="space-y-2">
-                          <div className="text-xs text-muted-foreground">
-                            Order
-                          </div>
+                          <div className="text-xs text-muted-foreground">Order</div>
                           <div className="flex gap-2">
                             <Button
                               type="button"
@@ -630,9 +641,7 @@ export default function ReturnsPage() {
                 </div>
 
                 {filteredMyOrders.length === 0 ? (
-                  <div className="text-sm text-muted-foreground">
-                    No orders found.
-                  </div>
+                  <div className="text-sm text-muted-foreground">No orders found.</div>
                 ) : (
                   <div className="overflow-x-auto rounded-lg border">
                     <table className="w-full text-sm">
@@ -654,25 +663,16 @@ export default function ReturnsPage() {
                                 Items: {o.item_count}
                               </div>
                             </td>
-                            <td className="py-2 pr-4">
-                              {o.paid_at_cn || o.created_at_cn || "-"}
-                            </td>
-                            <td className="py-2 pr-4">
-                              {fmtMoney(o.total_minor, o.currency)}
-                            </td>
-                            <td className="py-2 pr-4 text-muted-foreground">
-                              {o.status || "-"}
-                            </td>
+                            <td className="py-2 pr-4">{o.paid_at_cn || o.created_at_cn || "-"}</td>
+                            <td className="py-2 pr-4">{fmtMoney(o.total_minor, o.currency)}</td>
+                            <td className="py-2 pr-4 text-muted-foreground">{o.status || "-"}</td>
                             <td className="py-2 pr-3 text-right">
                               <Button
                                 variant="outline"
                                 className="px-4"
                                 disabled={loading || !o.order_number || !o.email}
                                 onClick={() =>
-                                  handleFindOrder(
-                                    String(o.order_number || ""),
-                                    String(o.email || "")
-                                  )
+                                  handleFindOrder(String(o.order_number || ""), String(o.email || ""))
                                 }
                               >
                                 {loading ? "Loading…" : "Start Return"}
@@ -689,9 +689,7 @@ export default function ReturnsPage() {
               {/* ===== 新增：把“订单号 + 邮箱查单”直接放在下方（不再跳转） ===== */}
               <div className="border-t pt-6 space-y-4">
                 <div>
-                  <div className="text-sm font-medium">
-                    Find an order by order number and email
-                  </div>
+                  <div className="text-sm font-medium">Find an order by order number and email</div>
                   <div className="text-xs text-muted-foreground">
                     Use this if you want to start a return for a different email/order.
                   </div>
@@ -707,9 +705,7 @@ export default function ReturnsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">
-                    Email used for this order
-                  </label>
+                  <label className="text-sm font-medium">Email used for this order</label>
                   <Input
                     type="email"
                     value={email}
@@ -743,22 +739,11 @@ export default function ReturnsPage() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">
-                  Email used for this order
-                </label>
-                <Input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
+                <label className="text-sm font-medium">Email used for this order</label>
+                <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
               </div>
 
-              <Button
-                variant="outline"
-                className="px-6"
-                onClick={() => handleFindOrder()}
-                disabled={loading}
-              >
+              <Button variant="outline" className="px-6" onClick={() => handleFindOrder()} disabled={loading}>
                 {loading ? "Finding your order..." : "Find my order"}
               </Button>
             </Card>
@@ -771,16 +756,10 @@ export default function ReturnsPage() {
           <Card className="p-4">
             <div className="flex justify-between text-sm">
               <div>
-                <div className="font-medium">
-                  Order {order.order_number ?? order.id}
-                </div>
-                <div className="text-muted-foreground">
-                  Placed at: {order.created_at_cn || "N/A"}
-                </div>
+                <div className="font-medium">Order {order.order_number ?? order.id}</div>
+                <div className="text-muted-foreground">Placed at: {order.created_at_cn || "N/A"}</div>
               </div>
-              <div className="text-right text-sm text-muted-foreground">
-                Status: {order.status}
-              </div>
+              <div className="text-right text-sm text-muted-foreground">Status: {order.status}</div>
             </div>
           </Card>
 
@@ -807,6 +786,7 @@ export default function ReturnsPage() {
                 <option value="other">Other</option>
               </select>
             </div>
+
             <div className="space-y-2">
               <label className="text-sm font-medium">Details (optional)</label>
               <textarea
@@ -814,9 +794,7 @@ export default function ReturnsPage() {
                 className="w-full border rounded px-2 py-1 text-sm"
                 placeholder="Tell us more..."
                 value={reasonDetail}
-                onChange={(e: ChangeEvent<HTMLTextAreaElement>) =>
-                  setReasonDetail(e.target.value)
-                }
+                onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setReasonDetail(e.target.value)}
               />
             </div>
 
@@ -831,17 +809,13 @@ export default function ReturnsPage() {
               </Button>
             </div>
 
-            {isDuplicateError && (
+            {showInlineBlock && (
               <div className="mt-6">
                 <div className="border border-red-400/70 bg-red-50 text-red-700 rounded-md px-4 py-3 text-sm">
                   <div className="font-semibold">
-                    Return request already submitted
+                    {isAlreadyReturnedError ? "Item already returned" : "Return request in review"}
                   </div>
-                  <div className="mt-1 text-xs leading-relaxed">
-                    It looks like you&apos;ve already submitted a return request for this
-                    item or your return request contains items that you've already submitted. Please wait for our team to review your existing request and
-                    contact you via email before submitting another one.
-                  </div>
+                  <div className="mt-1 text-xs leading-relaxed">{displayError}</div>
                 </div>
               </div>
             )}
@@ -853,8 +827,7 @@ export default function ReturnsPage() {
         <Card className="p-4 space-y-3 mt-4">
           <h2 className="text-lg font-semibold">Return request submitted 🎉</h2>
           <p className="text-sm text-muted-foreground">
-            We&apos;ve received your return request. You&apos;ll receive an email
-            once it&apos;s reviewed.
+            We&apos;ve received your return request. You&apos;ll receive an email once it&apos;s reviewed.
           </p>
           <div className="text-sm">
             <div>
@@ -888,8 +861,6 @@ export default function ReturnsPage() {
           </Button>
         </Card>
       )}
-
-      
     </div>
   );
 }
