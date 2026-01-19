@@ -1,4 +1,4 @@
-// D:\前端练习\social-platform\src\app\auth\login\page.tsx
+// src/app/(shop)/auth/login/page.tsx
 "use client";
 
 import { useForm } from "react-hook-form";
@@ -8,9 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import AuthShell from "@/components/auth/AuthShell";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
+
+import { Alert } from "@/components/ui/alert";
+import { useFormAlert } from "@/hooks/useFormAlert";
+import { FieldMessage } from "@/components/ui/field-message";
 
 const AUTH_BASE = "/api";
 const buildAuth = (p: string) => `${AUTH_BASE}${p.startsWith("/") ? p : `/${p}`}`;
@@ -89,32 +93,26 @@ export default function LoginPage() {
     formState: { errors, isSubmitting },
   } = useForm<LoginFormData>({ resolver: zodResolver(schema) });
 
-  const [errorMessage, setErrorMessage] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
-  // ✅ 映射后端不明确的文案 -> 更明确的提示
-  const errorText = useMemo(() => {
-    const msg = (errorMessage || "").trim();
-    if (!msg) return "";
+  // ✅ 统一 error/success 状态（并做后端文案映射）
+  const { alert, clear, setAlert } = useFormAlert({
+    mapMessage: (raw) => {
+      const s = (raw || "").trim().toLowerCase();
 
-    const lower = msg.toLowerCase();
+      // 常见后端：invalid credentials / invalid email or password
+      if (s.includes("invalid credentials") || s.includes("invalid email or password")) {
+        return "Incorrect email or password. Please try again.";
+      }
 
-    // 常见后端：invalid credentials
-    if (lower.includes("invalid credentials")) {
-      return "Incorrect email or password. Please try again.";
-    }
-
-    // 你之前的兼容文案
-    if (lower.includes("invalid email or password")) {
-      return "Incorrect email or password. Please try again.";
-    }
-
-    // 兜底：直接展示
-    return msg;
-  }, [errorMessage]);
+      return (raw || "").trim();
+    },
+    defaultNetworkError: "Network or server error.",
+  });
 
   const onSubmit = async (data: LoginFormData) => {
-    setErrorMessage("");
+    // ✅ 每次提交前先清掉旧提示
+    clear();
 
     const email = data.email.trim().toLowerCase();
     const payload = { login: email, password: data.password }; // ✅ 后端只认 login + password
@@ -122,10 +120,12 @@ export default function LoginPage() {
     try {
       const { res, body } = await attemptLogin(payload);
 
-      // ✅ 业务失败：401 = 用户账号/密码错误（预期结果，不 throw，不 console.error）
+      // ✅ 业务失败：401 = 用户账号/密码错误（预期结果：不 throw，不 console.error）
       if (res.status === 401) {
-        // 如果后端给了 error/message，就优先用；否则用你统一文案
-        setErrorMessage(body?.error || body?.message || "Incorrect email or password. Please try again.");
+        setAlert({
+          type: "error",
+          message: body?.error || body?.message || "Invalid credentials",
+        });
         return;
       }
 
@@ -155,13 +155,20 @@ export default function LoginPage() {
       } catch {}
 
       // 可选：调试输出（HttpOnly 的 cookie 不会显示在 document.cookie，这是正常的）
-      console.log("[login] success. cookies (non-HttpOnly only):", document.cookie);
+      if (process.env.NODE_ENV !== "production") {
+        console.log("[login] success. cookies (non-HttpOnly only):", document.cookie);
+      }
 
       window.location.href = nextUrl;
     } catch (err: any) {
-      // ✅ 只有“真正异常”才打 error
-      console.error("Login exception:", err);
-      setErrorMessage(err?.message || "Network or server error");
+      // ✅ 只有“真正异常”才提示（网络/500/解析异常等）
+      if (process.env.NODE_ENV !== "production") {
+        console.error("Login exception:", err);
+      }
+      setAlert({
+        type: "error",
+        message: err?.message || "Network or server error.",
+      });
     }
   };
 
@@ -191,8 +198,8 @@ export default function LoginPage() {
           <Label htmlFor="email" className="block">
             Email
           </Label>
-          <Input id="email" type="email" autoComplete="email" {...register("email")} />
-          {errors.email && <p className="text-red-500 text-sm mt-1">{errors.email.message}</p>}
+          <Input id="email" type="email" autoComplete="email" {...register("email", { onChange: () => clear() })} />
+          {errors.email?.message && <FieldMessage variant="error">{errors.email.message}</FieldMessage>}
         </div>
 
         <div className="grid gap-3">
@@ -207,7 +214,7 @@ export default function LoginPage() {
               type={showPassword ? "text" : "password"}
               autoComplete="current-password"
               className="pr-10"
-              {...register("password")}
+              {...register("password", { onChange: () => clear() })}
             />
             <button
               type="button"
@@ -219,15 +226,11 @@ export default function LoginPage() {
             </button>
           </div>
 
-          {errors.password && <p className="text-red-500 text-sm mt-1">{errors.password.message}</p>}
+          {errors.password?.message && <FieldMessage variant="error">{errors.password.message}</FieldMessage>}
         </div>
 
-        {/* ✅ 错误提示：红色 callout（你截图那种“包裹感”） */}
-        {errorText && (
-          <div className="rounded-lg border bg-red-50 px-4 py-3">
-            <p className="text-sm text-red-700">{errorText}</p>
-          </div>
-        )}
+        {/* ✅ 表单级提示块：后续 success 也复用同一组件 */}
+        {alert?.message && <Alert variant={alert.type === "success" ? "success" : "error"}>{alert.message}</Alert>}
 
         {/* ⬇️ 两行空白（每行约 2rem） */}
         <div className="h-8" aria-hidden />

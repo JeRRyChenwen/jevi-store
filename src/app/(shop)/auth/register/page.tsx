@@ -9,6 +9,10 @@ import { Label } from "@/components/ui/label";
 import AuthShell from "@/components/auth/AuthShell";
 import { useMemo, useState } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { useFormAlert } from "@/hooks/useFormAlert";
+import { FieldMessage } from "@/components/ui/field-message";
+
 const schema = z
   .object({
     username: z.string().min(3, "Username must be at least 3 characters"),
@@ -38,8 +42,10 @@ export default function RegisterPage() {
 
   const emailValue = watch("email") || "";
   const [loading, setLoading] = useState(false);
-  const [serverMsg, setServerMsg] = useState<string>("");
   const [success, setSuccess] = useState(false);
+
+  // ✅ 统一表单级提示：使用你当前 hook 的真实返回字段
+  const formAlert = useFormAlert();
 
   const loginHref = useMemo(() => {
     const base = "/auth/login";
@@ -50,7 +56,8 @@ export default function RegisterPage() {
 
   const onSubmit = async (data: RegisterFormData) => {
     setLoading(true);
-    setServerMsg("");
+    formAlert.clear();
+
     try {
       const payload = {
         email: data.email,
@@ -82,9 +89,11 @@ export default function RegisterPage() {
         throw new Error(hint || "Registration failed");
       }
 
-      setServerMsg(body?.message || "Registration successful.");
+      // ✅ 成功：用 formAlert.success
+      formAlert.success(body?.message || "Registration successful.");
       setSuccess(true);
-      // 可选：清空密码字段，保留邮箱以便登录
+
+      // 可选：清空密码字段，保留邮箱以便登录（原逻辑保留）
       reset({
         username: "",
         email: data.email,
@@ -93,12 +102,23 @@ export default function RegisterPage() {
         marketingOptIn: data.marketingOptIn,
       });
     } catch (e) {
-      setServerMsg(e instanceof Error ? e.message : "Unknown error");
+      // ✅ 失败：用 formAlert.error（保持原逻辑：success=false）
+      formAlert.error(e instanceof Error ? e.message : "Unknown error");
       setSuccess(false);
     } finally {
       setLoading(false);
     }
   };
+
+  // ✅ 将 hook 的 alert.type 映射到 <Alert variant="...">
+  const alertVariant =
+    formAlert.alert?.type === "success"
+      ? "success"
+      : formAlert.alert?.type === "warning"
+        ? "warning"
+        : formAlert.alert?.type === "info"
+          ? "info"
+          : "error";
 
   return (
     <AuthShell
@@ -131,12 +151,16 @@ export default function RegisterPage() {
         </div>
       }
     >
-      {/* 成功面板：注册成功后显示，不自动跳转 */}
+      {/* 成功面板：注册成功后显示，不自动跳转（原逻辑保留） */}
       {success ? (
         <div className="space-y-4 rounded-xl border p-4 bg-green-50">
-          <div className="text-green-700 font-semibold">
-            {serverMsg || "Registration successful."}
-          </div>
+          {/* ✅ 成功信息：优先用 formAlert.alert.message */}
+          {formAlert.alert?.message ? (
+            <Alert variant="success">{formAlert.alert.message}</Alert>
+          ) : (
+            <Alert variant="success">Registration successful.</Alert>
+          )}
+
           <p className="text-sm text-green-800">
             Your account has been created. You can now sign in using your email and password.
           </p>
@@ -156,16 +180,19 @@ export default function RegisterPage() {
           </div>
         </div>
       ) : (
-        // 表单：未成功时显示；成功后隐藏（不跳转）
+        // 表单：未成功时显示；成功后隐藏（不跳转）（原逻辑保留）
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" autoComplete="on">
           <div className="grid gap-3">
             <Label htmlFor="username" className="block">
               Username
             </Label>
-            <Input id="username" type="text" autoComplete="username" {...register("username")} />
-            {errors.username && (
-              <p className="text-red-500 text-sm">{errors.username.message}</p>
-            )}
+            <Input
+              id="username"
+              type="text"
+              autoComplete="username"
+              {...register("username", { onChange: () => formAlert.clear() })}
+            />
+            <FieldMessage variant="error">{errors.username?.message}</FieldMessage>
           </div>
 
           <div className="grid gap-3">
@@ -177,9 +204,9 @@ export default function RegisterPage() {
               type="email"
               autoComplete="email"
               inputMode="email"
-              {...register("email")}
+              {...register("email", { onChange: () => formAlert.clear() })}
             />
-            {errors.email && <p className="text-red-500 text-sm">{errors.email.message}</p>}
+            <FieldMessage variant="error">{errors.email?.message}</FieldMessage>
           </div>
 
           <div className="grid gap-3">
@@ -190,11 +217,9 @@ export default function RegisterPage() {
               id="password"
               type="password"
               autoComplete="new-password"
-              {...register("password")}
+              {...register("password", { onChange: () => formAlert.clear() })}
             />
-            {errors.password && (
-              <p className="text-red-500 text-sm">{errors.password.message}</p>
-            )}
+            <FieldMessage variant="error">{errors.password?.message}</FieldMessage>
           </div>
 
           <div className="grid gap-3">
@@ -205,11 +230,9 @@ export default function RegisterPage() {
               id="confirmPassword"
               type="password"
               autoComplete="new-password"
-              {...register("confirmPassword")}
+              {...register("confirmPassword", { onChange: () => formAlert.clear() })}
             />
-            {errors.confirmPassword && (
-              <p className="text-red-500 text-sm">{errors.confirmPassword.message}</p>
-            )}
+            <FieldMessage variant="error">{errors.confirmPassword?.message}</FieldMessage>
           </div>
 
           <div className="space-y-2 pt-1">
@@ -224,11 +247,10 @@ export default function RegisterPage() {
             </label>
           </div>
 
-          {serverMsg && (
-            <p className={/fail|error|http/i.test(serverMsg) ? "text-red-500" : "text-green-600"}>
-              {serverMsg}
-            </p>
-          )}
+          {/* ✅ 表单级提示：用 formAlert.hasAlert + formAlert.alert.message */}
+          {formAlert.hasAlert && formAlert.alert?.message ? (
+            <Alert variant={alertVariant as any}>{formAlert.alert.message}</Alert>
+          ) : null}
 
           <div className="h-8" aria-hidden />
 
