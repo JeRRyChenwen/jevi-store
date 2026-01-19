@@ -11,6 +11,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Eye, EyeOff } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE!; // e.g. http://localhost:8787
 
@@ -26,6 +27,15 @@ const schema = z
 
 type ResetForm = z.infer<typeof schema>;
 
+function extractServerErrorCode(body: any): string {
+  // 兼容你后端不同接口的返回结构：
+  // - { error: "PASSWORD_SAME_AS_OLD" }
+  // - { ok: false, error: "PASSWORD_SAME_AS_OLD" }
+  const code = body?.error;
+  if (typeof code === "string" && code.trim()) return code.trim();
+  return "";
+}
+
 export default function ResetPasswordPage() {
   const sp = useSearchParams();
   const router = useRouter();
@@ -37,16 +47,27 @@ export default function ResetPasswordPage() {
     formState: { errors, isSubmitting },
     reset,
     watch,
+    setFocus,
   } = useForm<ResetForm>({ resolver: zodResolver(schema) });
 
   const [done, setDone] = useState(false);
+
+  // 其他通用错误（token 过期、网络错误等）
   const [errorMessage, setErrorMessage] = useState("");
+
+  // ✅ 专门用于：新密码=旧密码（放在按钮上方）
+  const [passwordSameError, setPasswordSameError] = useState("");
+
+  // ✅ Eye toggle states
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   // ✅ Whenever user types, clear the previous server error to avoid "stacked" messages
   const pwd = watch("password");
   const cfm = watch("confirm");
   useEffect(() => {
     if (errorMessage) setErrorMessage("");
+    if (passwordSameError) setPasswordSameError("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pwd, cfm]);
 
@@ -54,6 +75,7 @@ export default function ResetPasswordPage() {
 
   const onSubmit = async (data: ResetForm) => {
     setErrorMessage("");
+    setPasswordSameError("");
 
     try {
       if (!API_BASE) throw new Error("Missing NEXT_PUBLIC_API_BASE in .env.local.");
@@ -74,6 +96,18 @@ export default function ResetPasswordPage() {
       const body = await res.json().catch(() => ({} as any));
 
       if (!res.ok) {
+        const code = extractServerErrorCode(body);
+
+        // ✅ 关键：新密码=旧密码时，把错误放到 Update password 按钮上方，并聚焦到 password
+        if (code === "PASSWORD_SAME_AS_OLD") {
+          setPasswordSameError("New password must be different from the old password.");
+          try {
+            setFocus("password");
+          } catch {}
+          return;
+        }
+
+        // 其他错误保持你原本的红框 errorMessage 逻辑
         const msg = body?.error || body?.message || "Reset failed.";
         throw new Error(msg);
       }
@@ -81,6 +115,7 @@ export default function ResetPasswordPage() {
       // ✅ success
       setDone(true);
       setErrorMessage("");
+      setPasswordSameError("");
       reset({ password: "", confirm: "" });
     } catch (err: any) {
       console.log("[ResetPassword] ERROR ->", err);
@@ -249,13 +284,31 @@ export default function ResetPasswordPage() {
                   <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                     <div className="space-y-2">
                       <Label htmlFor="password">New password</Label>
-                      <Input
-                        id="password"
-                        type="password"
-                        autoComplete="new-password"
-                        placeholder="Enter a new password"
-                        {...register("password")}
-                      />
+
+                      {/* ✅ Input + Eye */}
+                      <div className="relative">
+                        <Input
+                          id="password"
+                          type={showPassword ? "text" : "password"}
+                          autoComplete="new-password"
+                          placeholder="Enter a new password"
+                          className="pr-10"
+                          {...register("password")}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword((v) => !v)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-neutral-600 hover:bg-neutral-100"
+                          aria-label={showPassword ? "Hide password" : "Show password"}
+                        >
+                          {showPassword ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+
                       {errors.password && (
                         <p className="text-sm text-red-600">
                           {errors.password.message}
@@ -265,13 +318,31 @@ export default function ResetPasswordPage() {
 
                     <div className="space-y-2">
                       <Label htmlFor="confirm">Confirm new password</Label>
-                      <Input
-                        id="confirm"
-                        type="password"
-                        autoComplete="new-password"
-                        placeholder="Re-enter your new password"
-                        {...register("confirm")}
-                      />
+
+                      {/* ✅ Input + Eye */}
+                      <div className="relative">
+                        <Input
+                          id="confirm"
+                          type={showConfirm ? "text" : "password"}
+                          autoComplete="new-password"
+                          placeholder="Re-enter your new password"
+                          className="pr-10"
+                          {...register("confirm")}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirm((v) => !v)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-neutral-600 hover:bg-neutral-100"
+                          aria-label={showConfirm ? "Hide password" : "Show password"}
+                        >
+                          {showConfirm ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+
                       {errors.confirm && (
                         <p className="text-sm text-red-600">
                           {errors.confirm.message}
@@ -279,8 +350,16 @@ export default function ResetPasswordPage() {
                       )}
                     </div>
 
+                    {/* ✅ New password == old password (show ABOVE the button with spacing) */}
+                    {passwordSameError && (
+                      <div className="mb-4 rounded-lg border bg-red-50 px-4 py-3">
+                        <p className="text-sm text-red-700">{passwordSameError}</p>
+                      </div>
+                    )}
+
+                    {/* ✅ Other generic server error (also above button) */}
                     {errorMessage && (
-                      <div className="rounded-lg border bg-red-50 px-4 py-3">
+                      <div className="mb-4 rounded-lg border bg-red-50 px-4 py-3">
                         <p className="text-sm text-red-700">{errorMessage}</p>
                       </div>
                     )}

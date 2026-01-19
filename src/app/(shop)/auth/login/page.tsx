@@ -8,8 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import AuthShell from "@/components/auth/AuthShell";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { Eye, EyeOff } from "lucide-react";
 
 const AUTH_BASE = "/api";
 const buildAuth = (p: string) => `${AUTH_BASE}${p.startsWith("/") ? p : `/${p}`}`;
@@ -27,6 +28,57 @@ function toForm(data: Record<string, string>) {
     .join("&");
 }
 
+type LoginAttemptResult = {
+  res: Response;
+  body: any;
+};
+
+/** 尝试登录（JSON -> 必要时 fallback 到 x-www-form-urlencoded） */
+async function attemptLogin(payload: { login: string; password: string }): Promise<LoginAttemptResult> {
+  // ---- 尝试 1：application/json
+  let res = await fetch(buildAuth("/auth/login"), {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    credentials: "include",
+    cache: "no-store",
+    body: JSON.stringify(payload),
+  });
+
+  // 尝试解析返回体（可能不是 JSON，所以 clone）
+  let body: any = null;
+  try {
+    body = await res.clone().json();
+  } catch {}
+
+  // 如果后端返回了“缺少字段”的固定文案，则自动回退为 x-www-form-urlencoded 再试一次
+  if (
+    res.status === 400 &&
+    (body?.error || body?.message || "")
+      .toString()
+      .toLowerCase()
+      .includes("missing email/identifier or password")
+  ) {
+    // ---- 尝试 2：application/x-www-form-urlencoded
+    res = await fetch(buildAuth("/auth/login"), {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded;charset=UTF-8",
+        accept: "application/json",
+      },
+      credentials: "include",
+      cache: "no-store",
+      body: toForm(payload),
+    });
+
+    body = null;
+    try {
+      body = await res.clone().json();
+    } catch {}
+  }
+
+  return { res, body };
+}
+
 export default function LoginPage() {
   const sp = useSearchParams();
   const nextUrl = sp.get("next") || "/";
@@ -38,55 +90,52 @@ export default function LoginPage() {
   } = useForm<LoginFormData>({ resolver: zodResolver(schema) });
 
   const [errorMessage, setErrorMessage] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+
+  // ✅ 映射后端不明确的文案 -> 更明确的提示
+  const errorText = useMemo(() => {
+    const msg = (errorMessage || "").trim();
+    if (!msg) return "";
+
+    const lower = msg.toLowerCase();
+
+    // 常见后端：invalid credentials
+    if (lower.includes("invalid credentials")) {
+      return "Incorrect email or password. Please try again.";
+    }
+
+    // 你之前的兼容文案
+    if (lower.includes("invalid email or password")) {
+      return "Incorrect email or password. Please try again.";
+    }
+
+    // 兜底：直接展示
+    return msg;
+  }, [errorMessage]);
 
   const onSubmit = async (data: LoginFormData) => {
     setErrorMessage("");
+
     const email = data.email.trim().toLowerCase();
     const payload = { login: email, password: data.password }; // ✅ 后端只认 login + password
 
     try {
-      // ---- 尝试 1：application/json
-      let res = await fetch(buildAuth("/auth/login"), {
-        method: "POST",
-        headers: { "content-type": "application/json", accept: "application/json" },
-        credentials: "include",
-        cache: "no-store",
-        body: JSON.stringify(payload),
-      });
+      const { res, body } = await attemptLogin(payload);
 
-      // 尝试解析返回体（可能不是 JSON，所以 clone）
-      let body: any = null;
-      try {
-        body = await res.clone().json();
-      } catch {}
-
-      // 如果后端返回了“缺少字段”的固定文案，则自动回退为 x-www-form-urlencoded 再试一次
-      if (
-        res.status === 400 &&
-        (body?.error || body?.message || "").toString().toLowerCase().includes("missing email/identifier or password")
-      ) {
-        // ---- 尝试 2：application/x-www-form-urlencoded（在某些环境更稳定）
-        res = await fetch(buildAuth("/auth/login"), {
-          method: "POST",
-          headers: {
-            "content-type": "application/x-www-form-urlencoded;charset=UTF-8",
-            accept: "application/json",
-          },
-          credentials: "include",
-          cache: "no-store",
-          body: toForm(payload),
-        });
-        try {
-          body = await res.clone().json();
-        } catch {}
+      // ✅ 业务失败：401 = 用户账号/密码错误（预期结果，不 throw，不 console.error）
+      if (res.status === 401) {
+        // 如果后端给了 error/message，就优先用；否则用你统一文案
+        setErrorMessage(body?.error || body?.message || "Incorrect email or password. Please try again.");
+        return;
       }
 
+      // ✅ 其他非 2xx：当作“系统/请求失败”
       if (!res.ok) {
-        if (res.status === 401) throw new Error(body?.error || "Invalid email or password");
-        throw new Error(body?.error || body?.message || `Login failed (${res.status})`);
+        const msg = body?.error || body?.message || `Login failed (${res.status})`;
+        throw new Error(msg);
       }
 
-      // 登录成功后，轮询 /auth/me 几次，确保 Cookie 生效（代理&时序下更稳）
+      // ✅ 登录成功后，轮询 /auth/me 几次，确保 Cookie 生效（代理&时序下更稳）
       const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
       for (const delay of [0, 80, 160, 320, 480]) {
         try {
@@ -105,12 +154,13 @@ export default function LoginPage() {
         localStorage.setItem("sp_auth_ping", `${Date.now()}`);
       } catch {}
 
-      // 可选：调试输出（HttpOnly 的 sp_session 不会显示在 document.cookie，这是正常的）
+      // 可选：调试输出（HttpOnly 的 cookie 不会显示在 document.cookie，这是正常的）
       console.log("[login] success. cookies (non-HttpOnly only):", document.cookie);
 
       window.location.href = nextUrl;
     } catch (err: any) {
-      console.error("Login error:", err);
+      // ✅ 只有“真正异常”才打 error
+      console.error("Login exception:", err);
       setErrorMessage(err?.message || "Network or server error");
     }
   };
@@ -149,11 +199,35 @@ export default function LoginPage() {
           <Label htmlFor="password" className="block">
             Password
           </Label>
-          <Input id="password" type="password" autoComplete="current-password" {...register("password")} />
+
+          {/* ✅ Password + eye icon */}
+          <div className="relative">
+            <Input
+              id="password"
+              type={showPassword ? "text" : "password"}
+              autoComplete="current-password"
+              className="pr-10"
+              {...register("password")}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100"
+              aria-label={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
+
           {errors.password && <p className="text-red-500 text-sm mt-1">{errors.password.message}</p>}
         </div>
 
-        {errorMessage && <p className="text-red-600 text-sm">{errorMessage}</p>}
+        {/* ✅ 错误提示：红色 callout（你截图那种“包裹感”） */}
+        {errorText && (
+          <div className="rounded-lg border bg-red-50 px-4 py-3">
+            <p className="text-sm text-red-700">{errorText}</p>
+          </div>
+        )}
 
         {/* ⬇️ 两行空白（每行约 2rem） */}
         <div className="h-8" aria-hidden />
