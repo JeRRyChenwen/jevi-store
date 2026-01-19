@@ -121,21 +121,25 @@ export default function ForgotPasswordPage() {
                 {sent ? (
                   <div className="space-y-4">
                     <div className="rounded-lg border bg-green-50 px-4 py-3">
-                      <p className="text-sm text-green-700">
-                        {successMessage}
-                      </p>
+                      <p className="text-sm text-green-700">{successMessage}</p>
                     </div>
 
                     <p className="text-sm text-muted-foreground">
                       Click the link in the email to reset your password.
                     </p>
 
-                    <div className="flex gap-2">
-                      <Button asChild variant="secondary" className="w-full">
+                    {/* ✅ Keep actions INSIDE the card, consistent styling */}
+                    <div className="pt-2 flex flex-col gap-2">
+                      <Button
+                        asChild
+                        variant="outline"
+                        className="w-full"
+                      >
                         <Link href="/auth/login">Back to login</Link>
                       </Button>
 
                       <Button
+                        type="button"
                         variant="outline"
                         className="w-full"
                         onClick={() => {
@@ -170,10 +174,12 @@ export default function ForgotPasswordPage() {
                       </div>
                     )}
 
+                    {/* ✅ Outline button with border (shadcn-native) */}
                     <Button
                       type="submit"
                       disabled={isSubmitting}
-                      className="w-full border border-neutral-300"
+                      variant="outline"
+                      className="w-full"
                     >
                       {isSubmitting ? "Sending..." : "Send reset link"}
                     </Button>
