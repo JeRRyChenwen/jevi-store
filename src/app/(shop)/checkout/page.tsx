@@ -22,8 +22,10 @@ import {
   validateAddress,
   EMAIL_RE,
 } from "./(hooks)/useAddress";
-import AddressErrorHint from "./_components/AddressErrorHint";
 
+// ✅ 统一提示体系
+import { Alert } from "@/components/ui/alert";
+import { useFormAlert } from "@/hooks/useFormAlert";
 
 type CartItem = CartListItem;
 
@@ -76,13 +78,13 @@ function CheckoutSteps({
           const circleClass = isActive
             ? "bg-black text-white border-black"
             : isDone
-            ? "bg-white text-black border-black"
-            : "bg-white text-neutral-400 border-neutral-300";
+              ? "bg-white text-black border-black"
+              : "bg-white text-neutral-400 border-neutral-300";
           const labelClass = isActive
             ? "text-black"
             : isDone
-            ? "text-neutral-500"
-            : "text-neutral-400";
+              ? "text-neutral-500"
+              : "text-neutral-400";
 
           return (
             <button
@@ -97,7 +99,9 @@ function CheckoutSteps({
               title={isLocked ? "Complete previous steps to continue" : s.label}
               className={[
                 "group flex w-1/4 flex-col items-center gap-2 focus:outline-none select-none",
-                isLocked ? "cursor-default opacity-50 pointer-events-auto" : "cursor-pointer",
+                isLocked
+                  ? "cursor-default opacity-50 pointer-events-auto"
+                  : "cursor-pointer",
               ].join(" ")}
             >
               <div className={`${baseCircle} ${circleClass}`}>
@@ -430,6 +434,9 @@ export default function CheckoutPage() {
 
   const { cart, setCart, itemsCount, hasItems, clearCart } = useCart();
 
+  // ✅ 统一表单级提示（用于 Continue 下方提示：Bag / Address）
+  const formAlert = useFormAlert();
+
   // 勾选 & 邮箱本地状态
   const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [emailInput, setEmailInput] = useState<string>("");
@@ -472,6 +479,16 @@ export default function CheckoutPage() {
     handleSaveDefaultAddress,
   } = useAddress(isLoggedIn);
 
+  // ✅ 把 continueErrMsg 同步到统一 Alert（这样 Bag/Address 都能显示提示）
+  useEffect(() => {
+    if (continueErrMsg && continueErrMsg.trim()) {
+      formAlert.error(continueErrMsg);
+      return;
+    }
+    formAlert.clear();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [continueErrMsg]);
+
   const [deliveryMethod, setDeliveryMethod] =
     useState<DeliveryMethod>("standard");
   const [isPayProcessing, setIsPayProcessing] = useState(false);
@@ -488,6 +505,9 @@ export default function CheckoutPage() {
     const p = new URLSearchParams(window.location.search);
     p.set("step", next);
     router.replace(`${pathname}?${p.toString()}`, { scroll: false });
+
+    // ✅ 切步时清掉 Continue 提示，避免“黏住”
+    setContinueErrMsg(null);
   };
 
   // 预连接 PayPal / Braintree 资源
@@ -624,9 +644,7 @@ export default function CheckoutPage() {
       if (okLocal) return;
 
       setTimeout(() => {
-        const target = REMOTE_BASE
-          ? `${REMOTE_BASE}/subscribe`
-          : apiURL("/subscribe");
+        const target = REMOTE_BASE ? `${REMOTE_BASE}/subscribe` : apiURL("/subscribe");
         fetch(target, {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -637,11 +655,22 @@ export default function CheckoutPage() {
     } catch {}
   }
 
-  // 点击 Continue：Address 步骤改为“提交时校验”
+  // 点击 Continue：Bag/Address 步骤统一做“提交时校验”
   const handleContinue = () => {
+    // ✅ 0) Bag 为空：禁止进入下一步 + 给提示
+    if (step === "bag") {
+      if (!hasItems || (cart?.length || 0) === 0) {
+        setContinueErrMsg(
+          "Your bag is empty. Please add at least one item before continuing."
+        );
+        return;
+      }
+      setContinueErrMsg(null);
+    }
+
+    // ✅ 1) Address：原有逻辑保持不变（仍然写 continueErrMsg）
     if (step === "address") {
-      const ignoreEmail =
-        isLoggedIn || !!(address.email && address.email.trim());
+      const ignoreEmail = isLoggedIn || !!(address.email && address.email.trim());
       const deliveryRes = validateAddress(address, "", ignoreEmail);
       const billingRes = sameAsDelivery
         ? { valid: true, errs: emptyErr }
@@ -652,9 +681,7 @@ export default function CheckoutPage() {
 
       if (!deliveryRes.valid || !billingRes.valid) {
         setAddressShowErrors(true);
-        setContinueErrMsg(
-          "Please complete all required delivery address fields before saving."
-        );
+        setContinueErrMsg("Please complete all required delivery address fields before saving.");
 
         const el = document.getElementById("address-section");
         el?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -668,6 +695,7 @@ export default function CheckoutPage() {
 
       if (!isLoggedIn) void sendSubscriptionIfNeeded();
     }
+
     nextStepCore();
   };
 
@@ -683,8 +711,7 @@ export default function CheckoutPage() {
     // 若已登录但地址里没有邮箱，则用 /auth/me 的邮箱兜底
     let orderAddress = { ...address };
     if (
-      (!orderAddress.email ||
-        !EMAIL_RE.test((orderAddress.email || "").trim())) &&
+      (!orderAddress.email || !EMAIL_RE.test((orderAddress.email || "").trim())) &&
       isLoggedIn
     ) {
       const authedEmail = await fetchAuthedEmail();
@@ -700,7 +727,11 @@ export default function CheckoutPage() {
 
     try {
       const provider: "paypal" | "braintree" =
-        payload && (payload.paymentMethod || payload.cardBrand || payload.cardLast4 || payload.provider === "braintree")
+        payload &&
+        (payload.paymentMethod ||
+          payload.cardBrand ||
+          payload.cardLast4 ||
+          payload.provider === "braintree")
           ? "braintree"
           : "paypal";
 
@@ -728,10 +759,7 @@ export default function CheckoutPage() {
         orderNumber = persist.order.order_number ?? null;
       }
     } catch (e) {
-      console.warn(
-        "[checkout] /orders persist failed (will continue to confirmation)",
-        e
-      );
+      console.warn("[checkout] /orders persist failed (will continue to confirmation)", e);
     }
 
     try {
@@ -767,6 +795,15 @@ export default function CheckoutPage() {
     const next = "/checkout?step=address";
     router.push(`/auth/login?next=${encodeURIComponent(next)}`);
   };
+
+  const alertVariant =
+    formAlert.alert?.type === "success"
+      ? "success"
+      : formAlert.alert?.type === "warning"
+        ? "warning"
+        : formAlert.alert?.type === "info"
+          ? "info"
+          : "error";
 
   return (
     <main className="w-full px-4 sm:px-6 lg:px-8 2xl:px-12 py-6 md:py-8">
@@ -832,9 +869,7 @@ export default function CheckoutPage() {
             <DeliveryStep
               deliveryMethod={deliveryMethod}
               setDeliveryMethod={setDeliveryMethod}
-              showFreeShipping={
-                hasItems && itemsMajor >= DELIVERY_FREE_THRESHOLD
-              }
+              showFreeShipping={hasItems && itemsMajor >= DELIVERY_FREE_THRESHOLD}
             />
           )}
 
@@ -898,14 +933,24 @@ export default function CheckoutPage() {
               )}
             </div>
 
-            {/* Address 步骤 Continue 按钮下方的错误提示 */}
-            {step === "address" && continueErrMsg && (
+            {/* ✅ Bag / Address 步骤 Continue 按钮下方的提示：统一用 Alert */}
+            {(step === "bag" || step === "address") &&
+            formAlert.hasAlert &&
+            formAlert.alert?.message ? (
               <div className="mt-2 flex justify-end">
-                <AddressErrorHint>
-                  {continueErrMsg}
-                </AddressErrorHint>
+                <div
+                  className={
+                    step === "bag"
+                      ? "w-[320px] max-w-full"
+                      : "w-[660px] max-w-full"
+                  }
+                >
+                  <Alert variant={alertVariant as any}>
+                    {formAlert.alert.message}
+                  </Alert>
+                </div>
               </div>
-            )}
+            ) : null}
           </>
         )}
       </div>
@@ -931,11 +976,7 @@ function Row({
 }) {
   return (
     <div className="flex items-center justify-between">
-      <div
-        className={[
-          strongLeft ? "font-semibold" : "text-neutral-600",
-        ].join(" ")}
-      >
+      <div className={[strongLeft ? "font-semibold" : "text-neutral-600"].join(" ")}>
         {label}
       </div>
       <div

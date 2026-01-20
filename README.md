@@ -1114,9 +1114,11 @@ src/app/(admin)/admin/(protected)/returns/[id]/ReturnDetailClient.tsx
 另外还有一批是在 src/components/ui/\* 里出现的 text-destructive、border 等，这些很多是 shadcn 组件内部样式，不一定是“提示文本”，通常不需要你逐个改。
 我建议你先统一“业务提示/表单提示”那一层（上面 A~E 这些），收益最大。
 
-好，我已经新建好了 D:\前端练习\social-platform\src\components\ui\error-callout.tsx 文件了，接下来我会逐个把上面清单 A~E 的文件发给你，你帮我看看哪些地方需改成 ErrorCallout
+checkout 不能为空
 
 ==============================================================================
+
+专业电商风格
 
 social media 微信小红书链接 icon
 
@@ -1131,6 +1133,8 @@ similar product , produtc you may also interest
 用户评论
 
 网页下面的邮箱，privacy 条款
+
+
 
 ==============================================================================
 千万不要修改我原本的代码里的任何逻辑和语法，和原本的代码内容，千万不要做修改

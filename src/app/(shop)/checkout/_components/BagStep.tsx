@@ -2,9 +2,14 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import CartList from "@/components/cart/CartList";
 import type { CartItem as CartListItem } from "@/components/cart/CartList";
 import BraintreePayPalOnly from "./BraintreePayPalOnly";
+
+// ✅ 统一提示体系
+import { Alert } from "@/components/ui/alert";
+
 type CartItem = CartListItem;
 
 interface BagStepProps {
@@ -12,14 +17,14 @@ interface BagStepProps {
   setCart: React.Dispatch<React.SetStateAction<CartItem[]>>;
 
   // 价格相关
-  currency: string;          // 比如 "AUD"
-  itemsMajor: number;        // 小计（以元为单位）
-  savedMajor: number;        // 省下的钱（元）
+  currency: string; // 比如 "AUD"
+  itemsMajor: number; // 小计（以元为单位）
+  savedMajor: number; // 省下的钱（元）
   hasItems: boolean;
 
   // 运费策略
   deliveryThreshold: number; // 满多少免邮
-  deliveryFlat: number;      // 未满时运费（元）
+  deliveryFlat: number; // 未满时运费（元）
 
   // 用于隐藏的 PayPal 预加载
   amountInMajorUnit: number; // 总金额（PayPal 按钮的 amount）
@@ -82,9 +87,11 @@ const BagStep: React.FC<BagStepProps> = ({
   deliveryFlat,
   amountInMajorUnit,
 }) => {
+  const isEmpty = (cart?.length || 0) === 0;
+
   // 运费 & 总价（单位：元）
   const deliveryFeeMajor =
-    hasItems && itemsMajor < deliveryThreshold ? deliveryFlat : 0;
+    !isEmpty && itemsMajor < deliveryThreshold ? deliveryFlat : 0;
   const totalMajor = itemsMajor + deliveryFeeMajor;
 
   return (
@@ -93,24 +100,37 @@ const BagStep: React.FC<BagStepProps> = ({
       <section className="rounded-xl border">
         <div className="border-b px-4 py-3 font-semibold">Your Bag</div>
 
-        <div className="p-4">
+        <div className="p-4 space-y-3">
+          {/* ✅ 空购物车提示：业内常见做法（视觉提示 + 引导继续购物） */}
+          {isEmpty && (
+            <Alert variant="info">
+              <div className="flex flex-col gap-2">
+                <div className="font-medium">Your bag is empty.</div>
+                <div className="text-sm">
+                  Please add at least one item before continuing checkout.
+                </div>
+                <div>
+                  <Link href="/" className="underline text-sm">
+                    Continue shopping
+                  </Link>
+                </div>
+              </div>
+            </Alert>
+          )}
+
           <CartList
             cart={cart}
             onInc={(k) =>
               setCart((p) =>
                 p.map((x) =>
-                  x.key === k
-                    ? { ...x, qty: Math.min(x.qty + 1, x.stock) }
-                    : x
+                  x.key === k ? { ...x, qty: Math.min(x.qty + 1, x.stock) } : x
                 )
               )
             }
             onDec={(k) =>
               setCart((p) =>
                 p.map((x) =>
-                  x.key === k
-                    ? { ...x, qty: Math.max(1, x.qty - 1) }
-                    : x
+                  x.key === k ? { ...x, qty: Math.max(1, x.qty - 1) } : x
                 )
               )
             }
@@ -121,11 +141,7 @@ const BagStep: React.FC<BagStepProps> = ({
         <div className="border-t p-4">
           <div className="mb-2 text-sm font-semibold">Order Summary</div>
           <div className="space-y-2 text-sm">
-            <Row
-              label="Subtotal"
-              value={fmtPrice(itemsMajor, currency)}
-              strongRight
-            />
+            <Row label="Subtotal" value={fmtPrice(itemsMajor, currency)} strongRight />
 
             {savedMajor > 0 && (
               <Row
@@ -135,12 +151,13 @@ const BagStep: React.FC<BagStepProps> = ({
               />
             )}
 
-            {hasItems && (
+            {/* ✅ 这里用 isEmpty 判断，避免 hasItems 和 cart 不一致时显示异常 */}
+            {!isEmpty && (
               <Row
                 label="Delivery fee"
                 value={
                   itemsMajor >= deliveryThreshold
-                    ? "FREE for over $100"
+                    ? `FREE for over ${fmtPrice(deliveryThreshold, currency)}`
                     : fmtPrice(deliveryFlat, currency)
                 }
                 valueClass={
@@ -159,16 +176,14 @@ const BagStep: React.FC<BagStepProps> = ({
                 strongRight
                 bigRight
               />
-              <div className="mt-1 text-xs text-neutral-500">
-                Including GST
-              </div>
+              <div className="mt-1 text-xs text-neutral-500">Including GST</div>
             </div>
           </div>
         </div>
       </section>
 
       {/* 隐藏的 PayPal 预加载（原来 step === "bag" && amountInMajorUnit > 0 那块） */}
-      {amountInMajorUnit > 0 && (
+      {amountInMajorUnit > 0 && !isEmpty && hasItems && (
         <div
           aria-hidden="true"
           style={{

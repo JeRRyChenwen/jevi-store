@@ -1,7 +1,7 @@
 // src/app/checkout/_components/AddressStep.tsx
 "use client";
 
-import React from "react";
+import React, { useMemo, useRef } from "react";
 import AddressErrorHint from "./AddressErrorHint";
 
 /* ====== 本组件内部使用的类型（结构要和 page.tsx 里的一样） ====== */
@@ -73,6 +73,50 @@ type AddressStepProps = {
   sendSubscriptionIfNeeded: (emailRaw?: string) => void | Promise<void>;
 };
 
+/* ---------------- 小工具 ---------------- */
+const baseInput =
+  "w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-neutral-900/10";
+
+function hasAnyErr(errs: AddressErr, includeEmail: boolean) {
+  const keys: (keyof AddressErr)[] = includeEmail
+    ? ["firstName", "lastName", "phone", "line1", "city", "state", "postcode", "country", "email"]
+    : ["firstName", "lastName", "phone", "line1", "city", "state", "postcode", "country"];
+  return keys.some((k) => !!errs[k]);
+}
+
+function fieldErrorText(key: keyof AddressErr): string {
+  // 业内一般会更具体；你后续如果想更严格可按国家规则加正则
+  if (key === "email") return "Please enter a valid email address.";
+  if (key === "phone") return "Please enter a valid phone number.";
+  if (key === "postcode") return "Please enter a valid postcode.";
+  return "This field is required.";
+}
+
+function clsInput(showErrors: boolean, bad: boolean) {
+  return showErrors && bad ? `${baseInput} border-red-500` : `${baseInput} border-neutral-300`;
+}
+
+function InlineError({
+  show,
+  id,
+  text,
+}: {
+  show: boolean;
+  id: string;
+  text: string;
+}) {
+  if (!show) return null;
+  return (
+    <p id={id} className="mt-1 text-xs text-red-600">
+      {text}
+    </p>
+  );
+}
+
+function RequiredStar() {
+  return <span className="ml-1 text-red-600">*</span>;
+}
+
 /* ---------------- Address 表单（UI） ---------------- */
 function AddressForm({
   address,
@@ -83,7 +127,6 @@ function AddressForm({
   setMarketingOptIn,
   showErrors,
   errs,
-  errorBanner,
   onEmailCommit,
   onOptInChanged,
   hideYourDetails = false,
@@ -98,7 +141,6 @@ function AddressForm({
   setMarketingOptIn: (v: boolean) => void;
   showErrors: boolean;
   errs: AddressErr;
-  errorBanner?: string | null;
   onEmailCommit?: (email: string) => void;
   onOptInChanged?: (opt: boolean) => void;
   hideYourDetails?: boolean;
@@ -110,74 +152,104 @@ function AddressForm({
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
       setAddress({ ...address, [k]: e.target.value });
 
-  const baseInput =
-    "w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-neutral-900/10";
-  const cls = (bad: boolean) =>
-    showErrors && bad ? `${baseInput} border-red-500` : `${baseInput} border-neutral-300`;
+  const showSummary = showErrors && hasAnyErr(errs, !hideYourDetails);
 
   const Inner = (
     <div className="p-4 space-y-6">
-      {/* 顶部统一错误提示（可选） */}
-      {errorBanner && (
-        <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-          {errorBanner}
+      {/* 顶部错误汇总（业内常见：简短一句 + 下面字段级红字） */}
+      {showSummary && (
+        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          Please check the highlighted fields below.
         </div>
       )}
 
       {/* 表单主体 */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* First Name */}
         <div className="space-y-1">
           <label htmlFor="addr-first" className="block text-sm font-medium text-neutral-700">
-            First Name
+            First Name <RequiredStar />
           </label>
           <input
             id="addr-first"
-            className={cls(errs.firstName)}
+            className={clsInput(showErrors, errs.firstName)}
             autoComplete="given-name"
             value={address.firstName || ""}
             onChange={on("firstName")}
+            aria-invalid={showErrors && errs.firstName ? true : undefined}
+            aria-describedby="err-addr-first"
+          />
+          <InlineError
+            show={showErrors && errs.firstName}
+            id="err-addr-first"
+            text={fieldErrorText("firstName")}
           />
         </div>
 
+        {/* Last Name */}
         <div className="space-y-1">
           <label htmlFor="addr-last" className="block text-sm font-medium text-neutral-700">
-            Last Name
+            Last Name <RequiredStar />
           </label>
           <input
             id="addr-last"
-            className={cls(errs.lastName)}
+            className={clsInput(showErrors, errs.lastName)}
             autoComplete="family-name"
             value={address.lastName || ""}
             onChange={on("lastName")}
+            aria-invalid={showErrors && errs.lastName ? true : undefined}
+            aria-describedby="err-addr-last"
+          />
+          <InlineError
+            show={showErrors && errs.lastName}
+            id="err-addr-last"
+            text={fieldErrorText("lastName")}
           />
         </div>
 
+        {/* Phone */}
         <div className="md:col-span-2 space-y-1">
           <label htmlFor="addr-phone" className="block text-sm font-medium text-neutral-700">
-            Phone
+            Phone <RequiredStar />
           </label>
           <input
             id="addr-phone"
-            className={cls(errs.phone)}
+            className={clsInput(showErrors, errs.phone)}
             autoComplete="tel"
             value={address.phone || ""}
             onChange={on("phone")}
+            aria-invalid={showErrors && errs.phone ? true : undefined}
+            aria-describedby="err-addr-phone"
+          />
+          <InlineError
+            show={showErrors && errs.phone}
+            id="err-addr-phone"
+            text={fieldErrorText("phone")}
           />
         </div>
 
+        {/* Line1 */}
         <div className="md:col-span-2 space-y-1">
           <label htmlFor="addr-line1" className="block text-sm font-medium text-neutral-700">
-            Address Line 1
+            Address Line 1 <RequiredStar />
           </label>
           <input
             id="addr-line1"
-            className={cls(errs.line1)}
+            className={clsInput(showErrors, errs.line1)}
             autoComplete="address-line1"
             value={address.line1 || ""}
             onChange={on("line1")}
+            aria-invalid={showErrors && errs.line1 ? true : undefined}
+            aria-describedby="err-addr-line1"
+          />
+          <InlineError
+            show={showErrors && errs.line1}
+            id="err-addr-line1"
+            text={fieldErrorText("line1")}
           />
         </div>
 
+        {/* Line2 */}
         <div className="md:col-span-2 space-y-1">
           <label htmlFor="addr-line2" className="block text-sm font-medium text-neutral-700">
             Address Line 2 (optional)
@@ -191,55 +263,87 @@ function AddressForm({
           />
         </div>
 
+        {/* City */}
         <div className="space-y-1">
           <label htmlFor="addr-city" className="block text-sm font-medium text-neutral-700">
-            City
+            City <RequiredStar />
           </label>
           <input
             id="addr-city"
-            className={cls(errs.city)}
+            className={clsInput(showErrors, errs.city)}
             autoComplete="address-level2"
             value={address.city || ""}
             onChange={on("city")}
+            aria-invalid={showErrors && errs.city ? true : undefined}
+            aria-describedby="err-addr-city"
+          />
+          <InlineError
+            show={showErrors && errs.city}
+            id="err-addr-city"
+            text={fieldErrorText("city")}
           />
         </div>
 
+        {/* State */}
         <div className="space-y-1">
           <label htmlFor="addr-state" className="block text-sm font-medium text-neutral-700">
-            State/Region
+            State/Region <RequiredStar />
           </label>
           <input
             id="addr-state"
-            className={cls(errs.state)}
+            className={clsInput(showErrors, errs.state)}
             autoComplete="address-level1"
             value={address.state || ""}
             onChange={on("state")}
+            aria-invalid={showErrors && errs.state ? true : undefined}
+            aria-describedby="err-addr-state"
+          />
+          <InlineError
+            show={showErrors && errs.state}
+            id="err-addr-state"
+            text={fieldErrorText("state")}
           />
         </div>
 
+        {/* Postcode */}
         <div className="space-y-1">
           <label htmlFor="addr-postcode" className="block text-sm font-medium text-neutral-700">
-            Postcode
+            Postcode <RequiredStar />
           </label>
           <input
             id="addr-postcode"
-            className={cls(errs.postcode)}
+            className={clsInput(showErrors, errs.postcode)}
             autoComplete="postal-code"
             value={address.postcode || ""}
             onChange={on("postcode")}
+            aria-invalid={showErrors && errs.postcode ? true : undefined}
+            aria-describedby="err-addr-postcode"
+          />
+          <InlineError
+            show={showErrors && errs.postcode}
+            id="err-addr-postcode"
+            text={fieldErrorText("postcode")}
           />
         </div>
 
+        {/* Country */}
         <div className="space-y-1">
           <label htmlFor="addr-country" className="block text-sm font-medium text-neutral-700">
-            Country
+            Country <RequiredStar />
           </label>
           <input
             id="addr-country"
-            className={cls(errs.country)}
+            className={clsInput(showErrors, errs.country)}
             autoComplete="country-name"
             value={address.country || ""}
             onChange={on("country")}
+            aria-invalid={showErrors && errs.country ? true : undefined}
+            aria-describedby="err-addr-country"
+          />
+          <InlineError
+            show={showErrors && errs.country}
+            id="err-addr-country"
+            text={fieldErrorText("country")}
           />
         </div>
       </div>
@@ -249,16 +353,16 @@ function AddressForm({
         <div className="border rounded-lg p-4">
           <h3 className="text-base font-medium mb-2">Your Details</h3>
           <p className="text-sm text-neutral-600 mb-3">
-            Please enter your email address, we'll send your order confirmation here
+            Please enter your email address, we&apos;ll send your order confirmation here.
           </p>
 
           <label htmlFor="addr-email" className="block text-sm font-medium mb-1">
-            Email Address
+            Email Address <RequiredStar />
           </label>
           <input
             id="addr-email"
             type="email"
-            className={cls(errs.email)}
+            className={clsInput(showErrors, errs.email)}
             autoComplete="email"
             value={emailInput}
             onChange={(e) => {
@@ -267,11 +371,16 @@ function AddressForm({
               setAddress({ ...address, email: v });
             }}
             onBlur={(e) => onEmailCommit?.(e.currentTarget.value)}
+            aria-invalid={showErrors && errs.email ? true : undefined}
+            aria-describedby="err-addr-email"
+          />
+          <InlineError
+            show={showErrors && errs.email}
+            id="err-addr-email"
+            text={fieldErrorText("email")}
           />
 
-          <p className="mt-1 text-xs text-neutral-500">
-            You can create an account after checkout
-          </p>
+          <p className="mt-1 text-xs text-neutral-500">You can create an account after checkout.</p>
 
           <label className="mt-3 flex items-start gap-2 text-sm">
             <input
@@ -301,8 +410,9 @@ function AddressForm({
 
   if (variant === "bare") return <>{Inner}</>;
 
+  // 注意：这里不再加 id="address-section"，避免和外层重复
   return (
-    <section className="rounded-xl border" id="address-section">
+    <section className="rounded-xl border">
       <div className="border-b px-4 py-3 font-semibold">{title}</div>
       {Inner}
     </section>
@@ -327,11 +437,6 @@ function BillingForm({
   variant?: "section" | "bare";
   title?: string;
 }) {
-  const baseInput =
-    "w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-neutral-900/10";
-  const cls = (bad: boolean) =>
-    showErrors && bad ? `${baseInput} border-red-500` : `${baseInput} border-neutral-300`;
-
   const on =
     (k: keyof Address) =>
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -340,41 +445,89 @@ function BillingForm({
       if (showErrors) onFieldChange?.(k, v);
     };
 
+  const showSummary = showErrors && hasAnyErr(errs, false);
+
   const Inner = (
     <div className="p-4 space-y-6">
+      {showSummary && (
+        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          Please check the highlighted billing fields below.
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-1">
-          <label className="block text-sm font-medium text-neutral-700">First Name</label>
+          <label className="block text-sm font-medium text-neutral-700">
+            First Name <RequiredStar />
+          </label>
           <input
-            className={cls(errs.firstName)}
+            className={clsInput(showErrors, errs.firstName)}
             value={billing.firstName || ""}
             onChange={on("firstName")}
+            aria-invalid={showErrors && errs.firstName ? true : undefined}
+            aria-describedby="err-bill-first"
+          />
+          <InlineError
+            show={showErrors && errs.firstName}
+            id="err-bill-first"
+            text={fieldErrorText("firstName")}
           />
         </div>
+
         <div className="space-y-1">
-          <label className="block text-sm font-medium text-neutral-700">Last Name</label>
+          <label className="block text-sm font-medium text-neutral-700">
+            Last Name <RequiredStar />
+          </label>
           <input
-            className={cls(errs.lastName)}
+            className={clsInput(showErrors, errs.lastName)}
             value={billing.lastName || ""}
             onChange={on("lastName")}
+            aria-invalid={showErrors && errs.lastName ? true : undefined}
+            aria-describedby="err-bill-last"
+          />
+          <InlineError
+            show={showErrors && errs.lastName}
+            id="err-bill-last"
+            text={fieldErrorText("lastName")}
           />
         </div>
+
         <div className="md:col-span-2 space-y-1">
-          <label className="block text-sm font-medium text-neutral-700">Phone</label>
+          <label className="block text-sm font-medium text-neutral-700">
+            Phone <RequiredStar />
+          </label>
           <input
-            className={cls(errs.phone)}
+            className={clsInput(showErrors, errs.phone)}
             value={billing.phone || ""}
             onChange={on("phone")}
+            aria-invalid={showErrors && errs.phone ? true : undefined}
+            aria-describedby="err-bill-phone"
+          />
+          <InlineError
+            show={showErrors && errs.phone}
+            id="err-bill-phone"
+            text={fieldErrorText("phone")}
           />
         </div>
+
         <div className="md:col-span-2 space-y-1">
-          <label className="block text-sm font-medium text-neutral-700">Address Line 1</label>
+          <label className="block text-sm font-medium text-neutral-700">
+            Address Line 1 <RequiredStar />
+          </label>
           <input
-            className={cls(errs.line1)}
+            className={clsInput(showErrors, errs.line1)}
             value={billing.line1 || ""}
             onChange={on("line1")}
+            aria-invalid={showErrors && errs.line1 ? true : undefined}
+            aria-describedby="err-bill-line1"
+          />
+          <InlineError
+            show={showErrors && errs.line1}
+            id="err-bill-line1"
+            text={fieldErrorText("line1")}
           />
         </div>
+
         <div className="md:col-span-2 space-y-1">
           <label className="block text-sm font-medium text-neutral-700">
             Address Line 2 (optional)
@@ -385,36 +538,76 @@ function BillingForm({
             onChange={on("line2")}
           />
         </div>
+
         <div className="space-y-1">
-          <label className="block text-sm font-medium text-neutral-700">City</label>
+          <label className="block text-sm font-medium text-neutral-700">
+            City <RequiredStar />
+          </label>
           <input
-            className={cls(errs.city)}
+            className={clsInput(showErrors, errs.city)}
             value={billing.city || ""}
             onChange={on("city")}
+            aria-invalid={showErrors && errs.city ? true : undefined}
+            aria-describedby="err-bill-city"
+          />
+          <InlineError
+            show={showErrors && errs.city}
+            id="err-bill-city"
+            text={fieldErrorText("city")}
           />
         </div>
+
         <div className="space-y-1">
-          <label className="block text-sm font-medium text-neutral-700">State/Region</label>
+          <label className="block text-sm font-medium text-neutral-700">
+            State/Region <RequiredStar />
+          </label>
           <input
-            className={cls(errs.state)}
+            className={clsInput(showErrors, errs.state)}
             value={billing.state || ""}
             onChange={on("state")}
+            aria-invalid={showErrors && errs.state ? true : undefined}
+            aria-describedby="err-bill-state"
+          />
+          <InlineError
+            show={showErrors && errs.state}
+            id="err-bill-state"
+            text={fieldErrorText("state")}
           />
         </div>
+
         <div className="space-y-1">
-          <label className="block text-sm font-medium text-neutral-700">Postcode</label>
+          <label className="block text-sm font-medium text-neutral-700">
+            Postcode <RequiredStar />
+          </label>
           <input
-            className={cls(errs.postcode)}
+            className={clsInput(showErrors, errs.postcode)}
             value={billing.postcode || ""}
             onChange={on("postcode")}
+            aria-invalid={showErrors && errs.postcode ? true : undefined}
+            aria-describedby="err-bill-postcode"
+          />
+          <InlineError
+            show={showErrors && errs.postcode}
+            id="err-bill-postcode"
+            text={fieldErrorText("postcode")}
           />
         </div>
+
         <div className="space-y-1">
-          <label className="block text-sm font-medium text-neutral-700">Country</label>
+          <label className="block text-sm font-medium text-neutral-700">
+            Country <RequiredStar />
+          </label>
           <input
-            className={cls(errs.country)}
+            className={clsInput(showErrors, errs.country)}
             value={billing.country || ""}
             onChange={on("country")}
+            aria-invalid={showErrors && errs.country ? true : undefined}
+            aria-describedby="err-bill-country"
+          />
+          <InlineError
+            show={showErrors && errs.country}
+            id="err-bill-country"
+            text={fieldErrorText("country")}
           />
         </div>
       </div>
@@ -471,9 +664,23 @@ const AddressStep: React.FC<AddressStepProps> = ({
   sendSubscriptionIfNeeded,
 }) => {
   // ✅ 防呆：有时 page.tsx 可能没把 hasSavedDelivery/hasSavedBilling 算对
-  // 只要 savedDeliveryAddr / savedBillingAddr 实际存在，就认为有 saved address
   const effectiveHasSavedDelivery = hasSavedDelivery || !!savedDeliveryAddr;
   const effectiveHasSavedBilling = hasSavedBilling || !!savedBillingAddr;
+
+  // ✅ 草稿：用于“取消勾选 saved 时恢复用户之前编辑内容”（业内常见体验）
+  const deliveryDraftRef = useRef<Address | null>(null);
+  const billingDraftRef = useRef<Address | null>(null);
+
+  // 计算：当前 Address 表单是否真的需要包含 email 校验（未登录才需要）
+  const includeEmailErr = !isLoggedIn;
+
+  const showDeliverySummary = useMemo(() => {
+    return addressShowErrors && hasAnyErr(addressErrs, includeEmailErr);
+  }, [addressShowErrors, addressErrs, includeEmailErr]);
+
+  const showBillingSummary = useMemo(() => {
+    return addressShowErrors && !sameAsDelivery && !useSavedBilling && hasAnyErr(billingErrs, false);
+  }, [addressShowErrors, billingErrs, sameAsDelivery, useSavedBilling]);
 
   return (
     <>
@@ -494,13 +701,22 @@ const AddressStep: React.FC<AddressStepProps> = ({
                     checked={useSavedDelivery}
                     onChange={(e) => {
                       const checked = e.target.checked;
-                      setUseSavedDelivery(checked);
 
-                      // 勾选时把 saved delivery 写入当前 address
-                      if (checked && savedDeliveryAddr) {
-                        setAddress(savedDeliveryAddr);
-                        clearAddressErrors();
+                      if (checked) {
+                        // 勾选前：把当前编辑内容存为草稿，方便取消勾选时恢复
+                        deliveryDraftRef.current = { ...address };
+                        if (savedDeliveryAddr) {
+                          setAddress(savedDeliveryAddr);
+                          clearAddressErrors();
+                        }
+                      } else {
+                        // 取消勾选：恢复草稿（如果有）
+                        if (deliveryDraftRef.current) {
+                          setAddress(deliveryDraftRef.current);
+                        }
                       }
+
+                      setUseSavedDelivery(checked);
                     }}
                   />
                   Use saved <strong>Delivery Address</strong>
@@ -514,13 +730,20 @@ const AddressStep: React.FC<AddressStepProps> = ({
                     checked={useSavedBilling}
                     onChange={(e) => {
                       const checked = e.target.checked;
-                      setUseSavedBilling(checked);
 
-                      // 勾选时把 saved billing 写入当前 billingAddress
-                      if (checked && savedBillingAddr) {
-                        setBillingAddress(savedBillingAddr);
-                        clearBillingErrors();
+                      if (checked) {
+                        billingDraftRef.current = { ...billingAddress };
+                        if (savedBillingAddr) {
+                          setBillingAddress(savedBillingAddr);
+                          clearBillingErrors();
+                        }
+                      } else {
+                        if (billingDraftRef.current) {
+                          setBillingAddress(billingDraftRef.current);
+                        }
                       }
+
+                      setUseSavedBilling(checked);
                     }}
                   />
                   Use saved <strong>Billing Address</strong>
@@ -543,7 +766,13 @@ const AddressStep: React.FC<AddressStepProps> = ({
             {/* 1) Delivery Address（未勾选 Use saved Delivery 时才显示） */}
             {!useSavedDelivery && (
               <div className="space-y-2">
-                <h3 className="text-base font-medium">Delivery Address</h3>
+                <div className="flex items-baseline justify-between">
+                  <h3 className="text-base font-medium">Delivery Address</h3>
+                  {showDeliverySummary ? (
+                    <span className="text-xs text-red-600">Missing or invalid fields</span>
+                  ) : null}
+                </div>
+
                 <AddressForm
                   address={address}
                   setAddress={setAddress}
@@ -553,9 +782,6 @@ const AddressStep: React.FC<AddressStepProps> = ({
                   setMarketingOptIn={setMarketingOptIn}
                   showErrors={addressShowErrors}
                   errs={addressErrs}
-                  errorBanner={
-                    addressShowErrors ? "Some required fields are missing or invalid." : null
-                  }
                   onEmailCommit={(email) => sendSubscriptionIfNeeded(email)}
                   onOptInChanged={() => sendSubscriptionIfNeeded()}
                   hideYourDetails={isLoggedIn}
@@ -587,7 +813,13 @@ const AddressStep: React.FC<AddressStepProps> = ({
             {/* 3) Billing Address（不同于 delivery 且未勾选 saved billing 时） */}
             {!sameAsDelivery && !useSavedBilling && (
               <div className="space-y-2">
-                <h3 className="text-base font-medium">Billing Address</h3>
+                <div className="flex items-baseline justify-between">
+                  <h3 className="text-base font-medium">Billing Address</h3>
+                  {showBillingSummary ? (
+                    <span className="text-xs text-red-600">Missing or invalid fields</span>
+                  ) : null}
+                </div>
+
                 <BillingForm
                   billing={billingAddress}
                   setBilling={setBillingAddress}

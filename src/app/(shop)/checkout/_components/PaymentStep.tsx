@@ -3,10 +3,9 @@
 
 import React, { useState, useCallback } from "react";
 import Image from "next/image";
-import { Check } from "lucide-react";
+import { Check, AlertCircle } from "lucide-react";
 import BraintreeHostedFields from "./BraintreeHostedFields";
 import PayPalBigButton from "./PayPalBigButton";
-
 
 /* ========== 类型 ========== */
 type Address = {
@@ -88,15 +87,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     [onPaySucceeded]
   );
 
-  const handleClickPay = () => {
-    if (!payFn || !visible || isPayProcessing) return; // 防止多次点击
-    // 这里只负责 Card 的支付；PayPal 走 PayPalBigButton 自己的流程
-    if (method === "card") {
-      onPayInitiated();
-      payFn();
-    }
-  };
-
   const hasAddress =
     address?.firstName ||
     address?.lastName ||
@@ -104,6 +94,28 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     address?.city ||
     address?.state ||
     address?.postcode;
+
+  // ✅ 行业常见：Payment step 再做一次 “能否支付” 防线，并给用户可见提示
+  const payBlockedReason =
+    itemsCount <= 0
+      ? "Your bag is empty. Please add at least one item before paying."
+      : !hasAddress
+      ? "No delivery address found. Please complete the Address step before paying."
+      : totalMinor <= 0
+      ? "Invalid total amount. Please review your order."
+      : null;
+
+  const handleClickPay = () => {
+    // ✅ 多一层防守：即使按钮状态没及时更新，也绝不触发支付
+    if (payBlockedReason) return;
+
+    if (!payFn || !visible || isPayProcessing) return; // 防止多次点击
+    // 这里只负责 Card 的支付；PayPal 走 PayPalBigButton 自己的流程
+    if (method === "card") {
+      onPayInitiated();
+      payFn();
+    }
+  };
 
   return (
     <section
@@ -153,6 +165,14 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
             </div>
           </div>
         </div>
+
+        {/* ✅ 若被阻止支付，给用户一个明确提示（只在 visible 时显示，避免预加载时干扰） */}
+        {visible && payBlockedReason && (
+          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 flex gap-2">
+            <AlertCircle className="w-4 h-4 mt-0.5" />
+            <div>{payBlockedReason}</div>
+          </div>
+        )}
 
         {/* ✅ 中间主体区域：占满中间高度 */}
         <div className="flex-1 flex flex-col">
@@ -259,10 +279,8 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                             | "card"
                             | "paypal",
                           provider_txn_id: txId,
-                          cardBrand:
-                            anyR?.cardBrand ?? anyR?.card_brand ?? null,
-                          cardLast4:
-                            anyR?.cardLast4 ?? anyR?.card_last4 ?? null,
+                          cardBrand: anyR?.cardBrand ?? anyR?.card_brand ?? null,
+                          cardLast4: anyR?.cardLast4 ?? anyR?.card_last4 ?? null,
                           raw: r,
                         };
 
@@ -303,9 +321,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                       </div>
                     )}
                     {address.country && <div>{address.country}</div>}
-                    {address.email && (
-                      <div className="mt-2">{address.email}</div>
-                    )}
+                    {address.email && <div className="mt-2">{address.email}</div>}
                     {address.phone && <div>{address.phone}</div>}
                   </div>
                 ) : (
@@ -348,57 +364,68 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
 
               {/* Pay now / Pay with PayPal */}
               {visible && amountInMajorUnit > 0 && (
-              <div className="pt-0 flex justify-end">
-                <div className="w-[260px] max-w-full">
-                  {method === "paypal" ? (
-                    isPayProcessing ? (
-                      // ✅ PayPal 支付进行中：显示“Processing payment...”
+                <div className="pt-0 flex justify-end">
+                  <div className="w-[260px] max-w-full">
+                    {method === "paypal" ? (
+                      isPayProcessing ? (
+                        // ✅ PayPal 支付进行中：显示“Processing payment...”
+                        <button
+                          type="button"
+                          disabled
+                          className="w-full rounded-full px-6 py-3 text-sm font-semibold bg-[#FFC439] text-[#111827] opacity-70 cursor-not-allowed"
+                        >
+                          Processing payment...
+                        </button>
+                      ) : payBlockedReason ? (
+                        // ✅ 被阻止时：不给出 PayPal 真实按钮，避免误导
+                        <button
+                          type="button"
+                          disabled
+                          className="w-full rounded-full px-6 py-3 text-sm font-semibold bg-[#FFC439] text-[#111827] opacity-70 cursor-not-allowed"
+                        >
+                          PayPal unavailable
+                        </button>
+                      ) : (
+                        // ✅ 正常状态：显示真正的 PayPal 按钮
+                        <PayPalBigButton
+                          amount={amountInMajorUnit}
+                          currency={safeCurrency}
+                          onInitiate={onPayInitiated}
+                          onSucceeded={(details) => {
+                            // 这里保持你原来的逻辑即可
+                            onPaySucceeded({
+                              provider: "paypal" as const,
+                              paymentMethod: "paypal" as const,
+                              provider_txn_id:
+                                (details as any)?.id ??
+                                (details as any)?.transactionId ??
+                                null,
+                              cardBrand: null,
+                              cardLast4: null,
+                              raw: details,
+                            });
+                          }}
+                        />
+                      )
+                    ) : (
+                      // 💳 信用卡按钮逻辑保持不变（只是在 disabled 上加 payBlockedReason）
                       <button
                         type="button"
-                        disabled
-                        className="w-full rounded-full px-6 py-3 text-sm font-semibold bg-[#FFC439] text-[#111827] opacity-70 cursor-not-allowed"
+                        disabled={!!payBlockedReason || !payFn || !canPay || isPayProcessing}
+                        onClick={handleClickPay}
+                        className={[
+                          "w-full rounded-full px-6 py-3 text-sm font-semibold",
+                          !!payBlockedReason || !payFn || !canPay || isPayProcessing
+                            ? "bg-neutral-200 text-neutral-500 cursor-not-allowed"
+                            : "bg-neutral-900 text-white hover:bg-neutral-800",
+                        ].join(" ")}
                       >
-                        Processing payment...
+                        {isPayProcessing ? "Processing payment..." : "Pay now"}
                       </button>
-                    ) : (
-                      // ✅ 正常状态：显示真正的 PayPal 按钮
-                      <PayPalBigButton
-                        amount={amountInMajorUnit}
-                        currency={safeCurrency}
-                        onInitiate={onPayInitiated}
-                        onSucceeded={(details) => {
-                          // 这里保持你原来的逻辑即可
-                          onPaySucceeded({
-                            provider: "paypal" as const,
-                            paymentMethod: "paypal" as const,
-                            provider_txn_id:
-                              (details as any)?.id ?? (details as any)?.transactionId ?? null,
-                            cardBrand: null,
-                            cardLast4: null,
-                            raw: details,
-                          });
-                        }}
-                      />
-                    )
-                  ) : (
-                    // 💳 信用卡按钮逻辑保持不变
-                    <button
-                      type="button"
-                      disabled={!payFn || !canPay || isPayProcessing}
-                      onClick={handleClickPay}
-                      className={[
-                        "w-full rounded-full px-6 py-3 text-sm font-semibold",
-                        !payFn || !canPay || isPayProcessing
-                          ? "bg-neutral-200 text-neutral-500 cursor-not-allowed"
-                          : "bg-neutral-900 text-white hover:bg-neutral-800",
-                      ].join(" ")}
-                    >
-                      {isPayProcessing ? "Processing payment..." : "Pay now"}
-                    </button>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
             </div>
           </div>
         </div>
