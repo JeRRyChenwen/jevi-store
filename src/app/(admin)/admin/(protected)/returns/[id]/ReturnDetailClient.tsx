@@ -1,8 +1,10 @@
-// src/app/admin/returns/[id]/ReturnDetailClient.tsx
+// src/app/(admin)/admin/(protected)/returns/[id]/ReturnDetailClient.tsx
 "use client";
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+
+import { Alert } from "@/components/ui/alert";
 
 type ReturnRow = {
   id: number;
@@ -91,6 +93,43 @@ function toLocalTime(tsSec?: number | null) {
   }
 }
 
+type UiNotice = {
+  variant: "error" | "success" | "warning" | "info";
+  message: string;
+};
+
+/** 把偏“技术”的错误信息转成更可读的提示 */
+function prettifyErrorMessage(raw: string) {
+  const s = (raw || "").trim();
+  const lower = s.toLowerCase();
+
+  if (!s) return "";
+
+  if (lower === "unauthorized" || lower === "http_401") {
+    return "Admin session expired. Please sign in again.";
+  }
+  if (lower === "not_found" || lower === "http_404") {
+    return "This return request does not exist.";
+  }
+  if (lower === "bad_payload") {
+    return "Server returned an unexpected response. Please try again.";
+  }
+
+  // "Failed (500)" 这种
+  const m1 = s.match(/^failed\s*\((\d{3})\)$/i);
+  if (m1?.[1]) {
+    return `Request failed (${m1[1]}). Please try again.`;
+  }
+
+  // "HTTP_500" 这种
+  const m2 = s.match(/^http_(\d{3})$/i);
+  if (m2?.[1]) {
+    return `Request failed (${m2[1]}). Please try again.`;
+  }
+
+  return s;
+}
+
 export default function ReturnDetailClient({ id }: { id: string }) {
   const numericId = Number(id);
 
@@ -100,7 +139,9 @@ export default function ReturnDetailClient({ id }: { id: string }) {
 
   const [rejectReason, setRejectReason] = useState<string>("");
   const [saving, setSaving] = useState<null | "approve" | "reject">(null);
-  const [toast, setToast] = useState<string>("");
+
+  // ✅ 统一提示：用 Alert 承载
+  const [notice, setNotice] = useState<UiNotice | null>(null);
 
   async function loadDetail(signal?: AbortSignal) {
     const r = await fetch(`/api/admin/returns/${encodeURIComponent(id)}`, {
@@ -111,26 +152,18 @@ export default function ReturnDetailClient({ id }: { id: string }) {
     });
 
     if (r.status === 401) {
-      // 未登录：交给 AdminAuthGate/middleware 处理跳转，或这里主动跳
-      // router.replace(`/admin/login?next=${encodeURIComponent(location.pathname + location.search)}`);
-      return;
-    }
-
-    if (!r.ok) {
-      throw new Error(`Failed (${r.status})`);
+      // 未登录：这里不强跳，让外层 gate/middleware 处理
+      // 但为了让页面可诊断，我们返回并让 boot 捕获后提示
+      throw new Error("UNAUTHORIZED");
     }
 
     const j = (await r.json().catch(() => null)) as ApiPayload | null;
-
-    // ✅ 401：明确报未授权（通常应该被 AdminAuthGate 拦截，但这里也兜底）
-    if (r.status === 401) {
-      throw new Error("UNAUTHORIZED");
-    }
 
     if (!r.ok) {
       const code = j?.error || `HTTP_${r.status}`;
       throw new Error(code);
     }
+
     if (!j || !j.ok || !j.return) {
       throw new Error(j?.error || "BAD_PAYLOAD");
     }
@@ -147,17 +180,27 @@ export default function ReturnDetailClient({ id }: { id: string }) {
       setLoading(true);
       setErr("");
       setData(null);
+      setNotice(null);
 
       if (!Number.isFinite(numericId)) {
         setLoading(false);
         setErr("INVALID_ID");
+        setNotice({ variant: "error", message: "Invalid return id." });
         return;
       }
 
       try {
         await loadDetail(ctrl.signal);
       } catch (e: any) {
-        if (!cancelled) setErr(String(e?.message || e));
+        const msg = String(e?.message || e);
+        if (!cancelled) {
+          setErr(msg);
+          const pretty = prettifyErrorMessage(msg);
+          setNotice({
+            variant: msg === "UNAUTHORIZED" || msg === "HTTP_401" ? "warning" : "error",
+            message: pretty || "Failed to load return detail.",
+          });
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -202,6 +245,12 @@ export default function ReturnDetailClient({ id }: { id: string }) {
           ? "UNAUTHORIZED"
           : err || "UNKNOWN_ERROR";
 
+    const title = pretty === "UNAUTHORIZED" ? "Admin login required" : "Return not found";
+    const desc =
+      pretty === "UNAUTHORIZED"
+        ? "You are not logged in as admin. Please sign in to continue."
+        : `The return request you are looking for does not exist (id: ${id}).`;
+
     return (
       <div className="space-y-3">
         <div className="text-sm text-slate-500">
@@ -210,22 +259,15 @@ export default function ReturnDetailClient({ id }: { id: string }) {
           </Link>
         </div>
 
-        <h2 className="text-xl font-semibold">
-          {pretty === "UNAUTHORIZED" ? "Admin login required" : "Return not found"}
-        </h2>
+        <h2 className="text-xl font-semibold">{title}</h2>
 
-        {pretty === "UNAUTHORIZED" ? (
-          <p className="text-sm text-slate-600">
-            You are not logged in as admin. Please sign in to continue.
-          </p>
-        ) : (
-          <p className="text-sm text-slate-600">
-            The return request you are looking for does not exist (id:{" "}
-            <span className="font-mono">{id}</span>).
-          </p>
-        )}
+        <p className="text-sm text-slate-600">{desc}</p>
 
-        <div className="text-sm text-red-600">Error: {pretty}</div>
+        <Alert variant={pretty === "UNAUTHORIZED" ? "warning" : "error"} className="border p-3 text-sm">
+          {pretty === "UNAUTHORIZED"
+            ? "Admin session expired. Please sign in again."
+            : `Error: ${pretty}`}
+        </Alert>
 
         {pretty === "UNAUTHORIZED" ? (
           <div className="pt-2">
@@ -244,7 +286,7 @@ export default function ReturnDetailClient({ id }: { id: string }) {
   async function onApprove() {
     if (!record) return;
 
-    setToast("");
+    setNotice(null);
     setSaving("approve");
 
     try {
@@ -268,12 +310,19 @@ export default function ReturnDetailClient({ id }: { id: string }) {
         throw new Error(code);
       }
 
-      setToast("Approved.");
       setRejectReason("");
+      setNotice({ variant: "success", message: "Approved." });
       await loadDetail();
     } catch (e: any) {
       const msg = String(e?.message || e);
-      setToast(msg === "UNAUTHORIZED" ? "Session expired. Please login again." : `Approve failed: ${msg}`);
+      const pretty = prettifyErrorMessage(msg);
+      setNotice({
+        variant: msg === "UNAUTHORIZED" || msg === "HTTP_401" ? "warning" : "error",
+        message:
+          msg === "UNAUTHORIZED" || msg === "HTTP_401"
+            ? "Admin session expired. Please sign in again."
+            : `Approve failed: ${pretty || msg}`,
+      });
     } finally {
       setSaving(null);
     }
@@ -284,11 +333,11 @@ export default function ReturnDetailClient({ id }: { id: string }) {
 
     const rr = rejectReason.trim();
     if (!rr) {
-      setToast("Reject reason is required.");
+      setNotice({ variant: "warning", message: "Reject reason is required." });
       return;
     }
 
-    setToast("");
+    setNotice(null);
     setSaving("reject");
 
     try {
@@ -308,16 +357,28 @@ export default function ReturnDetailClient({ id }: { id: string }) {
         throw new Error(code);
       }
 
-      setToast("Rejected.");
       setRejectReason("");
+      setNotice({ variant: "success", message: "Rejected." });
       await loadDetail();
     } catch (e: any) {
       const msg = String(e?.message || e);
-      setToast(msg === "UNAUTHORIZED" ? "Session expired. Please login again." : `Reject failed: ${msg}`);
+      const pretty = prettifyErrorMessage(msg);
+      setNotice({
+        variant: msg === "UNAUTHORIZED" || msg === "HTTP_401" ? "warning" : "error",
+        message:
+          msg === "UNAUTHORIZED" || msg === "HTTP_401"
+            ? "Admin session expired. Please sign in again."
+            : `Reject failed: ${pretty || msg}`,
+      });
     } finally {
       setSaving(null);
     }
   }
+
+  const requestedAmountText =
+    typeof record.requested_amount_minor === "number"
+      ? `${(record.requested_amount_minor / 100).toFixed(2)}${record.currency ? ` ${record.currency}` : ""}`
+      : "N/A";
 
   return (
     <div className="space-y-6">
@@ -326,6 +387,28 @@ export default function ReturnDetailClient({ id }: { id: string }) {
           ← Back to Returns
         </Link>
       </div>
+
+      {/* Unified notice */}
+      {notice ? (
+        <div>
+          <Alert variant={notice.variant} className="border p-3 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <span>{notice.message}</span>
+
+              {/* 对 UNAUTHORIZED 提供快速入口 */}
+              {notice.variant === "warning" &&
+              notice.message.toLowerCase().includes("sign in") ? (
+                <Link
+                  href="/admin/login"
+                  className="shrink-0 rounded-md bg-black px-3 py-2 text-sm text-white"
+                >
+                  Login
+                </Link>
+              ) : null}
+            </div>
+          </Alert>
+        </div>
+      ) : null}
 
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -472,11 +555,7 @@ export default function ReturnDetailClient({ id }: { id: string }) {
               </div>
 
               <div className="text-sm font-semibold text-slate-900">
-                {typeof record.requested_amount_minor === "number"
-                  ? `${(record.requested_amount_minor / 100).toFixed(2)}${
-                      record.currency ? ` ${record.currency}` : ""
-                    }`
-                  : "N/A"}
+                {requestedAmountText}
               </div>
 
               <button
@@ -505,28 +584,6 @@ export default function ReturnDetailClient({ id }: { id: string }) {
               </button>
             </div>
           </div>
-
-          {toast ? (
-            <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-              {toast === "Session expired. Please login again." ? (
-                <div className="flex items-center justify-between gap-3">
-                  <span>{toast}</span>
-                  <Link
-                    href="/admin/login"
-                    className="shrink-0 rounded-md bg-black px-3 py-2 text-sm text-white"
-                  >
-                    Login
-                  </Link>
-                </div>
-              ) : (
-                toast
-              )}
-            </div>
-          ) : null}
-        </div>
-      ) : toast ? (
-        <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-          {toast}
         </div>
       ) : null}
     </div>

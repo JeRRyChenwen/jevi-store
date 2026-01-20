@@ -1,8 +1,10 @@
-// src/app/admin/returns/page.tsx
+// src/app/(admin)/admin/(protected)/returns/page.tsx
 "use client";
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+
+import { Alert } from "@/components/ui/alert";
 
 type ApiReturnRow = {
   id: number;
@@ -67,9 +69,29 @@ function formatCreatedAt(r: ApiReturnRow) {
 
 function SortIcon({ dir }: { dir: SortDir | null }) {
   if (!dir) return <span className="ml-1 text-slate-300">↕</span>;
-  return (
-    <span className="ml-1 text-slate-500">{dir === "asc" ? "↑" : "↓"}</span>
-  );
+  return <span className="ml-1 text-slate-500">{dir === "asc" ? "↑" : "↓"}</span>;
+}
+
+/** 把偏“技术”的错误信息，转成用户可理解的提示 */
+function prettifyErrorMessage(msg: string) {
+  const s = (msg || "").trim();
+  const lower = s.toLowerCase();
+
+  if (!s) return "";
+
+  // 你这里用的是：throw new Error(data.error || `request_failed_${r.status}`)
+  // 所以常见会出现 request_failed_500 这种
+  if (lower.startsWith("request_failed_")) {
+    const code = lower.replace("request_failed_", "");
+    return `Request failed (${code}). Please try again.`;
+  }
+
+  // 常见 error code（按你 worker 风格兜底）
+  if (lower === "forbidden") return "Forbidden. Please sign in again.";
+  if (lower === "unauthorized") return "Unauthorized. Please sign in again.";
+  if (lower === "internal_error") return "Server error. Please try again later.";
+
+  return s;
 }
 
 export default function AdminReturnsPage() {
@@ -215,8 +237,9 @@ export default function AdminReturnsPage() {
     }
   }
 
-  const headerBtn =
-    "inline-flex items-center select-none hover:text-slate-900";
+  const headerBtn = "inline-flex items-center select-none hover:text-slate-900";
+
+  const prettyError = useMemo(() => prettifyErrorMessage(error), [error]);
 
   return (
     <div className="space-y-4">
@@ -250,12 +273,12 @@ export default function AdminReturnsPage() {
         </div>
       </div>
 
-      {/* Error */}
-      {error && (
-        <div className="rounded-lg border bg-white p-3 text-sm text-red-600">
-          {error}
-        </div>
-      )}
+      {/* Unified Error */}
+      {prettyError ? (
+        <Alert variant="error" className="border p-3 text-sm">
+          {prettyError}
+        </Alert>
+      ) : null}
 
       {/* Table */}
       <div className="rounded-lg border bg-white">
@@ -323,8 +346,7 @@ export default function AdminReturnsPage() {
                 pagedRows.map((r) => {
                   const returnNo = r.return_number || `#${r.id}`;
                   const orderNo =
-                    r.order_number ||
-                    (r.order_id != null ? String(r.order_id) : "—");
+                    r.order_number || (r.order_id != null ? String(r.order_id) : "—");
                   const email = r.email || "—";
                   const st = (r.status || "—").toLowerCase();
                   const createdAt = formatCreatedAt(r);
@@ -339,10 +361,7 @@ export default function AdminReturnsPage() {
                       </td>
                       <td className="px-4 py-3 text-slate-600">{createdAt}</td>
                       <td className="px-4 py-3 text-right">
-                        <Link
-                          className="text-blue-600 hover:underline"
-                          href={`/admin/returns/${r.id}`}
-                        >
+                        <Link className="text-blue-600 hover:underline" href={`/admin/returns/${r.id}`}>
                           View / Approve
                         </Link>
                       </td>
@@ -370,8 +389,7 @@ export default function AdminReturnsPage() {
             </button>
 
             <span>
-              Page <span className="font-medium">{Math.min(page, pageCount)}</span> /{" "}
-              {pageCount}
+              Page <span className="font-medium">{Math.min(page, pageCount)}</span> / {pageCount}
             </span>
 
             <button
