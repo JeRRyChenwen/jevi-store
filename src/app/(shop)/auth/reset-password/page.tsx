@@ -13,6 +13,10 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Eye, EyeOff } from "lucide-react";
 
+import { Alert } from "@/components/ui/alert";
+import { useFormAlert } from "@/hooks/useFormAlert";
+import { FieldMessage } from "@/components/ui/field-message";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE!; // e.g. http://localhost:8787
 
 const schema = z
@@ -52,11 +56,11 @@ export default function ResetPasswordPage() {
 
   const [done, setDone] = useState(false);
 
-  // 其他通用错误（token 过期、网络错误等）
-  const [errorMessage, setErrorMessage] = useState("");
+  // ✅ 表单级提示（通用错误 & success）
+  const formAlert = useFormAlert();
 
   // ✅ 专门用于：新密码=旧密码（放在按钮上方）
-  const [passwordSameError, setPasswordSameError] = useState("");
+  const passwordSameAlert = useFormAlert();
 
   // ✅ Eye toggle states
   const [showPassword, setShowPassword] = useState(false);
@@ -66,16 +70,16 @@ export default function ResetPasswordPage() {
   const pwd = watch("password");
   const cfm = watch("confirm");
   useEffect(() => {
-    if (errorMessage) setErrorMessage("");
-    if (passwordSameError) setPasswordSameError("");
+    if (formAlert.hasAlert) formAlert.clear();
+    if (passwordSameAlert.hasAlert) passwordSameAlert.clear();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pwd, cfm]);
 
   const hasValidationErrors = !!errors.password || !!errors.confirm;
 
   const onSubmit = async (data: ResetForm) => {
-    setErrorMessage("");
-    setPasswordSameError("");
+    formAlert.clear();
+    passwordSameAlert.clear();
 
     try {
       if (!API_BASE) throw new Error("Missing NEXT_PUBLIC_API_BASE in .env.local.");
@@ -100,28 +104,46 @@ export default function ResetPasswordPage() {
 
         // ✅ 关键：新密码=旧密码时，把错误放到 Update password 按钮上方，并聚焦到 password
         if (code === "PASSWORD_SAME_AS_OLD") {
-          setPasswordSameError("New password must be different from the old password.");
+          passwordSameAlert.error("New password must be different from the old password.");
           try {
             setFocus("password");
           } catch {}
           return;
         }
 
-        // 其他错误保持你原本的红框 errorMessage 逻辑
+        // 其他错误保持你原本的逻辑
         const msg = body?.error || body?.message || "Reset failed.";
         throw new Error(msg);
       }
 
       // ✅ success
       setDone(true);
-      setErrorMessage("");
-      setPasswordSameError("");
+      formAlert.clear();
+      passwordSameAlert.clear();
       reset({ password: "", confirm: "" });
     } catch (err: any) {
       console.log("[ResetPassword] ERROR ->", err);
-      setErrorMessage(err?.message || "Network or server error.");
+      formAlert.error(err?.message || "Network or server error.");
     }
   };
+
+  const formAlertVariant =
+    formAlert.alert?.type === "success"
+      ? "success"
+      : formAlert.alert?.type === "warning"
+        ? "warning"
+        : formAlert.alert?.type === "info"
+          ? "info"
+          : "error";
+
+  const passwordSameVariant =
+    passwordSameAlert.alert?.type === "success"
+      ? "success"
+      : passwordSameAlert.alert?.type === "warning"
+        ? "warning"
+        : passwordSameAlert.alert?.type === "info"
+          ? "info"
+          : "error";
 
   // Token missing: show a dedicated state (still in the same upgraded layout)
   if (!token) {
@@ -176,11 +198,10 @@ export default function ResetPasswordPage() {
                 </CardHeader>
 
                 <CardContent className="p-6 space-y-4">
-                  <div className="rounded-lg border bg-red-50 px-4 py-3">
-                    <p className="text-sm text-red-700">
-                      This link is missing the required token parameter.
-                    </p>
-                  </div>
+                  {/* ✅ 用 Alert 统一展示 */}
+                  <Alert variant="error">
+                    This link is missing the required token parameter.
+                  </Alert>
 
                   <div className="flex flex-col gap-2 pt-2">
                     <Button asChild className="w-full border border-neutral-300">
@@ -257,11 +278,10 @@ export default function ResetPasswordPage() {
               <CardContent className="p-6">
                 {done ? (
                   <div className="space-y-4">
-                    <div className="rounded-lg border bg-green-50 px-4 py-3">
-                      <p className="text-sm text-green-700">
-                        Your password has been reset successfully. Please sign in with your new password.
-                      </p>
-                    </div>
+                    {/* ✅ 用 Alert 只显示提示条，不把整块面板变绿 */}
+                    <Alert variant="success">
+                      Your password has been reset successfully. Please sign in with your new password.
+                    </Alert>
 
                     <div className="flex flex-col gap-2 pt-2">
                       <Button
@@ -309,11 +329,7 @@ export default function ResetPasswordPage() {
                         </button>
                       </div>
 
-                      {errors.password && (
-                        <p className="text-sm text-red-600">
-                          {errors.password.message}
-                        </p>
-                      )}
+                      <FieldMessage variant="error">{errors.password?.message}</FieldMessage>
                     </div>
 
                     <div className="space-y-2">
@@ -343,26 +359,22 @@ export default function ResetPasswordPage() {
                         </button>
                       </div>
 
-                      {errors.confirm && (
-                        <p className="text-sm text-red-600">
-                          {errors.confirm.message}
-                        </p>
-                      )}
+                      <FieldMessage variant="error">{errors.confirm?.message}</FieldMessage>
                     </div>
 
                     {/* ✅ New password == old password (show ABOVE the button with spacing) */}
-                    {passwordSameError && (
-                      <div className="mb-4 rounded-lg border bg-red-50 px-4 py-3">
-                        <p className="text-sm text-red-700">{passwordSameError}</p>
-                      </div>
-                    )}
+                    {passwordSameAlert.hasAlert && passwordSameAlert.alert?.message ? (
+                      <Alert variant={passwordSameVariant as any}>
+                        {passwordSameAlert.alert.message}
+                      </Alert>
+                    ) : null}
 
                     {/* ✅ Other generic server error (also above button) */}
-                    {errorMessage && (
-                      <div className="mb-4 rounded-lg border bg-red-50 px-4 py-3">
-                        <p className="text-sm text-red-700">{errorMessage}</p>
-                      </div>
-                    )}
+                    {formAlert.hasAlert && formAlert.alert?.message ? (
+                      <Alert variant={formAlertVariant as any}>
+                        {formAlert.alert.message}
+                      </Alert>
+                    ) : null}
 
                     <Button
                       type="submit"

@@ -3,6 +3,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { useFormAlert } from "@/hooks/useFormAlert";
+
 type OrderRow = {
   id: number;
   order_number?: string | null;
@@ -49,11 +52,20 @@ function fmtDate(v: string | number | null | undefined) {
   return isNaN(+d) ? String(v) : d.toLocaleString();
 }
 
+function alertVariantOf(type?: string): "error" | "success" | "warning" | "info" {
+  if (type === "success") return "success";
+  if (type === "warning") return "warning";
+  if (type === "info") return "info";
+  return "error";
+}
+
 export default function EditOrdersCard() {
   const [orders, setOrders] = useState<OrderRow[] | null>(null);
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+
+  // ✅ 统一表单/页面级提示（替代 err state）
+  const pageAlert = useFormAlert();
 
   // Load "My orders" on mount
   useEffect(() => {
@@ -61,28 +73,33 @@ export default function EditOrdersCard() {
     (async () => {
       try {
         setLoading(true);
-        setErr(null);
+        pageAlert.clear();
+
         const r = await fetch("/api/my/orders", {
           method: "GET",
           credentials: "include",
           headers: { accept: "application/json" },
           cache: "no-store",
         });
+
         if (!r.ok) {
           const t = await r.text().catch(() => "");
           throw new Error(`/api/my/orders ${r.status}: ${t}`);
         }
+
         const data = (await r.json()) as MyOrdersResp;
         if (!dead) setOrders(Array.isArray(data.orders) ? data.orders : []);
       } catch (e: any) {
-        if (!dead) setErr(e?.message || String(e));
+        if (!dead) pageAlert.error(e?.message || String(e));
       } finally {
         if (!dead) setLoading(false);
       }
     })();
+
     return () => {
       dead = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Local filter: 根据 order_number / id / status 模糊过滤
@@ -104,19 +121,27 @@ export default function EditOrdersCard() {
       <div className="flex items-center gap-2 mb-3">
         <input
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => {
+            setQ(e.target.value);
+            // ✅ 用户操作时清掉旧提示（避免“黏住”）
+            if (pageAlert.hasAlert) pageAlert.clear();
+          }}
           placeholder="Filter by order number / ID / status"
           className="h-9 w-full rounded-md border px-3 text-sm outline-none focus:ring-2 focus:ring-black/10"
         />
       </div>
 
-      {/* Error */}
-      {err && <div className="mb-3 text-sm text-red-600">{err}</div>}
+      {/* ✅ Alert */}
+      {pageAlert.hasAlert && pageAlert.alert?.message ? (
+        <div className="mb-3">
+          <Alert variant={alertVariantOf(pageAlert.alert.type)}>
+            {pageAlert.alert.message}
+          </Alert>
+        </div>
+      ) : null}
 
       {/* Loading */}
-      {loading && (
-        <div className="text-sm text-neutral-500">Loading orders…</div>
-      )}
+      {loading && <div className="text-sm text-neutral-500">Loading orders…</div>}
 
       {/* Orders list (locally filtered) */}
       {!loading && orders && (
@@ -134,10 +159,7 @@ export default function EditOrdersCard() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td
-                    className="py-6 pl-3 pr-4 text-neutral-500"
-                    colSpan={5}
-                  >
+                  <td className="py-6 pl-3 pr-4 text-neutral-500" colSpan={5}>
                     No orders yet.
                   </td>
                 </tr>
@@ -157,27 +179,17 @@ export default function EditOrdersCard() {
                           >
                             {o.order_number || `#${o.id}`}
                           </a>
-                          <span className="text-xs text-neutral-500">
-                            View details
-                          </span>
+                          <span className="text-xs text-neutral-500">View details</span>
                         </div>
                       </td>
                       <td className="py-2 pr-4">
-                        {fmtDate(
-                          o.created_at_cn ??
-                            o.created_at_ts ??
-                            o.created_at
-                        )}
+                        {fmtDate(o.created_at_cn ?? o.created_at_ts ?? o.created_at)}
                       </td>
                       <td className="py-2 pr-4">
                         {fmtCurrency(o.total_minor, o.currency)}
                       </td>
-                      <td className="py-2 pr-4">
-                        {o.status || "-"}
-                      </td>
-                      <td className="py-2 pr-4">
-                        {o.item_count}
-                      </td>
+                      <td className="py-2 pr-4">{o.status || "-"}</td>
+                      <td className="py-2 pr-4">{o.item_count}</td>
                     </tr>
                   );
                 })

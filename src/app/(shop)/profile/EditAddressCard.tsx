@@ -3,6 +3,10 @@
 
 import { useEffect, useState } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { useFormAlert } from "@/hooks/useFormAlert";
+import { FieldMessage } from "@/components/ui/field-message";
+
 type Address = {
   first_name: string;
   last_name: string;
@@ -43,23 +47,27 @@ const EMPTY_ADDRESS: Address = {
   city: "",
   state: "",
   postcode: "",
-  country: "",         // ✅ 改为空字符串
+  country: "", // ✅ 改为空字符串
 };
 
 function shapeAddress(raw: any | null): Address {
   if (!raw) return { ...EMPTY_ADDRESS };
   return {
     first_name: raw.first_name || "",
-    last_name:  raw.last_name  || "",
-    phone:      raw.phone      || "",
-    line1:      raw.line1      || "",
-    line2:      raw.line2      || "",
-    city:       raw.city       || "",
-    state:      raw.state      || "",
-    postcode:   raw.postcode   || "",
-    country:    raw.country    || "",     // ✅ 不再给 "Australia"
-    is_default: raw.is_default != null ? !!raw.is_default
-               : (raw.type ? true : null),
+    last_name: raw.last_name || "",
+    phone: raw.phone || "",
+    line1: raw.line1 || "",
+    line2: raw.line2 || "",
+    city: raw.city || "",
+    state: raw.state || "",
+    postcode: raw.postcode || "",
+    country: raw.country || "", // ✅ 不再给 "Australia"
+    is_default:
+      raw.is_default != null
+        ? !!raw.is_default
+        : raw.type
+          ? true
+          : null,
   };
 }
 
@@ -97,6 +105,13 @@ const baseInputClass =
 const readOnlyClass = " bg-neutral-50";
 const errorClass = " border-red-400";
 
+function alertVariantOf(type?: string): "error" | "success" | "warning" | "info" {
+  if (type === "success") return "success";
+  if (type === "warning") return "warning";
+  if (type === "info") return "info";
+  return "error";
+}
+
 export default function EditAddressCard() {
   const [loading, setLoading] = useState(false);
   const [globalErr, setGlobalErr] = useState<string | null>(null);
@@ -113,8 +128,9 @@ export default function EditAddressCard() {
   const [deliveryErrors, setDeliveryErrors] = useState<FieldErrors>({});
   const [billingErrors, setBillingErrors] = useState<FieldErrors>({});
 
-  const [deliveryMsg, setDeliveryMsg] = useState<string | null>(null);
-  const [billingMsg, setBillingMsg] = useState<string | null>(null);
+  // ✅ 每个区块独立的表单级提示（不会互相覆盖）
+  const deliveryAlert = useFormAlert();
+  const billingAlert = useFormAlert();
 
   // 初次加载地址
   useEffect(() => {
@@ -123,6 +139,11 @@ export default function EditAddressCard() {
       try {
         setLoading(true);
         setGlobalErr(null);
+
+        // 初次加载时也清一下 alert
+        deliveryAlert.clear();
+        billingAlert.clear();
+
         const r = await fetch("/api/addresses", {
           method: "GET",
           credentials: "include",
@@ -135,6 +156,7 @@ export default function EditAddressCard() {
         }
         const data = (await r.json()) as AddressesResp;
         if (dead) return;
+
         // ✅ 兼容两种返回结构：
         // 1) { delivery, billing }
         // 2) { addresses: { delivery, billing } }
@@ -152,6 +174,7 @@ export default function EditAddressCard() {
     return () => {
       dead = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function saveAddress(kind: "delivery" | "billing") {
@@ -162,10 +185,10 @@ export default function EditAddressCard() {
     if (!ok) {
       if (kind === "delivery") {
         setDeliveryErrors(errors);
-        setDeliveryMsg(message);
+        deliveryAlert.error(message);
       } else {
         setBillingErrors(errors);
-        setBillingMsg(message);
+        billingAlert.error(message);
       }
       return;
     }
@@ -173,11 +196,11 @@ export default function EditAddressCard() {
     // 清除旧错误
     if (kind === "delivery") {
       setDeliveryErrors({});
-      setDeliveryMsg(null);
+      deliveryAlert.clear();
       setSavingDelivery(true);
     } else {
       setBillingErrors({});
-      setBillingMsg(null);
+      billingAlert.clear();
       setSavingBilling(true);
     }
     setGlobalErr(null);
@@ -203,8 +226,7 @@ export default function EditAddressCard() {
 
       if (!r.ok || (data as any)?.error) {
         throw new Error(
-          (data as any)?.error ||
-            `POST /api/addresses ${r.status} ${r.statusText}`
+          (data as any)?.error || `POST /api/addresses ${r.status} ${r.statusText}`
         );
       }
 
@@ -219,16 +241,15 @@ export default function EditAddressCard() {
 
       if (kind === "delivery") {
         setEditingDelivery(false);
+        deliveryAlert.success("Delivery address saved.");
       } else {
         setEditingBilling(false);
+        billingAlert.success("Billing address saved.");
       }
     } catch (e: any) {
       const msg = e?.message || "Failed to save address";
-      if (kind === "delivery") {
-        setDeliveryMsg(msg);
-      } else {
-        setBillingMsg(msg);
-      }
+      if (kind === "delivery") deliveryAlert.error(msg);
+      else billingAlert.error(msg);
     } finally {
       if (kind === "delivery") setSavingDelivery(false);
       else setSavingBilling(false);
@@ -241,25 +262,18 @@ export default function EditAddressCard() {
 
   return (
     <div className="px-4 pb-4 space-y-6">
-      {loading && (
-        <div className="text-sm text-neutral-500">Loading addresses…</div>
-      )}
-      {globalErr && (
-        <div className="text-sm text-red-600">{globalErr}</div>
-      )}
+      {loading && <div className="text-sm text-neutral-500">Loading addresses…</div>}
+      {globalErr && <div className="text-sm text-red-600">{globalErr}</div>}
 
       {!hasAnyAddress && !loading && (
         <div className="mb-3 text-xs text-neutral-500">
-          You have not saved any addresses yet. You can save a default delivery
-          and billing address during checkout, and they will appear here.
+          You have not saved any addresses yet. You can save a default delivery and billing
+          address during checkout, and they will appear here.
         </div>
       )}
 
       {/* DELIVERY ADDRESS */}
       <section className="rounded-lg border bg-white">
-        {/* <div className="border-b px-4 py-3 text-xs font-semibold text-neutral-500">
-          DELIVERY ADDRESS
-        </div> */}
         <div className="p-4 space-y-4">
           <div className="flex items-center justify-between text-xs text-neutral-500">
             <span>Delivery address</span>
@@ -282,10 +296,8 @@ export default function EditAddressCard() {
                 onChange={(e) => {
                   const v = e.target.value;
                   setDelivery((prev) => ({ ...prev, first_name: v }));
-                  setDeliveryErrors((prev) => ({
-                    ...prev,
-                    first_name: undefined,
-                  }));
+                  setDeliveryErrors((prev) => ({ ...prev, first_name: undefined }));
+                  deliveryAlert.clear();
                 }}
                 className={
                   baseInputClass +
@@ -293,7 +305,9 @@ export default function EditAddressCard() {
                   (deliveryErrors.first_name ? errorClass : "")
                 }
               />
+              <FieldMessage variant="error">{deliveryErrors.first_name}</FieldMessage>
             </div>
+
             <div>
               <label className="text-xs text-neutral-500">
                 Last name<span className="text-red-500">*</span>
@@ -304,10 +318,8 @@ export default function EditAddressCard() {
                 onChange={(e) => {
                   const v = e.target.value;
                   setDelivery((prev) => ({ ...prev, last_name: v }));
-                  setDeliveryErrors((prev) => ({
-                    ...prev,
-                    last_name: undefined,
-                  }));
+                  setDeliveryErrors((prev) => ({ ...prev, last_name: undefined }));
+                  deliveryAlert.clear();
                 }}
                 className={
                   baseInputClass +
@@ -315,6 +327,7 @@ export default function EditAddressCard() {
                   (deliveryErrors.last_name ? errorClass : "")
                 }
               />
+              <FieldMessage variant="error">{deliveryErrors.last_name}</FieldMessage>
             </div>
           </div>
 
@@ -329,10 +342,8 @@ export default function EditAddressCard() {
               onChange={(e) => {
                 const v = e.target.value;
                 setDelivery((prev) => ({ ...prev, phone: v }));
-                setDeliveryErrors((prev) => ({
-                  ...prev,
-                  phone: undefined,
-                }));
+                setDeliveryErrors((prev) => ({ ...prev, phone: undefined }));
+                deliveryAlert.clear();
               }}
               className={
                 baseInputClass +
@@ -340,6 +351,7 @@ export default function EditAddressCard() {
                 (deliveryErrors.phone ? errorClass : "")
               }
             />
+            <FieldMessage variant="error">{deliveryErrors.phone}</FieldMessage>
           </div>
 
           {/* line1 */}
@@ -353,10 +365,8 @@ export default function EditAddressCard() {
               onChange={(e) => {
                 const v = e.target.value;
                 setDelivery((prev) => ({ ...prev, line1: v }));
-                setDeliveryErrors((prev) => ({
-                  ...prev,
-                  line1: undefined,
-                }));
+                setDeliveryErrors((prev) => ({ ...prev, line1: undefined }));
+                deliveryAlert.clear();
               }}
               className={
                 baseInputClass +
@@ -364,23 +374,21 @@ export default function EditAddressCard() {
                 (deliveryErrors.line1 ? errorClass : "")
               }
             />
+            <FieldMessage variant="error">{deliveryErrors.line1}</FieldMessage>
           </div>
 
           {/* line2 optional */}
           <div>
-            <label className="text-xs text-neutral-500">
-              Address line 2 (optional)
-            </label>
+            <label className="text-xs text-neutral-500">Address line 2 (optional)</label>
             <input
               disabled={!editingDelivery}
               value={delivery.line2 || ""}
               onChange={(e) => {
                 const v = e.target.value;
                 setDelivery((prev) => ({ ...prev, line2: v }));
+                deliveryAlert.clear();
               }}
-              className={
-                baseInputClass + (!editingDelivery ? readOnlyClass : "")
-              }
+              className={baseInputClass + (!editingDelivery ? readOnlyClass : "")}
             />
           </div>
 
@@ -396,10 +404,8 @@ export default function EditAddressCard() {
                 onChange={(e) => {
                   const v = e.target.value;
                   setDelivery((prev) => ({ ...prev, city: v }));
-                  setDeliveryErrors((prev) => ({
-                    ...prev,
-                    city: undefined,
-                  }));
+                  setDeliveryErrors((prev) => ({ ...prev, city: undefined }));
+                  deliveryAlert.clear();
                 }}
                 className={
                   baseInputClass +
@@ -407,7 +413,9 @@ export default function EditAddressCard() {
                   (deliveryErrors.city ? errorClass : "")
                 }
               />
+              <FieldMessage variant="error">{deliveryErrors.city}</FieldMessage>
             </div>
+
             <div>
               <label className="text-xs text-neutral-500">
                 State/Region<span className="text-red-500">*</span>
@@ -418,10 +426,8 @@ export default function EditAddressCard() {
                 onChange={(e) => {
                   const v = e.target.value;
                   setDelivery((prev) => ({ ...prev, state: v }));
-                  setDeliveryErrors((prev) => ({
-                    ...prev,
-                    state: undefined,
-                  }));
+                  setDeliveryErrors((prev) => ({ ...prev, state: undefined }));
+                  deliveryAlert.clear();
                 }}
                 className={
                   baseInputClass +
@@ -429,6 +435,7 @@ export default function EditAddressCard() {
                   (deliveryErrors.state ? errorClass : "")
                 }
               />
+              <FieldMessage variant="error">{deliveryErrors.state}</FieldMessage>
             </div>
           </div>
 
@@ -444,10 +451,8 @@ export default function EditAddressCard() {
                 onChange={(e) => {
                   const v = e.target.value;
                   setDelivery((prev) => ({ ...prev, postcode: v }));
-                  setDeliveryErrors((prev) => ({
-                    ...prev,
-                    postcode: undefined,
-                  }));
+                  setDeliveryErrors((prev) => ({ ...prev, postcode: undefined }));
+                  deliveryAlert.clear();
                 }}
                 className={
                   baseInputClass +
@@ -455,7 +460,9 @@ export default function EditAddressCard() {
                   (deliveryErrors.postcode ? errorClass : "")
                 }
               />
+              <FieldMessage variant="error">{deliveryErrors.postcode}</FieldMessage>
             </div>
+
             <div>
               <label className="text-xs text-neutral-500">
                 Country<span className="text-red-500">*</span>
@@ -466,10 +473,8 @@ export default function EditAddressCard() {
                 onChange={(e) => {
                   const v = e.target.value;
                   setDelivery((prev) => ({ ...prev, country: v }));
-                  setDeliveryErrors((prev) => ({
-                    ...prev,
-                    country: undefined,
-                  }));
+                  setDeliveryErrors((prev) => ({ ...prev, country: undefined }));
+                  deliveryAlert.clear();
                 }}
                 className={
                   baseInputClass +
@@ -477,18 +482,19 @@ export default function EditAddressCard() {
                   (deliveryErrors.country ? errorClass : "")
                 }
               />
+              <FieldMessage variant="error">{deliveryErrors.country}</FieldMessage>
             </div>
           </div>
 
-          {/* buttons + message */}
+          {/* buttons + alert */}
           <div className="mt-3 flex items-center gap-3">
             {!editingDelivery ? (
               <button
                 type="button"
                 onClick={() => {
                   setEditingDelivery(true);
-                  setDeliveryMsg(null);
                   setDeliveryErrors({});
+                  deliveryAlert.clear();
                 }}
                 className="min-w-[96px] rounded-full border px-5 py-2 text-sm font-semibold hover:bg-neutral-50"
               >
@@ -502,7 +508,7 @@ export default function EditAddressCard() {
                     // 取消：回到初始状态（重新拉一次比较简单）
                     setEditingDelivery(false);
                     setDeliveryErrors({});
-                    setDeliveryMsg(null);
+                    deliveryAlert.clear();
                     // 简单起见从服务器再拉一遍
                     // 也可以缓存初始值，这里为了代码短一点就直接刷新
                     location.reload();
@@ -522,17 +528,17 @@ export default function EditAddressCard() {
               </>
             )}
           </div>
-          {deliveryMsg && (
-            <p className="mt-2 text-xs text-red-600">{deliveryMsg}</p>
-          )}
+
+          {deliveryAlert.hasAlert && deliveryAlert.alert?.message ? (
+            <Alert variant={alertVariantOf(deliveryAlert.alert.type)}>
+              {deliveryAlert.alert.message}
+            </Alert>
+          ) : null}
         </div>
       </section>
 
       {/* BILLING ADDRESS */}
       <section className="rounded-lg border bg-white">
-        {/* <div className="border-b px-4 py-3 text-xs font-semibold text-neutral-500">
-          BILLING ADDRESS
-        </div> */}
         <div className="p-4 space-y-4">
           <div className="flex items-center justify-between text-xs text-neutral-500">
             <span>Billing address</span>
@@ -555,10 +561,8 @@ export default function EditAddressCard() {
                 onChange={(e) => {
                   const v = e.target.value;
                   setBilling((prev) => ({ ...prev, first_name: v }));
-                  setBillingErrors((prev) => ({
-                    ...prev,
-                    first_name: undefined,
-                  }));
+                  setBillingErrors((prev) => ({ ...prev, first_name: undefined }));
+                  billingAlert.clear();
                 }}
                 className={
                   baseInputClass +
@@ -566,7 +570,9 @@ export default function EditAddressCard() {
                   (billingErrors.first_name ? errorClass : "")
                 }
               />
+              <FieldMessage variant="error">{billingErrors.first_name}</FieldMessage>
             </div>
+
             <div>
               <label className="text-xs text-neutral-500">
                 Last name<span className="text-red-500">*</span>
@@ -577,10 +583,8 @@ export default function EditAddressCard() {
                 onChange={(e) => {
                   const v = e.target.value;
                   setBilling((prev) => ({ ...prev, last_name: v }));
-                  setBillingErrors((prev) => ({
-                    ...prev,
-                    last_name: undefined,
-                  }));
+                  setBillingErrors((prev) => ({ ...prev, last_name: undefined }));
+                  billingAlert.clear();
                 }}
                 className={
                   baseInputClass +
@@ -588,6 +592,7 @@ export default function EditAddressCard() {
                   (billingErrors.last_name ? errorClass : "")
                 }
               />
+              <FieldMessage variant="error">{billingErrors.last_name}</FieldMessage>
             </div>
           </div>
 
@@ -602,10 +607,8 @@ export default function EditAddressCard() {
               onChange={(e) => {
                 const v = e.target.value;
                 setBilling((prev) => ({ ...prev, phone: v }));
-                setBillingErrors((prev) => ({
-                  ...prev,
-                  phone: undefined,
-                }));
+                setBillingErrors((prev) => ({ ...prev, phone: undefined }));
+                billingAlert.clear();
               }}
               className={
                 baseInputClass +
@@ -613,6 +616,7 @@ export default function EditAddressCard() {
                 (billingErrors.phone ? errorClass : "")
               }
             />
+            <FieldMessage variant="error">{billingErrors.phone}</FieldMessage>
           </div>
 
           {/* line1 */}
@@ -626,10 +630,8 @@ export default function EditAddressCard() {
               onChange={(e) => {
                 const v = e.target.value;
                 setBilling((prev) => ({ ...prev, line1: v }));
-                setBillingErrors((prev) => ({
-                  ...prev,
-                  line1: undefined,
-                }));
+                setBillingErrors((prev) => ({ ...prev, line1: undefined }));
+                billingAlert.clear();
               }}
               className={
                 baseInputClass +
@@ -637,23 +639,21 @@ export default function EditAddressCard() {
                 (billingErrors.line1 ? errorClass : "")
               }
             />
+            <FieldMessage variant="error">{billingErrors.line1}</FieldMessage>
           </div>
 
           {/* line2 optional */}
           <div>
-            <label className="text-xs text-neutral-500">
-              Address line 2 (optional)
-            </label>
+            <label className="text-xs text-neutral-500">Address line 2 (optional)</label>
             <input
               disabled={!editingBilling}
               value={billing.line2 || ""}
               onChange={(e) => {
                 const v = e.target.value;
                 setBilling((prev) => ({ ...prev, line2: v }));
+                billingAlert.clear();
               }}
-              className={
-                baseInputClass + (!editingBilling ? readOnlyClass : "")
-              }
+              className={baseInputClass + (!editingBilling ? readOnlyClass : "")}
             />
           </div>
 
@@ -669,10 +669,8 @@ export default function EditAddressCard() {
                 onChange={(e) => {
                   const v = e.target.value;
                   setBilling((prev) => ({ ...prev, city: v }));
-                  setBillingErrors((prev) => ({
-                    ...prev,
-                    city: undefined,
-                  }));
+                  setBillingErrors((prev) => ({ ...prev, city: undefined }));
+                  billingAlert.clear();
                 }}
                 className={
                   baseInputClass +
@@ -680,7 +678,9 @@ export default function EditAddressCard() {
                   (billingErrors.city ? errorClass : "")
                 }
               />
+              <FieldMessage variant="error">{billingErrors.city}</FieldMessage>
             </div>
+
             <div>
               <label className="text-xs text-neutral-500">
                 State/Region<span className="text-red-500">*</span>
@@ -691,10 +691,8 @@ export default function EditAddressCard() {
                 onChange={(e) => {
                   const v = e.target.value;
                   setBilling((prev) => ({ ...prev, state: v }));
-                  setBillingErrors((prev) => ({
-                    ...prev,
-                    state: undefined,
-                  }));
+                  setBillingErrors((prev) => ({ ...prev, state: undefined }));
+                  billingAlert.clear();
                 }}
                 className={
                   baseInputClass +
@@ -702,6 +700,7 @@ export default function EditAddressCard() {
                   (billingErrors.state ? errorClass : "")
                 }
               />
+              <FieldMessage variant="error">{billingErrors.state}</FieldMessage>
             </div>
           </div>
 
@@ -717,10 +716,8 @@ export default function EditAddressCard() {
                 onChange={(e) => {
                   const v = e.target.value;
                   setBilling((prev) => ({ ...prev, postcode: v }));
-                  setBillingErrors((prev) => ({
-                    ...prev,
-                    postcode: undefined,
-                  }));
+                  setBillingErrors((prev) => ({ ...prev, postcode: undefined }));
+                  billingAlert.clear();
                 }}
                 className={
                   baseInputClass +
@@ -728,7 +725,9 @@ export default function EditAddressCard() {
                   (billingErrors.postcode ? errorClass : "")
                 }
               />
+              <FieldMessage variant="error">{billingErrors.postcode}</FieldMessage>
             </div>
+
             <div>
               <label className="text-xs text-neutral-500">
                 Country<span className="text-red-500">*</span>
@@ -739,10 +738,8 @@ export default function EditAddressCard() {
                 onChange={(e) => {
                   const v = e.target.value;
                   setBilling((prev) => ({ ...prev, country: v }));
-                  setBillingErrors((prev) => ({
-                    ...prev,
-                    country: undefined,
-                  }));
+                  setBillingErrors((prev) => ({ ...prev, country: undefined }));
+                  billingAlert.clear();
                 }}
                 className={
                   baseInputClass +
@@ -750,18 +747,19 @@ export default function EditAddressCard() {
                   (billingErrors.country ? errorClass : "")
                 }
               />
+              <FieldMessage variant="error">{billingErrors.country}</FieldMessage>
             </div>
           </div>
 
-          {/* buttons + message */}
+          {/* buttons + alert */}
           <div className="mt-3 flex items-center gap-3">
             {!editingBilling ? (
               <button
                 type="button"
                 onClick={() => {
                   setEditingBilling(true);
-                  setBillingMsg(null);
                   setBillingErrors({});
+                  billingAlert.clear();
                 }}
                 className="min-w-[96px] rounded-full border px-5 py-2 text-sm font-semibold hover:bg-neutral-50"
               >
@@ -774,7 +772,7 @@ export default function EditAddressCard() {
                   onClick={() => {
                     setEditingBilling(false);
                     setBillingErrors({});
-                    setBillingMsg(null);
+                    billingAlert.clear();
                     location.reload();
                   }}
                   className="min-w-[96px] rounded-full border px-5 py-2 text-sm font-semibold hover:bg-neutral-50"
@@ -792,9 +790,12 @@ export default function EditAddressCard() {
               </>
             )}
           </div>
-          {billingMsg && (
-            <p className="mt-2 text-xs text-red-600">{billingMsg}</p>
-          )}
+
+          {billingAlert.hasAlert && billingAlert.alert?.message ? (
+            <Alert variant={alertVariantOf(billingAlert.alert.type)}>
+              {billingAlert.alert.message}
+            </Alert>
+          ) : null}
         </div>
       </section>
     </div>

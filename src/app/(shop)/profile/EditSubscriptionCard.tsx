@@ -3,11 +3,14 @@
 
 import { useEffect, useState } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { useFormAlert } from "@/hooks/useFormAlert";
+
 type SubscriptionRow = {
   id: number;
   user_id?: number | null;
   email: string | null;
-  status: string | null;             // 'subscribed' | 'unsubscribed' | 其它
+  status: string | null; // 'subscribed' | 'unsubscribed' | 其它
   marketing_opt_in?: boolean | null;
   source?: string | null;
 
@@ -52,11 +55,20 @@ function getStatusText(sub: SubscriptionRow | null): string {
   return "Unknown";
 }
 
+function alertVariantOf(type?: string): "error" | "success" | "warning" | "info" {
+  if (type === "success") return "success";
+  if (type === "warning") return "warning";
+  if (type === "info") return "info";
+  return "error";
+}
+
 export default function EditSubscriptionCard({ userEmail }: Props) {
   const [sub, setSub] = useState<SubscriptionRow | null>(null);
   const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
   const [toggling, setToggling] = useState(false);
+
+  // ✅ 统一提示：替代 err state
+  const pageAlert = useFormAlert();
 
   useEffect(() => {
     let dead = false;
@@ -64,7 +76,7 @@ export default function EditSubscriptionCard({ userEmail }: Props) {
     (async () => {
       try {
         setLoading(true);
-        setErr(null);
+        pageAlert.clear();
 
         const r = await fetch("/api/subscriptions", {
           method: "GET",
@@ -88,7 +100,7 @@ export default function EditSubscriptionCard({ userEmail }: Props) {
           setSub((data as any).subscription ?? null);
         }
       } catch (e: any) {
-        if (!dead) setErr(e?.message || "Failed to load subscription");
+        if (!dead) pageAlert.error(e?.message || "Failed to load subscription");
       } finally {
         if (!dead) setLoading(false);
       }
@@ -97,6 +109,7 @@ export default function EditSubscriptionCard({ userEmail }: Props) {
     return () => {
       dead = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const status = getStatusText(sub);
@@ -105,16 +118,18 @@ export default function EditSubscriptionCard({ userEmail }: Props) {
   async function handleToggle() {
     if (toggling) return;
 
+    // ✅ 用户触发操作时清理旧提示，避免“黏住”
+    if (pageAlert.hasAlert) pageAlert.clear();
+
     const email = (sub?.email || userEmail || "").trim();
     if (!email) {
-      setErr("Missing email for subscription.");
+      pageAlert.error("Missing email for subscription.");
       return;
     }
 
     const nextOptIn = !isSubscribed;
 
     setToggling(true);
-    setErr(null);
 
     try {
       const r = await fetch("/api/subscribe", {
@@ -145,8 +160,12 @@ export default function EditSubscriptionCard({ userEmail }: Props) {
         status: newStatus,
         marketing_opt_in: nextOptIn,
       }));
+
+      // ✅ 这里是否需要 success 提示取决于你想不想“弹一下”
+      // 不改变逻辑：只是给一个轻量确认
+      pageAlert.success(nextOptIn ? "Subscribed successfully." : "Unsubscribed successfully.");
     } catch (e: any) {
-      setErr(e?.message || "Failed to update subscription");
+      pageAlert.error(e?.message || "Failed to update subscription");
     } finally {
       setToggling(false);
     }
@@ -158,7 +177,12 @@ export default function EditSubscriptionCard({ userEmail }: Props) {
 
   return (
     <div className="px-4 pb-4 space-y-3">
-      {err && <div className="mb-2 text-sm text-red-600">{err}</div>}
+      {/* ✅ Alert */}
+      {pageAlert.hasAlert && pageAlert.alert?.message ? (
+        <Alert variant={alertVariantOf(pageAlert.alert.type)}>
+          {pageAlert.alert.message}
+        </Alert>
+      ) : null}
 
       {loading && (
         <div className="text-sm text-neutral-500">Loading subscription…</div>
@@ -174,9 +198,7 @@ export default function EditSubscriptionCard({ userEmail }: Props) {
                 onClick={handleToggle}
                 disabled={toggling}
                 className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                  isSubscribed
-                    ? "bg-emerald-500"
-                    : "bg-neutral-300"
+                  isSubscribed ? "bg-emerald-500" : "bg-neutral-300"
                 } ${toggling ? "opacity-60 cursor-default" : "cursor-pointer"}`}
                 aria-pressed={isSubscribed}
                 aria-label="Toggle email subscription"

@@ -3,6 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 
+import { Alert } from "@/components/ui/alert";
+import { FieldMessage } from "@/components/ui/field-message";
+import { useFormAlert } from "@/hooks/useFormAlert";
+
 function extractServerErrorCode(body: any): string {
   const code = body?.error;
   if (typeof code === "string" && code.trim()) return code.trim();
@@ -18,13 +22,15 @@ export default function EditPasswordCard() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
-  // 通用错误（不一定是“新旧相同”）
-  const [error, setError] = useState<string | null>(null);
+  // ✅ 字段级错误（替代原本通用 error 文案的部分场景）
+  const [passwordErr, setPasswordErr] = useState<string | null>(null);
+  const [confirmErr, setConfirmErr] = useState<string | null>(null);
 
-  // 新密码=旧密码（放按钮上方）
-  const [passwordSameError, setPasswordSameError] = useState<string | null>(null);
+  // ✅ 表单级提示：通用 error / success
+  const formAlert = useFormAlert();
 
-  const [success, setSuccess] = useState<string | null>(null);
+  // ✅ 新密码=旧密码（放按钮上方）
+  const passwordSameAlert = useFormAlert();
 
   // ✅ 用于区分：是用户输入导致变化，还是我们成功后程序清空导致变化
   const suppressClearOnceRef = useRef(false);
@@ -37,30 +43,37 @@ export default function EditPasswordCard() {
       return;
     }
 
-    if (error) setError(null);
-    if (passwordSameError) setPasswordSameError(null);
-    if (success) setSuccess(null);
+    if (passwordErr) setPasswordErr(null);
+    if (confirmErr) setConfirmErr(null);
+
+    if (formAlert.hasAlert) formAlert.clear();
+    if (passwordSameAlert.hasAlert) passwordSameAlert.clear();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [password, confirm]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
-    setPasswordSameError(null);
-    setSuccess(null);
 
+    // ✅ 清理旧提示
+    setPasswordErr(null);
+    setConfirmErr(null);
+    formAlert.clear();
+    passwordSameAlert.clear();
+
+    // ====== 前端校验（保留你的逻辑，只是拆到字段级） ======
     if (!password || !confirm) {
-      setError("Please enter your new password twice.");
+      if (!password) setPasswordErr("Please enter your new password.");
+      if (!confirm) setConfirmErr("Please confirm your new password.");
       return;
     }
 
     if (password !== confirm) {
-      setError("Passwords do not match.");
+      setConfirmErr("Passwords do not match.");
       return;
     }
 
     if (password.length < 8) {
-      setError("Password must be at least 8 characters long.");
+      setConfirmErr("Password must be at least 8 characters long.");
       return;
     }
 
@@ -82,7 +95,8 @@ export default function EditPasswordCard() {
         const code = extractServerErrorCode(data);
 
         if (code === "PASSWORD_SAME_AS_OLD") {
-          setPasswordSameError("New password must be different from the old password.");
+          // ✅ 仍然保持“放按钮上方”的专用提示
+          passwordSameAlert.error("New password must be different from the old password.");
           return;
         }
 
@@ -94,24 +108,43 @@ export default function EditPasswordCard() {
 
       setPassword("");
       setConfirm("");
-      setSuccess("Password updated successfully.");
+
+      // ✅ success 统一走 alert
+      formAlert.success("Password updated successfully.");
 
       // 可选：成功后顺便隐藏明文显示，回到默认更安全
       setShowPassword(false);
       setShowConfirm(false);
     } catch (e: any) {
-      setError(e?.message || "Something went wrong.");
+      formAlert.error(e?.message || "Something went wrong.");
     } finally {
       setLoading(false);
     }
   }
 
+  const formAlertVariant =
+    formAlert.alert?.type === "success"
+      ? "success"
+      : formAlert.alert?.type === "warning"
+        ? "warning"
+        : formAlert.alert?.type === "info"
+          ? "info"
+          : "error";
+
+  const passwordSameVariant =
+    passwordSameAlert.alert?.type === "success"
+      ? "success"
+      : passwordSameAlert.alert?.type === "warning"
+        ? "warning"
+        : passwordSameAlert.alert?.type === "info"
+          ? "info"
+          : "error";
+
   return (
     <div className="space-y-4">
       {/* 提示文案 */}
       <p className="text-sm text-neutral-600">
-        Update your account password. Make sure it is strong and not used
-        elsewhere.
+        Update your account password. Make sure it is strong and not used elsewhere.
       </p>
 
       <form onSubmit={onSubmit} className="space-y-4 max-w-md">
@@ -135,13 +168,11 @@ export default function EditPasswordCard() {
               className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-neutral-600 hover:bg-neutral-100"
               aria-label={showPassword ? "Hide password" : "Show password"}
             >
-              {showPassword ? (
-                <EyeOff className="h-4 w-4" />
-              ) : (
-                <Eye className="h-4 w-4" />
-              )}
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           </div>
+
+          <FieldMessage variant="error">{passwordErr}</FieldMessage>
         </div>
 
         {/* Confirm password */}
@@ -164,27 +195,30 @@ export default function EditPasswordCard() {
               className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-neutral-600 hover:bg-neutral-100"
               aria-label={showConfirm ? "Hide password" : "Show password"}
             >
-              {showConfirm ? (
-                <EyeOff className="h-4 w-4" />
-              ) : (
-                <Eye className="h-4 w-4" />
-              )}
+              {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           </div>
-        </div>
 
-        {/* ✅ 通用 Error / Success */}
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        {success && <p className="text-sm text-green-600">{success}</p>}
+          <FieldMessage variant="error">{confirmErr}</FieldMessage>
+        </div>
 
         {/* Actions */}
         <div className="pt-2">
           {/* ✅ 新密码=旧密码：显示在按钮上方，并与按钮留间距 */}
-          {passwordSameError && (
-            <div className="mb-4 rounded-lg border bg-red-50 px-4 py-3">
-              <p className="text-sm text-red-700">{passwordSameError}</p>
+          {passwordSameAlert.hasAlert && passwordSameAlert.alert?.message ? (
+            <div className="mb-4">
+              <Alert variant={passwordSameVariant as any}>
+                {passwordSameAlert.alert.message}
+              </Alert>
             </div>
-          )}
+          ) : null}
+
+          {/* ✅ 通用 Error / Success：也在按钮上方（但不抢“同密码”那条的位置） */}
+          {formAlert.hasAlert && formAlert.alert?.message ? (
+            <div className="mb-4">
+              <Alert variant={formAlertVariant as any}>{formAlert.alert.message}</Alert>
+            </div>
+          ) : null}
 
           <button
             type="submit"

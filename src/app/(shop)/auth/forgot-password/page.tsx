@@ -11,6 +11,10 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
+import { Alert } from "@/components/ui/alert";
+import { useFormAlert } from "@/hooks/useFormAlert";
+import { FieldMessage } from "@/components/ui/field-message";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE!;
 
 const schema = z.object({
@@ -29,12 +33,12 @@ export default function ForgotPasswordPage() {
   });
 
   const [sent, setSent] = useState(false);
-  const [successMessage, setSuccessMessage] = useState("");
-  const [errorMessage, setErrorMessage] = useState("");
+
+  // ✅ 统一表单级提示
+  const formAlert = useFormAlert();
 
   const onSubmit = async (data: ForgotPasswordFormData) => {
-    setErrorMessage("");
-    setSuccessMessage("");
+    formAlert.clear();
 
     try {
       const res = await fetch(`${API_BASE}/auth/forgot`, {
@@ -50,14 +54,34 @@ export default function ForgotPasswordPage() {
         throw new Error(body?.error || "Request failed.");
       }
 
+      /**
+       * ✅ 方案 1（后端返回 exists）
+       * - exists === false : 留在表单页 + 显示“未关联账号”
+       * - 其他/缺失        : 进入 sent 页 + 显示“已发送”
+       *
+       * 兼容：后端还没改 exists 时，body.exists 为 undefined，会走“已发送”
+       */
+      if (body?.exists === false) {
+        setSent(false);
+        formAlert.error("This email isn’t associated with any account.");
+        return;
+      }
+
       setSent(true);
-      setSuccessMessage(
-        "If an account with that email exists, we’ve sent a password reset link."
-      );
+      formAlert.success("We’ve sent a password reset link.");
     } catch (err: any) {
-      setErrorMessage(err?.message || "Network or server error.");
+      formAlert.error(err?.message || "Network or server error.");
     }
   };
+
+  const alertVariant =
+    formAlert.alert?.type === "success"
+      ? "success"
+      : formAlert.alert?.type === "warning"
+        ? "warning"
+        : formAlert.alert?.type === "info"
+          ? "info"
+          : "error";
 
   return (
     <main className="min-h-screen bg-muted/30 flex items-start">
@@ -120,21 +144,23 @@ export default function ForgotPasswordPage() {
               <CardContent className="p-6">
                 {sent ? (
                   <div className="space-y-4">
-                    <div className="rounded-lg border bg-green-50 px-4 py-3">
-                      <p className="text-sm text-green-700">{successMessage}</p>
-                    </div>
+                    {/* ✅ sent 页：成功提示 */}
+                    {formAlert.hasAlert && formAlert.alert?.message ? (
+                      <Alert variant={alertVariant as any}>
+                        {formAlert.alert.message}
+                      </Alert>
+                    ) : (
+                      <Alert variant="success">
+                        We’ve sent a password reset link.
+                      </Alert>
+                    )}
 
                     <p className="text-sm text-muted-foreground">
                       Click the link in the email to reset your password.
                     </p>
 
-                    {/* ✅ Keep actions INSIDE the card, consistent styling */}
                     <div className="pt-2 flex flex-col gap-2">
-                      <Button
-                        asChild
-                        variant="outline"
-                        className="w-full"
-                      >
+                      <Button asChild variant="outline" className="w-full">
                         <Link href="/auth/login">Back to login</Link>
                       </Button>
 
@@ -144,8 +170,7 @@ export default function ForgotPasswordPage() {
                         className="w-full"
                         onClick={() => {
                           setSent(false);
-                          setErrorMessage("");
-                          setSuccessMessage("");
+                          formAlert.clear();
                         }}
                       >
                         Send again
@@ -159,22 +184,22 @@ export default function ForgotPasswordPage() {
                       <Input
                         type="email"
                         placeholder="Enter your email"
-                        {...register("email")}
+                        {...register("email", {
+                          onChange: () => formAlert.clear(),
+                        })}
                       />
-                      {errors.email && (
-                        <p className="text-sm text-red-600">
-                          {errors.email.message}
-                        </p>
-                      )}
+                      <FieldMessage variant="error">
+                        {errors.email?.message}
+                      </FieldMessage>
                     </div>
 
-                    {errorMessage && (
-                      <div className="rounded-lg border bg-red-50 px-4 py-3">
-                        <p className="text-sm text-red-700">{errorMessage}</p>
-                      </div>
-                    )}
+                    {/* ✅ 表单级提示（错误/提示） */}
+                    {formAlert.hasAlert && formAlert.alert?.message ? (
+                      <Alert variant={alertVariant as any}>
+                        {formAlert.alert.message}
+                      </Alert>
+                    ) : null}
 
-                    {/* ✅ Outline button with border (shadcn-native) */}
                     <Button
                       type="submit"
                       disabled={isSubmitting}

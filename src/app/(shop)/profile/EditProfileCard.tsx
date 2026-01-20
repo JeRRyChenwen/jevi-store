@@ -3,6 +3,9 @@
 
 import { useEffect, useState } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { useFormAlert } from "@/hooks/useFormAlert";
+
 type Props = {
   initialName?: string;
   initialEmail: string;
@@ -22,7 +25,9 @@ export default function EditProfileCard({
   const [email, setEmail] = useState(initialEmail);
 
   const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+
+  // ✅ 统一表单级提示：error/success/info/warning
+  const formAlert = useFormAlert();
 
   // 只在外部 props 变化时同步，避免每次退出编辑都把最新 name 覆盖掉
   useEffect(() => {
@@ -34,7 +39,7 @@ export default function EditProfileCard({
     if (!editing || saving) return;
 
     setSaving(true);
-    setErr(null);
+    formAlert.clear();
 
     try {
       const body: PatchBody = {
@@ -73,7 +78,7 @@ export default function EditProfileCard({
       setEditing(false);
       // 不再 reload，JWT 里已经是最新的 name/email 了
     } catch (e: any) {
-      setErr(e?.message || "Save failed");
+      formAlert.error(e?.message || "Save failed");
     } finally {
       setSaving(false);
     }
@@ -99,14 +104,20 @@ export default function EditProfileCard({
               type="button"
               onClick={() => {
                 setEditing(true);
-                setErr(null);
+                formAlert.clear();
               }}
               className="min-w-[96px] px-5 py-2 rounded-full border text-sm font-semibold hover:bg-neutral-50"
             >
               Edit
             </button>
           </div>
-          {err ? <span className="mt-1 text-xs text-red-600">{err}</span> : null}
+
+          {/* ✅ 表单级提示（仅在有内容时显示） */}
+          {formAlert.alert?.message ? (
+            <Alert variant={formAlert.alert.type === "success" ? "success" : "error"}>
+              {formAlert.alert.message}
+            </Alert>
+          ) : null}
         </>
       ) : (
         <>
@@ -115,7 +126,10 @@ export default function EditProfileCard({
               <label className="text-xs text-neutral-500">Name</label>
               <input
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  formAlert.clear();
+                }}
                 className="mt-1 w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-black/10"
                 placeholder="Your name"
               />
@@ -124,7 +138,10 @@ export default function EditProfileCard({
               <label className="text-xs text-neutral-500">Email</label>
               <input
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  formAlert.clear();
+                }}
                 className="mt-1 w-full rounded-md border px-3 py-2 text-sm font-mono outline-none focus:ring-2 focus:ring-black/10"
                 placeholder="email@example.com"
                 type="email"
@@ -140,7 +157,7 @@ export default function EditProfileCard({
                 // 取消时还原回 props 的值
                 setName(initialName || "");
                 setEmail(initialEmail || "");
-                setErr(null);
+                formAlert.clear();
               }}
               className="min-w-[96px] px-5 py-2 rounded-full border text-sm font-semibold hover:bg-neutral-50"
             >
@@ -155,8 +172,14 @@ export default function EditProfileCard({
             >
               {saving ? "Saving..." : "Save"}
             </button>
-            {err ? <span className="text-xs text-red-600">{err}</span> : null}
           </div>
+
+          {/* ✅ 表单级提示：放在按钮区域下面，避免挤在一行里 */}
+          {formAlert.alert?.message ? (
+            <Alert variant={formAlert.alert.type === "success" ? "success" : "error"}>
+              {formAlert.alert.message}
+            </Alert>
+          ) : null}
         </>
       )}
     </div>
