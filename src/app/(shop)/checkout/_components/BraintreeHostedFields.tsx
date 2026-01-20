@@ -36,6 +36,16 @@ function clearHostedFieldContainers() {
   });
 }
 
+/** ✅ 关键：刷新 token 后要让并发单飞 promise 失效，否则可能仍然复用旧 token */
+function invalidateTokenPromise() {
+  if (typeof window === "undefined") return;
+  try {
+    delete window.__btTokenPromise;
+  } catch {
+    // ignore
+  }
+}
+
 /**
  * 识别“token 过期/失效/授权无效”类错误，用于触发强制刷新 token 并重试一次
  */
@@ -214,6 +224,7 @@ export default function BraintreeHostedFields({
       if (!isAuthTokenError(e)) throw e;
 
       await fetchAndOverwriteBraintreeToken();
+      invalidateTokenPromise(); // ✅ 关键：确保下一次 ensureTokenOnce 不复用旧 promise
       auth = await ensureTokenOnce();
       if (!auth) throw e;
 
@@ -266,6 +277,7 @@ export default function BraintreeHostedFields({
 
     // 3) 强制拉新 token 并重建
     await fetchAndOverwriteBraintreeToken();
+    invalidateTokenPromise(); // ✅ 同样需要，避免 ensureTokenOnce 复用旧 promise
     await initHostedFieldsWithRetry();
 
     // 4) 给用户一个“软提示”，不自动再扣款（避免重复扣款风险）
