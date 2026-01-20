@@ -26,6 +26,10 @@ import ReturnItemsSelector, {
   type SelectedReturnLine,
 } from "./_components/ReturnItemsSelector";
 
+// ✅ 统一提示：useFormAlert + Alert
+import { useFormAlert } from "@/hooks/useFormAlert";
+import { Alert } from "@/components/ui/alert";
+
 type OrderSummary = {
   id: number;
   order_number?: string | null;
@@ -115,6 +119,27 @@ function toTsFromCn(s?: string | null) {
   return Number.isFinite(t) ? t : 0;
 }
 
+/** ✅ 后端 error code -> 用户可读文案（保持你原来 wording，不改业务含义） */
+function mapReturnError(raw: string) {
+  const e = String(raw || "").trim();
+
+  if (e === "item_already_returned") {
+    return (
+      "This item has already been returned and approved (completed). " +
+      "You cannot submit another return request for an item that has been successfully returned."
+    );
+  }
+
+  if (e === "duplicate_return_request") {
+    return (
+      "A return request for this item is already in progress (pending). " +
+      "Please wait for our team to review the existing request. If the request is rejected, you may submit again."
+    );
+  }
+
+  return e;
+}
+
 export default function ReturnsPage() {
   const search = useSearchParams();
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -143,7 +168,9 @@ export default function ReturnsPage() {
   const [foundOrder, setFoundOrder] = useState<ReturnOrderDetail | null>(null);
 
   // ✅ itemId -> thumbnail url
-  const [thumbByItemId, setThumbByItemId] = useState<Record<number, string | null>>({});
+  const [thumbByItemId, setThumbByItemId] = useState<Record<number, string | null>>(
+    {}
+  );
 
   // 用户选择退哪些商品、各退多少
   const [selectedLines, setSelectedLines] = useState<SelectedReturnLine[]>([]);
@@ -152,42 +179,29 @@ export default function ReturnsPage() {
   const [reasonDetail, setReasonDetail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitResult, setSubmitResult] = useState<any>(null);
-  const [error, setError] = useState<string | null>(null);
+
+  // ✅ 用 code 表示“不可重复提交类”的错误（逻辑保持你原来那套）
+  const [errorCode, setErrorCode] = useState<string | null>(null);
+
+  // ✅ 统一提示：替代原来的 error + displayError useMemo
+  const { alert, hasAlert, clear: clearAlert, error: showError, fromError } =
+    useFormAlert({
+      mapMessage: (raw) => mapReturnError(raw),
+      defaultNetworkError: "Network or server error.",
+    });
 
   // ✅ 两类“不可重复”的错误
-  const isDuplicateError = error === "duplicate_return_request"; // pending 审核中（active）
-  const isAlreadyReturnedError = error === "item_already_returned"; // 曾经 approved（永久禁止）
+  const isDuplicateError = errorCode === "duplicate_return_request"; // pending 审核中（active）
+  const isAlreadyReturnedError = errorCode === "item_already_returned"; // 曾经 approved（永久禁止）
 
   // ✅ 若用户调整了选择或原因，则清掉“提示”，避免提示卡住造成误解
-  // - duplicate：用户调整选择/原因很可能是在修正（或者换了 item），应清掉
-  // - already_returned：如果用户换了 item，也应清掉
   useEffect(() => {
     if (isDuplicateError || isAlreadyReturnedError) {
-      setError(null);
+      setErrorCode(null);
+      clearAlert();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLines, reasonType, reasonDetail]);
-
-  // ✅ 把后端 error code 转成用户可读文案
-  const displayError = useMemo(() => {
-    if (!error) return "";
-
-    if (error === "item_already_returned") {
-      return (
-        "This item has already been returned and approved (completed). " +
-        "You cannot submit another return request for an item that has been successfully returned."
-      );
-    }
-
-    if (error === "duplicate_return_request") {
-      return (
-        "A return request for this item is already in progress (pending). " +
-        "Please wait for our team to review the existing request. If the request is rejected, you may submit again."
-      );
-    }
-
-    return error;
-  }, [error]);
 
   // ✅ 页面加载时：调用 bootstrap，决定“登录用户/游客”模式
   useEffect(() => {
@@ -273,13 +287,14 @@ export default function ReturnsPage() {
 
   // Step 1: 根据 orderNumber + email 查询订单
   async function handleFindOrder(nextOrderNumber?: string, nextEmail?: string) {
-    setError(null);
+    setErrorCode(null);
+    clearAlert();
 
     const on = String(nextOrderNumber ?? orderNumber ?? "").trim();
     const em = String(nextEmail ?? email ?? "").trim().toLowerCase();
 
     if (!on || !em) {
-      setError("Please enter both order number and email.");
+      showError("Please enter both order number and email.");
       return;
     }
 
@@ -291,13 +306,15 @@ export default function ReturnsPage() {
       setLoading(true);
 
       const res = await fetch(
-        `/api/returns/lookup?order_number=${encodeURIComponent(on)}&email=${encodeURIComponent(em)}`,
+        `/api/returns/lookup?order_number=${encodeURIComponent(on)}&email=${encodeURIComponent(
+          em
+        )}`,
         { credentials: "include" }
       );
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({} as any));
       if (!res.ok || !data.ok) {
-        setError(data.error || "Failed to find order.");
+        showError(data?.error || "Failed to find order.");
         return;
       }
 
@@ -361,7 +378,10 @@ export default function ReturnsPage() {
           console.log("[returns] first product row:", products?.[0]);
 
           // 3) title -> { def, colors }
-          const productIndex: Record<string, { def: string | null; colors: Record<string, string> }> = {};
+          const productIndex: Record<
+            string,
+            { def: string | null; colors: Record<string, string> }
+          > = {};
 
           for (const row of products) {
             const attrs = row?.attributes ?? row; // 兼容
@@ -412,7 +432,8 @@ export default function ReturnsPage() {
             const rawVariant = String(it?.variant_title ?? "");
             const color = rawVariant.split("/")[0]?.trim().toLowerCase();
 
-            nextThumb[itemId] = color && idx?.colors?.[color] ? idx.colors[color] : idx?.def ?? null;
+            nextThumb[itemId] =
+              color && idx?.colors?.[color] ? idx.colors[color] : idx?.def ?? null;
           }
 
           console.log("[returns] nextThumb:", nextThumb);
@@ -428,7 +449,7 @@ export default function ReturnsPage() {
 
       setStep(2);
     } catch (e: any) {
-      setError(e?.message || "Unexpected error");
+      fromError(e);
     } finally {
       setLoading(false);
     }
@@ -436,19 +457,21 @@ export default function ReturnsPage() {
 
   // Step 2: 提交退货
   async function handleSubmitReturn() {
-    setError(null);
+    setErrorCode(null);
+    clearAlert();
+
     if (!order) {
-      setError("No order loaded.");
+      showError("No order loaded.");
       return;
     }
 
     const lines = selectedLines.filter((l) => l.qty > 0);
     if (!lines.length) {
-      setError("Please choose at least one item to return.");
+      showError("Please choose at least one item to return.");
       return;
     }
     if (!reasonType.trim()) {
-      setError("Please choose a return reason.");
+      showError("Please choose a return reason.");
       return;
     }
 
@@ -479,30 +502,43 @@ export default function ReturnsPage() {
         // ✅ 409：区分 approved(永久禁止) vs pending(审核中)
         if (res.status === 409) {
           if (errCode === "item_already_returned") {
-            setError("item_already_returned");
+            setErrorCode("item_already_returned");
           } else {
             // 默认按 pending 冲突处理
-            setError("duplicate_return_request");
+            setErrorCode("duplicate_return_request");
           }
+          // ✅ 这里用 alert 的 message 统一走 mapReturnError，供 inline block 展示
+          showError(errCode || "duplicate_return_request");
           return;
         }
 
-        // ✅ 其它错误
-        if (errCode) setError(errCode);
-        else setError("Failed to submit return.");
+        // ✅ 其它错误（仍然走统一 alert）
+        if (errCode) showError(errCode);
+        else showError("Failed to submit return.");
         return;
       }
 
       setSubmitResult(data);
       setStep(3);
     } catch (e: any) {
-      setError(e?.message || "Unexpected error");
+      fromError(e);
     } finally {
       setSubmitting(false);
     }
   }
 
   const showInlineBlock = isDuplicateError || isAlreadyReturnedError;
+
+  const inlineTitle = isAlreadyReturnedError
+    ? "Item already returned"
+    : "Return request in review";
+
+  const inlineVariant = isAlreadyReturnedError ? "error" : "warning";
+
+  // inline 文案：优先用 alert.message（已走 mapReturnError），兜底再 map
+  const inlineMessage = alert?.message
+    ? alert.message
+    : mapReturnError(errorCode || "");
 
   return (
     <div className="max-w-3xl mx-auto py-8 px-4">
@@ -512,8 +548,11 @@ export default function ReturnsPage() {
 
       <h1 className="text-2xl font-semibold mb-4">Returns &amp; Exchanges</h1>
 
-      {displayError && !showInlineBlock && (
-        <div className="mb-4 text-sm text-red-600">{displayError}</div>
+      {/* ✅ 顶部统一提示：只在非“inline block”场景显示（保持你原来的交互意图） */}
+      {hasAlert && !showInlineBlock && alert?.message && (
+        <div className="mb-4">
+          <Alert variant={alert.type}>{alert.message}</Alert>
+        </div>
       )}
 
       {step === 1 && (
@@ -743,7 +782,12 @@ export default function ReturnsPage() {
                 <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
               </div>
 
-              <Button variant="outline" className="px-6" onClick={() => handleFindOrder()} disabled={loading}>
+              <Button
+                variant="outline"
+                className="px-6"
+                onClick={() => handleFindOrder()}
+                disabled={loading}
+              >
                 {loading ? "Finding your order..." : "Find my order"}
               </Button>
             </Card>
@@ -799,24 +843,18 @@ export default function ReturnsPage() {
             </div>
 
             <div className="flex justify-end pt-2">
-              <Button
-                variant="outline"
-                className="px-6"
-                onClick={handleSubmitReturn}
-                disabled={submitting}
-              >
+              <Button variant="outline" className="px-6" onClick={handleSubmitReturn} disabled={submitting}>
                 {submitting ? "Submitting..." : "Submit return request"}
               </Button>
             </div>
 
+            {/* ✅ 仍然在按钮下方展示；但改成统一 Alert 组件 */}
             {showInlineBlock && (
               <div className="mt-6">
-                <div className="border border-red-400/70 bg-red-50 text-red-700 rounded-md px-4 py-3 text-sm">
-                  <div className="font-semibold">
-                    {isAlreadyReturnedError ? "Item already returned" : "Return request in review"}
-                  </div>
-                  <div className="mt-1 text-xs leading-relaxed">{displayError}</div>
-                </div>
+                <Alert variant={inlineVariant}>
+                  <div className="font-semibold">{inlineTitle}</div>
+                  <div className="mt-1 text-xs leading-relaxed">{inlineMessage}</div>
+                </Alert>
               </div>
             )}
           </Card>
@@ -841,6 +879,7 @@ export default function ReturnsPage() {
             </div>
             <div>Created at: {submitResult.return?.created_at_cn || "N/A"}</div>
           </div>
+
           <Button
             variant="outline"
             className="px-6"
@@ -851,10 +890,10 @@ export default function ReturnsPage() {
               setSelectedLines([]);
               setSubmitResult(null);
               setThumbByItemId({});
-
-              // ✅ 同时把原因相关的 state 清空
               setReasonType("");
               setReasonDetail("");
+              setErrorCode(null);
+              clearAlert();
             }}
           >
             Start another return

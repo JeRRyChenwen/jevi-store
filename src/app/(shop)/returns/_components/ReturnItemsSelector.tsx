@@ -7,10 +7,10 @@ export type ReturnOrderItem = {
   id: number;
   product_title: string | null;
   variant_title: string | null;
-  qty: number;                 // 该商品在原订单里的购买数量
+  qty: number; // 该商品在原订单里的购买数量
   currency: string | null;
-  unit_price_minor: number;    // 单价（分）
-  line_total_minor: number;    // 小计（分）
+  unit_price_minor: number; // 单价（分）
+  line_total_minor: number; // 小计（分）
 };
 
 export type ReturnOrderDetail = {
@@ -22,7 +22,7 @@ export type ReturnOrderDetail = {
 
 export type SelectedReturnLine = {
   item_id: number;
-  qty: number;                 // 用户选择退的数量
+  qty: number; // 用户选择退的数量
 };
 
 export function formatMoney(minor: number, currency: string | null | undefined) {
@@ -71,9 +71,16 @@ export default function ReturnItemsSelector({
 }) {
   const [selected, setSelected] = React.useState<Record<number, number>>({});
 
-  // 初始化：默认全选、数量 = 购买数量
+  // ✅ 只在“订单切换”时初始化一次，避免 StrictMode / 重新渲染把用户选择重置
+  const initForOrderIdRef = React.useRef<number | null>(null);
+
   React.useEffect(() => {
-    if (!order || !order.items) return;
+    if (!order || !Array.isArray(order.items)) return;
+
+    // 只有当 order.id 改变时，才做“默认全选”
+    if (initForOrderIdRef.current === order.id) return;
+    initForOrderIdRef.current = order.id;
+
     const next: Record<number, number> = {};
     for (const it of order.items) {
       if (!it || typeof it.id !== "number") continue;
@@ -126,9 +133,7 @@ export default function ReturnItemsSelector({
 
   return (
     <section className="mt-6 border border-neutral-200 rounded-2xl p-4 md:p-6 bg-white">
-      <h2 className="text-lg font-semibold mb-4">
-        Select items to return
-      </h2>
+      <h2 className="text-lg font-semibold mb-4">Select items to return</h2>
 
       <div className="space-y-4">
         {order.items.map((item) => {
@@ -143,8 +148,8 @@ export default function ReturnItemsSelector({
               className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 border-b last:border-b-0 pb-4 last:pb-0"
             >
               <div className="flex items-start gap-3">
-                {/* ✅ thumbnail */}
-                <div className="w-25 h-30 rounded-xl border border-neutral-200 overflow-hidden bg-neutral-50 shrink-0 flex items-center justify-center">
+                {/* ✅ thumbnail（修正 Tailwind 默认尺寸） */}
+                <div className="w-24 h-28 rounded-xl border border-neutral-200 overflow-hidden bg-neutral-50 shrink-0 flex items-center justify-center">
                   {thumbByItemId?.[itemId] ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -161,10 +166,9 @@ export default function ReturnItemsSelector({
                   type="checkbox"
                   className="mt-1 h-4 w-4 rounded border-neutral-300"
                   checked={checked}
-                  onChange={(e) =>
-                    toggleItem(itemId, e.target.checked, maxQty)
-                  }
+                  onChange={(e) => toggleItem(itemId, e.target.checked, maxQty)}
                 />
+
                 <div>
                   <div className="text-sm font-medium text-neutral-900">
                     {item.product_title || "Item"}
@@ -178,40 +182,30 @@ export default function ReturnItemsSelector({
                         {color && (
                           <div className="text-xs text-neutral-500 mt-0.5">
                             Color:{" "}
-                            <span className="text-neutral-900 font-medium">
-                              {color}
-                            </span>
+                            <span className="text-neutral-900 font-medium">{color}</span>
                           </div>
                         )}
 
                         {size && (
                           <div className="text-xs text-neutral-500 mt-0.5">
                             Size:{" "}
-                            <span className="text-neutral-900 font-medium">
-                              {size}
-                            </span>
+                            <span className="text-neutral-900 font-medium">{size}</span>
                           </div>
                         )}
 
                         {!color && !size && raw && (
-                          <div className="text-xs text-neutral-500 mt-0.5">
-                            {raw}
-                          </div>
+                          <div className="text-xs text-neutral-500 mt-0.5">{raw}</div>
                         )}
                       </>
                     );
                   })()}
 
+                  <div className="mt-1 text-xs text-neutral-500">Ordered qty: {maxQty}</div>
                   <div className="mt-1 text-xs text-neutral-500">
-                    Ordered qty: {maxQty}
+                    Unit price: {formatMoney(item.unit_price_minor, currency)}
                   </div>
                   <div className="mt-1 text-xs text-neutral-500">
-                    Unit price:{" "}
-                    {formatMoney(item.unit_price_minor, currency)}
-                  </div>
-                  <div className="mt-1 text-xs text-neutral-500">
-                    Line total:{" "}
-                    {formatMoney(item.line_total_minor, currency)}
+                    Line total: {formatMoney(item.line_total_minor, currency)}
                   </div>
                 </div>
               </div>
@@ -219,22 +213,16 @@ export default function ReturnItemsSelector({
               {/* 数量选择区域 */}
               {checked && (
                 <div className="flex items-center gap-2 md:min-w-[180px]">
-                  <label className="text-xs text-neutral-600">
-                    Qty to return
-                  </label>
+                  <label className="text-xs text-neutral-600">Qty to return</label>
                   <input
                     type="number"
                     min={1}
                     max={maxQty}
                     value={selectedQty}
-                    onChange={(e) =>
-                      changeQty(itemId, e.target.value, maxQty)
-                    }
+                    onChange={(e) => changeQty(itemId, e.target.value, maxQty)}
                     className="w-20 rounded-full border border-neutral-300 px-3 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-neutral-900"
                   />
-                  <span className="text-xs text-neutral-500">
-                    / {maxQty}
-                  </span>
+                  <span className="text-xs text-neutral-500">/ {maxQty}</span>
                 </div>
               )}
             </div>
