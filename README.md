@@ -1045,8 +1045,6 @@ admin 平台输入密码
 
 Stripe / Braintree refund
 
-失败可重试
-
 refund_id 存表
 
 Return approve → 自动退款 / Stripe / PayPal
@@ -1056,10 +1054,6 @@ Admin Dashboard 指标（今天订单 / 退款额）
 怎么好像购买的物品，instock 的数量有问题，不会减少
 
 添加一个新的 collumn，增高的高度
-
-return 页面的 filter 按钮
-
-checkout 页面里的莫名报错
 
 ==============================================================================
 
