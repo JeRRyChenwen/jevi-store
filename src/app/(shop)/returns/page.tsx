@@ -6,14 +6,6 @@ import { useSearchParams } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import FilterButton from "@/components/filters/FilterButton";
-
-// ✅ DropdownMenu 由业务页控制（FilterButton 只是按钮）
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 
 // ✅ 复用你现有的 Strapi 工具
 import { api, mediaUrl } from "@/lib/strapi";
@@ -140,6 +132,18 @@ function mapReturnError(raw: string) {
   return e;
 }
 
+/** ✅ NEW：用于排序 Order 号（order_number 可能是 SP20260121-000003 这种） */
+function cmpText(a: string, b: string) {
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+}
+
+/** ✅ 与 admin 一致的排序 icon（文本 ↕ / ↑ / ↓） */
+type SortDir = "asc" | "desc";
+function SortIcon({ dir }: { dir: SortDir | null }) {
+  if (!dir) return <span className="ml-1 text-slate-300">↕</span>;
+  return <span className="ml-1 text-slate-500">{dir === "asc" ? "↑" : "↓"}</span>;
+}
+
 export default function ReturnsPage() {
   const search = useSearchParams();
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -154,12 +158,10 @@ export default function ReturnsPage() {
 
   const [myOrders, setMyOrders] = useState<MyOrderRow[]>([]);
 
-  // ✅ 排序 state（只在本页面使用）
-  const [sortBy, setSortBy] = useState<"date" | "amount">("date");
-  const [sortDir, setSortDir] = useState<"desc" | "asc">("desc"); // desc=新到旧/大到小
-
-  // ✅ Filter 下拉开关（由业务页控制）
-  const [filterOpen, setFilterOpen] = useState(false);
+  // ✅ NEW：表头排序（替代 FilterButton / DropdownMenu）
+  type SortKey = "order" | "paidAt" | "amount";
+  const [sortKey, setSortKey] = useState<SortKey>("paidAt");
+  const [sortDir, setSortDir] = useState<SortDir>("desc"); // 默认：Paid at 新到旧（desc）
 
   const [loading, setLoading] = useState(false);
   const [order, setOrder] = useState<OrderSummary | null>(null);
@@ -256,34 +258,48 @@ export default function ReturnsPage() {
     };
   }, []);
 
-  // ✅ myOrders -> 排序后的数组
-  const filteredMyOrders = useMemo(() => {
+  // ✅ NEW：点击表头切换排序（与 admin 一致：切列默认 desc）
+  function toggleSort(nextKey: SortKey) {
+    if (sortKey === nextKey) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(nextKey);
+      setSortDir("desc");
+    }
+  }
+
+  const headerBtn = "inline-flex items-center select-none hover:text-slate-900";
+
+  // ✅ myOrders -> 排序后的数组（按表头逻辑）
+  const sortedMyOrders = useMemo(() => {
     const arr = Array.isArray(myOrders) ? [...myOrders] : [];
     const dir = sortDir === "asc" ? 1 : -1;
 
     arr.sort((a, b) => {
-      if (sortBy === "amount") {
+      if (sortKey === "amount") {
         const av = Number(a.total_minor || 0);
         const bv = Number(b.total_minor || 0);
         if (av === bv) return 0;
         return av > bv ? dir : -dir;
       }
 
-      // sortBy === "date"
-      const at = toTsFromCn(a.paid_at_cn || a.created_at_cn);
-      const bt = toTsFromCn(b.paid_at_cn || b.created_at_cn);
-      if (at === bt) return 0;
-      return at > bt ? dir : -dir;
+      if (sortKey === "paidAt") {
+        const at = toTsFromCn(a.paid_at_cn || a.created_at_cn);
+        const bt = toTsFromCn(b.paid_at_cn || b.created_at_cn);
+        if (at === bt) return 0;
+        return at > bt ? dir : -dir;
+      }
+
+      // sortKey === "order"
+      const ao = String(a.order_number || `#${a.id}`);
+      const bo = String(b.order_number || `#${b.id}`);
+      const c = cmpText(ao, bo);
+      if (c === 0) return 0;
+      return c > 0 ? dir : -dir;
     });
 
     return arr;
-  }, [myOrders, sortBy, sortDir]);
-
-  const badgeText = useMemo(() => {
-    return sortBy === "date"
-      ? `Date · ${sortDir === "desc" ? "New → Old" : "Old → New"}`
-      : `Amount · ${sortDir === "desc" ? "High → Low" : "Low → High"}`;
-  }, [sortBy, sortDir]);
+  }, [myOrders, sortKey, sortDir]);
 
   // Step 1: 根据 orderNumber + email 查询订单
   async function handleFindOrder(nextOrderNumber?: string, nextEmail?: string) {
@@ -536,9 +552,7 @@ export default function ReturnsPage() {
   const inlineVariant = isAlreadyReturnedError ? "error" : "warning";
 
   // inline 文案：优先用 alert.message（已走 mapReturnError），兜底再 map
-  const inlineMessage = alert?.message
-    ? alert.message
-    : mapReturnError(errorCode || "");
+  const inlineMessage = alert?.message ? alert.message : mapReturnError(errorCode || "");
 
   return (
     <div className="max-w-3xl mx-auto py-8 px-4">
@@ -574,127 +588,57 @@ export default function ReturnsPage() {
 
                 {bootError && <div className="text-sm text-red-600">{bootError}</div>}
 
-                <div className="flex items-center justify-end">
-                  <DropdownMenu open={filterOpen} onOpenChange={setFilterOpen}>
-                    <DropdownMenuTrigger asChild>
-                      <div>
-                        <FilterButton label="Filter" active={true} badgeText={badgeText} />
-                      </div>
-                    </DropdownMenuTrigger>
-
-                    <DropdownMenuContent
-                      align="end"
-                      className="p-4 bg-white border rounded-md shadow-md z-50"
-                      style={{ width: 360 }}
-                    >
-                      <div className="space-y-3">
-                        <div className="text-sm font-medium">Sort orders</div>
-
-                        <div className="space-y-2">
-                          <div className="text-xs text-muted-foreground">Sort by</div>
-                          <div className="flex gap-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className={
-                                sortBy === "date"
-                                  ? "border-2 border-black text-black bg-muted"
-                                  : "border"
-                              }
-                              onClick={() => setSortBy("date")}
-                            >
-                              Date
-                            </Button>
-
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className={
-                                sortBy === "amount"
-                                  ? "border-2 border-black text-black bg-muted"
-                                  : "border"
-                              }
-                              onClick={() => setSortBy("amount")}
-                            >
-                              Amount
-                            </Button>
-                          </div>
-                        </div>
-
-                        <div className="space-y-2">
-                          <div className="text-xs text-muted-foreground">Order</div>
-                          <div className="flex gap-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className={
-                                sortDir === "desc"
-                                  ? "border-2 border-black text-black bg-muted"
-                                  : "border"
-                              }
-                              onClick={() => setSortDir("desc")}
-                            >
-                              {sortBy === "date" ? "New → Old" : "High → Low"}
-                            </Button>
-
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className={
-                                sortDir === "asc"
-                                  ? "border-2 border-black text-black bg-muted"
-                                  : "border"
-                              }
-                              onClick={() => setSortDir("asc")}
-                            >
-                              {sortBy === "date" ? "Old → New" : "Low → High"}
-                            </Button>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between pt-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="px-6"
-                            onClick={() => {
-                              setSortBy("date");
-                              setSortDir("desc");
-                            }}
-                          >
-                            Clear
-                          </Button>
-
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="px-6"
-                            onClick={() => setFilterOpen(false)}
-                          >
-                            Apply
-                          </Button>
-                        </div>
-                      </div>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-
-                {filteredMyOrders.length === 0 ? (
+                {sortedMyOrders.length === 0 ? (
                   <div className="text-sm text-muted-foreground">No orders found.</div>
                 ) : (
-                  <div className="overflow-x-auto rounded-lg border">
-                    <table className="w-full text-sm">
-                      <thead className="text-left text-neutral-500">
+                  <div className="overflow-x-auto rounded-lg border bg-white">
+                    <table className="w-full text-left text-sm">
+                      {/* ✅ 表头样式也对齐 admin：bg-slate-50 / text-xs / text-slate-600 */}
+                      <thead className="border-b bg-slate-50 text-xs text-slate-600">
                         <tr>
-                          <th className="py-2 pl-3 pr-4">Order</th>
-                          <th className="py-2 pr-4">Paid at</th>
-                          <th className="py-2 pr-4">Amount</th>
+                          <th className="py-2 pl-3 pr-4">
+                            <button
+                              type="button"
+                              className={headerBtn}
+                              onClick={() => toggleSort("order")}
+                              title="Sort by Order"
+                            >
+                              Order
+                              <SortIcon dir={sortKey === "order" ? sortDir : null} />
+                            </button>
+                          </th>
+
+                          <th className="py-2 pr-4">
+                            <button
+                              type="button"
+                              className={headerBtn}
+                              onClick={() => toggleSort("paidAt")}
+                              title="Sort by Paid at"
+                            >
+                              Paid at
+                              <SortIcon dir={sortKey === "paidAt" ? sortDir : null} />
+                            </button>
+                          </th>
+
+                          <th className="py-2 pr-4">
+                            <button
+                              type="button"
+                              className={headerBtn}
+                              onClick={() => toggleSort("amount")}
+                              title="Sort by Amount"
+                            >
+                              Amount
+                              <SortIcon dir={sortKey === "amount" ? sortDir : null} />
+                            </button>
+                          </th>
+
                           <th className="py-2 pr-4">Status</th>
                           <th className="py-2 pr-3"></th>
                         </tr>
                       </thead>
+
                       <tbody>
-                        {filteredMyOrders.map((o) => (
+                        {sortedMyOrders.map((o) => (
                           <tr key={o.id} className="border-t">
                             <td className="py-2 pl-3 pr-4 font-medium">
                               {o.order_number || `#${o.id}`}

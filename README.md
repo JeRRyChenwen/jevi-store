@@ -1057,66 +1057,9 @@ Admin Dashboard 指标（今天订单 / 退款额）
 
 添加一个新的 collumn，增高的高度
 
-A. 认证相关（最典型）
-
-src/app/(shop)/auth/login/page.tsx
-
-src/app/(shop)/auth/register/page.tsx
-
-src/app/(shop)/auth/forgot-password/page.tsx
-
-src/app/(shop)/auth/reset-password/page.tsx
-
-B. Profile 相关（你截图里的 Password 卡片、Profile 等）
-
-src/app/(shop)/profile/EditPasswordCard.tsx
-
-src/app/(shop)/profile/EditProfileCard.tsx
-
-src/app/(shop)/profile/EditAddressCard.tsx
-
-src/app/(shop)/profile/EditOrdersCard.tsx
-
-src/app/(shop)/profile/EditSubscriptionCard.tsx
-
-src/app/(shop)/profile/page.tsx
-
-C. Checkout 相关（你之前那句 “Please complete all required …” 就在这一组）
-
-src/app/(shop)/checkout/page.tsx
-
-src/app/(shop)/checkout/\_components/AddressErrorHint.tsx
-
-src/app/(shop)/checkout/\_components/AddressStep.tsx
-
-src/app/(shop)/checkout/\_components/BagStep.tsx
-
-src/app/(shop)/checkout/\_components/DeliveryStep.tsx
-
-src/app/(shop)/checkout/\_components/PaymentStep.tsx
-
-以及若干支付组件里也有同类提示（例如 PayPal/Braintree 组件）
-
-D. Returns 相关
-
-src/app/(shop)/returns/page.tsx
-
-src/app/(shop)/returns/\_components/ReturnItemsSelector.tsx
-
-E. Admin 区域（如果你也想统一）
-
-src/app/(admin)/admin/login/AdminLoginForm.tsx
-
-src/app/(admin)/admin/(protected)/returns/page.tsx
-
-src/app/(admin)/admin/(protected)/returns/[id]/ReturnDetailClient.tsx
-
-另外还有一批是在 src/components/ui/\* 里出现的 text-destructive、border 等，这些很多是 shadcn 组件内部样式，不一定是“提示文本”，通常不需要你逐个改。
-我建议你先统一“业务提示/表单提示”那一层（上面 A~E 这些），收益最大。
-
-checkout 不能为空
-
 return 页面的 filter 按钮
+
+checkout 页面里的莫名报错
 
 ==============================================================================
 

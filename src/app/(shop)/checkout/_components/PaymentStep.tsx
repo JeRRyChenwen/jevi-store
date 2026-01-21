@@ -1,7 +1,7 @@
 // src/app/checkout/_components/PaymentStep.tsx
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react"; // ✅ NEW: useMemo
 import Image from "next/image";
 import { Check, AlertCircle } from "lucide-react";
 import BraintreeHostedFields from "./BraintreeHostedFields";
@@ -67,6 +67,10 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   const [canPay, setCanPay] = useState(false);
   const [method, setMethod] = useState<"card" | "paypal">("card");
 
+  // ✅ NEW: 在用户点击支付后，屏蔽“bag empty”等阻止提示，
+  // 用于解决：支付成功后 clearCart() 造成的瞬间红条闪现
+  const [suppressBlockedHint, setSuppressBlockedHint] = useState(false);
+
   const safeCurrency = (currency || "AUD").toUpperCase();
 
   // 当前显示的支付方式（card）会通过这个回调把 pay() 暴露出来
@@ -82,6 +86,11 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   const handlePaySucceeded = useCallback(
     (payload: any) => {
       console.log("[checkout] handlePaySucceeded payload", payload);
+
+      // ✅ NEW: 一旦成功，就继续 suppress（直到页面跳转走）
+      // 这样即便父组件 clearCart()，也不会在这页闪出 “Your bag is empty”
+      setSuppressBlockedHint(true);
+
       onPaySucceeded(payload);
     },
     [onPaySucceeded]
@@ -96,20 +105,38 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     address?.postcode;
 
   // ✅ 行业常见：Payment step 再做一次 “能否支付” 防线，并给用户可见提示
-  const payBlockedReason =
-    itemsCount <= 0
-      ? "Your bag is empty. Please add at least one item before paying."
-      : !hasAddress
-      ? "No delivery address found. Please complete the Address step before paying."
-      : totalMinor <= 0
-      ? "Invalid total amount. Please review your order."
-      : null;
+  // ✅ NEW: 用 useMemo + 加 3 个护栏：
+  // - 不可见时不提示（你原来已经做到了）
+  // - 正在支付时不提示（避免流程中间状态闪烁）
+  // - 用户已经点击过支付 / 已成功（suppressBlockedHint）时不提示
+  const payBlockedReason = useMemo(() => {
+    if (!visible) return null;
+
+    // ✅ NEW: 这三个条件是解决你问题的关键
+    if (isPayProcessing) return null;
+    if (suppressBlockedHint) return null;
+
+    if (itemsCount <= 0) {
+      return "Your bag is empty. Please add at least one item before paying.";
+    }
+    if (!hasAddress) {
+      return "No delivery address found. Please complete the Address step before paying.";
+    }
+    if (totalMinor <= 0) {
+      return "Invalid total amount. Please review your order.";
+    }
+    return null;
+  }, [visible, isPayProcessing, suppressBlockedHint, itemsCount, hasAddress, totalMinor]);
 
   const handleClickPay = () => {
     // ✅ 多一层防守：即使按钮状态没及时更新，也绝不触发支付
     if (payBlockedReason) return;
 
     if (!payFn || !visible || isPayProcessing) return; // 防止多次点击
+
+    // ✅ NEW: 一旦用户发起支付，就屏蔽阻止提示（避免后续 clearCart 闪红条）
+    setSuppressBlockedHint(true);
+
     // 这里只负责 Card 的支付；PayPal 走 PayPalBigButton 自己的流程
     if (method === "card") {
       onPayInitiated();
@@ -390,9 +417,15 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                         <PayPalBigButton
                           amount={amountInMajorUnit}
                           currency={safeCurrency}
-                          onInitiate={onPayInitiated}
+                          onInitiate={() => {
+                            // ✅ NEW: PayPal 发起支付也 suppress（避免清空购物车闪红条）
+                            setSuppressBlockedHint(true);
+                            onPayInitiated();
+                          }}
                           onSucceeded={(details) => {
-                            // 这里保持你原来的逻辑即可
+                            // ✅ NEW: 成功后 suppress
+                            setSuppressBlockedHint(true);
+
                             onPaySucceeded({
                               provider: "paypal" as const,
                               paymentMethod: "paypal" as const,
@@ -411,7 +444,9 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                       // 💳 信用卡按钮逻辑保持不变（只是在 disabled 上加 payBlockedReason）
                       <button
                         type="button"
-                        disabled={!!payBlockedReason || !payFn || !canPay || isPayProcessing}
+                        disabled={
+                          !!payBlockedReason || !payFn || !canPay || isPayProcessing
+                        }
                         onClick={handleClickPay}
                         className={[
                           "w-full rounded-full px-6 py-3 text-sm font-semibold",

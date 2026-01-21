@@ -118,6 +118,8 @@ export default function BraintreeHostedFields({
 }: Props) {
   const [ready, setReady] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  // 注意：error 用于“需要用户看到的提示”，包含硬错误与软提示
   const [error, setError] = useState<string | null>(null);
 
   // ✅ Cardholder Name 普通输入框
@@ -143,6 +145,38 @@ export default function BraintreeHostedFields({
   onInitiateRef.current = onInitiate;
   onExposePayRef.current = onExposePay;
   onCanPayChangeRef.current = onCanPayChange;
+
+  // ✅ 新增：统一设置 error（避免空字符串/纯空格造成“空红条”）
+  const setErrorSafe = (msg: any) => {
+    const s = String(msg ?? "").trim();
+    setError(s ? s : null);
+  };
+
+  // ✅ 新增：软提示自动消失（避免“结账后一直挂红条”）
+  const softHintTimerRef = useRef<number | null>(null);
+  const setSoftHint = (msg: string, ttlMs = 4000) => {
+    // 先清理旧定时器
+    if (softHintTimerRef.current) {
+      window.clearTimeout(softHintTimerRef.current);
+      softHintTimerRef.current = null;
+    }
+
+    setErrorSafe(msg);
+
+    softHintTimerRef.current = window.setTimeout(() => {
+      setError(null);
+      softHintTimerRef.current = null;
+    }, ttlMs);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (softHintTimerRef.current) {
+        window.clearTimeout(softHintTimerRef.current);
+        softHintTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // ✅ 抽出来：可复用的创建 HostedFields 方法
   const createHostedFields = async (auth: string) => {
@@ -249,9 +283,7 @@ export default function BraintreeHostedFields({
 
     initHostedFieldsWithRetry({
       cancelled: () => cancelled,
-    }).catch((e) =>
-      setError((e as any)?.message || "Failed to init card fields")
-    );
+    }).catch((e) => setErrorSafe((e as any)?.message || "Failed to init card fields"));
 
     return () => {
       cancelled = true;
@@ -281,8 +313,9 @@ export default function BraintreeHostedFields({
     await initHostedFieldsWithRetry();
 
     // 4) 给用户一个“软提示”，不自动再扣款（避免重复扣款风险）
+    // ✅ 改为“自动消失”的软提示，避免你截图里的“结账后一直出现红条”
     const msg = String(reason?.message || reason || "").trim();
-    setError(
+    setSoftHint(
       msg
         ? `Payment session refreshed. Please try again. (${msg})`
         : "Payment session refreshed. Please try again."
@@ -322,7 +355,7 @@ export default function BraintreeHostedFields({
             !cardholderName.trim()
           ) {
             setFieldErrors(nextErrors);
-            setError("Please check your card details and try again.");
+            setErrorSafe("Please check your card details and try again.");
             setSubmitting(false);
             return;
           }
@@ -377,6 +410,9 @@ export default function BraintreeHostedFields({
         throw new Error(out?.error || `Payment failed (${res.status})`);
       }
 
+      // ✅ 成功：清掉任何残留提示（防止你看到“结账后红条还在”）
+      setError(null);
+
       // 把更多信息往外传，给订单写入 card_brand / card_last4 用
       const txId = out?.transactionId || out?.id || null;
 
@@ -406,7 +442,7 @@ export default function BraintreeHostedFields({
 
       onSucceededRef.current?.(payload);
     } catch (e: any) {
-      setError(e?.message || "Card payment failed");
+      setErrorSafe(e?.message || "Card payment failed");
     } finally {
       setSubmitting(false);
     }
@@ -427,6 +463,9 @@ export default function BraintreeHostedFields({
   useEffect(() => {
     onCanPayChangeRef.current?.(!disabled);
   }, [disabled]);
+
+  // ✅ 统一渲染：trim 后为空就不渲染，杜绝“空红条”
+  const errorText = typeof error === "string" ? error.trim() : "";
 
   return (
     <div className="space-y-3">
@@ -492,11 +531,11 @@ export default function BraintreeHostedFields({
         </div>
       </div>
 
-      {error && (
+      {errorText ? (
         <div className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-600">
-          {error}
+          {errorText}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
