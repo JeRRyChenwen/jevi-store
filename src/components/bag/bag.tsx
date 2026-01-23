@@ -8,8 +8,15 @@ export type CartItem = {
   price: number;
   basePrice?: number;
   currency: string;
+
   color?: string;
   size?: string;
+  heightIncreaseCm?: number;
+
+  // ✅ 建议新增（下一步会用到）
+  variantDocumentId?: string;
+  sku?: string;
+
   qty: number;
   stock: number;
   image?: string;

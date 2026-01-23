@@ -5,6 +5,7 @@ import GalleryClient from "../_components/GalleryClient";
 import ColorDotsClient from "../_components/ColorDotsClient";
 import SizeClient from "../_components/SizeClient";
 import AddToBagClient from "../_components/AddToBagClient";
+import HeightIncreaseClient from "../_components/HeightIncreaseClient";
 import { normalizeColorName, colorNameToCss } from "@/lib/colors";
 
 import { type PriceRec, pickCurrency } from "@/lib/pricing";
@@ -17,12 +18,10 @@ type PageProps = {
 
 export const revalidate = 0;
 
-/** 标准化颜色字符串（沿用你已有规则） */
 function normalizeColor(s: any) {
   return normalizeColorName(s);
 }
 
-/** 从 product.color_galleries 里取 “颜色 -> 图片数组” */
 function getImagesByColorFromProduct(attrs: any): Record<string, string[]> {
   const arr: any[] = Array.isArray(attrs?.color_galleries)
     ? attrs.color_galleries
@@ -58,24 +57,56 @@ function getImagesByColorFromProduct(attrs: any): Record<string, string[]> {
   return out;
 }
 
-/** 颜色+尺码 → 库存 */
-function getStockByColorSize(attrs: any): Record<string, Record<string, number>> {
+/**
+ * 颜色+尺码+增高 → 库存
+ * - stock3[color][size][height] = stock
+ * - sizesSum[color][size] = sum(stock for all heights)
+ * - heightSum[color][height] = sum(stock for all sizes)   ✅ 新增：用于未选 size 时的 height picker
+ * - colorSum[color] = sum(stock for all sizes/heights)    ✅ 用于 height=0 的“None”库存展示（未选 size 时）
+ */
+function getStockByColorSizeHeight(attrs: any): {
+  stock3: Record<string, Record<string, Record<number, number>>>;
+  sizesSum: Record<string, Record<string, number>>;
+  heightSum: Record<string, Record<number, number>>;
+  colorSum: Record<string, number>;
+} {
   const arr: any[] = Array.isArray(attrs?.variants?.data)
     ? attrs.variants.data
     : Array.isArray(attrs?.variants)
     ? attrs.variants
     : [];
-  const out: Record<string, Record<string, number>> = {};
+
+  const stock3: Record<string, Record<string, Record<number, number>>> = {};
+  const sizesSum: Record<string, Record<string, number>> = {};
+  const heightSum: Record<string, Record<number, number>> = {};
+  const colorSum: Record<string, number> = {};
+
   for (const v of arr) {
     const a = v?.attributes ?? v ?? {};
     const color = normalizeColor(a.color ?? "");
     const size = String(a.size ?? "").trim();
     if (!color || !size) continue;
+
     const stock = Number(a.stock) || 0;
-    out[color] ??= {};
-    out[color][size] = (out[color][size] ?? 0) + stock;
+
+    // 允许 0 表示 None
+    const h = Number(a.height_increase_cm);
+    const height = Number.isFinite(h) ? h : 0;
+
+    stock3[color] ??= {};
+    stock3[color][size] ??= {};
+    stock3[color][size][height] = (stock3[color][size][height] ?? 0) + stock;
+
+    sizesSum[color] ??= {};
+    sizesSum[color][size] = (sizesSum[color][size] ?? 0) + stock;
+
+    heightSum[color] ??= {};
+    heightSum[color][height] = (heightSum[color][height] ?? 0) + stock;
+
+    colorSum[color] = (colorSum[color] ?? 0) + stock;
   }
-  return out;
+
+  return { stock3, sizesSum, heightSum, colorSum };
 }
 
 function formatPriceVal(n: number | null, currency?: string | null, locale?: string) {
@@ -89,7 +120,6 @@ function formatPriceVal(n: number | null, currency?: string | null, locale?: str
   }).format(Number(n));
 }
 
-/** 是否在促销窗口内（旧字段回退用） */
 function isSaleActive(
   discountPercent?: number | null,
   startsAt?: string | null,
@@ -103,7 +133,6 @@ function isSaleActive(
   return startOk && endOk;
 }
 
-/** 评分星星（0~5，支持半星） */
 function Stars({ value = 0 }: { value?: number }) {
   const v = Math.max(0, Math.min(5, Number(value) || 0));
   const full = Math.floor(v);
@@ -143,7 +172,6 @@ function Stars({ value = 0 }: { value?: number }) {
   );
 }
 
-/** ✅ 从 Strapi attributes 解析 Price 组件数组（与分类页一致） */
 function getPrices(attrs: any): PriceRec[] {
   const arr: any[] = Array.isArray(attrs?.prices)
     ? attrs.prices
@@ -164,14 +192,10 @@ function getPrices(attrs: any): PriceRec[] {
 
     out.push({
       currency,
-      // 若有 amount_minor 优先用；否则保留 price（单位：元），后面做 *100 兜底
       amount_minor: Number.isFinite(amountMinorNum) ? Math.round(amountMinorNum) : undefined,
       price: Number.isFinite(priceNum) ? priceNum : undefined,
-
-      // 两种折扣字段都兼容
-      discount: Number.isFinite(discountNum) ? discountNum : undefined,                // 85 => 85%
-      discount_percent_off: Number.isFinite(dpoNum) ? dpoNum : undefined,             // 24 => 24% OFF
-
+      discount: Number.isFinite(discountNum) ? discountNum : undefined,
+      discount_percent_off: Number.isFinite(dpoNum) ? dpoNum : undefined,
       sale_starts_at: a.sale_starts_at ?? undefined,
       sale_ends_at: a.sale_ends_at ?? undefined,
     } as PriceRec);
@@ -197,7 +221,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     `&populate[variants][fields][0]=color` +
     `&populate[variants][fields][1]=size` +
     `&populate[variants][fields][2]=stock` +
-    `&populate[prices]=*` +                // ★ 关键：用 *，不要点名 fields，避免 400
+    `&populate[variants][fields][3]=height_increase_cm` +
+    `&populate[prices]=*` +
     `&publicationState=live`;
 
   const json = await api(qs, { noCache: true });
@@ -207,33 +232,30 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const attrs = row?.attributes ?? row ?? {};
   const title: string = attrs.title ?? attrs.name ?? "Product";
 
-  // ✅ 新价格：优先使用 Price 组件
+  // ---- pricing ----
   const prices = getPrices(attrs);
-
-  // 可用币种 + 选币（沿用你的 pickCurrency）
   const availableCurrencies = prices.map((r) => r.currency);
   const currencyPicked =
     availableCurrencies.length > 0
       ? pickCurrency(availableCurrencies, { fallback: "AUD" })
       : ((attrs.currency ?? "AUD") as string);
 
-  // 取到该币种条目
   const rec = prices.find(
     (r) => String(r.currency).toUpperCase() === String(currencyPicked).toUpperCase()
   );
 
-  // —— 统一得到 baseMinor（分）——
   let baseMinor: number | null = null;
   if (rec) {
-    if (typeof (rec as any).amount_minor === "number" && Number.isFinite((rec as any).amount_minor)) {
+    if (
+      typeof (rec as any).amount_minor === "number" &&
+      Number.isFinite((rec as any).amount_minor)
+    ) {
       baseMinor = Math.max(0, Math.round((rec as any).amount_minor));
     } else if (typeof (rec as any).price === "number" && Number.isFinite((rec as any).price)) {
-      // price 视为“元”
       baseMinor = Math.max(0, Math.round((rec as any).price * 100));
     }
   }
 
-  // —— 计算有效价 effectiveMinor（分），支持 discount / discount_percent_off + 时间窗 —— 
   let effectiveMinor: number | null = baseMinor;
   if (rec && baseMinor != null) {
     const now = Date.now();
@@ -248,26 +270,21 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
       const d = Number((rec as any).discount);
       const off = Number((rec as any).discount_percent_off);
       if (Number.isFinite(d) && d > 0 && d <= 100) {
-        // 85 => 按 85% 售卖
         effectiveMinor = Math.max(0, Math.round(baseMinor * (d / 100)));
       } else if (Number.isFinite(off) && off > 0 && off < 100) {
-        // 24 => 24% OFF
         effectiveMinor = Math.max(0, Math.round(baseMinor * (1 - off / 100)));
       }
     }
   }
 
-  // —— 转为“元”供 UI 使用 —— 
   const priceFromPrices = baseMinor != null ? baseMinor / 100 : null;
   const effFromPrices = effectiveMinor != null ? effectiveMinor / 100 : null;
 
-  // 折扣百分比（仅当小于原价时）
   const discountFromPrices =
     baseMinor != null && effectiveMinor != null && effectiveMinor < baseMinor
       ? Math.round((1 - effectiveMinor / baseMinor) * 100)
       : null;
 
-  // ⛳️ 旧字段（仅作为兜底）
   const cents = Number(attrs.base_price_cents);
   const priceLegacy = Number.isFinite(cents) ? cents / 100 : null;
   const currencyLegacy = (attrs.currency ?? "AUD") as string;
@@ -276,9 +293,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const salePriceLegacy =
     saleActiveLegacy && priceLegacy != null ? priceLegacy * (1 - discountLegacy / 100) : null;
 
-  // === 最终用于展示/下单的金额 ===
   const currency = (currencyPicked || currencyLegacy) as string;
-  const price = priceFromPrices != null ? priceFromPrices : priceLegacy; // 基础价（主货币）
+  const price = priceFromPrices != null ? priceFromPrices : priceLegacy;
   const salePrice =
     effFromPrices != null && priceFromPrices != null && effFromPrices < priceFromPrices
       ? effFromPrices
@@ -291,48 +307,42 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
       ? Math.round(discountLegacy)
       : 0;
 
-  // 颜色 -> 图片
+  const saleActive = salePrice != null && price != null && salePrice < price;
+
+  // ---- media / colors ----
   const byColor = getImagesByColorFromProduct(attrs);
   const colorKeys = Object.keys(byColor);
 
-  // 颜色+尺码 -> 库存
-  const stockMap = getStockByColorSize(attrs);
-
-  // URL color
   const colorParamRaw = Array.isArray(sp.color) ? sp.color[0] : sp.color;
   const colorParam = normalizeColor(colorParamRaw);
   const currentColor = colorKeys.find((k) => k === colorParam) ?? colorKeys[0] ?? undefined;
 
-  // 当前颜色的图片（没有颜色则扁平化所有图）
   let images: string[] = [];
   if (currentColor) {
     images = byColor[currentColor] ?? [];
   } else {
     const seen = new Set<string>();
-    for (const k of colorKeys) {
-      for (const u of byColor[k]) if (!seen.has(u)) seen.add(u);
-    }
+    for (const k of colorKeys) for (const u of byColor[k] ?? []) seen.add(u);
     images = Array.from(seen);
   }
   const total = images.length;
 
-  // 当前选中索引（?img=）
   let selected = 0;
   const rawIdx = Array.isArray(sp.img) ? sp.img[0] : sp.img;
-  const n = Number(rawIdx);
-  if (Number.isFinite(n) && n >= 0 && n < total) selected = n;
+  const idxNum = Number(rawIdx);
+  if (Number.isFinite(idxNum) && idxNum >= 0 && idxNum < total) selected = idxNum;
 
-  // 评分（用 hot_score 0~5）
   const rating = Math.max(0, Math.min(5, Number(attrs.hot_score) || 0));
 
-  // 颜色圆点数据（给 ColorDotsClient 传 css）
   const colorOptions = colorKeys.map((name) => ({
     name,
     css: colorNameToCss(name),
   }));
 
-  // ====== 基于当前颜色计算尺码 & 库存 ======
-  const sizesForColor = currentColor ? Object.keys(stockMap[currentColor] ?? {}) : [];
+  // ---- variants stock ----
+  const { stock3, sizesSum, heightSum, colorSum } = getStockByColorSizeHeight(attrs);
+
+  const sizesForColor = currentColor ? Object.keys(sizesSum[currentColor] ?? {}) : [];
 
   const sizeParamRaw = Array.isArray(sp.size) ? sp.size[0] : sp.size;
   const currentSize =
@@ -342,20 +352,83 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
 
   const sizeOptions = sizesForColor.map((s) => ({
     value: s,
-    stock: stockMap[currentColor!]?.[s] ?? 0,
+    stock: sizesSum[currentColor!]?.[s] ?? 0,
   }));
 
-  const stockForCurrent =
-    currentColor && currentSize ? stockMap[currentColor]?.[currentSize] ?? 0 : 0;
+  // ---- height selection (ALWAYS SHOW) ----
+  // URL height：默认 0（None）
+  const heightParamRaw = Array.isArray((sp as any).height) ? (sp as any).height[0] : (sp as any).height;
+  const parsedHeight = Number(heightParamRaw);
+  const heightFromUrl = Number.isFinite(parsedHeight) ? parsedHeight : 0; // ✅ default 0
 
-  const saleActive = salePrice != null && price != null && salePrice < price;
+  // 当前颜色下的“全局可选高度”（跨所有 size 汇总）——保证未选 size 也能点
+  const heightsAllForColor = currentColor ? heightSum[currentColor] ?? {} : {};
+  const realHeightsAll = Object.keys(heightsAllForColor)
+    .map((k) => Number(k))
+    .filter((v) => Number.isFinite(v) && v > 0)
+    .sort((a, b) => a - b);
+
+  // 当已经选了 size：用该 size 下真实存在的 height 做“有效性校验”
+  const heightsForCurrentSize =
+    currentColor && currentSize ? stock3[currentColor]?.[currentSize] ?? {} : {};
+
+  const realHeightsForSize = Object.keys(heightsForCurrentSize)
+    .map((k) => Number(k))
+    .filter((v) => Number.isFinite(v) && v > 0)
+    .sort((a, b) => a - b);
+
+  // ✅ 已选 size 时：0cm 库存优先用 Strapi 的 height=0 variant
+  const stockZeroForSize =
+    currentColor && currentSize
+      ? (stock3[currentColor]?.[currentSize]?.[0] ??
+          sizesSum[currentColor]?.[currentSize] ??
+          0)
+      : 0;
+
+  // Height picker options：
+  // - 未选 size：用“当前颜色的 height 汇总库存”来做 stock，确保按钮可点
+  // - 已选 size：用“当前 size 的 height 库存”
+  const heightOptions =
+    currentColor && currentSize
+      ? [
+          { value: 0, stock: stockZeroForSize }, // ✅ 这里改了：不再用 sizesSum 直接当 0cm
+          ...realHeightsForSize.map((h) => ({ value: h, stock: heightsForCurrentSize[h] ?? 0 })),
+        ]
+      : currentColor
+      ? [
+          { value: 0, stock: colorSum[currentColor] ?? 0 },
+          ...realHeightsAll.map((h) => ({ value: h, stock: heightsAllForColor[h] ?? 0 })),
+        ]
+      : [{ value: 0, stock: 0 }];
+
+  // 当前有效 height：
+  // - 未选 size：只要在 options 里就算有效，否则回 0
+  // - 已选 size：必须该 size 下存在，否则回 0（避免下单选到不存在的组合）
+  let validHeight = heightFromUrl;
+  if (currentColor && currentSize) {
+    if (validHeight !== 0 && !realHeightsForSize.includes(validHeight)) validHeight = 0;
+  } else {
+    if (!heightOptions.some((o) => o.value === validHeight)) validHeight = 0;
+  }
+
+  // 当前库存显示（右侧 “In stock” 那行用）
+  const stockForCurrent =
+    currentColor && currentSize
+      ? validHeight === 0
+        ? (stock3[currentColor]?.[currentSize]?.[0] ??
+            sizesSum[currentColor]?.[currentSize] ??
+            0) // ✅ 这里也改了：0cm 优先用真实 0 variant
+        : stock3[currentColor]?.[currentSize]?.[validHeight] ?? 0
+      : 0;
+
+  // 是否显示 height picker：
+  // ✅ 只要该颜色下存在 “>0 的 height 变体”，就一直显示（无论是否选 size）
+  const shouldShowHeightPicker = Boolean(currentColor) && realHeightsAll.length > 0;
 
   return (
-    // ✅ 关键：剪掉页面横向溢出，避免出现横向滚动条
     <main className="w-full px-2 sm:px-4 md:px-6 lg:px-0 py-8 overflow-x-hidden">
       <h1 className="sr-only">{title}</h1>
 
-      {/* 3 列：左缩略图 / 中放大图 / 右信息 —— 右栏稍窄，让主视图更宽 */}
       <div
         className="
           grid grid-cols-1
@@ -366,7 +439,6 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
           gap-y-10 md:gap-x-6 lg:gap-x-10 xl:gap-x-12 2xl:gap-x-16
         "
       >
-        {/* 左：小画廊 */}
         <aside className="order-2 lg:order-1 md:sticky md:top-24 self-start md:pr-0">
           <GalleryClient
             images={images}
@@ -377,7 +449,6 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
           />
         </aside>
 
-        {/* 中：主视图（更高更宽） */}
         <section className="order-1 lg:order-2 min-w-0">
           <div
             className="
@@ -401,12 +472,10 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
           </div>
         </section>
 
-        {/* 右：信息栏（保持无边框） */}
         <section className="order-3 lg:order-3 lg:pl-20 xl:pl-24 2xl:pl-20 lg:sticky lg:top-12 self-start overflow-x-clip">
           <div className="space-y-5 px-1 sm:px-2">
             <h2 className="text-2xl font-bold leading-tight">{title}</h2>
 
-            {/* 价格区（优先 Price 组件的实时结果） */}
             {saleActive ? (
               <div className="space-y-2">
                 {discount ? (
@@ -425,25 +494,20 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
               <div className="text-xl font-semibold">{formatPriceVal(price, currency)}</div>
             )}
 
-            {/* 颜色（可点击切换） */}
             {colorOptions.length > 0 && (
               <div className="space-y-2">
                 <div className="text-sm text-neutral-600 flex items-center gap-2">
                   Colors
-                  {currentColor && (
-                    <span className="text-neutral-800 font-medium">{currentColor}</span>
-                  )}
+                  {currentColor && <span className="text-neutral-800 font-medium">{currentColor}</span>}
                 </div>
                 <ColorDotsClient options={colorOptions} current={currentColor} slug={slug} />
               </div>
             )}
 
-            {/* 评分（Popularity） */}
             <div className="text-neutral-800">
               <Stars value={rating} />
             </div>
 
-            {/* 尺码（放到评分下面） */}
             {sizeOptions.length > 0 && (
               <div className="space-y-2">
                 <div className="text-base md:text-lg text-neutral-700 flex items-center gap-2">
@@ -463,10 +527,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                   {currentSize ? (
                     stockForCurrent > 0 ? (
                       <span className="text-neutral-600">
-                        In stock:{" "}
-                        <span className="font-semibold text-neutral-900">
-                          {stockForCurrent}
-                        </span>
+                        In stock: <span className="font-semibold text-neutral-900">{stockForCurrent}</span>
                       </span>
                     ) : (
                       <span className="text-rose-600">Out of stock</span>
@@ -478,7 +539,12 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
               </div>
             )}
 
-            {/* ADD TO BAG + 右侧抽屉购物袋 */}
+            {/* ✅ Height picker：永远独立显示（只要该颜色有 height>0 的 variants） */}
+            {shouldShowHeightPicker ? (
+              <HeightIncreaseClient options={heightOptions} current={validHeight} slug={slug} paramKey="height" />
+            ) : null}
+
+            {/* ✅ ADD TO BAG：永远是 Add to Bag（禁用只取决于 size/stock 等） */}
             <AddToBagClient
               slug={slug}
               title={title}
@@ -486,8 +552,10 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
               salePrice={saleActive ? (salePrice ?? null) : null}
               currency={currency}
               imagesByColor={byColor}
-              stockMap={stockMap}
+              stockMap={sizesSum}
               fallbackColor={currentColor}
+              heightIncreaseCm={validHeight}
+              stock3={stock3}
             />
           </div>
         </section>
