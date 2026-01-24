@@ -257,65 +257,74 @@ async function sendOrderToServer(args: {
       const heightIncreaseCm = Number.isFinite(hNum) ? hNum : 0;
 
       return {
-        product_id: it?.id ?? null,
-        product_sku: it?.sku ?? null,
-        product_title: String(it?.title || it?.name || "Item"),
+      // ✅ product_id 做一层兜底（购物车里一般没有 id）
+      product_id: it?.product_id ?? it?.id ?? null,
 
-        // ✅ A方案关键：前端直接传 product_type（优先读 it.product_type，其次读 it.attrs.product_type）
-        // 你后续应该在“加入购物车”时就把 product_type 写进 cart item。
-        product_type:
-          it?.product_type ??
-          it?.productType ??
-          it?.type ??
-          it?.attrs?.product_type ??
-          it?.attrs?.productType ??
-          it?.attrs?.type ??
-          "other",
+      // ✅ 关键修复：正确读取 Variant SKU（多来源兜底）
+      product_sku:
+        it?.product_sku ??
+        it?.variantSku ??
+        it?.variant_sku ??
+        it?.sku ??
+        null,
 
-        // ✅ A方案关键：前端直接传结构化 options（后端写 variant_options_json 用这个）
-        // 这里统一用：color / size / height_cm
-        options: {
-          color: it?.color ?? it?.attrs?.color ?? null,
-          size: it?.size ?? it?.attrs?.size ?? null,
-          height_cm:
-            it?.height_cm ??
-            it?.height_increase_cm ??
-            it?.heightIncreaseCm ??
-            it?.heightIncrease ??
-            it?.height ??
-            it?.attrs?.height_cm ??
-            it?.attrs?.height_increase_cm ??
-            it?.attrs?.heightIncreaseCm ??
-            it?.attrs?.heightIncrease ??
-            it?.attrs?.height ??
-            heightIncreaseCm, // ✅ 兜底：用你刚算出来的 heightIncreaseCm
+      product_title: String(it?.title || it?.name || "Item"),
+
+      // ✅ A方案关键：前端直接传 product_type
+      product_type:
+        it?.product_type ??
+        it?.productType ??
+        it?.type ??
+        it?.attrs?.product_type ??
+        it?.attrs?.productType ??
+        it?.attrs?.type ??
+        "other",
+
+      // ✅ A方案关键：结构化 options（用于后端写 variant_options_json）
+      options: {
+        color: it?.color ?? it?.attrs?.color ?? null,
+        size: it?.size ?? it?.attrs?.size ?? null,
+        height_cm:
+          it?.height_cm ??
+          it?.height_increase_cm ??
+          it?.heightIncreaseCm ??
+          it?.heightIncrease ??
+          it?.height ??
+          it?.attrs?.height_cm ??
+          it?.attrs?.height_increase_cm ??
+          it?.attrs?.heightIncreaseCm ??
+          it?.attrs?.heightIncrease ??
+          it?.attrs?.height ??
+          heightIncreaseCm, // ✅ 最终兜底
+      },
+
+      // ✅ 展示用（后端会 normalize）
+      variant_title:
+        it?.variant ||
+        [it?.color, it?.size].filter(Boolean).join(" / ") ||
+        null,
+
+      qty,
+      currency: args.currency,
+      unit_price_minor: unitMinor,
+      line_total_minor: lineMinor,
+      discount_minor: 0,
+      tax_minor: 0,
+
+      // ✅ 仍然保留顶层 heightIncreaseCm（兼容旧逻辑）
+      heightIncreaseCm,
+
+      snapshot: {
+        slug: it?.slug ?? null,
+        image: it?.image || it?.img || null,
+        attrs: {
+          color: it?.color ?? null,
+          size: it?.size ?? null,
+          heightIncreaseCm,
+          ...(it?.attrs || {}),
         },
-
-        // 你原来的展示字段保留（后端会 normalize 并生成统一 variant_title）
-        variant_title:
-          it?.variant || [it?.color, it?.size].filter(Boolean).join(" / ") || null,
-
-        qty,
-        currency: args.currency,
-        unit_price_minor: unitMinor,
-        line_total_minor: lineMinor,
-        discount_minor: 0,
-        tax_minor: 0,
-
-        // 你原先顶层 heightIncreaseCm 也保留（兼容你后端 extractVariantOptions 的旧逻辑）
-        heightIncreaseCm, // 数字，0 也会发送
-
-        snapshot: {
-          slug: it?.slug ?? null,
-          image: it?.image || it?.img || null,
-          attrs: {
-            color: it?.color ?? null,
-            size: it?.size ?? null,
-            heightIncreaseCm,
-            ...(it?.attrs || {}),
-          },
-        },
-      };
+      },
+    };
     });
 
     // ② 识别支付提供方 & 提取交易号 + 卡信息

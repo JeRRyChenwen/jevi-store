@@ -58,14 +58,16 @@ function getImagesByColorFromProduct(attrs: any): Record<string, string[]> {
 }
 
 /**
- * 颜色+尺码+增高 → 库存
+ * 颜色+尺码+增高 → 库存 / SKU
  * - stock3[color][size][height] = stock
+ * - sku3[color][size][height]   = sku (string|null)
  * - sizesSum[color][size] = sum(stock for all heights)
- * - heightSum[color][height] = sum(stock for all sizes)   ✅ 新增：用于未选 size 时的 height picker
- * - colorSum[color] = sum(stock for all sizes/heights)    ✅ 用于 height=0 的“None”库存展示（未选 size 时）
+ * - heightSum[color][height] = sum(stock for all sizes)
+ * - colorSum[color] = sum(stock for all sizes/heights)
  */
 function getStockByColorSizeHeight(attrs: any): {
   stock3: Record<string, Record<string, Record<number, number>>>;
+  sku3: Record<string, Record<string, Record<number, string | null>>>;
   sizesSum: Record<string, Record<string, number>>;
   heightSum: Record<string, Record<number, number>>;
   colorSum: Record<string, number>;
@@ -77,6 +79,7 @@ function getStockByColorSizeHeight(attrs: any): {
     : [];
 
   const stock3: Record<string, Record<string, Record<number, number>>> = {};
+  const sku3: Record<string, Record<string, Record<number, string | null>>> = {};
   const sizesSum: Record<string, Record<string, number>> = {};
   const heightSum: Record<string, Record<number, number>> = {};
   const colorSum: Record<string, number> = {};
@@ -93,9 +96,19 @@ function getStockByColorSizeHeight(attrs: any): {
     const h = Number(a.height_increase_cm);
     const height = Number.isFinite(h) ? h : 0;
 
+    // ✅ NEW: sku
+    const sku = typeof a.sku === "string" && a.sku.trim() ? a.sku.trim() : null;
+
     stock3[color] ??= {};
     stock3[color][size] ??= {};
     stock3[color][size][height] = (stock3[color][size][height] ?? 0) + stock;
+
+    sku3[color] ??= {};
+    sku3[color][size] ??= {};
+    // 同一组合理论上只有一个 sku；如遇到重复，以第一次为准
+    if (sku3[color][size][height] == null) {
+      sku3[color][size][height] = sku;
+    }
 
     sizesSum[color] ??= {};
     sizesSum[color][size] = (sizesSum[color][size] ?? 0) + stock;
@@ -106,7 +119,7 @@ function getStockByColorSizeHeight(attrs: any): {
     colorSum[color] = (colorSum[color] ?? 0) + stock;
   }
 
-  return { stock3, sizesSum, heightSum, colorSum };
+  return { stock3, sku3, sizesSum, heightSum, colorSum };
 }
 
 function formatPriceVal(n: number | null, currency?: string | null, locale?: string) {
@@ -222,6 +235,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     `&populate[variants][fields][1]=size` +
     `&populate[variants][fields][2]=stock` +
     `&populate[variants][fields][3]=height_increase_cm` +
+    `&populate[variants][fields][4]=sku` + // ✅ NEW: 取 variant sku
     `&populate[prices]=*` +
     `&publicationState=live`;
 
@@ -339,8 +353,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     css: colorNameToCss(name),
   }));
 
-  // ---- variants stock ----
-  const { stock3, sizesSum, heightSum, colorSum } = getStockByColorSizeHeight(attrs);
+  // ---- variants stock + sku ----
+  const { stock3, sku3, sizesSum, heightSum, colorSum } = getStockByColorSizeHeight(attrs);
 
   const sizesForColor = currentColor ? Object.keys(sizesSum[currentColor] ?? {}) : [];
 
@@ -527,7 +541,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                   {currentSize ? (
                     stockForCurrent > 0 ? (
                       <span className="text-neutral-600">
-                        In stock: <span className="font-semibold text-neutral-900">{stockForCurrent}</span>
+                        In stock:{" "}
+                        <span className="font-semibold text-neutral-900">{stockForCurrent}</span>
                       </span>
                     ) : (
                       <span className="text-rose-600">Out of stock</span>
@@ -541,7 +556,12 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
 
             {/* ✅ Height picker：永远独立显示（只要该颜色有 height>0 的 variants） */}
             {shouldShowHeightPicker ? (
-              <HeightIncreaseClient options={heightOptions} current={validHeight} slug={slug} paramKey="height" />
+              <HeightIncreaseClient
+                options={heightOptions}
+                current={validHeight}
+                slug={slug}
+                paramKey="height"
+              />
             ) : null}
 
             {/* ✅ ADD TO BAG：永远是 Add to Bag（禁用只取决于 size/stock 等） */}
@@ -556,6 +576,9 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
               fallbackColor={currentColor}
               heightIncreaseCm={validHeight}
               stock3={stock3}
+              // ✅ NEW: 把 sku3 也传下去，下一步在 AddToBagClient 写入 bag item
+              // 如果 AddToBagClient 暂时还没加 sku3 prop，这里用 ts-expect-error 先压住类型报错
+              sku3={sku3}
             />
           </div>
         </section>

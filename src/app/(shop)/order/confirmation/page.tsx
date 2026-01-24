@@ -23,26 +23,7 @@ function fmtMoneyMinor(minor: number, currency: string, locale?: string) {
   }).format((minor ?? 0) / 100);
 }
 
-function fmtMoney(n: number, currency: string, locale?: string) {
-  return new Intl.NumberFormat(locale, {
-    style: "currency",
-    currency,
-    currencyDisplay: "code",
-    maximumFractionDigits: 2,
-  }).format(n ?? 0);
-}
 
-function readHeightCm(it: any): number {
-  const raw =
-    typeof it?.heightIncreaseCm === "number"
-      ? it.heightIncreaseCm
-      : typeof it?.height_increase_cm === "number"
-      ? it.height_increase_cm
-      : undefined;
-
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : 0;
-}
 
 export default function OrderConfirmationPage() {
   const [data, setData] = useState<Preview | null>(null);
@@ -96,7 +77,6 @@ export default function OrderConfirmationPage() {
 
   const { currency, totalMinor, address, deliveryMethod, payload } = data;
 
-  const items: any[] = Array.isArray(data.items) ? data.items : [];
 
   return (
     <main className="px-4 sm:px-6 lg:px-8 py-10">
@@ -153,59 +133,7 @@ export default function OrderConfirmationPage() {
           </section>
         </div>
 
-        {/* ✅ 新增：Items 列表（显示 Height increase） */}
-        {items.length > 0 && (
-          <section className="mt-6 rounded-xl border p-4">
-            <h2 className="font-medium mb-3">Items</h2>
-
-            <div className="space-y-3">
-              {items.map((it: any, idx: number) => {
-                const title = it?.title ?? it?.name ?? "Item";
-                const color = it?.color ?? "-";
-                const size = it?.size ?? "-";
-                const qty = Number(it?.qty) || 1;
-
-                // 价格：优先用 it.price（你 bag item 里是单价），否则尝试 minor / total
-                const unitPrice =
-                  typeof it?.price === "number"
-                    ? it.price
-                    : typeof it?.unitPrice === "number"
-                    ? it.unitPrice
-                    : 0;
-
-                const h = readHeightCm(it);
-
-                return (
-                  <div key={it?.key ?? `${idx}`} className="flex gap-3 rounded-xl border p-3">
-                    <div className="h-16 w-16 overflow-hidden rounded-lg bg-neutral-100 shrink-0">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      {it?.image ? (
-                        <img src={it.image} alt={title} className="h-full w-full object-cover" />
-                      ) : (
-                        <div className="h-full w-full" />
-                      )}
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      <div className="line-clamp-1 text-sm font-medium">{title}</div>
-
-                      <div className="mt-0.5 text-xs text-neutral-600">
-                        <span>Color: {color}</span>
-                        <span className="ml-3">Size: {size}</span>
-                        <span className="ml-3">Height: +{h} cm</span>
-                      </div>
-
-                      <div className="mt-2 flex items-center justify-between">
-                        <div className="text-sm font-semibold">{fmtMoney(unitPrice, currency)}</div>
-                        <div className="text-sm text-neutral-600">Qty: {qty}</div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        )}
+        
 
         {/* ⬇️ 这里只保留一个按钮，并把容器右对齐 */}
         <div className="mt-8 flex justify-end">

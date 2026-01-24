@@ -7,6 +7,7 @@ import { bag, type CartItem } from "@/components/bag/bag";
 
 type StockMap = Record<string, Record<string, number>>;
 type Stock3 = Record<string, Record<string, Record<number, number>>>;
+type Sku3 = Record<string, Record<string, Record<number, string | null>>>;
 type ImagesByColor = Record<string, string[]>;
 
 type Props = {
@@ -20,8 +21,12 @@ type Props = {
   // sizesSum：color+size 的汇总库存（用于 size 列表、兜底等）
   stockMap: StockMap;
 
-  // ✅ NEW：三维库存：color+size+height 的真实库存
+  // ✅ 三维库存：color+size+height 的真实库存
   stock3: Stock3;
+
+  // ✅ NEW：三维 SKU：color+size+height -> sku
+  // （如果你暂时没传也没关系，走 null）
+  sku3?: Sku3;
 
   fallbackColor?: string;
 
@@ -38,6 +43,7 @@ export default function AddToBagClient({
   imagesByColor,
   stockMap,
   stock3,
+  sku3,
   fallbackColor,
   heightIncreaseCm,
 }: Props) {
@@ -59,22 +65,19 @@ export default function AddToBagClient({
     return Number.isFinite(n) ? n : undefined;
   }, [sp]);
 
-  // ✅ 最终采用的 height：优先 URL，其次 props 兜底
-  // ✅ 允许 0（+0cm）
+  // ✅ 最终采用的 height：优先 URL，其次 props 兜底；默认 0
   const pickedHeight = useMemo(() => {
     const h =
       typeof heightFromUrl === "number" && Number.isFinite(heightFromUrl)
         ? heightFromUrl
         : typeof heightIncreaseCm === "number" && Number.isFinite(heightIncreaseCm)
         ? heightIncreaseCm
-        : 0; // 默认 0
+        : 0;
 
     return typeof h === "number" && Number.isFinite(h) ? h : 0;
   }, [heightFromUrl, heightIncreaseCm]);
 
   // ✅ 真实库存：优先三维库存（color+size+height）
-  // - 如果 height=0 你在 Strapi 也建了 0cm 变体，那这里会拿到 0cm 的真实库存
-  // - 如果某个组合不存在（例如该 size 没有 7cm），则返回 0（会禁用加购）
   const stockForCurrent = useMemo(() => {
     if (!currentColor || !currentSize) return 0;
 
@@ -87,6 +90,13 @@ export default function AddToBagClient({
     return stockMap[currentColor]?.[currentSize] ?? 0;
   }, [currentColor, currentSize, pickedHeight, stock3, stockMap]);
 
+  // ✅ NEW：当前变体 SKU（用于下单后扣库存）
+  const variantSku = useMemo(() => {
+    if (!currentColor || !currentSize) return null;
+    const sku = sku3?.[currentColor]?.[currentSize]?.[pickedHeight];
+    return typeof sku === "string" && sku.trim() ? sku.trim() : null;
+  }, [currentColor, currentSize, pickedHeight, sku3]);
+
   const preview = useMemo(() => {
     if (currentColor) return imagesByColor[currentColor]?.[0];
     const any = Object.values(imagesByColor)[0]?.[0];
@@ -95,17 +105,19 @@ export default function AddToBagClient({
 
   const unitPrice = salePrice ?? price ?? 0;
 
-  // ✅ 不再出现 “SELECT HEIGHT”
-  // ✅ disabled 只由 color/size/stock/price 决定（height 由 Height picker 控制，默认 0 也是合法）
-  const disabled =
-    !currentColor || !currentSize || stockForCurrent <= 0 || unitPrice <= 0;
+  // ✅ disabled：由 color/size/stock/price 决定
+  const disabled = !currentColor || !currentSize || stockForCurrent <= 0 || unitPrice <= 0;
 
   const onAdd = () => {
     if (disabled) return;
 
     const heightPart = String(pickedHeight);
 
-    const item: CartItem = {
+    // ✅ 关键：把 SKU 写入购物袋 item（后端 /orders 会用 product_sku 落库）
+    // 说明：
+    // - product_sku：沿用你 orders.ts 里写库字段名（product_sku）
+    // - variant_sku / variantSku：额外冗余，方便你前端/后端后续演进
+    const item = {
       key: `${slug}|${currentColor}|${currentSize}|${heightPart}`,
       slug,
       title,
@@ -116,14 +128,16 @@ export default function AddToBagClient({
       size: currentSize,
       qty: 1,
 
-      // ✅ 关键：写入真实库存（用于抽屉里 Max xx available + 禁用 + 递增上限）
       stock: stockForCurrent,
-
       image: preview,
 
-      // ✅ NEW: 存入购物袋
       heightIncreaseCm: pickedHeight,
-    };
+
+      // ✅ NEW
+      product_sku: variantSku, // 给 orders.ts 用（你现在 log 里这里是 null）
+      variant_sku: variantSku,
+      variantSku: variantSku,
+    } as unknown as CartItem;
 
     bag.add(item);
 
@@ -155,6 +169,11 @@ export default function AddToBagClient({
       >
         ADD TO BAG
       </button>
+
+      {/* 可选：调试用（不想显示就删掉这段） */}
+      {/* <div className="mt-2 text-xs text-neutral-500">
+        SKU: {variantSku ?? "—"}
+      </div> */}
     </div>
   );
 }
