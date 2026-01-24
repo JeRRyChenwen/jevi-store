@@ -1018,11 +1018,6 @@ checkout 页面的 payment 页面里的 All charges are processed in AUD. Your b
 
 本地开发和上线，localhost 要改
 
-如果你计划很快就写自己的 Admin（Next.js + shadcn/ui）：
-⛔ 可以先别上 Strapi return，直接在 D1 + Worker 做一个简单 /admin/returns 页面即可
-
-admin 平台输入密码
-
 下一步如果你愿意，我们可以很自然地继续做三件事之一（你随便选）：
 
 ① 把 Approve / Reject 真正接成 PATCH API
@@ -1050,8 +1045,6 @@ refund_id 存表
 Return approve → 自动退款 / Stripe / PayPal
 
 Admin Dashboard 指标（今天订单 / 退款额）
-
-怎么好像购买的物品，instock 的数量有问题，不会减少
 
 ==============================================================================
 

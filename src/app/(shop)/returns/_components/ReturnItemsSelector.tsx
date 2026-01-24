@@ -36,28 +36,88 @@ export function formatMoney(minor: number, currency: string | null | undefined) 
   }).format(major);
 }
 
+/**
+ * 解析 variant_title：
+ * 兼容两类格式：
+ * 1) "color / size"
+ * 2) "Color: xxx | Size: yyy | Height: +3 cm | xxx | yyy"
+ *
+ * 目标：把 color/size/height 抽出来，并避免重复显示（删掉尾部重复的 "xxx | yyy"）
+ */
 function parseVariantTitle(variantTitle?: string | null) {
-  const raw = String(variantTitle ?? "").trim();
-  if (!raw) {
-    return { color: null as string | null, size: null as string | null, raw: "" };
+  const raw0 = String(variantTitle ?? "").trim();
+  if (!raw0) {
+    return {
+      color: null as string | null,
+      size: null as string | null,
+      heightCm: null as number | null,
+      raw: "",
+    };
   }
 
-  // 兼容 "color / size"
-  const parts = raw
+  // ---------- (A) 新格式：包含 "Color:" / "Size:" / "Height:" ----------
+  // 例： "Color: chocolate | Size: 40 | Height: +3 cm | chocolate | 40"
+  if (/color\s*:/i.test(raw0) || /size\s*:/i.test(raw0) || /height\s*:/i.test(raw0)) {
+    const parts = raw0
+      .split("|")
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    let color: string | null = null;
+    let size: string | null = null;
+    let heightCm: number | null = null;
+
+    for (const p of parts) {
+      const mColor = p.match(/^color\s*:\s*(.+)$/i);
+      if (mColor && mColor[1]) {
+        color = mColor[1].trim();
+        continue;
+      }
+
+      const mSize = p.match(/^size\s*:\s*(.+)$/i);
+      if (mSize && mSize[1]) {
+        size = mSize[1].trim();
+        continue;
+      }
+
+      // Height: +3 cm / Height: 3cm / Height: 0 cm
+      const mHeight = p.match(/^height\s*:\s*\+?\s*([0-9]+(?:\.[0-9]+)?)\s*cm$/i);
+      if (mHeight && mHeight[1]) {
+        const n = Number(mHeight[1]);
+        heightCm = Number.isFinite(n) ? n : null;
+        continue;
+      }
+    }
+
+    // 组装一个“去重后的 raw”兜底：
+    // - 如果抽到了 color/size/height，就不再把整段 raw0 原样显示（避免 "chocolate | 40" 重复）
+    // - 仅当完全抽不到时，才回 raw0
+    const hasAny = !!(color || size || heightCm != null);
+    return {
+      color,
+      size,
+      heightCm,
+      raw: hasAny ? "" : raw0,
+    };
+  }
+
+  // ---------- (B) 旧格式： "color / size" ----------
+  const partsSlash = raw0
     .split("/")
     .map((s) => s.trim())
     .filter(Boolean);
 
-  if (parts.length >= 2) {
+  if (partsSlash.length >= 2) {
     return {
-      color: parts[0] ?? null,
-      size: parts[1] ?? null,
-      raw,
+      color: partsSlash[0] ?? null,
+      size: partsSlash[1] ?? null,
+      heightCm: null,
+      raw: raw0,
     };
   }
 
-  // 只有一个字段，不强行判断是颜色还是尺码，留给兜底显示 raw
-  return { color: null, size: null, raw };
+  // ---------- (C) 其它：不强行判断 ----------
+  return { color: null, size: null, heightCm: null, raw: raw0 };
 }
 
 export default function ReturnItemsSelector({
@@ -175,7 +235,7 @@ export default function ReturnItemsSelector({
                   </div>
 
                   {(() => {
-                    const { color, size, raw } = parseVariantTitle(item.variant_title);
+                    const { color, size, heightCm, raw } = parseVariantTitle(item.variant_title);
 
                     return (
                       <>
@@ -193,7 +253,17 @@ export default function ReturnItemsSelector({
                           </div>
                         )}
 
-                        {!color && !size && raw && (
+                        {/* ✅ NEW: Height 单独显示（避免和 variant_title 重复拼接） */}
+                        {heightCm != null && (
+                          <div className="text-xs text-neutral-500 mt-0.5">
+                            Height:{" "}
+                            <span className="text-neutral-900 font-medium">
+                              +{heightCm} cm
+                            </span>
+                          </div>
+                        )}
+
+                        {!color && !size && heightCm == null && raw && (
                           <div className="text-xs text-neutral-500 mt-0.5">{raw}</div>
                         )}
                       </>
