@@ -1073,6 +1073,11 @@ similar product , produtc you may also interest
 
 网页下面的邮箱，privacy 条款
 
+下面各种支持的位置在不同页面不一样
+
+结账成功后多了些内容出来
+We’ve emailed your receipt and order details.
+
 ==============================================================================
 千万不要修改我原本的代码里的任何逻辑和语法，和原本的代码内容，千万不要做修改
 
