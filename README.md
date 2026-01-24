@@ -998,8 +998,6 @@ add to bag 字体
 
 profile 页面修改 email，可能需要进一步改进
 
-checkout 页面的 payment 页面里的 All charges are processed in AUD. Your bank or PayPal may apply currency conversion and fees. 需要改成动态变量
-
 ✅ 版本 1：退货申请系统
 
 用户可以对已完成的订单发起退货申请（选择哪些商品、数量、填写原因）。
@@ -1065,6 +1063,8 @@ similar product , produtc you may also interest
 网页下面的邮箱，privacy 条款
 
 delivery option
+
+checkout 页面的 payment 页面里的 All charges are processed in AUD. Your bank or PayPal may apply currency conversion and fees. 需要改成动态变量
 
 ==============================================================================
 千万不要修改我原本的代码里的任何逻辑和语法，和原本的代码内容，千万不要做修改
