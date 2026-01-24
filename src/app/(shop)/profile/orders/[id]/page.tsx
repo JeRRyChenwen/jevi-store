@@ -13,6 +13,7 @@ type OrderItem = {
   currency: string | null;
   unit_price_minor: number;
   line_total_minor: number;
+  height_increase_cm?: number | null;
 };
 
 type OrderDetail = {
@@ -110,8 +111,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
 
   // 小计与总计
   const itemsTotalMinor =
-    order.items_total_minor ??
-    items.reduce((sum, it) => sum + (it.line_total_minor || 0), 0);
+    order.items_total_minor ?? items.reduce((sum, it) => sum + (it.line_total_minor || 0), 0);
   const deliveryFeeMinor = order.delivery_fee_minor ?? 0;
   const discountMinor = order.discount_minor ?? 0;
   const taxMinor = order.tax_minor ?? 0;
@@ -128,9 +128,13 @@ export default async function OrderDetailPage({ params }: PageProps) {
     <main className="px-4 md:px-8 py-8 max-w-3xl mx-auto">
       {/* ✅ 面包屑：Home › Profile › My Orders - [订单号] */}
       <nav className="mb-4 text-sm text-neutral-600" aria-label="Breadcrumb">
-        <Link href="/" className="hover:underline">Home</Link>
+        <Link href="/" className="hover:underline">
+          Home
+        </Link>
         <span className="mx-2 text-neutral-400">›</span>
-        <Link href="/profile" className="hover:underline">Profile</Link>
+        <Link href="/profile" className="hover:underline">
+          Profile
+        </Link>
         <span className="mx-2 text-neutral-400">›</span>
         <span className="text-neutral-900">My Orders - {displayNo}</span>
       </nav>
@@ -166,32 +170,57 @@ export default async function OrderDetailPage({ params }: PageProps) {
       {/* 商品明细 */}
       <section className="mb-6 rounded-lg border bg-white px-4 py-3 text-sm">
         <h2 className="font-medium mb-3">Items</h2>
+
         {items.length === 0 ? (
           <div className="text-neutral-500 text-sm">No items found for this order.</div>
         ) : (
           <div className="space-y-3">
-            {items.map((it) => (
-              <div
-                key={it.id}
-                className="flex items-start justify-between border-t first:border-t-0 pt-3 first:pt-0"
-              >
-                <div className="pr-3">
-                  <div className="font-medium">{it.product_title || "Item"}</div>
-                  {it.variant_title && (
-                    <div className="text-xs text-neutral-500">{it.variant_title}</div>
-                  )}
-                  <div className="text-xs text-neutral-500 mt-1">Qty: {it.qty}</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-sm">
-                    {fmtCurrency(it.line_total_minor, it.currency || currency)}
+            {items.map((it) => {
+              const hNum =
+                typeof it.height_increase_cm === "number"
+                  ? it.height_increase_cm
+                  : null;
+
+              // ✅ 0 / 3 / 5 / 7 全部显示
+              const showHeight =
+                typeof hNum === "number" && Number.isFinite(hNum);
+
+              const showMeta = Boolean(it.variant_title) || showHeight;
+
+              return (
+                <div
+                  key={it.id}
+                  className="flex items-start justify-between border-t first:border-t-0 pt-3 first:pt-0"
+                >
+                  <div className="pr-3">
+                    <div className="font-medium">{it.product_title || "Item"}</div>
+
+                    {showMeta ? (
+                      <div className="text-xs text-neutral-500">
+                        {it.variant_title ? <span>{it.variant_title}</span> : null}
+
+                        {showHeight ? (
+                          <>
+                            {it.variant_title ? <span className="mx-2">•</span> : null}
+                            <span>Height: +{hNum} cm</span>
+                          </>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    <div className="text-xs text-neutral-500 mt-1">Qty: {it.qty}</div>
                   </div>
-                  <div className="text-xs text-neutral-500">
-                    {fmtCurrency(it.unit_price_minor, it.currency || currency)}{" "}each
+
+                  <div className="text-right">
+                    <div className="text-sm">{fmtCurrency(it.line_total_minor, it.currency || currency)}</div>
+                    <div className="text-xs text-neutral-500">
+                      {fmtCurrency(it.unit_price_minor, it.currency || currency)}{" "}
+                      each
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>

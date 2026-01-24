@@ -222,7 +222,6 @@ async function sendOrderToServer(args: {
   try {
     const target = "/api/orders";
 
-    // 🔍 log：入口参数
     console.log("[orders] sendOrderToServer() args =", {
       cartCount: (args.cart || []).length,
       currency: args.currency,
@@ -241,6 +240,22 @@ async function sendOrderToServer(args: {
       const qty = Math.max(1, Number(it?.qty) || 1);
       const lineMinor = unitMinor * qty;
 
+      // ✅ HEIGHT PATCH（前端）：把 heightIncreaseCm 带进 items[]
+      // 兼容：it.heightIncreaseCm / it.heightIncrease / it.height / it.height_increase_cm
+      // 也兼容：it.attrs?.heightIncreaseCm / it.attrs?.heightIncrease
+      const hRaw =
+        it?.heightIncreaseCm ??
+        it?.heightIncrease ??
+        it?.height ??
+        it?.height_increase_cm ??
+        it?.attrs?.heightIncreaseCm ??
+        it?.attrs?.heightIncrease ??
+        it?.attrs?.height ??
+        0;
+
+      const hNum = Number(hRaw);
+      const heightIncreaseCm = Number.isFinite(hNum) ? hNum : 0;
+
       return {
         product_id: it?.id ?? null,
         product_sku: it?.sku ?? null,
@@ -253,12 +268,20 @@ async function sendOrderToServer(args: {
         line_total_minor: lineMinor,
         discount_minor: 0,
         tax_minor: 0,
+
+        // ✅ HEIGHT PATCH：顶层字段，方便后端直接读取
+        heightIncreaseCm, // 数字，0 也会发送
+
         snapshot: {
           slug: it?.slug ?? null,
           image: it?.image || it?.img || null,
           attrs: {
             color: it?.color ?? null,
             size: it?.size ?? null,
+
+            // ✅ HEIGHT PATCH：也写一份进 snapshot，方便以后扩展
+            heightIncreaseCm,
+
             ...(it?.attrs || {}),
           },
         },
@@ -281,7 +304,6 @@ async function sendOrderToServer(args: {
     let raw: any = pay || null;
 
     if (provider === "braintree") {
-      // 来自 BraintreeDropIn.onSucceeded 的对象
       provider_txn_id =
         pay?.provider_txn_id ||
         pay?.transactionId ||
@@ -295,7 +317,6 @@ async function sendOrderToServer(args: {
       card_last4 = pay?.cardLast4 ?? null;
       raw = pay?.raw ?? pay ?? null;
     } else {
-      // 兼容原来的 PayPal JS SDK 结果
       const cap =
         pay?.purchase_units?.[0]?.payments?.captures?.[0] ||
         pay?.transaction ||
@@ -311,7 +332,6 @@ async function sendOrderToServer(args: {
       raw = pay ?? null;
     }
 
-    // 🔍 log：归一化后的支付字段
     console.log("[orders] normalized payment fields =", {
       provider,
       provider_txn_id,
@@ -361,9 +381,8 @@ async function sendOrderToServer(args: {
       delivery_method: args.deliveryMethod ?? "standard",
       items,
 
-      // ⭐ 统一的 payment 结构（兼容 PayPal / Braintree）
       payment: {
-        provider, // "paypal" | "braintree"
+        provider,
         provider_txn_id,
         amount_minor: Number(args.grandMinor) || 0,
         currency: args.currency,
@@ -386,8 +405,8 @@ async function sendOrderToServer(args: {
       notes: null,
     };
 
-    // 🔍 log：真正发给 /api/orders 的 payment payload
     console.log("[orders] POST /api/orders body.payment =", body.payment);
+    console.log("[orders] POST /api/orders body.items[0] preview =", body.items?.[0]);
 
     const res = await fetch(target, {
       method: "POST",
@@ -408,7 +427,7 @@ async function sendOrderToServer(args: {
     }
 
     if (res.ok && data?.ok && data?.order && typeof data.order.id === "number") {
-      console.log("[orders] server created order =", data.order); // 🔍 log
+      console.log("[orders] server created order =", data.order);
       return {
         ok: true,
         order: {
@@ -479,7 +498,6 @@ export default function CheckoutPage() {
     handleSaveDefaultAddress,
   } = useAddress(isLoggedIn);
 
-  // ✅ 把 continueErrMsg 同步到统一 Alert（这样 Bag/Address 都能显示提示）
   useEffect(() => {
     if (continueErrMsg && continueErrMsg.trim()) {
       formAlert.error(continueErrMsg);
@@ -493,7 +511,6 @@ export default function CheckoutPage() {
     useState<DeliveryMethod>("standard");
   const [isPayProcessing, setIsPayProcessing] = useState(false);
 
-  // URL 步骤
   const initialStepFromURL = (() => {
     const s = searchParams.get("step");
     return isStepKey(s) ? (s as StepKey) : ("bag" as StepKey);
@@ -505,12 +522,9 @@ export default function CheckoutPage() {
     const p = new URLSearchParams(window.location.search);
     p.set("step", next);
     router.replace(`${pathname}?${p.toString()}`, { scroll: false });
-
-    // ✅ 切步时清掉 Continue 提示，避免“黏住”
     setContinueErrMsg(null);
   };
 
-  // 预连接 PayPal / Braintree 资源
   useEffect(() => {
     const hosts = [
       "https://www.paypal.com",
@@ -535,7 +549,6 @@ export default function CheckoutPage() {
     });
   }, []);
 
-  // 初始化：从 localStorage 填充 emailInput + 读取登录态 + 回填邮箱到 address
   useEffect(() => {
     try {
       const rawAddr = localStorage.getItem(LS_ADDRESS_KEY);
@@ -569,7 +582,6 @@ export default function CheckoutPage() {
     return () => window.removeEventListener("focus", readLoginFromCookie);
   }, [setAddress]);
 
-  // 统一用 AUD 计算与展示
   const {
     currency,
     itemsMinor,
@@ -599,7 +611,6 @@ export default function CheckoutPage() {
     );
   };
 
-  // ---------- 时区标记 ----------
   const clientTZ =
     (typeof Intl !== "undefined" &&
       Intl.DateTimeFormat().resolvedOptions().timeZone) ||
@@ -607,7 +618,6 @@ export default function CheckoutPage() {
   const clientUTCOffsetMin = -new Date().getTimezoneOffset();
   const FORCE_CN_TZ = "Asia/Shanghai";
 
-  // 订阅（未登录仍允许；已登录隐藏 Your Details 时基本不会触发）
   async function sendSubscriptionIfNeeded(emailRaw?: string) {
     try {
       const email = (emailRaw || address?.email || "").trim().toLowerCase();
@@ -655,9 +665,7 @@ export default function CheckoutPage() {
     } catch {}
   }
 
-  // 点击 Continue：Bag/Address 步骤统一做“提交时校验”
   const handleContinue = () => {
-    // ✅ 0) Bag 为空：禁止进入下一步 + 给提示
     if (step === "bag") {
       if (!hasItems || (cart?.length || 0) === 0) {
         setContinueErrMsg(
@@ -668,7 +676,6 @@ export default function CheckoutPage() {
       setContinueErrMsg(null);
     }
 
-    // ✅ 1) Address：原有逻辑保持不变（仍然写 continueErrMsg）
     if (step === "address") {
       const ignoreEmail = isLoggedIn || !!(address.email && address.email.trim());
       const deliveryRes = validateAddress(address, "", ignoreEmail);
@@ -699,16 +706,13 @@ export default function CheckoutPage() {
     nextStepCore();
   };
 
-  // 支付成功 → 落库 → 清空购物车 → 跳转确认页
   const handlePaySucceeded = async (payload?: any) => {
-    // 🔍 log：看看从 PaymentStep 传上来的是什么
     console.log("[checkout] handlePaySucceeded() payload =", payload);
 
     setIsPayProcessing(true);
     let orderId: number | null = null;
     let orderNumber: string | null = null;
 
-    // 若已登录但地址里没有邮箱，则用 /auth/me 的邮箱兜底
     let orderAddress = { ...address };
     if (
       (!orderAddress.email || !EMAIL_RE.test((orderAddress.email || "").trim())) &&
@@ -735,7 +739,7 @@ export default function CheckoutPage() {
           ? "braintree"
           : "paypal";
 
-      console.log("[checkout] determined provider for persist =", provider); // 🔍 log
+      console.log("[checkout] determined provider for persist =", provider);
 
       const persist = await sendOrderToServer({
         cart,
@@ -752,7 +756,7 @@ export default function CheckoutPage() {
         sameAsDelivery,
       });
 
-      console.log("[checkout] sendOrderToServer result =", persist); // 🔍 log
+      console.log("[checkout] sendOrderToServer result =", persist);
 
       if (persist.ok && persist.order) {
         orderId = persist.order.id ?? null;
@@ -790,7 +794,6 @@ export default function CheckoutPage() {
     void sendSubscriptionIfNeeded();
   };
 
-  // 登录 / 注册并继续
   const handleLoginAndContinue = () => {
     const next = "/checkout?step=address";
     router.push(`/auth/login?next=${encodeURIComponent(next)}`);
@@ -815,7 +818,6 @@ export default function CheckoutPage() {
         <CheckoutSteps step={step} onChange={setStepAndURL} />
 
         <div className="space-y-6">
-          {/* Bag */}
           {step === "bag" && (
             <BagStep
               cart={cart}
@@ -830,7 +832,6 @@ export default function CheckoutPage() {
             />
           )}
 
-          {/* Address */}
           {step === "address" && (
             <AddressStep
               isLoggedIn={isLoggedIn}
@@ -864,7 +865,6 @@ export default function CheckoutPage() {
             />
           )}
 
-          {/* Delivery */}
           {step === "delivery" && (
             <DeliveryStep
               deliveryMethod={deliveryMethod}
@@ -873,7 +873,6 @@ export default function CheckoutPage() {
             />
           )}
 
-          {/* Payment（始终挂载，由 PaymentStep 自己决定显示 / 隐藏） */}
           <PaymentStep
             visible={step === "payment"}
             amountInMajorUnit={amountInMajorUnit}
@@ -888,7 +887,6 @@ export default function CheckoutPage() {
             onPaySucceeded={handlePaySucceeded}
           />
 
-          {/* Back 按钮（只在 payment 步骤显示） */}
           {step === "payment" && (
             <div className="px-4 pb-4 pt-2 flex justify-end">
               <div className="w-[320px] max-w-full">
@@ -898,7 +896,6 @@ export default function CheckoutPage() {
           )}
         </div>
 
-        {/* 底部操作条 */}
         {step !== "payment" && (
           <>
             <div className="mt-6 flex justify-end">
@@ -933,7 +930,6 @@ export default function CheckoutPage() {
               )}
             </div>
 
-            {/* ✅ Bag / Address 步骤 Continue 按钮下方的提示：统一用 Alert */}
             {(step === "bag" || step === "address") &&
             formAlert.hasAlert &&
             formAlert.alert?.message ? (
