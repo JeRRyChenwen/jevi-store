@@ -4,7 +4,8 @@
 import React, { useState, useCallback, useMemo } from "react"; // ✅ NEW: useMemo
 import Image from "next/image";
 import { Check, AlertCircle } from "lucide-react";
-import BraintreeHostedFields from "./BraintreeHostedFields";
+// ✅ Card payment temporarily disabled (no processing permission / not needed now)
+// import BraintreeHostedFields from "./BraintreeHostedFields";
 import PayPalBigButton from "./PayPalBigButton";
 
 /* ========== 类型 ========== */
@@ -63,9 +64,12 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   onPayInitiated,
   onPaySucceeded,
 }) => {
+  // ✅ Card payment currently disabled: keep states for future re-enable if needed
   const [payFn, setPayFn] = useState<(() => void) | null>(null);
   const [canPay, setCanPay] = useState(false);
-  const [method, setMethod] = useState<"card" | "paypal">("card");
+
+  // ✅ IMPORTANT: default to PayPal (card hidden)
+  const [method, setMethod] = useState<"card" | "paypal">("paypal");
 
   // ✅ NEW: 在用户点击支付后，屏蔽“bag empty”等阻止提示，
   // 用于解决：支付成功后 clearCart() 造成的瞬间红条闪现
@@ -137,8 +141,9 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     // ✅ NEW: 一旦用户发起支付，就屏蔽阻止提示（避免后续 clearCart 闪红条）
     setSuppressBlockedHint(true);
 
-    // 这里只负责 Card 的支付；PayPal 走 PayPalBigButton 自己的流程
+    // ✅ Card payment currently disabled; PayPal goes its own flow.
     if (method === "card") {
+      // 如果未来恢复 card，这里逻辑依然可用
       onPayInitiated();
       payFn();
     }
@@ -212,46 +217,48 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                   Choose a way to pay
                 </h3>
 
-                {/* Card */}
-                <button
-                  type="button"
-                  onClick={() => setMethod("card")}
-                  className={[
-                    "w-full flex items-center justify-between rounded-md border px-3 py-3 text-sm text-left",
-                    method === "card"
-                      ? "border-neutral-900 bg-neutral-50"
-                      : "border-neutral-300 hover:bg-neutral-50",
-                  ].join(" ")}
-                >
-                  <span className="font-medium">Credit or Debit Card</span>
+                {/* ✅ Card payment temporarily disabled (hidden) */}
+                {false && (
+                  <button
+                    type="button"
+                    onClick={() => setMethod("card")}
+                    className={[
+                      "w-full flex items-center justify-between rounded-md border px-3 py-3 text-sm text-left",
+                      method === "card"
+                        ? "border-neutral-900 bg-neutral-50"
+                        : "border-neutral-300 hover:bg-neutral-50",
+                    ].join(" ")}
+                  >
+                    <span className="font-medium">Credit or Debit Card</span>
 
-                  {/* 右侧：Visa / Mastercard 官方 logo（统一尺寸） */}
-                  <div className="flex items-center gap-1">
-                    {/* Visa */}
-                    <span className="inline-flex items-center rounded-sm border border-neutral-300 bg-white px-1.5 py-0.5">
-                      <div className="relative h-6 w-14">
-                        <Image
-                          src="/cards/visa.svg"
-                          alt="Visa"
-                          fill
-                          className="object-contain"
-                        />
-                      </div>
-                    </span>
+                    {/* 右侧：Visa / Mastercard 官方 logo（统一尺寸） */}
+                    <div className="flex items-center gap-1">
+                      {/* Visa */}
+                      <span className="inline-flex items-center rounded-sm border border-neutral-300 bg-white px-1.5 py-0.5">
+                        <div className="relative h-6 w-14">
+                          <Image
+                            src="/cards/visa.svg"
+                            alt="Visa"
+                            fill
+                            className="object-contain"
+                          />
+                        </div>
+                      </span>
 
-                    {/* Mastercard */}
-                    <span className="inline-flex items-center rounded-sm border border-neutral-300 bg-white px-1.5 py-0.5">
-                      <div className="relative h-6 w-14">
-                        <Image
-                          src="/cards/mastercard.svg"
-                          alt="Mastercard"
-                          fill
-                          className="object-contain"
-                        />
-                      </div>
-                    </span>
-                  </div>
-                </button>
+                      {/* Mastercard */}
+                      <span className="inline-flex items-center rounded-sm border border-neutral-300 bg-white px-1.5 py-0.5">
+                        <div className="relative h-6 w-14">
+                          <Image
+                            src="/cards/mastercard.svg"
+                            alt="Mastercard"
+                            fill
+                            className="object-contain"
+                          />
+                        </div>
+                      </span>
+                    </div>
+                  </button>
+                )}
 
                 {/* PayPal */}
                 <button
@@ -282,43 +289,8 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
 
               {/* Card / PayPal 具体内容：固定占用剩余高度 */}
               <div className="mt-5 border-t pt-4 flex-1 flex flex-col">
-                {method === "card" ? (
-                  <>
-                    <div className="text-xs font-semibold text-neutral-700 mb-2">
-                      Pay with debit or credit card
-                    </div>
-                    <BraintreeHostedFields
-                      amount={amountInMajorUnit}
-                      currency={safeCurrency}
-                      onInitiate={() => {
-                        // Card 支付在点击“Pay now”时才真正触发，这里可以留空或者做预处理
-                      }}
-                      onExposePay={handleExposePay}
-                      onCanPayChange={handleCanPayChange}
-                      onSucceeded={(r) => {
-                        const anyR = r as any;
-
-                        const txId = anyR?.transactionId || anyR?.id || null;
-
-                        const payload = {
-                          provider: "braintree" as const,
-                          paymentMethod: (anyR?.paymentMethod || "card") as
-                            | "card"
-                            | "paypal",
-                          provider_txn_id: txId,
-                          cardBrand: anyR?.cardBrand ?? anyR?.card_brand ?? null,
-                          cardLast4: anyR?.cardLast4 ?? anyR?.card_last4 ?? null,
-                          raw: r,
-                        };
-
-                        handlePaySucceeded(payload);
-                      }}
-                    />
-                  </>
-                ) : (
-                  // PayPal 选中时占位，保证高度不变
-                  <div className="flex-1" />
-                )}
+                {/* ✅ Card payment disabled: do not render hosted fields */}
+                <div className="flex-1" />
               </div>
             </div>
 
@@ -393,28 +365,25 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
               {visible && amountInMajorUnit > 0 && (
                 <div className="pt-0 flex justify-end">
                   <div className="w-[260px] max-w-full">
-                    {method === "paypal" ? (
-                      isPayProcessing ? (
-                        // ✅ PayPal 支付进行中：显示“Processing payment...”
-                        <button
-                          type="button"
-                          disabled
-                          className="w-full rounded-full px-6 py-3 text-sm font-semibold bg-[#FFC439] text-[#111827] opacity-70 cursor-not-allowed"
-                        >
-                          Processing payment...
-                        </button>
-                      ) : payBlockedReason ? (
-                        // ✅ 被阻止时：不给出 PayPal 真实按钮，避免误导
-                        <button
-                          type="button"
-                          disabled
-                          className="w-full rounded-full px-6 py-3 text-sm font-semibold bg-[#FFC439] text-[#111827] opacity-70 cursor-not-allowed"
-                        >
-                          PayPal unavailable
-                        </button>
-                      ) : (
-                        // ✅ 正常状态：显示真正的 PayPal 按钮
-                        <PayPalBigButton
+                    {/* ✅ Only keep PayPal branch */}
+                    {isPayProcessing ? (
+                      <button
+                        type="button"
+                        disabled
+                        className="w-full rounded-full px-6 py-3 text-sm font-semibold bg-[#FFC439] text-[#111827] opacity-70 cursor-not-allowed"
+                      >
+                        Processing payment...
+                      </button>
+                    ) : payBlockedReason ? (
+                      <button
+                        type="button"
+                        disabled
+                        className="w-full rounded-full px-6 py-3 text-sm font-semibold bg-[#FFC439] text-[#111827] opacity-70 cursor-not-allowed"
+                      >
+                        PayPal unavailable
+                      </button>
+                    ) : (
+                      <PayPalBigButton
                         amount={amountInMajorUnit}
                         currency={safeCurrency}
                         onInitiate={() => {
@@ -451,24 +420,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                           });
                         }}
                       />
-                      )
-                    ) : (
-                      // 💳 信用卡按钮逻辑保持不变（只是在 disabled 上加 payBlockedReason）
-                      <button
-                        type="button"
-                        disabled={
-                          !!payBlockedReason || !payFn || !canPay || isPayProcessing
-                        }
-                        onClick={handleClickPay}
-                        className={[
-                          "w-full rounded-full px-6 py-3 text-sm font-semibold",
-                          !!payBlockedReason || !payFn || !canPay || isPayProcessing
-                            ? "bg-neutral-200 text-neutral-500 cursor-not-allowed"
-                            : "bg-neutral-900 text-white hover:bg-neutral-800",
-                        ].join(" ")}
-                      >
-                        {isPayProcessing ? "Processing payment..." : "Pay now"}
-                      </button>
                     )}
                   </div>
                 </div>
