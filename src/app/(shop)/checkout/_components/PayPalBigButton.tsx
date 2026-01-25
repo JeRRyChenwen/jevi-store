@@ -73,9 +73,9 @@ export default function PayPalBigButton({
               } as any
             );
           }}
-          onApprove={async (_data, actions) => {
+          onApprove={async (data, actions) => {
             const details = await actions.order?.capture();
-            onSucceeded?.(details ?? _data);
+            onSucceeded?.({ details, data });
           }}
         />
       </div>

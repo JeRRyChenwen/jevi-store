@@ -415,30 +415,42 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                       ) : (
                         // ✅ 正常状态：显示真正的 PayPal 按钮
                         <PayPalBigButton
-                          amount={amountInMajorUnit}
-                          currency={safeCurrency}
-                          onInitiate={() => {
-                            // ✅ NEW: PayPal 发起支付也 suppress（避免清空购物车闪红条）
-                            setSuppressBlockedHint(true);
-                            onPayInitiated();
-                          }}
-                          onSucceeded={(details) => {
-                            // ✅ NEW: 成功后 suppress
-                            setSuppressBlockedHint(true);
+                        amount={amountInMajorUnit}
+                        currency={safeCurrency}
+                        onInitiate={() => {
+                          setSuppressBlockedHint(true);
+                          onPayInitiated();
+                        }}
+                        onSucceeded={(details) => {
+                          setSuppressBlockedHint(true);
 
-                            onPaySucceeded({
-                              provider: "paypal" as const,
-                              paymentMethod: "paypal" as const,
-                              provider_txn_id:
-                                (details as any)?.id ??
-                                (details as any)?.transactionId ??
-                                null,
-                              cardBrand: null,
-                              cardLast4: null,
-                              raw: details,
-                            });
-                          }}
-                        />
+                          const d: any = details?.details ?? details ?? null;
+
+                          // ✅ 核心：拿 capture_id（用于 /v2/payments/captures/{id}/refund）
+                          const captureId =
+                            d?.purchase_units?.[0]?.payments?.captures?.[0]?.id ??
+                            d?.purchase_units?.[0]?.payments?.captures?.[0]?.capture_id ??
+                            null;
+
+                          // ✅ 兜底：如果拿不到 captureId，就不要假装可退款
+                          if (!captureId) {
+                            console.warn("[paypal] missing capture id in details:", d);
+                          }
+
+                          onPaySucceeded({
+                            provider: "paypal" as const,
+
+                            // ✅ 不要用 paymentMethod 字段（你 page.tsx 会因为字段存在误判为 braintree）
+                            // paymentMethod: "paypal" as const,
+
+                            provider_txn_id: captureId, // ✅ 必须是 capture_id
+                            payment_method: "paypal" as const, // ✅ 用这个字段更安全（你后端也有 payment_method 列）
+                            cardBrand: null,
+                            cardLast4: null,
+                            raw: d,
+                          });
+                        }}
+                      />
                       )
                     ) : (
                       // 💳 信用卡按钮逻辑保持不变（只是在 disabled 上加 payBlockedReason）

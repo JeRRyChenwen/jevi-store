@@ -257,84 +257,103 @@ async function sendOrderToServer(args: {
       const heightIncreaseCm = Number.isFinite(hNum) ? hNum : 0;
 
       return {
-      // ✅ product_id 做一层兜底（购物车里一般没有 id）
-      product_id: it?.product_id ?? it?.id ?? null,
+        // ✅ product_id 做一层兜底（购物车里一般没有 id）
+        product_id: it?.product_id ?? it?.id ?? null,
 
-      // ✅ 关键修复：正确读取 Variant SKU（多来源兜底）
-      product_sku:
-        it?.product_sku ??
-        it?.variantSku ??
-        it?.variant_sku ??
-        it?.sku ??
-        null,
+        // ✅ 关键修复：正确读取 Variant SKU（多来源兜底）
+        product_sku:
+          it?.product_sku ??
+          it?.variantSku ??
+          it?.variant_sku ??
+          it?.sku ??
+          null,
 
-      product_title: String(it?.title || it?.name || "Item"),
+        product_title: String(it?.title || it?.name || "Item"),
 
-      // ✅ A方案关键：前端直接传 product_type
-      product_type:
-        it?.product_type ??
-        it?.productType ??
-        it?.type ??
-        it?.attrs?.product_type ??
-        it?.attrs?.productType ??
-        it?.attrs?.type ??
-        "other",
+        // ✅ A方案关键：前端直接传 product_type
+        product_type:
+          it?.product_type ??
+          it?.productType ??
+          it?.type ??
+          it?.attrs?.product_type ??
+          it?.attrs?.productType ??
+          it?.attrs?.type ??
+          "other",
 
-      // ✅ A方案关键：结构化 options（用于后端写 variant_options_json）
-      options: {
-        color: it?.color ?? it?.attrs?.color ?? null,
-        size: it?.size ?? it?.attrs?.size ?? null,
-        height_cm:
-          it?.height_cm ??
-          it?.height_increase_cm ??
-          it?.heightIncreaseCm ??
-          it?.heightIncrease ??
-          it?.height ??
-          it?.attrs?.height_cm ??
-          it?.attrs?.height_increase_cm ??
-          it?.attrs?.heightIncreaseCm ??
-          it?.attrs?.heightIncrease ??
-          it?.attrs?.height ??
-          heightIncreaseCm, // ✅ 最终兜底
-      },
-
-      // ✅ 展示用（后端会 normalize）
-      variant_title:
-        it?.variant ||
-        [it?.color, it?.size].filter(Boolean).join(" / ") ||
-        null,
-
-      qty,
-      currency: args.currency,
-      unit_price_minor: unitMinor,
-      line_total_minor: lineMinor,
-      discount_minor: 0,
-      tax_minor: 0,
-
-      // ✅ 仍然保留顶层 heightIncreaseCm（兼容旧逻辑）
-      heightIncreaseCm,
-
-      snapshot: {
-        slug: it?.slug ?? null,
-        image: it?.image || it?.img || null,
-        attrs: {
-          color: it?.color ?? null,
-          size: it?.size ?? null,
-          heightIncreaseCm,
-          ...(it?.attrs || {}),
+        // ✅ A方案关键：结构化 options（用于后端写 variant_options_json）
+        options: {
+          color: it?.color ?? it?.attrs?.color ?? null,
+          size: it?.size ?? it?.attrs?.size ?? null,
+          height_cm:
+            it?.height_cm ??
+            it?.height_increase_cm ??
+            it?.heightIncreaseCm ??
+            it?.heightIncrease ??
+            it?.height ??
+            it?.attrs?.height_cm ??
+            it?.attrs?.height_increase_cm ??
+            it?.attrs?.heightIncreaseCm ??
+            it?.attrs?.heightIncrease ??
+            it?.attrs?.height ??
+            heightIncreaseCm, // ✅ 最终兜底
         },
-      },
-    };
+
+        // ✅ 展示用（后端会 normalize）
+        variant_title:
+          it?.variant ||
+          [it?.color, it?.size].filter(Boolean).join(" / ") ||
+          null,
+
+        qty,
+        currency: args.currency,
+        unit_price_minor: unitMinor,
+        line_total_minor: lineMinor,
+        discount_minor: 0,
+        tax_minor: 0,
+
+        // ✅ 仍然保留顶层 heightIncreaseCm（兼容旧逻辑）
+        heightIncreaseCm,
+
+        snapshot: {
+          slug: it?.slug ?? null,
+          image: it?.image || it?.img || null,
+          attrs: {
+            color: it?.color ?? null,
+            size: it?.size ?? null,
+            heightIncreaseCm,
+            ...(it?.attrs || {}),
+          },
+        },
+      };
     });
 
     // ② 识别支付提供方 & 提取交易号 + 卡信息
     const pay = args.payment || null;
 
+    // ✅ 优先使用显式 hint（PaymentStep 会传 paymentProvider；payload 也可能带 provider）
+    const hinted =
+      args.paymentProvider === "paypal" || args.paymentProvider === "braintree"
+        ? args.paymentProvider
+        : pay?.provider === "paypal" || pay?.provider === "braintree"
+          ? (pay.provider as "paypal" | "braintree")
+          : null;
+
+    // ✅ 只有出现“明确 braintree/card 特征”时，才判定为 braintree（避免 PayPal 被误判）
+    const isBraintree =
+      pay?.provider === "braintree" ||
+      !!pay?.transactionId ||
+      !!pay?.txnId ||
+      !!pay?.cardBrand ||
+      !!pay?.cardLast4 ||
+      pay?.payment_method === "card" ||
+      pay?.paymentMethod === "card";
+
     const provider: "paypal" | "braintree" =
-      args.paymentProvider ||
-      (pay && (pay.paymentMethod || pay.cardBrand || pay.cardLast4 || pay.provider === "braintree")
-        ? "braintree"
-        : "paypal");
+      hinted === "paypal" || hinted === "braintree"
+        ? hinted
+        : isBraintree
+          ? "braintree"
+          : "paypal";
 
     let provider_txn_id: string | null = null;
     let payment_method: string | null = null;
@@ -346,12 +365,14 @@ async function sendOrderToServer(args: {
       provider_txn_id =
         pay?.provider_txn_id ||
         pay?.transactionId ||
-        pay?.id ||
         pay?.txnId ||
+        pay?.id ||
         null;
+
+      // ✅ 统一：只认 card，否则算 paypal（braintree 也可能走 paypal 账户）
       payment_method =
-        pay?.paymentMethod ||
-        (pay?.cardBrand || pay?.cardLast4 ? "card" : "paypal");
+        (pay?.payment_method || pay?.paymentMethod) === "card" ? "card" : "paypal";
+
       card_brand = pay?.cardBrand ?? null;
       card_last4 = pay?.cardLast4 ?? null;
       raw = pay?.raw ?? pay ?? null;
@@ -360,15 +381,20 @@ async function sendOrderToServer(args: {
         pay?.purchase_units?.[0]?.payments?.captures?.[0] ||
         pay?.transaction ||
         null;
+
+      // ✅ PayPal：优先 capture_id；允许 PaymentStep 直接塞 provider_txn_id（capture_id）
       provider_txn_id =
         cap?.id ||
+        pay?.provider_txn_id ||
+        pay?.paypalCaptureId ||
         pay?.id ||
         pay?.paypalTransactionId ||
         null;
+
       payment_method = "paypal";
       card_brand = null;
       card_last4 = null;
-      raw = pay ?? null;
+      raw = pay?.raw ?? pay ?? null;
     }
 
     console.log("[orders] normalized payment fields =", {
@@ -546,8 +572,7 @@ export default function CheckoutPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [continueErrMsg]);
 
-  const [deliveryMethod, setDeliveryMethod] =
-    useState<DeliveryMethod>("standard");
+  const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>("standard");
   const [isPayProcessing, setIsPayProcessing] = useState(false);
 
   const initialStepFromURL = (() => {
@@ -631,29 +656,17 @@ export default function CheckoutPage() {
     totalMinor,
     totalMajor,
     amountInMajorUnit,
-  } = usePricing(
-    cart,
-    hasItems,
-    DISPLAY_CURRENCY,
-    DELIVERY_FREE_THRESHOLD,
-    DELIVERY_FLAT
-  );
+  } = usePricing(cart, hasItems, DISPLAY_CURRENCY, DELIVERY_FREE_THRESHOLD, DELIVERY_FLAT);
 
   const nextStepCore = () => {
-    setStepAndURL(
-      step === "bag" ? "address" : step === "address" ? "delivery" : "payment"
-    );
+    setStepAndURL(step === "bag" ? "address" : step === "address" ? "delivery" : "payment");
   };
   const prevStep = () => {
-    setStepAndURL(
-      step === "payment" ? "delivery" : step === "delivery" ? "address" : "bag"
-    );
+    setStepAndURL(step === "payment" ? "delivery" : step === "delivery" ? "address" : "bag");
   };
 
   const clientTZ =
-    (typeof Intl !== "undefined" &&
-      Intl.DateTimeFormat().resolvedOptions().timeZone) ||
-    "UTC";
+    (typeof Intl !== "undefined" && Intl.DateTimeFormat().resolvedOptions().timeZone) || "UTC";
   const clientUTCOffsetMin = -new Date().getTimezoneOffset();
   const FORCE_CN_TZ = "Asia/Shanghai";
 
@@ -688,8 +701,7 @@ export default function CheckoutPage() {
         if (ok) return;
       }
       const okLocal =
-        typeof navigator !== "undefined" &&
-        navigator.sendBeacon?.(apiURL("/subscribe"), jsonBlob);
+        typeof navigator !== "undefined" && navigator.sendBeacon?.(apiURL("/subscribe"), jsonBlob);
       if (okLocal) return;
 
       setTimeout(() => {
@@ -707,9 +719,7 @@ export default function CheckoutPage() {
   const handleContinue = () => {
     if (step === "bag") {
       if (!hasItems || (cart?.length || 0) === 0) {
-        setContinueErrMsg(
-          "Your bag is empty. Please add at least one item before continuing."
-        );
+        setContinueErrMsg("Your bag is empty. Please add at least one item before continuing.");
         return;
       }
       setContinueErrMsg(null);
@@ -718,9 +728,7 @@ export default function CheckoutPage() {
     if (step === "address") {
       const ignoreEmail = isLoggedIn || !!(address.email && address.email.trim());
       const deliveryRes = validateAddress(address, "", ignoreEmail);
-      const billingRes = sameAsDelivery
-        ? { valid: true, errs: emptyErr }
-        : validateAddress(billingAddress, "", true);
+      const billingRes = sameAsDelivery ? { valid: true, errs: emptyErr } : validateAddress(billingAddress, "", true);
 
       setAddressErrs(deliveryRes.errs);
       setBillingErrs(billingRes.errs);
@@ -753,10 +761,7 @@ export default function CheckoutPage() {
     let orderNumber: string | null = null;
 
     let orderAddress = { ...address };
-    if (
-      (!orderAddress.email || !EMAIL_RE.test((orderAddress.email || "").trim())) &&
-      isLoggedIn
-    ) {
+    if ((!orderAddress.email || !EMAIL_RE.test((orderAddress.email || "").trim())) && isLoggedIn) {
       const authedEmail = await fetchAuthedEmail();
       if (authedEmail) {
         orderAddress.email = authedEmail;
@@ -769,14 +774,27 @@ export default function CheckoutPage() {
     }
 
     try {
+      // ✅ 只在明确 card/braintree 特征时才算 braintree（避免 PayPal payload 误判）
+      const hinted =
+        payload?.provider === "paypal" || payload?.provider === "braintree"
+          ? (payload.provider as "paypal" | "braintree")
+          : null;
+
+      const isBraintree =
+        payload?.provider === "braintree" ||
+        !!payload?.transactionId ||
+        !!payload?.txnId ||
+        !!payload?.cardBrand ||
+        !!payload?.cardLast4 ||
+        payload?.payment_method === "card" ||
+        payload?.paymentMethod === "card";
+
       const provider: "paypal" | "braintree" =
-        payload &&
-        (payload.paymentMethod ||
-          payload.cardBrand ||
-          payload.cardLast4 ||
-          payload.provider === "braintree")
-          ? "braintree"
-          : "paypal";
+        hinted === "paypal" || hinted === "braintree"
+          ? hinted
+          : isBraintree
+            ? "braintree"
+            : "paypal";
 
       console.log("[checkout] determined provider for persist =", provider);
 
@@ -970,19 +988,11 @@ export default function CheckoutPage() {
             </div>
 
             {(step === "bag" || step === "address") &&
-            formAlert.hasAlert &&
-            formAlert.alert?.message ? (
+              formAlert.hasAlert &&
+              formAlert.alert?.message ? (
               <div className="mt-2 flex justify-end">
-                <div
-                  className={
-                    step === "bag"
-                      ? "w-[320px] max-w-full"
-                      : "w-[660px] max-w-full"
-                  }
-                >
-                  <Alert variant={alertVariant as any}>
-                    {formAlert.alert.message}
-                  </Alert>
+                <div className={step === "bag" ? "w-[320px] max-w-full" : "w-[660px] max-w-full"}>
+                  <Alert variant={alertVariant as any}>{formAlert.alert.message}</Alert>
                 </div>
               </div>
             ) : null}
