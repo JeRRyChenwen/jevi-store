@@ -1052,69 +1052,6 @@ Admin Dashboard 指标（今天订单 / 退款额）
 
 为什么一定要这样做：因为现实中会出现重复点击、网络重试、并发提交，如果你没有幂等和退款流水表，就会有“重复退款 / 退款成功但DB没记录”这类高风险问题。
 
-目标状态机（建议）
-
-returns.status：
-
-pending → approved →（自动执行退款成功）→ refunded
-
-退款失败：仍可保持 approved，但必须有 refund_status='failed' 让后台可见并可重试
-
-3. 必做的数据库改造（D1 migration）
-
-你当前 returns 表没有 approved_amount / refund 状态字段，也没有 refunds 流水表。建议你做两层：
-
-3.1 returns 表新增字段（便于 Admin 页面直接展示）
-
-建议新增（最少字段集合）：
-
-approved_amount_minor INTEGER
-
-refund_status TEXT：none | pending | succeeded | failed
-
-refunded_amount_minor INTEGER
-
-refunded_at_ts INTEGER
-
-refunded_by TEXT
-
-refund_error TEXT
-
-3.2 新增 refunds 表（强烈推荐，解决幂等与审计）
-
-新增 refunds（一笔 return 一笔退款，未来可扩展分次退）：
-
-id INTEGER PRIMARY KEY AUTOINCREMENT
-
-return_id INTEGER NOT NULL UNIQUE
-
-order_id INTEGER NOT NULL
-
-provider TEXT NOT NULL
-
-provider_txn_id TEXT NOT NULL
-
-currency TEXT NOT NULL
-
-amount_minor INTEGER NOT NULL
-
-status TEXT NOT NULL：pending | succeeded | failed
-
-idempotency_key TEXT NOT NULL UNIQUE
-
-provider_refund_id TEXT
-
-raw TEXT
-
-failure_reason TEXT
-
-created_at_ts INTEGER DEFAULT (strftime('%s','now'))
-
-updated_at_ts INTEGER DEFAULT (strftime('%s','now'))
-
-关键点：idempotency_key UNIQUE
-你可以用：returnId + provider + provider_txn_id + amount_minor 生成一个稳定 key。这样重复点 approve 不会重复退款。
-
 ==============================================================================
 
 专业电商风格
