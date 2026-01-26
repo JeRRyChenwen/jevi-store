@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import type { CSSProperties } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 
 import Pagination from "@/components/pagination/Pagination";
 import FilterDrawer from "./_components/FilterDrawer";
@@ -48,6 +48,8 @@ export default function CategoryGridClient({
   displayCurrency = "AUD",
 }: Props) {
   const router = useRouter();
+  const pathname = usePathname();
+  const sp = useSearchParams();
 
   // === Refs：无障碍焦点管理 ===
   const triggerBtnRef = useRef<HTMLButtonElement | null>(null);
@@ -163,7 +165,7 @@ export default function CategoryGridClient({
   const pageCount = Math.max(1, Math.ceil(filteredTotal / pageSize));
   const page = Math.min(basePage, pageCount);
 
-  // ✅ 当筛选导致总数变少，URL page 超过最大页时，自动纠正到最后一页
+  // ✅ 当筛选导致总数变少，URL page 超过最大页时，自动纠正到最后一页（不使用 window）
   useEffect(() => {
     const raw = pageParam ?? "1";
     const requested = Number(raw);
@@ -171,10 +173,10 @@ export default function CategoryGridClient({
     if (!Number.isFinite(requested) || requested < 1) return;
     if (requested <= pageCount) return;
 
-    const u = new URL(window.location.href);
-    u.searchParams.set("page", String(pageCount));
-    router.replace(`/category/${slug}${u.search}`);
-  }, [pageParam, pageCount, router, slug]);
+    const next = new URLSearchParams(sp.toString());
+    next.set("page", String(pageCount));
+    router.replace(`${pathname}?${next.toString()}`);
+  }, [pageParam, pageCount, router, pathname, sp]);
 
   const start = (page - 1) * pageSize;
 
@@ -188,16 +190,20 @@ export default function CategoryGridClient({
     minHeight: fullPageHeightPx,
   };
 
-  const hrefForPage = useMemo(
-    () => (p: number) => {
-      const u = new URL(window.location.href);
-      u.searchParams.set("page", String(p));
-      return `/category/${slug}${u.search}`;
-    },
-    [slug]
-  );
+  // ✅ Pagination 的链接生成：不使用 window，保留现有 query，只替换 page
+  const hrefForPage = useMemo(() => {
+    const base = new URLSearchParams(sp.toString());
 
-  const resultLabel = `${filteredTotal} ${filteredTotal === 1 ? "result" : "results"}`;
+    return (p: number) => {
+      const next = new URLSearchParams(base.toString());
+      next.set("page", String(p));
+      return `${pathname}?${next.toString()}`;
+    };
+  }, [sp, pathname]);
+
+  const resultLabel = `${filteredTotal} ${
+    filteredTotal === 1 ? "result" : "results"
+  }`;
 
   // 统一关闭抽屉（焦点回退）
   const closeDrawer = () => {
@@ -271,7 +277,12 @@ export default function CategoryGridClient({
         salePriceLegacy={salePriceLegacy}
       />
 
-      <Pagination page={page} pageCount={pageCount} hrefForPage={hrefForPage} className="mb-10" />
+      <Pagination
+        page={page}
+        pageCount={pageCount}
+        hrefForPage={hrefForPage}
+        className="mb-10"
+      />
     </>
   );
 }
