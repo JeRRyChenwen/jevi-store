@@ -7,7 +7,7 @@ import SizeClient from "../_components/SizeClient";
 import AddToBagClient from "../_components/AddToBagClient";
 import HeightIncreaseClient from "../_components/HeightIncreaseClient";
 import { normalizeColorName, colorNameToCss } from "@/lib/colors";
-
+import { FieldMessage } from "@/components/ui/field-message";
 import { type PriceRec, pickCurrency } from "@/lib/pricing";
 
 /** Next.js 15: params / searchParams 是 Promise，需要 await */
@@ -18,6 +18,90 @@ type PageProps = {
 
 export const revalidate = 0;
 
+/** ----------------------------
+ * ProductMeta 小块（统一字体/间距/顺序）
+ * ---------------------------- */
+function MetaRow({
+  label,
+  value,
+  right,
+}: {
+  label: string;
+  value?: React.ReactNode;
+  right?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-sm">
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="text-neutral-500 font-medium">{label}</span>
+        {value ? <span className="text-neutral-400">·</span> : null}
+        {value ? (
+          <span className="text-neutral-900 font-semibold truncate">{value}</span>
+        ) : null}
+      </div>
+
+      {right ? <div className="shrink-0">{right}</div> : null}
+    </div>
+  );
+}
+
+function ProductMeta({
+  slug,
+  colorOptions,
+  currentColor,
+  sizeOptions,
+  currentSize,
+  shouldShowHeightPicker,
+  heightOptions,
+  validHeight,
+}: {
+  slug: string;
+  colorOptions: { name: string; css: string }[];
+  currentColor?: string;
+  sizeOptions: { value: string; stock: number }[];
+  currentSize?: string;
+  shouldShowHeightPicker: boolean;
+  heightOptions: { value: number; stock: number }[];
+  validHeight: number;
+}) {
+  return (
+    <div className="space-y-6">
+      {/* Colors */}
+      {colorOptions.length > 0 && (
+        <div className="space-y-2">
+          <MetaRow label="Colors" value={currentColor ?? undefined} />
+          <ColorDotsClient options={colorOptions} current={currentColor} slug={slug} />
+        </div>
+      )}
+
+      {/* Sizes */}
+      {sizeOptions.length > 0 && (
+        <div className="space-y-2">
+          <MetaRow label="Sizes" value={currentSize ?? undefined} />
+          <div className="origin-left scale-[1.10] md:scale-[1.14]">
+            <SizeClient options={sizeOptions} current={currentSize} slug={slug} />
+          </div>
+        </div>
+      )}
+
+      {/* Height increase */}
+      {shouldShowHeightPicker ? (
+        <div className="space-y-2">
+          <HeightIncreaseClient
+            options={heightOptions}
+            current={validHeight}
+            slug={slug}
+            paramKey="height"
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** ----------------------------
+ * 原有逻辑（保持不变）
+ * ---------------------------- */
 function normalizeColor(s: any) {
   return normalizeColorName(s);
 }
@@ -235,7 +319,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     `&populate[variants][fields][1]=size` +
     `&populate[variants][fields][2]=stock` +
     `&populate[variants][fields][3]=height_increase_cm` +
-    `&populate[variants][fields][4]=sku` + // ✅ NEW: 取 variant sku
+    `&populate[variants][fields][4]=sku` +
     `&populate[prices]=*` +
     `&publicationState=live`;
 
@@ -370,19 +454,18 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   }));
 
   // ---- height selection (ALWAYS SHOW) ----
-  // URL height：默认 0（None）
-  const heightParamRaw = Array.isArray((sp as any).height) ? (sp as any).height[0] : (sp as any).height;
+  const heightParamRaw = Array.isArray((sp as any).height)
+    ? (sp as any).height[0]
+    : (sp as any).height;
   const parsedHeight = Number(heightParamRaw);
-  const heightFromUrl = Number.isFinite(parsedHeight) ? parsedHeight : 0; // ✅ default 0
+  const heightFromUrl = Number.isFinite(parsedHeight) ? parsedHeight : 0;
 
-  // 当前颜色下的“全局可选高度”（跨所有 size 汇总）——保证未选 size 也能点
   const heightsAllForColor = currentColor ? heightSum[currentColor] ?? {} : {};
   const realHeightsAll = Object.keys(heightsAllForColor)
     .map((k) => Number(k))
     .filter((v) => Number.isFinite(v) && v > 0)
     .sort((a, b) => a - b);
 
-  // 当已经选了 size：用该 size 下真实存在的 height 做“有效性校验”
   const heightsForCurrentSize =
     currentColor && currentSize ? stock3[currentColor]?.[currentSize] ?? {} : {};
 
@@ -391,7 +474,6 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     .filter((v) => Number.isFinite(v) && v > 0)
     .sort((a, b) => a - b);
 
-  // ✅ 已选 size 时：0cm 库存优先用 Strapi 的 height=0 variant
   const stockZeroForSize =
     currentColor && currentSize
       ? (stock3[currentColor]?.[currentSize]?.[0] ??
@@ -399,13 +481,10 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
           0)
       : 0;
 
-  // Height picker options：
-  // - 未选 size：用“当前颜色的 height 汇总库存”来做 stock，确保按钮可点
-  // - 已选 size：用“当前 size 的 height 库存”
   const heightOptions =
     currentColor && currentSize
       ? [
-          { value: 0, stock: stockZeroForSize }, // ✅ 这里改了：不再用 sizesSum 直接当 0cm
+          { value: 0, stock: stockZeroForSize },
           ...realHeightsForSize.map((h) => ({ value: h, stock: heightsForCurrentSize[h] ?? 0 })),
         ]
       : currentColor
@@ -415,9 +494,6 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
         ]
       : [{ value: 0, stock: 0 }];
 
-  // 当前有效 height：
-  // - 未选 size：只要在 options 里就算有效，否则回 0
-  // - 已选 size：必须该 size 下存在，否则回 0（避免下单选到不存在的组合）
   let validHeight = heightFromUrl;
   if (currentColor && currentSize) {
     if (validHeight !== 0 && !realHeightsForSize.includes(validHeight)) validHeight = 0;
@@ -425,18 +501,15 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     if (!heightOptions.some((o) => o.value === validHeight)) validHeight = 0;
   }
 
-  // 当前库存显示（右侧 “In stock” 那行用）
   const stockForCurrent =
     currentColor && currentSize
       ? validHeight === 0
         ? (stock3[currentColor]?.[currentSize]?.[0] ??
             sizesSum[currentColor]?.[currentSize] ??
-            0) // ✅ 这里也改了：0cm 优先用真实 0 variant
+            0)
         : stock3[currentColor]?.[currentSize]?.[validHeight] ?? 0
       : 0;
 
-  // 是否显示 height picker：
-  // ✅ 只要该颜色下存在 “>0 的 height 变体”，就一直显示（无论是否选 size）
   const shouldShowHeightPicker = Boolean(currentColor) && realHeightsAll.length > 0;
 
   return (
@@ -486,100 +559,89 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
           </div>
         </section>
 
+        {/* 右侧区域 */}
         <section className="order-3 lg:order-3 lg:pl-20 xl:pl-24 2xl:pl-20 lg:sticky lg:top-12 self-start overflow-x-clip">
-          <div className="space-y-5 px-1 sm:px-2">
-            <h2 className="text-2xl font-bold leading-tight">{title}</h2>
+          <div className="px-1 sm:px-2">
+            {/* Header: Title + rating + pricing */}
+            <div className="space-y-3">
+              <h2 className="text-2xl font-bold leading-snug tracking-tight">{title}</h2>
 
-            {saleActive ? (
-              <div className="space-y-2">
-                {discount ? (
-                  <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 text-xs font-semibold px-2 py-1">
-                    {discount}% OFF
-                  </span>
-                ) : null}
-                <div className="text-sm text-neutral-500 line-through">
-                  {formatPriceVal(price, currency)}
-                </div>
-                <div className="text-xl font-semibold text-emerald-700">
-                  {formatPriceVal(salePrice, currency)}
-                </div>
+              <div className="text-neutral-800">
+                <Stars value={rating} />
               </div>
-            ) : (
-              <div className="text-xl font-semibold">{formatPriceVal(price, currency)}</div>
-            )}
 
-            {colorOptions.length > 0 && (
-              <div className="space-y-2">
-                <div className="text-sm text-neutral-600 flex items-center gap-2">
-                  Colors
-                  {currentColor && <span className="text-neutral-800 font-medium">{currentColor}</span>}
+              {saleActive ? (
+                <div className="space-y-2">
+                  {discount ? (
+                    <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 text-xs font-semibold px-2 py-1 w-fit">
+                      {discount}% OFF
+                    </span>
+                  ) : null}
+
+                  <div className="flex items-baseline gap-3">
+                    <div className="text-sm text-neutral-500 line-through">
+                      {formatPriceVal(price, currency)}
+                    </div>
+                    <div className="text-xl font-semibold text-emerald-700">
+                      {formatPriceVal(salePrice, currency)}
+                    </div>
+                  </div>
                 </div>
-                <ColorDotsClient options={colorOptions} current={currentColor} slug={slug} />
-              </div>
-            )}
-
-            <div className="text-neutral-800">
-              <Stars value={rating} />
+              ) : (
+                <div className="text-xl font-semibold">{formatPriceVal(price, currency)}</div>
+              )}
             </div>
 
-            {sizeOptions.length > 0 && (
-              <div className="space-y-2">
-                <div className="text-base md:text-lg text-neutral-700 flex items-center gap-2">
-                  Sizes
-                  {currentSize && (
-                    <span className="text-neutral-900 font-semibold text-base md:text-lg">
-                      {currentSize}
-                    </span>
-                  )}
-                </div>
+            <div className="my-6 h-px bg-neutral-200" />
 
-                <div className="origin-left scale-[1.12] md:scale-[1.18]">
-                  <SizeClient options={sizeOptions} current={currentSize} slug={slug} />
-                </div>
-
-                <div className="mt-1 text-sm md:text-base">
-                  {currentSize ? (
-                    stockForCurrent > 0 ? (
-                      <span className="text-neutral-600">
-                        In stock:{" "}
-                        <span className="font-semibold text-neutral-900">{stockForCurrent}</span>
-                      </span>
-                    ) : (
-                      <span className="text-rose-600">Out of stock</span>
-                    )
-                  ) : (
-                    <span className="text-neutral-600">Please select a size</span>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* ✅ Height picker：永远独立显示（只要该颜色有 height>0 的 variants） */}
-            {shouldShowHeightPicker ? (
-              <HeightIncreaseClient
-                options={heightOptions}
-                current={validHeight}
-                slug={slug}
-                paramKey="height"
-              />
-            ) : null}
-
-            {/* ✅ ADD TO BAG：永远是 Add to Bag（禁用只取决于 size/stock 等） */}
-            <AddToBagClient
+            {/* ✅ ProductMeta 小块：统一文本风格 + 统一结构 */}
+            <ProductMeta
               slug={slug}
-              title={title}
-              price={price ?? null}
-              salePrice={saleActive ? (salePrice ?? null) : null}
-              currency={currency}
-              imagesByColor={byColor}
-              stockMap={sizesSum}
-              fallbackColor={currentColor}
-              heightIncreaseCm={validHeight}
-              stock3={stock3}
-              // ✅ NEW: 把 sku3 也传下去，下一步在 AddToBagClient 写入 bag item
-              // 如果 AddToBagClient 暂时还没加 sku3 prop，这里用 ts-expect-error 先压住类型报错
-              sku3={sku3}
+              colorOptions={colorOptions}
+              currentColor={currentColor}
+              sizeOptions={sizeOptions}
+              currentSize={currentSize}
+              shouldShowHeightPicker={shouldShowHeightPicker}
+              heightOptions={heightOptions}
+              validHeight={validHeight}
             />
+
+            {/* Stock status + CTA group */}
+            <div className="mt-6 space-y-3">
+              <div className="rounded-lg border bg-neutral-50 px-3 py-2">
+                {currentSize ? (
+                  stockForCurrent > 0 ? (
+                    <div className="flex items-center justify-between gap-3">
+                      <FieldMessage variant="muted">Availability</FieldMessage>
+                      <div className="text-sm text-neutral-700">
+                        In stock:{" "}
+                        <span className="font-semibold text-neutral-900">
+                          {stockForCurrent}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <FieldMessage variant="error">Out of stock</FieldMessage>
+                  )
+                ) : (
+                  <FieldMessage variant="muted">Please select a size</FieldMessage>
+                )}
+              </div>
+
+              <AddToBagClient
+                slug={slug}
+                title={title}
+                price={price ?? null}
+                salePrice={saleActive ? (salePrice ?? null) : null}
+                currency={currency}
+                imagesByColor={byColor}
+                stockMap={sizesSum}
+                fallbackColor={currentColor}
+                heightIncreaseCm={validHeight}
+                stock3={stock3}
+                sku3={sku3}
+              />
+            </div>
           </div>
         </section>
       </div>

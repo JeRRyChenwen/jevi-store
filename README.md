@@ -871,14 +871,6 @@ AMEX 3782 822463 10005 任意四位 CVV，例如 1234
 
 # ============================================================================
 
-2.1
-
-（可选）已登录用户修改密码：POST /auth/change-password
-
-这个接口通过现有会话（/auth/me 的同样校验），要求提供 old_password + new_password，校验旧密后更新为新密。你以后要做“安全设置”页就能直接用。
-
-密码 eye icon
-
 New In, Women, Men, Beauty, Home, Travel & Tech, Kids, Toys, Gifts, Sale, Myer one
 
 Category: Shoes, Bottoms, Tops, Suit, Accessories, Outfit
@@ -887,17 +879,9 @@ Sub-Category: Causal, Formal, long sleeve, short sleeve
 
 Filter: New Arrival, Sale
 
-价格全球化
-
 不同国际标准的 size
 
 deploy 的时候保留本地测试的 localhost
-
-<!-- 但好像不需要 -->
-
-要不要把 gender 显示在 product 前端
-
-如果 stock 为 0 则显示 sold out，不同颜色的 sold out
 
 sort 按钮：
 
@@ -907,25 +891,11 @@ sort 按钮：
     best seller
     newest
 
-delivery 需要多少天才能抵达
-
-结账的时候自动发 order confirmation email
-
-设置默认地址
-
-我的想法是这样的其实，目前用户登录之后不是会把用户的 email 显示在个人资料页面里吗，我们就像个人资料页面一样，我们获得了用户的 email 之后可以通过用户的 email （email 是唯一的）去在 D1 数据库里的 users 表中检索这个 email 的对应的 id，我们获取到 email 以及 id 之后，我们再把这 2 个 collumn 的数据结合订单的信息一起放到 orders 表中，因为 orders 表中的 user_id 其实就是 users 表中的 id，这是 primary key
-
-商户后台开通：Braintree 控制台里需要启用 Hosted Fields（一般默认可用），并确保你的 Merchant Account 支持该币种（AUD）。
-
-3D Secure（可选）：若要做 3DS 验证，需要再集成 three-d-secure 模块；上面这版是基础版，不含 3DS。
-
-样式：我在 styles 里做了基础可读性设置（Braintree 会把输入框放到 iframe 里，外层容器需要有固定高度）。
+面包屑导航需要修改
 
 很好！然后我还想修改一下我的个人资料页面，也就是我的 profile 页面
 My Fit Preferences
 Gift Card
-
-运输费用不同地区免费的标准也不一样
 
 # ============================================================================
 
@@ -937,8 +907,6 @@ Gift Card
 
 # ============================================================================
 
-1.需要修改 dilivery fee
-
 # ============================================================================
 
 部署到 Vercel（免费 https），再在该预览域名上测试 PaymentElement。
@@ -948,53 +916,7 @@ Gift Card
 用户付款后如何获得用户的邮箱，并发 confirmation email: 1.访客结账时显式收集
 在收货地址 / 联系方式表单里有 “Email（必填）” 一栏；提交订单就带上了。
 
-2.来自支付方式/钱包
-Apple Pay / Google Pay / PayPal / Stripe Link 等会把买家的“账单邮箱”回传给商家（取决于集成方式），商家用它发收据。
-
-目前是根据我在 strapi 中定位的是 USD，就是用 USD 交易，用 AUD 就是用 AUD 交易，要不要动态改变我的 currency 呢，或者说让币种随“地址国家/地区”变化，通常做法是：等用户在 Address 步骤选择了国家，再把币种映射出来传给支付：生产中建议用 Stripe 的 Products/Prices 按币种定价，或接入稳定的汇率源；不要在请求里“临时乘一个写死的汇率”。
-
-AUD，CAD，EUR，GBP，USD
-
-方案 1 ｜保留多币种余额（不自动换汇）
-
-在 PayPal 商业账户里 添加 USD/EUR 货币余额，就会分别以 USD/EUR/AUD 入账并单独结余（没有即时汇损）。
-
-路径（大意）：PayPal 商业账户 → 右上角齿轮 Settings → Money, banks and cards / Money → Currencies / Manage currencies → Add a currency（加 USD、EUR）。
-
-之后你可以在需要的时候手动把 USD/EUR 换成 AUD，或提现到对应币种的银行账户（如有）。
-
-我想问下这样做的话，当买家付钱给我（当然买家可能会来自不同的地区用不同的 currency 结算），是不是会自动通过 paypal 转换汇率成 AUD 打到我的 paypal 账户中
-
-add to bag 字体
-
-如果你没有储存 address 的话，请先 fill out address
-
-/src/app/checkout/(hooks)/
-├─ useCart.ts
-├─ useAddress.ts
-├─ useDelivery.ts
-├─ usePayment.ts
-└─ usePricing.ts
-
-手机端的前端
-
-在订单详情里显示 Payment method: Visa ending 1111、Status: Settling
-
-把 transactionId 存进 order_payments 表
-
-或者做一个“支付失败”回退页面 / 重试逻辑
-
-用户的信用卡信息要不要放进数据库里，paypal 信息
-
-支付失败界面
-
-退款，return policy
-
 客服
-
-支付宝，微信
-
-远端数据库只储存 1 年，可以储存在本地
 
 profile 页面修改 email，可能需要进一步改进
 
@@ -1014,7 +936,7 @@ profile 页面修改 email，可能需要进一步改进
 
 social media 微信小红书链接 icon
 
-发邮件里的邮件 html，添加自动发邮件的位置
+发邮件里的邮件 html，添加自动发邮件的位置，结账的时候自动发 order confirmation email
 
 弹出错误提示的时候，统一一下，红色错误提示的 style，还有就是成功提示也要统一一下，把错误提示 UI 改成和你第二张截图一样的 红色提示块（border + bg + padding）
 
@@ -1024,7 +946,7 @@ similar product , produtc you may also interest
 
 用户评论
 
-网页下面的邮箱，privacy 条款
+网页下面的邮箱，privacy 条款需要再上线的时候替换成真实的privacy，邮箱
 
 delivery option
 
@@ -1036,7 +958,9 @@ checkout 页面的 payment 页面里的 All charges are processed in AUD. Your b
 
 群发邮件记得，要筛选，同意email的用户
 
-delivery fee的计算
+远端数据库只储存 1 年，可以储存在本地，定期删掉过期数据，但保留在本地
+
+delivery fee的计算，以及运输费用不同地区免费的标准也不一样，delivery 需要多少天才能抵达
 
 ==============================================================================
 千万不要修改我原本的代码里的任何逻辑和语法，和原本的代码内容，千万不要做修改

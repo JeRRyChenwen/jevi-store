@@ -14,11 +14,15 @@ export default function HeightIncreaseClient({
   current,
   slug,
   paramKey = "height",
+  showHeader = true,
+  headerClassName,
 }: {
   options: Option[];
   current?: number;
   slug: string;
   paramKey?: string; // URL query key，默认用 height
+  showHeader?: boolean; // ✅ NEW: 是否显示 “Height increase +X cm” 这行
+  headerClassName?: string; // ✅ NEW: 可选，外部自定义 header 样式
 }) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -30,8 +34,6 @@ export default function HeightIncreaseClient({
   function setHeight(next: number) {
     const nextSp = new URLSearchParams(sp.toString());
     nextSp.set(paramKey, String(next));
-    // 你如果希望切换 height 时重置图片索引，可取消注释：
-    // nextSp.delete("img");
     router.push(`/product/${encodeURIComponent(slug)}?${nextSp.toString()}`);
   }
 
@@ -39,14 +41,19 @@ export default function HeightIncreaseClient({
 
   return (
     <div className="space-y-2">
-      <div className="text-base md:text-lg text-neutral-700 flex items-center gap-2">
-        Height increase
+      {/* ✅ Header 可关闭 */}
+      {showHeader ? (
+        <div className="text-sm text-neutral-600 flex items-center gap-2">
+        <span className="font-medium text-neutral-800">Height increase</span>
+
         {typeof current === "number" && Number.isFinite(current) ? (
-          <span className="text-neutral-900 font-semibold text-base md:text-lg">
-            +{current} cm
-          </span>
+          <>
+            <span className="text-neutral-600">·</span>
+            <span className="text-neutral-900 font-semibold">+{current} cm</span>
+          </>
         ) : null}
       </div>
+      ) : null}
 
       <div className="flex flex-wrap gap-2">
         {sorted.map((opt) => {
@@ -59,11 +66,7 @@ export default function HeightIncreaseClient({
               type="button"
               variant="outline"
               disabled={disabled}
-              className={
-                active
-                  ? "border-2 border-black bg-muted text-black"
-                  : "border"
-              }
+              className={active ? "border-2 border-black bg-muted text-black" : "border"}
               onClick={() => setHeight(opt.value)}
               title={disabled ? "Out of stock" : `+${opt.value} cm`}
             >
@@ -73,8 +76,8 @@ export default function HeightIncreaseClient({
         })}
       </div>
 
-      {/* 可选提示 */}
-      {typeof current !== "number" && (
+      {/* 可选提示：showHeader=false 时通常不需要提示（由外层统一展示） */}
+      {showHeader && typeof current !== "number" && (
         <div className="text-sm text-neutral-600">Please select a height increase</div>
       )}
     </div>
