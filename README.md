@@ -883,14 +883,6 @@ Filter: New Arrival, Sale
 
 deploy 的时候保留本地测试的 localhost
 
-sort 按钮：
-
-    1. 价格从高到低
-    2. 价格从低到高
-    3. 热度 也就是我们hot score
-    best seller
-    newest
-
 面包屑导航需要修改
 
 很好！然后我还想修改一下我的个人资料页面，也就是我的 profile 页面

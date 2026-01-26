@@ -2,25 +2,18 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import type { CSSProperties } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Pagination from "@/components/pagination/Pagination";
 import { api, mediaUrl } from "@/lib/strapi";
-import { Button } from "@/components/ui/button";
-import { X, Star, ChevronLeft, ChevronRight } from "lucide-react";
-import FilterButton from "@/components/filters/FilterButton";
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-} from "@/components/ui/select";
+import FilterDrawer from "./_components/FilterDrawer";
+import ProductGrid from "./_components/ProductGrid";
+import CategoryHeader from "./_components/CategoryHeader";
+
+
 
 // 颜色工具
-import { normalizeColorName, colorNameToCss } from "@/lib/colors";
+import { normalizeColorName } from "@/lib/colors";
 
 // ✅ 兼容导入：若你的 lib 提供了相同函数则直接用；否则使用兜底
 import * as SP from "@/lib/strapiPrice";
@@ -207,13 +200,6 @@ type ProductLite = {
 
 // ============ 排序键 & 标签 ============
 export type SortKey = "default" | "price-desc" | "price-asc" | "hot";
-
-const SORT_LABELS: Record<SortKey, string> = {
-  default: "Default",
-  "price-desc": "Price: High → Low",
-  "price-asc": "Price: Low → High",
-  hot: "Popularity",
-};
 
 const DEV = process.env.NODE_ENV !== "production";
 const dbg = (...args: unknown[]) => DEV && console.debug("[Grid]", ...args);
@@ -452,262 +438,6 @@ function normalizeProduct(row: any): ProductLite {
   };
 }
 
-function CardSkeleton() {
-  return (
-    <article className="overflow-hidden rounded-3xl border bg-card shadow-sm">
-      <div className="h-[260px] sm:h-[300px] md:h-[340px] lg:h-[380px] xl:h-[420px] bg-muted animate-pulse" />
-      <div className="p-6 md:p-8 space-y-3">
-        <div className="h-5 w-2/3 rounded bg-muted animate-pulse" />
-        <div className="h-4 w-4/5 rounded bg-muted animate-pulse" />
-        <div className="h-8 w-24 rounded bg-muted animate-pulse" />
-      </div>
-    </article>
-  );
-}
-
-/** 图片轮播（左右箭头切换） */
-function ImageCarousel({ urls, alt }: { urls: string[]; alt: string }) {
-  const [idx, setIdx] = useState(0);
-  const count = urls.length;
-
-  useEffect(() => {
-    setIdx(0);
-  }, [urls?.join("|")]);
-
-  if (!count) {
-    return (
-      <div className="h-[260px] sm:h-[300px] md:h-[340px] lg:h-[380px] xl:h-[420px] bg-muted flex items-center justify-center text-muted-foreground">
-        No Image
-      </div>
-    );
-  }
-
-  const go = (delta: number) => setIdx((i) => (i + delta + count) % count);
-
-  return (
-    <div className="relative h-[260px] sm:h-[300px] md:h-[340px] lg:h-[380px] xl:h-[420px] bg-muted">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img alt={alt} src={urls[idx]} className="h-full w-full object-cover" loading="lazy" />
-
-      {count > 1 && (
-        <>
-          <button
-            type="button"
-            aria-label="Previous image"
-            className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-white/80 hover:bg-white shadow p-1 z-20"
-            onClick={() => go(-1)}
-          >
-            <ChevronLeft className="h-5 w-5 text-neutral-800" />
-          </button>
-          <button
-            type="button"
-            aria-label="Next image"
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-white/80 hover:bg-white shadow p-1 z-20"
-            onClick={() => go(1)}
-          >
-            <ChevronRight className="h-5 w-5 text-neutral-800" />
-          </button>
-        </>
-      )}
-    </div>
-  );
-}
-
-/** 单个卡片：点击图片或标题跳到详情页 */
-function ProductCard({
-  p,
-  idx,
-  start,
-  displayCurrency,
-}: {
-  p: ProductLite;
-  idx: number;
-  start: number;
-  displayCurrency: string;
-}) {
-  const [selectedColor, setSelectedColor] = useState<string | null>(p.colors?.[0] ?? null);
-
-  // 热度星级（0~5）
-  let stars = p.hotScore ?? 0;
-  if (stars > 5) stars = Math.round(clamp(stars, 0, 100) / 20);
-  stars = clamp(Math.round(stars), 0, 5);
-
-  // 图片选择
-  const colorKey = selectedColor ? normalizeColorName(selectedColor) : null;
-  const byColor = colorKey && p.variantsByColor[colorKey];
-  const anyColor =
-    byColor && byColor.length
-      ? byColor
-      : (() => {
-          for (const arr of Object.values(p.variantsByColor)) {
-            if (arr?.length) return arr;
-          }
-          return [];
-        })();
-  const urls = (byColor && byColor.length ? byColor : anyColor) || (p.imageUrl ? [p.imageUrl] : []);
-
-  // ✅ 选中币种并计算原价/折后价
-  const pick = pickPriceForCurrency(p.prices, displayCurrency) || null;
-
-  // 原价（最小货币单位）
-  const baseMinor: number | null =
-    pick?.base_minor ??
-    (typeof p.price === "number" ? Math.round(Math.max(0, p.price) * 100) : null);
-
-  // 折后价（最小货币单位）
-  const effectiveMinor: number | null =
-    pick?.effective_minor ?? baseMinor;
-
-  // 折扣百分比（仅当有折扣且小于原价才显示）
-  let discountPct: number | null = null;
-  if (
-    typeof baseMinor === "number" &&
-    typeof effectiveMinor === "number" &&
-    baseMinor > 0 &&
-    effectiveMinor < baseMinor
-  ) {
-    discountPct = Math.round((1 - effectiveMinor / baseMinor) * 100);
-  }
-
-  // 展示字符串
-  const showCcy = pick?.currency || displayCurrency;
-
-  const displayBase =
-    typeof baseMinor === "number" ? formatPriceForCard(baseMinor, showCcy) : null;
-
-  const displayEff =
-    typeof effectiveMinor === "number"
-      ? formatPriceForCard(effectiveMinor, showCcy)
-      : p.price != null
-      ? formatPriceForCard(
-          Math.round(Number(p.price) * 100),
-          (p.currency || showCcy || "AUD") as string
-        )
-      : "No price";
-
-  // 旧字段保底（如果没拿到 pick 并且有旧折扣窗口）
-  const legacyOnSale = !pick && isSaleActiveByLegacy(p);
-  const legacySalePrice = legacyOnSale ? salePriceLegacy(p) : null;
-
-  return (
-    <article className="group overflow-hidden rounded-3xl border bg-card shadow-sm transition-shadow hover:shadow-md">
-      <div className="relative">
-        <ImageCarousel urls={urls} alt={p.name || `Image #${start + idx + 1}`} />
-        {p.slug && (
-          <Link href={`/product/${p.slug}`} aria-label={`View ${p.name}`} className="absolute inset-0 z-10" />
-        )}
-      </div>
-
-      <div className="p-6 md:p-8">
-        {/* 1. 名称（点击到详情） */}
-        <h3 className="text-lg md:text-xl font-semibold line-clamp-1">
-          {p.slug ? (
-            <Link href={`/product/${p.slug}`} className="hover:underline">
-              {p.name || `Product #${start + idx + 1}`}
-            </Link>
-          ) : (
-            p.name || `Product #${start + idx + 1}`
-          )}
-        </h3>
-
-        {/* 2. 折扣文案（新规则） */}
-        {discountPct != null && (
-          <p className="mt-1 text-base font-semibold text-emerald-700 uppercase tracking-wide">
-            {discountPct}% OFF
-          </p>
-        )}
-
-        {/* 3. 价格区（优先新规则；无则回退旧字段） */}
-        <div className="mt-2">
-          {/* 新规则：有折扣 => 原价加删除线 + 竖线 + 折后价 */}
-          {discountPct != null && displayBase ? (
-            <div className="flex items-baseline gap-2">
-              <span className="text-base text-neutral-400 line-through">{displayBase}</span>
-              <span className="text-neutral-300">|</span>
-              <span className="text-base font-bold text-emerald-700">{displayEff}</span>
-            </div>
-          ) : legacyOnSale && legacySalePrice != null ? (
-            // 旧字段兜底逻辑
-            <div className="flex items-baseline gap-2">
-              <span className="text-base text-neutral-400 line-through">
-                {formatPriceVal(p.price, p.currency)}
-              </span>
-              <span className="text-neutral-300">|</span>
-              <span className="text-base font-bold text-emerald-700">
-                {formatPriceVal(legacySalePrice, p.currency)}
-              </span>
-            </div>
-          ) : (
-            // 无折扣：仅展示一个价格
-            <div className="text-base font-bold">{displayEff}</div>
-          )}
-        </div>
-
-        {/* 4. 颜色（可点击切图） */}
-        {p.colors && p.colors.length > 0 && (
-          <div className="mt-3 flex items-center gap-2.5">
-            {p.colors.slice(0, 8).map((c) => {
-              const normalized = normalizeColorName(c);
-              const active = normalizeColorName(selectedColor) === normalized;
-              return (
-                <button
-                  key={normalized}
-                  type="button"
-                  title={c}
-                  aria-pressed={active}
-                  onClick={() => setSelectedColor(normalized)}
-                  className={[
-                    "relative inline-flex h-6 w-6 items-center justify-center rounded-full",
-                    active
-                      ? "ring-2 ring-neutral-900 ring-offset-2 ring-offset-white"
-                      : "ring-1 ring-black/10 hover:ring-black/30",
-                    "transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30",
-                  ].join(" ")}
-                >
-                  <span
-                    className="block h-6 w-6 rounded-full"
-                    style={{ backgroundColor: colorNameToCss(normalized) }}
-                  />
-                </button>
-              );
-            })}
-            {p.colors.length > 8 && (
-              <span className="text-xs text-neutral-500">+{p.colors.length - 8}</span>
-            )}
-          </div>
-        )}
-
-        {/* 5. 尺码 */}
-        {p.sizes && p.sizes.length > 0 && (
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            {p.sizes.slice(0, 10).map((sz) => (
-              <span
-                key={sz}
-                className="px-2 py-0.5 rounded-full border text-xs leading-5 bg-white"
-                title={`Size ${sz}`}
-              >
-                {sz}
-              </span>
-            ))}
-            {p.sizes.length > 10 && (
-              <span className="text-xs text-neutral-500">+{p.sizes.length - 10}</span>
-            )}
-          </div>
-        )}
-
-        {/* 6. 热度（星级） */}
-        <div className="mt-3 flex items-center gap-1">
-          {Array.from({ length: 5 }).map((_, i3) => (
-            <Star
-              key={i3}
-              className={i3 < (stars as number) ? "h-4 w-4 fill-black text-black" : "h-4 w-4 text-neutral-300"}
-            />
-          ))}
-        </div>
-      </div>
-    </article>
-  );
-}
 
 // ============ Main ============
 export default function CategoryGridClient({
@@ -1084,302 +814,60 @@ export default function CategoryGridClient({
 
   return (
     <>
-      <header className="mb-6">
-        <div className="flex items-end justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold">{title}</h1>
-            <p className="text-neutral-600">
-              Category: <code className="font-mono">{slug}</code>
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div className="text-sm md:text-base text-neutral-600 whitespace-nowrap">{resultLabel}</div>
-
-            {/* Sort */}
-            <div className="hidden sm:flex">
-              <Select value={sortKey} onValueChange={(v) => setSortInUrl(v as SortKey)}>
-                <SelectTrigger
-                  className="rounded-full w-[190px] border px-3 py-2 text-sm focus:ring-2 focus:ring-black/10"
-                  aria-label="Sort products"
-                >
-                  <SelectValue placeholder="Sort">{SORT_LABELS[sortKey] ?? "Sort"}</SelectValue>
-                </SelectTrigger>
-                <SelectContent align="end" className="z-50 rounded-xl border shadow-lg">
-                  <SelectGroup>
-                    <SelectItem value="default">Default</SelectItem>
-                    <SelectItem value="price-desc">Price: High → Low</SelectItem>
-                    <SelectItem value="price-asc">Price: Low → High</SelectItem>
-                    <SelectItem value="hot">Popularity</SelectItem>
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <FilterButton
-              ref={triggerBtnRef}
-              label="Filter"
-              onClick={() => setOpen(true)}
-              className="rounded-full px-5"
-            />
-          </div>
-        </div>
-      </header>
+      <CategoryHeader
+        title={title}
+        slug={slug}
+        resultLabel={resultLabel}
+        sortKey={sortKey}
+        setSortInUrl={setSortInUrl}
+        onOpenFilter={() => setOpen(true)}
+        triggerBtnRef={triggerBtnRef}
+      />
 
       {/* === 左侧抽屉 === */}
-      <div className={`fixed inset-0 z-50 transition ${open ? "pointer-events-auto" : "pointer-events-none"}`}>
-        {/* 背景遮罩 */}
-        <div
-          className={`absolute inset-0 bg-black/30 transition-opacity ${open ? "opacity-100" : "opacity-0"}`}
-          onClick={closeDrawer}
-        />
-        {/* 面板 */}
-        <aside
-          role="dialog"
-          aria-modal="true"
-          className={`absolute left-0 top-0 h-full w-[92vw] sm:w-[380px] bg-white shadow-xl transition-transform ${
-            open ? "translate-x-0" : "-translate-x-full"
-          }`}
-        >
-          <div className="p-4 border-b flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Filter by</h2>
-            <button
-              ref={closeBtnRef}
-              onClick={closeDrawer}
-              aria-label="Close filter panel"
-              title="Close"
-              className="rounded-full p-2 hover:bg-neutral-100 focus:outline-none focus:ring-2 focus:ring-black/10"
-            >
-              <X className="h-5 w-5 text-neutral-600" />
-            </button>
-          </div>
+      <FilterDrawer
+        open={open}
+        onClose={closeDrawer}
+        closeBtnRef={closeBtnRef}
+        variantFiltersSupported={variantFiltersSupported}
+        productGenderSupported={productGenderSupported}
+        facetMaterials={facetMaterials}
+        facetSizes={facetSizes}
+        facetColors={facetColors}
+        facetGenders={facetGenders}
+        draftMin={draftMin}
+        setDraftMin={setDraftMin}
+        draftMax={draftMax}
+        setDraftMax={setDraftMax}
+        draftMaterials={draftMaterials}
+        setDraftMaterials={setDraftMaterials}
+        draftSizes={draftSizes}
+        setDraftSizes={setDraftSizes}
+        draftColors={draftColors}
+        setDraftColors={setDraftColors}
+        draftGenders={draftGenders}
+        setDraftGenders={setDraftGenders}
+        onReset={resetDraft}
+        onApply={applyDraft}
+      />
 
-          <div className="h-[calc(100%-120px)] overflow-y-auto p-4 space-y-6">
-
-
-          {/* ===== Price ===== */}
-          <section className="space-y-3">
-            <h3 className="text-sm font-semibold">Price</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="space-y-1">
-                <div className="text-xs text-neutral-600">Min</div>
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  min={0}
-                  value={typeof draftMin === "number" ? draftMin : ""}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    const n = v === "" ? undefined : Math.max(0, Number(v));
-                    setDraftMin(Number.isFinite(Number(n)) ? n : undefined);
-                  }}
-                  className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-black/10"
-                  placeholder="0"
-                />
-              </label>
-
-              <label className="space-y-1">
-                <div className="text-xs text-neutral-600">Max</div>
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  min={0}
-                  value={typeof draftMax === "number" ? draftMax : ""}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    const n = v === "" ? undefined : Math.max(0, Number(v));
-                    setDraftMax(Number.isFinite(Number(n)) ? n : undefined);
-                  }}
-                  className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-black/10"
-                  placeholder="No limit"
-                />
-              </label>
-            </div>
-          </section>
-
-          {/* ===== Gender（product 级） ===== */}
-          {productGenderSupported && facetGenders.length > 0 && (
-            <section className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold">Gender</h3>
-                <span className="text-xs text-neutral-500">{facetGenders.length}</span>
-              </div>
-
-              <div className="space-y-2">
-                {facetGenders.map((g) => {
-                  const checked = draftGenders.has(g);
-                  return (
-                    <label key={g} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(e) => {
-                          const next = new Set(draftGenders);
-                          if (e.target.checked) next.add(g);
-                          else next.delete(g);
-                          setDraftGenders(next);
-                        }}
-                      />
-                      <span>{g}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            </section>
-          )}
-
-          {/* ===== Variants filters（material / size / color） ===== */}
-          {variantFiltersSupported && (
-            <>
-              {/* Material */}
-              {facetMaterials.length > 0 && (
-                <section className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold">Material</h3>
-                    <span className="text-xs text-neutral-500">{facetMaterials.length}</span>
-                  </div>
-
-                  <div className="space-y-2">
-                    {facetMaterials.map((m) => {
-                      const checked = draftMaterials.has(m);
-                      return (
-                        <label key={m} className="flex items-center gap-2 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={(e) => {
-                              const next = new Set(draftMaterials);
-                              if (e.target.checked) next.add(m);
-                              else next.delete(m);
-                              setDraftMaterials(next);
-                            }}
-                          />
-                          <span>{m}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </section>
-              )}
-
-              {/* Size */}
-              {facetSizes.length > 0 && (
-                <section className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold">Size</h3>
-                    <span className="text-xs text-neutral-500">{facetSizes.length}</span>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    {facetSizes.map((s) => {
-                      const active = draftSizes.has(s);
-                      return (
-                        <button
-                          key={s}
-                          type="button"
-                          onClick={() => {
-                            const next = new Set(draftSizes);
-                            if (next.has(s)) next.delete(s);
-                            else next.add(s);
-                            setDraftSizes(next);
-                          }}
-                          className={[
-                            "px-3 py-1.5 rounded-full border text-sm",
-                            active ? "border-black" : "border-neutral-200",
-                            active ? "bg-black text-white" : "bg-white text-neutral-800",
-                          ].join(" ")}
-                        >
-                          {s}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </section>
-              )}
-
-              {/* Color */}
-              {facetColors.length > 0 && (
-                <section className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold">Color</h3>
-                    <span className="text-xs text-neutral-500">{facetColors.length}</span>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    {facetColors.map((c) => {
-                      const active = draftColors.has(c);
-                      return (
-                        <button
-                          key={c}
-                          type="button"
-                          onClick={() => {
-                            const next = new Set(draftColors);
-                            if (next.has(c)) next.delete(c);
-                            else next.add(c);
-                            setDraftColors(next);
-                          }}
-                          className={[
-                            "px-3 py-1.5 rounded-full border text-sm",
-                            active ? "border-black" : "border-neutral-200",
-                            active ? "bg-black text-white" : "bg-white text-neutral-800",
-                          ].join(" ")}
-                          title={c}
-                        >
-                          {c}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </section>
-              )}
-            </>
-          )}
-
-          {/* ===== 如果 facets 拉不到，这里给你一个可见提示（方便定位） ===== */}
-          {(!variantFiltersSupported || facetMaterials.length + facetSizes.length + facetColors.length === 0) && (
-            <div className="text-xs text-neutral-500">
-              No variant facets available (material/size/color). Check console logs for /api/variants response.
-            </div>
-          )}
-        </div>
-
-          <div className="p-4 border-t flex items-center justify-between gap-2">
-            <Button variant="ghost" onClick={resetDraft}>
-              Reset
-            </Button>
-            <Button onClick={applyDraft}>Apply</Button>
-          </div>
-        </aside>
-      </div>
 
       {/* ====== 列表 ====== */}
-      {error ? (
-        <div className="py-20 text-center text-red-600">{error}</div>
-      ) : loading ? (
-        <section style={sectionMinHeightStyle}>
-          <div className="grid gap-7 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-4">
-            {Array.from({ length: Math.min(pageSize, filteredTotal - start) || 8 }).map((_, i) => (
-              <CardSkeleton key={i} />
-            ))}
-          </div>
-        </section>
-      ) : list.length === 0 ? (
-        <div className="py-20 text-center text-muted-foreground">No products yet.</div>
-      ) : (
-        <section style={sectionMinHeightStyle}>
-          <div className="grid gap-7 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-4">
-            {list.map((p, idx) => (
-              <ProductCard
-                key={p.key}
-                p={p}
-                idx={idx}
-                start={start}
-                displayCurrency={displayCurrency}
-              />
-            ))}
-          </div>
-        </section>
-      )}
+      <ProductGrid
+        error={error}
+        loading={loading}
+        list={list}
+        start={start}
+        pageSize={pageSize}
+        filteredTotal={filteredTotal}
+        sectionMinHeightStyle={sectionMinHeightStyle}
+        displayCurrency={displayCurrency}
+        pickPriceForCurrency={pickPriceForCurrency}
+        formatPriceForCard={formatPriceForCard}
+        formatPriceVal={formatPriceVal}
+        isSaleActiveByLegacy={isSaleActiveByLegacy}
+        salePriceLegacy={salePriceLegacy}
+      />
 
       <Pagination page={page} pageCount={pageCount} hrefForPage={hrefForPage} className="mb-10" />
     </>
