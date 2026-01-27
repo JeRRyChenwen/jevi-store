@@ -926,6 +926,8 @@ Filter: New Arrival, Sale
 
 要分割出css文件
 
+back按钮
+
 deploy 的时候保留本地测试的 localhost
 
 很好！然后我还想修改一下我的个人资料页面，也就是我的 profile 页面

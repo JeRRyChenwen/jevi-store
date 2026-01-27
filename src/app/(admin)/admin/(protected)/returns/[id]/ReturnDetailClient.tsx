@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-
+import BackButton from "@/components/navigation/BackButton";
 import { Alert } from "@/components/ui/alert";
 
 type ReturnRow = {
@@ -239,9 +239,7 @@ export default function ReturnDetailClient({ id }: { id: string }) {
     return (
       <div className="space-y-3">
         <div className="text-sm text-slate-500">
-          <Link href="/admin/returns" className="hover:underline">
-            ← Back to Returns
-          </Link>
+          <BackButton fallbackHref="/admin/returns" fallbackLabel="Returns" />
         </div>
         <h2 className="text-xl font-semibold">Loading...</h2>
         <p className="text-sm text-slate-600">Fetching return #{id}</p>
@@ -267,9 +265,7 @@ export default function ReturnDetailClient({ id }: { id: string }) {
     return (
       <div className="space-y-3">
         <div className="text-sm text-slate-500">
-          <Link href="/admin/returns" className="hover:underline">
-            ← Back to Returns
-          </Link>
+          <BackButton fallbackHref="/admin/returns" fallbackLabel="Returns" />
         </div>
 
         <h2 className="text-xl font-semibold">{title}</h2>
@@ -412,9 +408,7 @@ export default function ReturnDetailClient({ id }: { id: string }) {
   return (
     <div className="space-y-6">
       <div className="text-sm text-slate-500">
-        <Link href="/admin/returns" className="hover:underline">
-          ← Back to Returns
-        </Link>
+        <BackButton fallbackHref="/admin/returns" fallbackLabel="Returns" />
       </div>
 
       {/* Unified notice */}

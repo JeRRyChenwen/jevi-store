@@ -3,7 +3,14 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 
@@ -84,9 +91,20 @@ export default function SizeGuideDialog({
         </button>
       </DialogTrigger>
 
-      <DialogContent className="max-w-2xl">
+      <DialogContent
+        className="
+          max-w-2xl
+          bg-white
+          text-neutral-900
+          rounded-2xl
+          shadow-[0_20px_40px_rgba(0,0,0,0.12)]
+        "
+      >
         <DialogHeader>
           <DialogTitle>Size guide</DialogTitle>
+          <DialogDescription className="sr-only">
+            Size guide for footwear and clothing. Compare international sizing systems and measurement tips.
+          </DialogDescription>
         </DialogHeader>
 
         <Tabs value={tab} onValueChange={(v) => setTab(v as any)} className="w-full">
