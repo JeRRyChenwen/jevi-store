@@ -144,33 +144,37 @@ export default function ReturnDetailClient({ id }: { id: string }) {
   const [notice, setNotice] = useState<UiNotice | null>(null);
 
   async function loadDetail(signal?: AbortSignal) {
-    const r = await fetch(`/api/admin/returns/${encodeURIComponent(id)}`, {
-      method: "GET",
-      cache: "no-store",
-      credentials: "include",
-      signal,
-    });
+  const r = await fetch(`/api/admin/returns/${encodeURIComponent(id)}`, {
+    method: "GET",
+    cache: "no-store",
+    credentials: "include",
+    signal,
+  });
 
-    if (r.status === 401) {
-      // 未登录：这里不强跳，让外层 gate/middleware 处理
-      // 但为了让页面可诊断，我们返回并让 boot 捕获后提示
-      throw new Error("UNAUTHORIZED");
-    }
-
-    const j = (await r.json().catch(() => null)) as ApiPayload | null;
-
-    if (!r.ok) {
-      const code = j?.error || `HTTP_${r.status}`;
-      throw new Error(code);
-    }
-
-    if (!j || !j.ok || !j.return) {
-      throw new Error(j?.error || "BAD_PAYLOAD");
-    }
-
-    setData(j);
-    return j;
+  if (r.status === 401) {
+    throw new Error("UNAUTHORIZED");
   }
+
+  const j = (await r.json().catch(() => null)) as ApiPayload | null;
+
+  // ✅ 关键：404 / NOT_FOUND 视为“正常但为空”，不 throw
+  if (r.status === 404 || j?.error === "NOT_FOUND" || j?.error === "not_found") {
+    setData({ ok: true, return: undefined, items: [] }); // record 会是 null
+    return { ok: true, return: undefined, items: [] } as ApiPayload;
+  }
+
+  if (!r.ok) {
+    const code = j?.error || `HTTP_${r.status}`;
+    throw new Error(code);
+  }
+
+  if (!j || !j.ok || !j.return) {
+    throw new Error(j?.error || "BAD_PAYLOAD");
+  }
+
+  setData(j);
+  return j;
+}
 
   useEffect(() => {
     let cancelled = false;
@@ -196,10 +200,19 @@ export default function ReturnDetailClient({ id }: { id: string }) {
         if (!cancelled) {
           setErr(msg);
           const pretty = prettifyErrorMessage(msg);
-          setNotice({
-            variant: msg === "UNAUTHORIZED" || msg === "HTTP_401" ? "warning" : "error",
-            message: pretty || "Failed to load return detail.",
-          });
+          const isNotFound = msg === "NOT_FOUND" || msg === "not_found" || msg === "HTTP_404";
+            setNotice({
+              variant:
+                msg === "UNAUTHORIZED" || msg === "HTTP_401"
+                  ? "warning"
+                  : isNotFound
+                    ? "info"
+                    : "error",
+              message:
+                isNotFound
+                  ? "No return data found for this id."
+                  : pretty || "Failed to load return detail.",
+            });
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -245,11 +258,11 @@ export default function ReturnDetailClient({ id }: { id: string }) {
           ? "UNAUTHORIZED"
           : err || "UNKNOWN_ERROR";
 
-    const title = pretty === "UNAUTHORIZED" ? "Admin login required" : "Return not found";
+    const title = pretty === "UNAUTHORIZED" ? "Admin login required" : "No return data";
     const desc =
       pretty === "UNAUTHORIZED"
         ? "You are not logged in as admin. Please sign in to continue."
-        : `The return request you are looking for does not exist (id: ${id}).`;
+        : `No return request exists for this id (id: ${id}).`;
 
     return (
       <div className="space-y-3">
@@ -263,11 +276,27 @@ export default function ReturnDetailClient({ id }: { id: string }) {
 
         <p className="text-sm text-slate-600">{desc}</p>
 
-        <Alert variant={pretty === "UNAUTHORIZED" ? "warning" : "error"} className="border p-3 text-sm">
-          {pretty === "UNAUTHORIZED"
-            ? "Admin session expired. Please sign in again."
-            : `Error: ${pretty}`}
-        </Alert>
+        {(() => {
+          const alertVariant =
+            pretty === "UNAUTHORIZED"
+              ? "warning"
+              : pretty === "NOT_FOUND"
+                ? "info"
+                : "error";
+
+          const alertText =
+            pretty === "UNAUTHORIZED"
+              ? "Admin session expired. Please sign in again."
+              : pretty === "NOT_FOUND"
+                ? "No data for this return id."
+                : `Error: ${pretty}`;
+
+          return (
+            <Alert variant={alertVariant as any} className="border p-3 text-sm">
+              {alertText}
+            </Alert>
+          );
+        })()}
 
         {pretty === "UNAUTHORIZED" ? (
           <div className="pt-2">

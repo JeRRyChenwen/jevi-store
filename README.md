@@ -844,11 +844,54 @@ wrangler d1 migrations apply socialplatform
 wrangler d1 migrations apply socialplatform --remote
 wrangler d1 migrations apply socialplatform --local
 
+==================================================================
+
 清库
 
-wrangler d1 execute socialplatform --remote --file migrations/0000_reset.sql
+wrangler d1 execute socialplatform --remote --command "
+PRAGMA foreign_keys=OFF;
 
-wrangler d1 execute socialplatform --remote --command "PRAGMA foreign_keys=OFF;DROP TRIGGER IF EXISTS trg_users_updated_at;DROP TRIGGER IF EXISTS trg_orders_updated_at;DROP TRIGGER IF EXISTS trg_orders_set_order_number;DROP TRIGGER IF EXISTS trg_order_items_copy_order_no;DROP TRIGGER IF EXISTS trg_order_payments_copy_order_no;DROP TRIGGER IF EXISTS trg_gift_cards_updated_at;DROP TRIGGER IF EXISTS trg_fit_prefs_updated_at;DROP TRIGGER IF EXISTS trg_user_addresses_updated_at;DROP TRIGGER IF EXISTS trg_returns_set_return_number;DROP TABLE IF EXISTS gift_card_txns;DROP TABLE IF EXISTS gift_cards;DROP TABLE IF EXISTS order_payments;DROP TABLE IF EXISTS return_items;DROP TABLE IF EXISTS returns;DROP TABLE IF EXISTS order_items;DROP TABLE IF EXISTS orders;DROP TABLE IF EXISTS user_addresses;DROP TABLE IF EXISTS fit_preferences;DROP TABLE IF EXISTS email_subscriptions;DROP TABLE IF EXISTS password_resets;DROP TABLE IF EXISTS users;PRAGMA foreign_keys=ON;"
+DROP TRIGGER IF EXISTS trg_admin_users_updated_at;
+DROP TRIGGER IF EXISTS trg_fit_prefs_updated_at;
+DROP TRIGGER IF EXISTS trg_gift_cards_updated_at;
+DROP TRIGGER IF EXISTS trg_order_items_copy_order_no;
+DROP TRIGGER IF EXISTS trg_order_payments_copy_order_no;
+DROP TRIGGER IF EXISTS trg_orders_set_order_number;
+DROP TRIGGER IF EXISTS trg_orders_updated_at;
+DROP TRIGGER IF EXISTS trg_refunds_updated_at;
+DROP TRIGGER IF EXISTS trg_returns_set_return_number;
+DROP TRIGGER IF EXISTS trg_user_addresses_updated_at;
+DROP TRIGGER IF EXISTS trg_users_updated_at;
+"
+
+wrangler d1 execute socialplatform --remote --command "
+PRAGMA foreign_keys=OFF;
+
+DROP TABLE IF EXISTS gift_card_txns;
+DROP TABLE IF EXISTS gift_cards;
+
+DROP TABLE IF EXISTS refunds;
+DROP TABLE IF EXISTS return_items;
+DROP TABLE IF EXISTS returns;
+
+DROP TABLE IF EXISTS order_payments;
+DROP TABLE IF EXISTS order_items;
+DROP TABLE IF EXISTS orders;
+
+DROP TABLE IF EXISTS user_addresses;
+DROP TABLE IF EXISTS fit_preferences;
+DROP TABLE IF EXISTS email_subscriptions;
+DROP TABLE IF EXISTS password_resets;
+
+DROP TABLE IF EXISTS admin_sessions;
+DROP TABLE IF EXISTS admin_users;
+
+DROP TABLE IF EXISTS users;
+
+PRAGMA foreign_keys=ON;
+"
+
+==================================================================
 
 await fetch('/api/auth/login', {
 method: 'POST',
