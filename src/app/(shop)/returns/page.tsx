@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { api, mediaUrl } from "@/lib/strapi";
 
 // ✅ 复用统一的 PageBack（你要的 Back）
-import PageBack from "@/components/PageBack";
+import BackButton from "@/components/navigation/BackButton";
 
 import ReturnItemsSelector, {
   type ReturnOrderDetail,
@@ -556,9 +556,14 @@ export default function ReturnsPage() {
 
   return (
     <div className="max-w-3xl mx-auto py-8 px-4">
-      <div className="mb-3">
-        <PageBack />
-      </div>
+        <div className="text-sm text-slate-500">
+            <BackButton
+            variant="link"
+            fallbackHref="/"
+            fallbackLabel="Shopping"
+            />
+        </div>      
+
 
       <h1 className="text-2xl font-semibold mb-4">Returns &amp; Exchanges</h1>
 
