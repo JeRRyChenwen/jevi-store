@@ -11,6 +11,7 @@ import HeightIncreaseClient from "../_components/HeightIncreaseClient";
 import { normalizeColorName, colorNameToCss } from "@/lib/colors";
 import { FieldMessage } from "@/components/ui/field-message";
 import { type PriceRec, pickCurrency } from "@/lib/pricing";
+import SizeGuideDialog from "@/components/size-guide/SizeGuideDialog";
 
 /** Next.js 15: params / searchParams 是 Promise，需要 await */
 type PageProps = {
@@ -80,8 +81,24 @@ function ProductMeta({
       {sizeOptions.length > 0 && (
         <div className="space-y-2">
           <MetaRow label="Sizes" value={currentSize ?? undefined} />
+
           <div className="origin-left scale-[1.10] md:scale-[1.14]">
             <SizeClient options={sizeOptions} current={currentSize} slug={slug} />
+          </div>
+
+          {/* ✅ 方案 2：尺寸下方的辅助提示 + 链接入口 */}
+          <div className="pt-1 text-[11px] text-neutral-400 flex items-center gap-1">
+            <span>Need help choosing your size?</span>
+            <SizeGuideDialog
+              defaultTab="footwear"
+              triggerLabel={
+                <span className="group text-neutral-600 hover:text-neutral-900">
+                  <span className="no-underline group-hover:underline underline-offset-2">
+                    Size guide
+                  </span>
+                </span>
+              }
+            />
           </div>
         </div>
       )}
