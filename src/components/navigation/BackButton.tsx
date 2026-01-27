@@ -21,7 +21,7 @@ type BackButtonProps = {
 };
 
 function defaultLabelFromFallback(fallbackHref?: string, fallbackLabel?: string) {
-  if (fallbackLabel?.trim()) return `Back to ${fallbackLabel.trim()}`;
+  if (fallbackLabel?.trim()) return "Back";
   if (!fallbackHref) return "Back";
 
   const last = fallbackHref
@@ -71,7 +71,9 @@ export default function BackButton({
   const styles =
     variant === "chip"
       ? // ✅ 电商/后台都通用：像轻量“胶囊按钮”
-        "rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-600 shadow-sm hover:border-slate-300 hover:text-slate-900 hover:bg-slate-50"
+        "rounded-full border border-slate-200 bg-white/90 px-3 py-1.5 text-slate-700 shadow-sm backdrop-blur " +
+        "hover:bg-white hover:border-slate-300 hover:text-slate-900 " +
+        "active:translate-y-[1px] active:shadow-none"
       : // ✅ 面包屑/链接风格：更克制
         "text-slate-500 hover:text-slate-900";
 
@@ -79,11 +81,16 @@ export default function BackButton({
     <button
       type="button"
       onClick={handleBack}
-      className={clsx(base, focus, styles, className)}
+      className={clsx("group", base, focus, styles, className)}
       aria-label={computedLabel}
     >
-      <ArrowLeft className="h-4 w-4" />
-      <span className={clsx(variant === "link" ? "hover:underline underline-offset-4" : "")}>
+      <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
+      <span
+        className={clsx(
+            "font-medium",
+            variant === "link" ? "hover:underline underline-offset-4" : ""
+        )}
+        >
         {computedLabel}
       </span>
     </button>
