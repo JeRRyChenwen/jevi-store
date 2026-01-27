@@ -924,6 +924,8 @@ Filter: New Arrival, Sale
 
 不同国际标准的 size，可能需要显示多少size对应多少长度，多少宽度（可能需要很具体）
 
+要分割出css文件
+
 deploy 的时候保留本地测试的 localhost
 
 很好！然后我还想修改一下我的个人资料页面，也就是我的 profile 页面
