@@ -307,17 +307,17 @@ export async function generateMetadata({ params }: PageProps) {
   return { title: `Product – ${slug}` };
 }
 
-// ✅ 安全取出 category（兼容 Strapi v4/v5 各种形态）
-function extractCategory(attrs: any): { slug?: string; label?: string } | null {
+
+
+// ✅ 安全取出 category（兼容 Strapi v4/v5 各种形态），并额外取 parent
+function extractCategory(
+  attrs: any
+): { slug?: string; label?: string; parentSlug?: string; parentLabel?: string } | null {
   const raw = attrs?.category;
   if (!raw) return null;
 
   // 可能是 v4: { data: { attributes: {...} } }
-  const a =
-    raw?.data?.attributes ??
-    raw?.attributes ??
-    raw?.data ??
-    raw;
+  const a = raw?.data?.attributes ?? raw?.attributes ?? raw?.data ?? raw;
 
   const slug = typeof a?.slug === "string" ? a.slug : undefined;
   const label =
@@ -325,8 +325,24 @@ function extractCategory(attrs: any): { slug?: string; label?: string } | null {
     (typeof a?.name === "string" && a.name) ||
     undefined;
 
-  if (!slug && !label) return null;
-  return { slug, label: label ?? slug };
+  // parent（如果存在）
+  const pRaw = a?.parent;
+  const p = pRaw?.data?.attributes ?? pRaw?.attributes ?? pRaw?.data ?? pRaw;
+
+  const parentSlug = typeof p?.slug === "string" ? p.slug : undefined;
+  const parentLabel =
+    (typeof p?.title === "string" && p.title) ||
+    (typeof p?.name === "string" && p.name) ||
+    undefined;
+
+  if (!slug && !label && !parentSlug && !parentLabel) return null;
+
+  return {
+    slug,
+    label: label ?? slug,
+    parentSlug,
+    parentLabel: parentLabel ?? parentSlug,
+  };
 }
 
 export default async function ProductPage({ params, searchParams }: PageProps) {
@@ -348,6 +364,9 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     // ✅ 新增：把 category 一起取出来（用于面包屑）
     `&populate[category][fields][0]=slug` +
     `&populate[category][fields][1]=name` +
+    // ✅ NEW: populate category.parent（用于计算 root / leaf）
+    `&populate[category][populate][parent][fields][0]=slug` +
+    `&populate[category][populate][parent][fields][1]=name` +
     `&publicationState=live`;
 
   const json = await api(qs, { noCache: true });
@@ -361,6 +380,9 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const category = extractCategory(attrs);
   const categorySlug = category?.slug;
   const categoryLabel = category?.label;
+  // ✅ NEW: category root/leaf slugs
+  const categoryRootSlug = category?.parentSlug ? category.parentSlug : category?.slug;
+  const categoryLeafSlug = category?.parentSlug ? (category?.slug ?? null) : null;
 
   // ---- pricing ----
   const prices = getPrices(attrs);
@@ -699,6 +721,9 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                 heightIncreaseCm={validHeight}
                 stock3={stock3}
                 sku3={sku3}
+                // ✅ NEW
+                categoryRootSlug={categoryRootSlug ?? "uncategorized"}
+                categoryLeafSlug={categoryLeafSlug ?? null}
               />
             </div>
           </div>

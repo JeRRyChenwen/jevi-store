@@ -3,7 +3,6 @@
 
 import { useEffect, useState } from "react";
 import { Check } from "lucide-react";
-import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import PageBack from "@/components/PageBack";
 import type { CartItem as CartListItem } from "@/components/cart/CartList";
@@ -256,6 +255,27 @@ async function sendOrderToServer(args: {
       const hNum = Number(hRaw);
       const heightIncreaseCm = Number.isFinite(hNum) ? hNum : 0;
 
+      // ✅ NEW: category root/leaf (from bag item)
+      const categoryRootSlug =
+        it?.category_root_slug ??
+        it?.categoryRootSlug ??
+        it?.attrs?.category_root_slug ??
+        it?.attrs?.categoryRootSlug ??
+        null;
+
+      const categoryLeafSlug =
+        it?.category_leaf_slug ??
+        it?.categoryLeafSlug ??
+        it?.attrs?.category_leaf_slug ??
+        it?.attrs?.categoryLeafSlug ??
+        null;
+
+      // ✅ product_type：优先使用 category root（没有就 other）
+      const productType =
+        (typeof categoryRootSlug === "string" && categoryRootSlug.trim()
+          ? categoryRootSlug.trim()
+          : null) ?? "other";
+
       return {
         // ✅ product_id 做一层兜底（购物车里一般没有 id）
         product_id: it?.product_id ?? it?.id ?? null,
@@ -270,15 +290,8 @@ async function sendOrderToServer(args: {
 
         product_title: String(it?.title || it?.name || "Item"),
 
-        // ✅ A方案关键：前端直接传 product_type
-        product_type:
-          it?.product_type ??
-          it?.productType ??
-          it?.type ??
-          it?.attrs?.product_type ??
-          it?.attrs?.productType ??
-          it?.attrs?.type ??
-          "other",
+        // ✅ NEW: 用 category root 作为 product_type
+        product_type: productType,
 
         // ✅ A方案关键：结构化 options（用于后端写 variant_options_json）
         options: {
@@ -295,7 +308,11 @@ async function sendOrderToServer(args: {
             it?.attrs?.heightIncreaseCm ??
             it?.attrs?.heightIncrease ??
             it?.attrs?.height ??
-            heightIncreaseCm, // ✅ 最终兜底
+            heightIncreaseCm,
+
+          // ✅ NEW: category root/leaf
+          category_root_slug: categoryRootSlug,
+          category_leaf_slug: categoryLeafSlug,
         },
 
         // ✅ 展示用（后端会 normalize）
@@ -321,6 +338,11 @@ async function sendOrderToServer(args: {
             color: it?.color ?? null,
             size: it?.size ?? null,
             heightIncreaseCm,
+
+            // ✅ NEW
+            category_root_slug: categoryRootSlug,
+            category_leaf_slug: categoryLeafSlug,
+
             ...(it?.attrs || {}),
           },
         },

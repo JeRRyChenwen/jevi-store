@@ -19,6 +19,12 @@ export type CartItem = {
   // ✅ NEW: Height increase（cm）
   // 可能是 0 / 3 / 5 / 7；也可能是 undefined（旧数据或不支持该功能的产品）
   heightIncreaseCm?: number;
+
+  // ✅ NEW: Category slugs for order persistence / analytics
+  // root: always set if possible (e.g. "shoes")
+  // leaf: optional (e.g. "formal-shoes"), null when product is only in a root category
+  category_root_slug?: string;
+  category_leaf_slug?: string | null;
 };
 
 function fmt(n: number, currency: string, locale?: string) {

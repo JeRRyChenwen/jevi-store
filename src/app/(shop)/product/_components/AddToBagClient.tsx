@@ -17,21 +17,15 @@ type Props = {
   salePrice: number | null;
   currency: string;
   imagesByColor: ImagesByColor;
-
-  // sizesSum：color+size 的汇总库存（用于 size 列表、兜底等）
   stockMap: StockMap;
-
-  // ✅ 三维库存：color+size+height 的真实库存
   stock3: Stock3;
-
-  // ✅ NEW：三维 SKU：color+size+height -> sku
-  // （如果你暂时没传也没关系，走 null）
   sku3?: Sku3;
-
   fallbackColor?: string;
-
-  // 从 page.tsx 传入（server side 算出来的 validHeight），这里作为兜底
   heightIncreaseCm?: number;
+
+  // ✅ NEW: category root/leaf slugs (from ProductPage server side)
+  categoryRootSlug?: string;
+  categoryLeafSlug?: string | null;
 };
 
 export default function AddToBagClient({
@@ -46,6 +40,8 @@ export default function AddToBagClient({
   sku3,
   fallbackColor,
   heightIncreaseCm,
+  categoryRootSlug,
+  categoryLeafSlug,
 }: Props) {
   const sp = useSearchParams();
 
@@ -132,6 +128,10 @@ export default function AddToBagClient({
       image: preview,
 
       heightIncreaseCm: pickedHeight,
+
+      // ✅ NEW: category root/leaf (persist into bag -> checkout -> worker)
+      category_root_slug: categoryRootSlug ?? "uncategorized",
+      category_leaf_slug: categoryLeafSlug ?? null,
 
       // ✅ NEW
       product_sku: variantSku, // 给 orders.ts 用（你现在 log 里这里是 null）

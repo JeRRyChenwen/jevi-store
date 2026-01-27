@@ -881,6 +881,8 @@ Filter: New Arrival, Sale
 
 不同国际标准的 size
 
+裤子鞋子衣服不同item种类的前端显示，以及数据录入，item type 应该是衣服鞋子裤子，然后variant title应该是要把shoes写进去，然后或许我们需要建立不同的表在strapi中和数据库中？
+
 deploy 的时候保留本地测试的 localhost
 
 很好！然后我还想修改一下我的个人资料页面，也就是我的 profile 页面

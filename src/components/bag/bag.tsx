@@ -13,6 +13,10 @@ export type CartItem = {
   size?: string;
   heightIncreaseCm?: number;
 
+  // ✅ NEW: Category slugs (derived from Strapi Category + parent)
+  category_root_slug?: string;
+  category_leaf_slug?: string | null;
+
   // ✅ 建议新增（下一步会用到）
   variantDocumentId?: string;
   sku?: string;
