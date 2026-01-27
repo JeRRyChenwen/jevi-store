@@ -1,5 +1,7 @@
 // src/app/product/[slug]/page.tsx
 import { notFound } from "next/navigation";
+import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import { api, mediaUrl } from "@/lib/strapi";
 import GalleryClient from "../_components/GalleryClient";
 import ColorDotsClient from "../_components/ColorDotsClient";
@@ -56,7 +58,7 @@ function ProductMeta({
   validHeight,
 }: {
   slug: string;
-  colorOptions: { name: string; css: string }[];
+  colorOptions: { name: string; css?: string }[];
   currentColor?: string;
   sizeOptions: { value: string; stock: number }[];
   currentSize?: string;
@@ -305,6 +307,28 @@ export async function generateMetadata({ params }: PageProps) {
   return { title: `Product – ${slug}` };
 }
 
+// ✅ 安全取出 category（兼容 Strapi v4/v5 各种形态）
+function extractCategory(attrs: any): { slug?: string; label?: string } | null {
+  const raw = attrs?.category;
+  if (!raw) return null;
+
+  // 可能是 v4: { data: { attributes: {...} } }
+  const a =
+    raw?.data?.attributes ??
+    raw?.attributes ??
+    raw?.data ??
+    raw;
+
+  const slug = typeof a?.slug === "string" ? a.slug : undefined;
+  const label =
+    (typeof a?.title === "string" && a.title) ||
+    (typeof a?.name === "string" && a.name) ||
+    undefined;
+
+  if (!slug && !label) return null;
+  return { slug, label: label ?? slug };
+}
+
 export default async function ProductPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
   const sp = await searchParams;
@@ -321,6 +345,9 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     `&populate[variants][fields][3]=height_increase_cm` +
     `&populate[variants][fields][4]=sku` +
     `&populate[prices]=*` +
+    // ✅ 新增：把 category 一起取出来（用于面包屑）
+    `&populate[category][fields][0]=slug` +
+    `&populate[category][fields][1]=name` +
     `&publicationState=live`;
 
   const json = await api(qs, { noCache: true });
@@ -329,6 +356,11 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
 
   const attrs = row?.attributes ?? row ?? {};
   const title: string = attrs.title ?? attrs.name ?? "Product";
+
+  // ✅ 用 product.category 生成面包屑
+  const category = extractCategory(attrs);
+  const categorySlug = category?.slug;
+  const categoryLabel = category?.label;
 
   // ---- pricing ----
   const prices = getPrices(attrs);
@@ -434,7 +466,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
 
   const colorOptions = colorKeys.map((name) => ({
     name,
-    css: colorNameToCss(name),
+    css: colorNameToCss(name) ?? "#000000",
   }));
 
   // ---- variants stock + sku ----
@@ -514,6 +546,33 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
 
   return (
     <main className="w-full px-2 sm:px-4 md:px-6 lg:px-0 py-8 overflow-x-hidden">
+      {/* ✅ 正确面包屑：Home > Category > Product（不再出现 /product 404） */}
+      <nav className="flex items-center text-sm text-neutral-500 mb-4" aria-label="Breadcrumb">
+        <Link
+          href="/"
+          className="font-medium text-neutral-700 hover:text-neutral-900 hover:underline visited:text-neutral-700"
+        >
+          Home
+        </Link>
+
+        <ChevronRight className="mx-1 h-4 w-4 text-neutral-400" />
+
+        {categorySlug ? (
+          <Link
+            href={`/category/${categorySlug}`}
+            className="font-medium text-neutral-700 hover:text-neutral-900 hover:underline visited:text-neutral-700"
+          >
+            {categoryLabel ?? "Category"}
+          </Link>
+        ) : (
+          <span className="font-medium text-neutral-700">Category</span>
+        )}
+
+        <ChevronRight className="mx-1 h-4 w-4 text-neutral-400" />
+
+        <span className="font-semibold text-neutral-900">{title}</span>
+      </nav>
+
       <h1 className="sr-only">{title}</h1>
 
       <div

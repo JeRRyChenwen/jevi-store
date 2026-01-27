@@ -883,8 +883,6 @@ Filter: New Arrival, Sale
 
 deploy 的时候保留本地测试的 localhost
 
-面包屑导航需要修改
-
 很好！然后我还想修改一下我的个人资料页面，也就是我的 profile 页面
 My Fit Preferences
 Gift Card

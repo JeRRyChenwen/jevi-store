@@ -18,6 +18,9 @@ export default function Breadcrumbs({ className }: { className?: string }) {
   const pathname = usePathname();
   if (!pathname) return null;
 
+  // ✅ product 详情页：用页面内的“正确面包屑”，全局这条隐藏掉
+  if (pathname.startsWith("/product/")) return null;
+
   // 不显示的路径
   const hideExact = new Set<string>(["/"]);
   const hidePrefix = ["/auth", "/api"];
@@ -45,10 +48,7 @@ export default function Breadcrumbs({ className }: { className?: string }) {
         </Link>
 
         <ChevronRight className="mx-1 h-4 w-4 text-gray-400" />
-        {/* 最后一段不加链接，合并为 “My Orders - {订单号}” */}
-        <span className="text-black font-semibold">
-          My Orders - {orderId}
-        </span>
+        <span className="text-black font-semibold">My Orders - {orderId}</span>
       </nav>
     );
   }
@@ -66,7 +66,11 @@ export default function Breadcrumbs({ className }: { className?: string }) {
     orders: "My Orders",
     account: "My Account",
     profile: "Profile",
+    product: "Product",
   };
+
+  // ✅ 这些段没有 index page（点了会 404），所以不要生成链接
+  const noIndexLink = new Set<string>(["product"]);
 
   return (
     <nav
@@ -81,15 +85,20 @@ export default function Breadcrumbs({ className }: { className?: string }) {
         const href = "/" + raw.slice(0, i + 1).join("/");
         const isLast = idx === shown.length - 1;
         const label = labelMap[seg] ?? titleize(seg);
+
+        const shouldLink = !isLast && !noIndexLink.has(seg);
+
         return (
           <span key={href} className="flex items-center">
             <ChevronRight className="mx-1 h-4 w-4 text-gray-400" />
             {isLast ? (
               <span className="text-black font-semibold">{label}</span>
-            ) : (
+            ) : shouldLink ? (
               <Link href={href} className="hover:underline text-gray-700">
                 {label}
               </Link>
+            ) : (
+              <span className="text-gray-700">{label}</span>
             )}
           </span>
         );

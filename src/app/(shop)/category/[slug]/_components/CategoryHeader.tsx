@@ -67,7 +67,10 @@ export default function CategoryHeader({
                   {SORT_LABELS[sortKey] ?? "Sort"}
                 </SelectValue>
               </SelectTrigger>
-              <SelectContent align="end" className="z-50 rounded-xl border shadow-lg">
+              <SelectContent
+                align="end"
+                className="z-50 rounded-xl border border-neutral-200 bg-white text-neutral-900 shadow-[0_10px_30px_rgba(0,0,0,0.08)]"
+              >
                 <SelectGroup>
                   <SelectItem value="default">Default</SelectItem>
                   <SelectItem value="price-desc">Price: High → Low</SelectItem>
