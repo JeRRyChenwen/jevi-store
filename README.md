@@ -922,11 +922,7 @@ Sub-Category: Causal, Formal, long sleeve, short sleeve
 
 Filter: New Arrival, Sale
 
-不同国际标准的 size，可能需要显示多少size对应多少长度，多少宽度（可能需要很具体）
-
 要分割出css文件
-
-back按钮
 
 deploy 的时候保留本地测试的 localhost
 
