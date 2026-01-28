@@ -465,7 +465,7 @@ async function sendOrderToServer(args: {
       tax_minor: Number(args.taxMinor || 0),
       grand_total_minor: Number(args.grandMinor) || 0,
 
-      delivery_method: args.deliveryMethod ?? "standard",
+      delivery_option: args.deliveryMethod ?? "standard",
       items,
 
       payment: {

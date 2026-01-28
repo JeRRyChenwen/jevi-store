@@ -983,10 +983,6 @@ similar product , produtc you may also interest
 
 delivery option
 
-checkout 页面的 payment 页面里的 All charges are processed in AUD. Your bank or PayPal may apply currency conversion and fees. 需要改成动态变量
-
-根据订单币种进行退款，以及根据币种付款和显示前端
-
 手机端
 
 群发邮件记得，要筛选，同意email的用户
