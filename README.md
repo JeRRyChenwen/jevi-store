@@ -848,48 +848,7 @@ wrangler d1 migrations apply socialplatform --local
 
 清库
 
-wrangler d1 execute socialplatform --remote --command "
-PRAGMA foreign_keys=OFF;
-
-DROP TRIGGER IF EXISTS trg_admin_users_updated_at;
-DROP TRIGGER IF EXISTS trg_fit_prefs_updated_at;
-DROP TRIGGER IF EXISTS trg_gift_cards_updated_at;
-DROP TRIGGER IF EXISTS trg_order_items_copy_order_no;
-DROP TRIGGER IF EXISTS trg_order_payments_copy_order_no;
-DROP TRIGGER IF EXISTS trg_orders_set_order_number;
-DROP TRIGGER IF EXISTS trg_orders_updated_at;
-DROP TRIGGER IF EXISTS trg_refunds_updated_at;
-DROP TRIGGER IF EXISTS trg_returns_set_return_number;
-DROP TRIGGER IF EXISTS trg_user_addresses_updated_at;
-DROP TRIGGER IF EXISTS trg_users_updated_at;
-"
-
-wrangler d1 execute socialplatform --remote --command "
-PRAGMA foreign_keys=OFF;
-
-DROP TABLE IF EXISTS gift_card_txns;
-DROP TABLE IF EXISTS gift_cards;
-
-DROP TABLE IF EXISTS refunds;
-DROP TABLE IF EXISTS return_items;
-DROP TABLE IF EXISTS returns;
-
-DROP TABLE IF EXISTS order_payments;
-DROP TABLE IF EXISTS order_items;
-DROP TABLE IF EXISTS orders;
-
-DROP TABLE IF EXISTS user_addresses;
-DROP TABLE IF EXISTS fit_preferences;
-DROP TABLE IF EXISTS email_subscriptions;
-DROP TABLE IF EXISTS password_resets;
-
-DROP TABLE IF EXISTS admin_sessions;
-DROP TABLE IF EXISTS admin_users;
-
-DROP TABLE IF EXISTS users;
-
-PRAGMA foreign_keys=ON;
-"
+wrangler d1 execute socialplatform --remote --file=reset.sql
 
 ==================================================================
 
@@ -950,6 +909,28 @@ Gift Card
 在收货地址 / 联系方式表单里有 “Email（必填）” 一栏；提交订单就带上了。
 
 客服
+
+主页海报
+
+订单 → 地址 → zone → delivery_option → 运费规则 → fee，address表可以要添加限制
+
+不同产品，有些产品我只是作为零售商，但是有些产品，我是作为全供应链者去售卖的
+
+🔜 你下一步“刚刚好”的升级（不急）
+不是对接物流 API，而是 规则版本化：
+shipping_zone（AU / NZ / US / EU / ROW）
+shipping_pricing_version（比如 "v1_flat_au"）
+这两个字段会在未来救你命（当你改规则、改价格时）。
+
+打开 checkout，改地址/邮编/切换 standard ↔ express，看控制台：
+Shipping matched: AU ... fee ... 是否出现
+PaymentStep 的金额是否随之变化
+
+在用户填写国家的时候必须弹出下拉菜单严格限制国家是正确的写法（无论用户登录与否），干脆直接把所有国家都写入 shipping_zone_members 表里面，然后 shipping_zone 里写的是洲，例如大洋洲，或者什么东亚，西亚
+
+（但只包standard 的delivery， 如果是express的话则是express的价格-standard 的价格，例如standard是）
+
+前端，由于你满足free delivery 的条件，所以express delivery的价格也会相应降低
 
 profile 页面修改 email，可能需要进一步改进
 

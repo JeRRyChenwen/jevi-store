@@ -1,7 +1,7 @@
 // src/app/checkout/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import PageBack from "@/components/PageBack";
@@ -30,8 +30,14 @@ type CartItem = CartListItem;
 
 /* ---------------- 常量 ---------------- */
 const LS_ADDRESS_KEY = "sp.checkout.address";
+
+/**
+ * 这些常量可以暂时保留用于 UI fallback，
+ * 但 delivery fee 以 server-side quote 为准。
+ */
 const DELIVERY_FREE_THRESHOLD = 100;
 const DELIVERY_FLAT = 10;
+
 const DISPLAY_CURRENCY: Currency = "AUD";
 const CONFIRM_PATH = "/order/confirmation";
 
@@ -239,9 +245,6 @@ async function sendOrderToServer(args: {
       const qty = Math.max(1, Number(it?.qty) || 1);
       const lineMinor = unitMinor * qty;
 
-      // ✅ HEIGHT PATCH（前端）：把 heightIncreaseCm 带进 items[]
-      // 兼容：it.heightIncreaseCm / it.heightIncrease / it.height / it.height_increase_cm
-      // 也兼容：it.attrs?.heightIncreaseCm / it.attrs?.heightIncrease
       const hRaw =
         it?.heightIncreaseCm ??
         it?.heightIncrease ??
@@ -255,7 +258,6 @@ async function sendOrderToServer(args: {
       const hNum = Number(hRaw);
       const heightIncreaseCm = Number.isFinite(hNum) ? hNum : 0;
 
-      // ✅ NEW: category root/leaf (from bag item)
       const categoryRootSlug =
         it?.category_root_slug ??
         it?.categoryRootSlug ??
@@ -270,17 +272,14 @@ async function sendOrderToServer(args: {
         it?.attrs?.categoryLeafSlug ??
         null;
 
-      // ✅ product_type：优先使用 category root（没有就 other）
       const productType =
         (typeof categoryRootSlug === "string" && categoryRootSlug.trim()
           ? categoryRootSlug.trim()
           : null) ?? "other";
 
       return {
-        // ✅ product_id 做一层兜底（购物车里一般没有 id）
         product_id: it?.product_id ?? it?.id ?? null,
 
-        // ✅ 关键修复：正确读取 Variant SKU（多来源兜底）
         product_sku:
           it?.product_sku ??
           it?.variantSku ??
@@ -290,10 +289,8 @@ async function sendOrderToServer(args: {
 
         product_title: String(it?.title || it?.name || "Item"),
 
-        // ✅ NEW: 用 category root 作为 product_type
         product_type: productType,
 
-        // ✅ A方案关键：结构化 options（用于后端写 variant_options_json）
         options: {
           color: it?.color ?? it?.attrs?.color ?? null,
           size: it?.size ?? it?.attrs?.size ?? null,
@@ -310,12 +307,10 @@ async function sendOrderToServer(args: {
             it?.attrs?.height ??
             heightIncreaseCm,
 
-          // ✅ NEW: category root/leaf
           category_root_slug: categoryRootSlug,
           category_leaf_slug: categoryLeafSlug,
         },
 
-        // ✅ 展示用（后端会 normalize）
         variant_title:
           it?.variant ||
           [it?.color, it?.size].filter(Boolean).join(" / ") ||
@@ -328,7 +323,6 @@ async function sendOrderToServer(args: {
         discount_minor: 0,
         tax_minor: 0,
 
-        // ✅ 仍然保留顶层 heightIncreaseCm（兼容旧逻辑）
         heightIncreaseCm,
 
         snapshot: {
@@ -339,7 +333,6 @@ async function sendOrderToServer(args: {
             size: it?.size ?? null,
             heightIncreaseCm,
 
-            // ✅ NEW
             category_root_slug: categoryRootSlug,
             category_leaf_slug: categoryLeafSlug,
 
@@ -352,7 +345,6 @@ async function sendOrderToServer(args: {
     // ② 识别支付提供方 & 提取交易号 + 卡信息
     const pay = args.payment || null;
 
-    // ✅ 优先使用显式 hint（PaymentStep 会传 paymentProvider；payload 也可能带 provider）
     const hinted =
       args.paymentProvider === "paypal" || args.paymentProvider === "braintree"
         ? args.paymentProvider
@@ -360,7 +352,6 @@ async function sendOrderToServer(args: {
           ? (pay.provider as "paypal" | "braintree")
           : null;
 
-    // ✅ 只有出现“明确 braintree/card 特征”时，才判定为 braintree（避免 PayPal 被误判）
     const isBraintree =
       pay?.provider === "braintree" ||
       !!pay?.transactionId ||
@@ -391,7 +382,6 @@ async function sendOrderToServer(args: {
         pay?.id ||
         null;
 
-      // ✅ 统一：只认 card，否则算 paypal（braintree 也可能走 paypal 账户）
       payment_method =
         (pay?.payment_method || pay?.paymentMethod) === "card" ? "card" : "paypal";
 
@@ -404,7 +394,6 @@ async function sendOrderToServer(args: {
         pay?.transaction ||
         null;
 
-      // ✅ PayPal：优先 capture_id；允许 PaymentStep 直接塞 provider_txn_id（capture_id）
       provider_txn_id =
         cap?.id ||
         pay?.provider_txn_id ||
@@ -459,6 +448,8 @@ async function sendOrderToServer(args: {
       addr_country: args.address?.country || null,
 
       currency: args.currency,
+
+      // ✅ Step 7: 这些值用于后端校验/落库（后端会以 server quote 重新计算）
       items_total_minor: Number(args.itemsMinor) || 0,
       delivery_fee_minor: Number(args.deliveryFeeMinor) || 0,
       discount_minor: 0,
@@ -668,17 +659,138 @@ export default function CheckoutPage() {
     return () => window.removeEventListener("focus", readLoginFromCookie);
   }, [setAddress]);
 
+  // 旧 hook 仍然用于 itemsMinor / itemsMajor（delivery fee 下面会用 server quote 覆盖）
+  const pricing = usePricing(cart, hasItems, DISPLAY_CURRENCY, DELIVERY_FREE_THRESHOLD, DELIVERY_FLAT);
   const {
     currency,
     itemsMinor,
     itemsMajor,
     savedMajor,
-    deliveryFeeMajor,
-    deliveryFeeMinor,
-    totalMinor,
-    totalMajor,
-    amountInMajorUnit,
-  } = usePricing(cart, hasItems, DISPLAY_CURRENCY, DELIVERY_FREE_THRESHOLD, DELIVERY_FLAT);
+    deliveryFeeMajor: deliveryFeeMajorFallback,
+    deliveryFeeMinor: deliveryFeeMinorFallback,
+    totalMinor: totalMinorFallback,
+    totalMajor: totalMajorFallback,
+    amountInMajorUnit: amountInMajorUnitFallback,
+  } = pricing;
+
+  // ===============================
+  // ✅ NEW: server-side shipping quote state
+  // ===============================
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [serverDeliveryFeeMinor, setServerDeliveryFeeMinor] = useState<number | null>(null);
+  const [lastQuoteMeta, setLastQuoteMeta] = useState<any | null>(null);
+
+  const abortRef = useRef<AbortController | null>(null);
+  const quoteReqKey = useMemo(() => {
+    // 只要影响 quote 的字段变了就重新 quote
+    const country = (address?.country || "").trim();
+    const state = (address?.state || "").trim();
+    const postcode = (address?.postcode || "").trim();
+    return JSON.stringify({
+      hasItems: !!hasItems,
+      itemsMinor: Number(itemsMinor) || 0,
+      deliveryMethod,
+      country,
+      state,
+      postcode,
+    });
+  }, [address?.country, address?.state, address?.postcode, deliveryMethod, hasItems, itemsMinor]);
+
+  async function fetchShippingQuote() {
+    if (!hasItems) {
+      setServerDeliveryFeeMinor(null);
+      setLastQuoteMeta(null);
+      setQuoteError(null);
+      return;
+    }
+
+    const country = (address?.country || "").trim() || "AU";
+    const state = (address?.state || "").trim() || null;
+    const postcode = (address?.postcode || "").trim() || null;
+
+    // 没填邮编/国家时，先不强制报错：让用户先填 Address；这里只做 best-effort
+    // 你也可以选择在 delivery step 强制需要 postcode
+    setQuoteLoading(true);
+    setQuoteError(null);
+
+    // abort in-flight
+    try {
+      abortRef.current?.abort();
+    } catch {}
+    const ac = new AbortController();
+    abortRef.current = ac;
+
+    try {
+      // ✅ 默认走本地 /api 代理；如果你想直连 Worker，改成 `${REMOTE_BASE}/shipping/quote`
+      const target = apiURL("/shipping/quote");
+
+      const res = await fetch(target, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        signal: ac.signal,
+        body: JSON.stringify({
+          country,
+          state,
+          postcode,
+          delivery_option: deliveryMethod,
+          items_total_minor: Number(itemsMinor) || 0,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.ok) {
+        const msg =
+          data?.error ||
+          `quote_failed_status_${res.status}`;
+        setQuoteError(msg);
+        setServerDeliveryFeeMinor(null);
+        setLastQuoteMeta(data ?? null);
+        return;
+      }
+
+      const feeMinor = Number(data?.delivery_fee_minor ?? 0) | 0;
+      setServerDeliveryFeeMinor(feeMinor);
+      setLastQuoteMeta(data);
+      setQuoteError(null);
+    } catch (e: any) {
+      if (String(e?.name) === "AbortError") return;
+      setQuoteError(String(e?.message || e || "quote_failed"));
+      setServerDeliveryFeeMinor(null);
+      setLastQuoteMeta(null);
+    } finally {
+      setQuoteLoading(false);
+    }
+  }
+
+  // ✅ 自动 quote：Address/Method/Items 变化就更新
+  useEffect(() => {
+    void fetchShippingQuote();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quoteReqKey]);
+
+  // ===============================
+  // ✅ Use server quote fee for UI + totals (fallback if quote not ready)
+  // ===============================
+  const deliveryFeeMinorEffective =
+    serverDeliveryFeeMinor != null ? serverDeliveryFeeMinor : deliveryFeeMinorFallback;
+
+  const deliveryFeeMajorEffective = deliveryFeeMinorEffective / 100;
+
+  // 目前 tax/discount 在 checkout UI 里都为 0；如果你将来加税/折扣，继续在这里合并即可
+  const discountMinor = 0;
+  const taxMinor = 0;
+
+  const totalMinorEffective = Math.max(
+    0,
+    (Number(itemsMinor) + Number(deliveryFeeMinorEffective) + taxMinor - discountMinor) | 0
+  );
+
+  const totalMajorEffective = totalMinorEffective / 100;
+
+  const amountInMajorUnitEffective = totalMajorEffective;
 
   const nextStepCore = () => {
     setStepAndURL(step === "bag" ? "address" : step === "address" ? "delivery" : "payment");
@@ -750,7 +862,9 @@ export default function CheckoutPage() {
     if (step === "address") {
       const ignoreEmail = isLoggedIn || !!(address.email && address.email.trim());
       const deliveryRes = validateAddress(address, "", ignoreEmail);
-      const billingRes = sameAsDelivery ? { valid: true, errs: emptyErr } : validateAddress(billingAddress, "", true);
+      const billingRes = sameAsDelivery
+        ? { valid: true, errs: emptyErr }
+        : validateAddress(billingAddress, "", true);
 
       setAddressErrs(deliveryRes.errs);
       setBillingErrs(billingRes.errs);
@@ -796,7 +910,6 @@ export default function CheckoutPage() {
     }
 
     try {
-      // ✅ 只在明确 card/braintree 特征时才算 braintree（避免 PayPal payload 误判）
       const hinted =
         payload?.provider === "paypal" || payload?.provider === "braintree"
           ? (payload.provider as "paypal" | "braintree")
@@ -825,9 +938,9 @@ export default function CheckoutPage() {
         address: orderAddress,
         currency,
         itemsMinor,
-        deliveryFeeMinor,
+        deliveryFeeMinor: deliveryFeeMinorEffective, // ✅ 用 server quote fee
         taxMinor: 0,
-        grandMinor: totalMinor,
+        grandMinor: totalMinorEffective, // ✅ 用 server quote totals
         payment: payload,
         paymentProvider: provider,
         deliveryMethod,
@@ -853,10 +966,11 @@ export default function CheckoutPage() {
           orderId,
           orderNumber,
           currency,
-          totalMinor,
+          totalMinor: totalMinorEffective,
           items: cart,
           address: orderAddress,
           deliveryMethod,
+          quote: lastQuoteMeta ?? null,
           payload: payload ?? null,
         })
       );
@@ -905,9 +1019,10 @@ export default function CheckoutPage() {
               itemsMajor={itemsMajor}
               savedMajor={savedMajor}
               hasItems={hasItems}
+              // ✅ 保留原 props（不想动 BagStep），但 flat 让它展示更接近真实 fee
               deliveryThreshold={DELIVERY_FREE_THRESHOLD}
-              deliveryFlat={DELIVERY_FLAT}
-              amountInMajorUnit={amountInMajorUnit}
+              deliveryFlat={deliveryFeeMajorEffective}
+              amountInMajorUnit={amountInMajorUnitEffective}
             />
           )}
 
@@ -945,22 +1060,39 @@ export default function CheckoutPage() {
           )}
 
           {step === "delivery" && (
-            <DeliveryStep
-              deliveryMethod={deliveryMethod}
-              setDeliveryMethod={setDeliveryMethod}
-              showFreeShipping={hasItems && itemsMajor >= DELIVERY_FREE_THRESHOLD}
-            />
+            <div className="space-y-3">
+              <DeliveryStep
+                deliveryMethod={deliveryMethod}
+                setDeliveryMethod={setDeliveryMethod}
+                // ✅ 以 server quote fee == 0 判断 free shipping（比阈值更准确）
+                showFreeShipping={hasItems && deliveryFeeMinorEffective === 0}
+              />
+
+              {/* ✅ 可选：给自己 debug（你不想显示给用户就删掉这块） */}
+              {quoteLoading ? (
+                <div className="text-sm text-neutral-500">Calculating shipping…</div>
+              ) : quoteError ? (
+                <div className="text-sm text-amber-600">
+                  Shipping quote unavailable (fallback applied). ({quoteError})
+                </div>
+              ) : lastQuoteMeta ? (
+                <div className="text-sm text-neutral-500">
+                  Shipping matched: {lastQuoteMeta.zone_code ?? "?"} · option {deliveryMethod} · fee{" "}
+                  {(deliveryFeeMinorEffective / 100).toFixed(2)} {currency}
+                </div>
+              ) : null}
+            </div>
           )}
 
           <PaymentStep
             visible={step === "payment"}
-            amountInMajorUnit={amountInMajorUnit}
+            amountInMajorUnit={amountInMajorUnitEffective} // ✅ server totals
             isPayProcessing={isPayProcessing}
             address={address}
             itemsCount={itemsCount}
             itemsMinor={itemsMinor}
-            deliveryFeeMinor={deliveryFeeMinor}
-            totalMinor={totalMinor}
+            deliveryFeeMinor={deliveryFeeMinorEffective} // ✅ server quote fee
+            totalMinor={totalMinorEffective} // ✅ server totals
             currency={currency}
             onPayInitiated={handlePayInitiated}
             onPaySucceeded={handlePaySucceeded}
@@ -1010,8 +1142,8 @@ export default function CheckoutPage() {
             </div>
 
             {(step === "bag" || step === "address") &&
-              formAlert.hasAlert &&
-              formAlert.alert?.message ? (
+            formAlert.hasAlert &&
+            formAlert.alert?.message ? (
               <div className="mt-2 flex justify-end">
                 <div className={step === "bag" ? "w-[320px] max-w-full" : "w-[660px] max-w-full"}>
                   <Alert variant={alertVariant as any}>{formAlert.alert.message}</Alert>
