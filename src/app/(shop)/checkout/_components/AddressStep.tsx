@@ -3,6 +3,8 @@
 
 import React, { useMemo, useRef } from "react";
 import AddressErrorHint from "./AddressErrorHint";
+import { Alert } from "@/components/ui/alert";
+import CountrySelect from "@/components/address/CountrySelect";
 
 /* ====== 本组件内部使用的类型（结构要和 page.tsx 里的一样） ====== */
 type Address = {
@@ -15,7 +17,7 @@ type Address = {
   city?: string;
   state?: string;
   postcode?: string;
-  country?: string;
+  country?: string; // 现在存的是 ISO code，比如 "AU"
 };
 
 type AddressErr = {
@@ -79,13 +81,22 @@ const baseInput =
 
 function hasAnyErr(errs: AddressErr, includeEmail: boolean) {
   const keys: (keyof AddressErr)[] = includeEmail
-    ? ["firstName", "lastName", "phone", "line1", "city", "state", "postcode", "country", "email"]
+    ? [
+        "firstName",
+        "lastName",
+        "phone",
+        "line1",
+        "city",
+        "state",
+        "postcode",
+        "country",
+        "email",
+      ]
     : ["firstName", "lastName", "phone", "line1", "city", "state", "postcode", "country"];
   return keys.some((k) => !!errs[k]);
 }
 
 function fieldErrorText(key: keyof AddressErr): string {
-  // 业内一般会更具体；你后续如果想更严格可按国家规则加正则
   if (key === "email") return "Please enter a valid email address.";
   if (key === "phone") return "Please enter a valid phone number.";
   if (key === "postcode") return "Please enter a valid postcode.";
@@ -156,14 +167,12 @@ function AddressForm({
 
   const Inner = (
     <div className="p-4 space-y-6">
-      {/* 顶部错误汇总（业内常见：简短一句 + 下面字段级红字） */}
       {showSummary && (
         <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           Please check the highlighted fields below.
         </div>
       )}
 
-      {/* 表单主体 */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* First Name */}
         <div className="space-y-1">
@@ -326,20 +335,21 @@ function AddressForm({
           />
         </div>
 
-        {/* Country */}
+        {/* Country (Reusable Component) */}
         <div className="space-y-1">
           <label htmlFor="addr-country" className="block text-sm font-medium text-neutral-700">
             Country <RequiredStar />
           </label>
-          <input
+
+          <CountrySelect
             id="addr-country"
-            className={clsInput(showErrors, errs.country)}
-            autoComplete="country-name"
             value={address.country || ""}
-            onChange={on("country")}
-            aria-invalid={showErrors && errs.country ? true : undefined}
-            aria-describedby="err-addr-country"
+            onChange={(code) => setAddress({ ...address, country: code })}
+            invalid={!!(showErrors && errs.country)}
+            describedById="err-addr-country"
+            placeholder="Select country"
           />
+
           <InlineError
             show={showErrors && errs.country}
             id="err-addr-country"
@@ -348,7 +358,6 @@ function AddressForm({
         </div>
       </div>
 
-      {/* 未登录才显示 Your Details */}
       {!hideYourDetails && (
         <div className="border rounded-lg p-4">
           <h3 className="text-base font-medium mb-2">Your Details</h3>
@@ -410,7 +419,6 @@ function AddressForm({
 
   if (variant === "bare") return <>{Inner}</>;
 
-  // 注意：这里不再加 id="address-section"，避免和外层重复
   return (
     <section className="rounded-xl border">
       <div className="border-b px-4 py-3 font-semibold">{title}</div>
@@ -593,17 +601,23 @@ function BillingForm({
           />
         </div>
 
+        {/* Billing Country (Reusable Component) */}
         <div className="space-y-1">
           <label className="block text-sm font-medium text-neutral-700">
             Country <RequiredStar />
           </label>
-          <input
-            className={clsInput(showErrors, errs.country)}
+
+          <CountrySelect
             value={billing.country || ""}
-            onChange={on("country")}
-            aria-invalid={showErrors && errs.country ? true : undefined}
-            aria-describedby="err-bill-country"
+            onChange={(code) => {
+              setBilling({ ...billing, country: code });
+              if (showErrors) onFieldChange?.("country", code);
+            }}
+            invalid={!!(showErrors && errs.country)}
+            describedById="err-bill-country"
+            placeholder="Select country"
           />
+
           <InlineError
             show={showErrors && errs.country}
             id="err-bill-country"
@@ -663,15 +677,12 @@ const AddressStep: React.FC<AddressStepProps> = ({
   setEmailInput,
   sendSubscriptionIfNeeded,
 }) => {
-  // ✅ 防呆：有时 page.tsx 可能没把 hasSavedDelivery/hasSavedBilling 算对
   const effectiveHasSavedDelivery = hasSavedDelivery || !!savedDeliveryAddr;
   const effectiveHasSavedBilling = hasSavedBilling || !!savedBillingAddr;
 
-  // ✅ 草稿：用于“取消勾选 saved 时恢复用户之前编辑内容”（业内常见体验）
   const deliveryDraftRef = useRef<Address | null>(null);
   const billingDraftRef = useRef<Address | null>(null);
 
-  // 计算：当前 Address 表单是否真的需要包含 email 校验（未登录才需要）
   const includeEmailErr = !isLoggedIn;
 
   const showDeliverySummary = useMemo(() => {
@@ -684,7 +695,6 @@ const AddressStep: React.FC<AddressStepProps> = ({
 
   return (
     <>
-      {/* 顶部：Use Saved Addresses 区块 */}
       {(effectiveHasSavedDelivery || effectiveHasSavedBilling) && (
         <section className="rounded-xl border" id="use-saved-addresses">
           <div className="border-b px-4 py-3 font-semibold">Use Saved Addresses</div>
@@ -703,14 +713,12 @@ const AddressStep: React.FC<AddressStepProps> = ({
                       const checked = e.target.checked;
 
                       if (checked) {
-                        // 勾选前：把当前编辑内容存为草稿，方便取消勾选时恢复
                         deliveryDraftRef.current = { ...address };
                         if (savedDeliveryAddr) {
                           setAddress(savedDeliveryAddr);
                           clearAddressErrors();
                         }
                       } else {
-                        // 取消勾选：恢复草稿（如果有）
                         if (deliveryDraftRef.current) {
                           setAddress(deliveryDraftRef.current);
                         }
@@ -754,16 +762,13 @@ const AddressStep: React.FC<AddressStepProps> = ({
         </section>
       )}
 
-      {/* 与上方区块留一点空间 */}
       <div className="h-4" />
 
-      {/* 当两边都用 saved 地址时，整体 Address & Billing 区块可隐藏 */}
       {!(useSavedDelivery && useSavedBilling) && (
         <section className="rounded-xl border pb-8" id="address-section">
           <div className="border-b px-4 py-3 font-semibold">Address & Billing</div>
 
           <div className="p-4 space-y-6">
-            {/* 1) Delivery Address（未勾选 Use saved Delivery 时才显示） */}
             {!useSavedDelivery && (
               <div className="space-y-2">
                 <div className="flex items-baseline justify-between">
@@ -790,7 +795,6 @@ const AddressStep: React.FC<AddressStepProps> = ({
               </div>
             )}
 
-            {/* 2) Billing 同收货地址开关（没用 saved billing 时才有意义） */}
             {!useSavedBilling && (
               <div className="rounded-lg border p-4">
                 <label className="flex items-start gap-3 text-sm">
@@ -810,7 +814,6 @@ const AddressStep: React.FC<AddressStepProps> = ({
               </div>
             )}
 
-            {/* 3) Billing Address（不同于 delivery 且未勾选 saved billing 时） */}
             {!sameAsDelivery && !useSavedBilling && (
               <div className="space-y-2">
                 <div className="flex items-baseline justify-between">
@@ -831,7 +834,6 @@ const AddressStep: React.FC<AddressStepProps> = ({
               </div>
             )}
 
-            {/* 4) Save as default 按钮（至少一侧为可编辑时） */}
             {isLoggedIn && !(useSavedDelivery && useSavedBilling) && (
               <div className="flex justify-end -mt-2 mr-6">
                 <div className="flex flex-col items-end gap-2">
@@ -843,14 +845,13 @@ const AddressStep: React.FC<AddressStepProps> = ({
                     Save delivery address and billing address as default
                   </button>
 
-                  {saveMsg &&
-                    (saveMsg.kind === "success" ? (
-                      <div className="mt-1 text-xs text-emerald-700" aria-live="polite">
-                        {saveMsg.text}
-                      </div>
-                    ) : (
-                      <AddressErrorHint className="mt-1">{saveMsg.text}</AddressErrorHint>
-                    ))}
+                  {saveMsg ? (
+                    <div className="mt-1 w-full">
+                      <Alert variant={saveMsg.kind === "success" ? "success" : "error"}>
+                        <span className="text-sm">{saveMsg.text}</span>
+                      </Alert>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             )}

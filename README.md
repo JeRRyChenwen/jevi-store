@@ -938,7 +938,13 @@ profile 页面修改 email，可能需要进一步改进
 
 我明白了，strapi里的Product collection 里 base_price_cents 是没用的，看价格要去price component里看
 
+delivery fee 需要在checkout页面的bag step就显示出来吗
+
+checkout页面里的 address页面里的 Save delivery address and billing address as default 按钮出现的提示需要修改
+
 裤子 袜子 暂时不开放，鞋子拆开category，同时他们对应的数据类型，variant title之类的东西要确认
+
+统一shipping 表里的collumn名country code 以及加上country name
 
 ==============================================================================
 

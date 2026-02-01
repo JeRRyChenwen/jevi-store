@@ -25,6 +25,7 @@ import {
 // ✅ 统一提示体系
 import { Alert } from "@/components/ui/alert";
 import { useFormAlert } from "@/hooks/useFormAlert";
+import { coerceCountryCode } from "@/lib/country";
 
 type CartItem = CartListItem;
 
@@ -627,37 +628,57 @@ export default function CheckoutPage() {
   }, []);
 
   useEffect(() => {
-    try {
-      const rawAddr = localStorage.getItem(LS_ADDRESS_KEY);
-      if (rawAddr) {
-        const a = JSON.parse(rawAddr);
-        setAddress((prev) => (Object.keys(prev || {}).length ? prev : a));
-        setEmailInput(a?.email || "");
+  try {
+    const rawAddr = localStorage.getItem(LS_ADDRESS_KEY);
+    if (rawAddr) {
+      const a = JSON.parse(rawAddr) as any;
+
+      // ✅ Step 3-B: country 统一清洗成 ISO2（AU/NZ/...）
+      // - 如果用户手动输入了 "AU" / "au" / " AU "：会变成 "AU"
+      // - 如果是 "Australia"：会 fallback 为 "AU"（你现在的策略）
+      const countryCode = coerceCountryCode(a?.country, "AU");
+      const cleaned = { ...a, country: countryCode };
+
+      // ✅ 回写 localStorage：以后就不会再出现 "Australia" 导致 quote 变 INTL
+      try {
+        localStorage.setItem(LS_ADDRESS_KEY, JSON.stringify(cleaned));
+      } catch {}
+
+      // ✅ 只在当前还没填过 address 时才用 localStorage 覆盖（保留你原来的逻辑）
+      setAddress((prev) => (Object.keys(prev || {}).length ? prev : cleaned));
+
+      // emailInput 也用清洗后的对象（逻辑不变）
+      setEmailInput(cleaned?.email || "");
+    }
+  } catch {}
+
+  readLoginFromCookie();
+
+  (async () => {
+    if (isLoggedInViaCookie()) {
+      const authedEmail = await fetchAuthedEmail();
+      if (authedEmail) {
+        setEmailInput((prev) => prev || authedEmail);
+        setAddress((a) => {
+          // 这里顺便再确保 country 是 ISO2（防止 address 被别处写坏）
+          const ensuredCountry = coerceCountryCode((a as any)?.country, "AU");
+          const base = { ...(a as any), country: ensuredCountry };
+
+          if (base.email) return base;
+          const next = { ...base, email: authedEmail };
+
+          try {
+            localStorage.setItem(LS_ADDRESS_KEY, JSON.stringify(next));
+          } catch {}
+          return next;
+        });
       }
-    } catch {}
+    }
+  })();
 
-    readLoginFromCookie();
-
-    (async () => {
-      if (isLoggedInViaCookie()) {
-        const authedEmail = await fetchAuthedEmail();
-        if (authedEmail) {
-          setEmailInput((prev) => prev || authedEmail);
-          setAddress((a) => {
-            if (a.email) return a;
-            const next = { ...a, email: authedEmail };
-            try {
-              localStorage.setItem(LS_ADDRESS_KEY, JSON.stringify(next));
-            } catch {}
-            return next;
-          });
-        }
-      }
-    })();
-
-    window.addEventListener("focus", readLoginFromCookie);
-    return () => window.removeEventListener("focus", readLoginFromCookie);
-  }, [setAddress]);
+  window.addEventListener("focus", readLoginFromCookie);
+  return () => window.removeEventListener("focus", readLoginFromCookie);
+}, [setAddress]);
 
   // 旧 hook 仍然用于 itemsMinor / itemsMajor（delivery fee 下面会用 server quote 覆盖）
   const pricing = usePricing(cart, hasItems, DISPLAY_CURRENCY, DELIVERY_FREE_THRESHOLD, DELIVERY_FLAT);

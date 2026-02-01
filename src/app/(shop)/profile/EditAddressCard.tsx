@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { Alert } from "@/components/ui/alert";
 import { useFormAlert } from "@/hooks/useFormAlert";
 import { FieldMessage } from "@/components/ui/field-message";
+import CountrySelect from "@/components/address/CountrySelect";
 
 type Address = {
   first_name: string;
@@ -16,7 +17,7 @@ type Address = {
   city: string;
   state: string;
   postcode: string;
-  country: string;
+  country: string; // ISO code like "AU"
   is_default?: boolean | number | null;
 };
 
@@ -29,7 +30,7 @@ type AddressesResp = {
     billing?: any | null;
   };
 
-  // ✅ 兼容旧结构（如果你哪天又改回去，也不炸）
+  // ✅ 兼容旧结构
   delivery?: any | null;
   billing?: any | null;
 
@@ -37,6 +38,8 @@ type AddressesResp = {
 };
 
 type FieldErrors = Partial<Record<keyof Address, string>>;
+
+const DEFAULT_COUNTRY = "AU";
 
 const EMPTY_ADDRESS: Address = {
   first_name: "",
@@ -47,12 +50,25 @@ const EMPTY_ADDRESS: Address = {
   city: "",
   state: "",
   postcode: "",
-  country: "", // ✅ 改为空字符串
+  country: "", // keep empty; we will normalize to DEFAULT_COUNTRY at runtime
 };
 
-function shapeAddress(raw: any | null): Address {
-  if (!raw) return { ...EMPTY_ADDRESS };
+function normalizeCountry(v: any): string {
+  const s = String(v ?? "").trim().toUpperCase();
+  return s || DEFAULT_COUNTRY;
+}
+
+function normalizeAddressForUI(raw: Address): Address {
   return {
+    ...raw,
+    country: normalizeCountry(raw.country),
+  };
+}
+
+function shapeAddress(raw: any | null): Address {
+  if (!raw) return normalizeAddressForUI({ ...EMPTY_ADDRESS });
+
+  const shaped: Address = {
     first_name: raw.first_name || "",
     last_name: raw.last_name || "",
     phone: raw.phone || "",
@@ -61,14 +77,11 @@ function shapeAddress(raw: any | null): Address {
     city: raw.city || "",
     state: raw.state || "",
     postcode: raw.postcode || "",
-    country: raw.country || "", // ✅ 不再给 "Australia"
-    is_default:
-      raw.is_default != null
-        ? !!raw.is_default
-        : raw.type
-          ? true
-          : null,
+    country: raw.country || "", // might be "", we normalize below
+    is_default: raw.is_default != null ? !!raw.is_default : raw.type ? true : null,
   };
+
+  return normalizeAddressForUI(shaped);
 }
 
 function validateAddress(
@@ -93,10 +106,7 @@ function validateAddress(
   }
 
   const ok = Object.keys(errors).length === 0;
-  const message = ok
-    ? ""
-    : `Please complete all required ${kind} address fields before saving.`;
-
+  const message = ok ? "" : `Please complete all required ${kind} address fields before saving.`;
   return { ok, errors, message };
 }
 
@@ -116,8 +126,8 @@ export default function EditAddressCard() {
   const [loading, setLoading] = useState(false);
   const [globalErr, setGlobalErr] = useState<string | null>(null);
 
-  const [delivery, setDelivery] = useState<Address>({ ...EMPTY_ADDRESS });
-  const [billing, setBilling] = useState<Address>({ ...EMPTY_ADDRESS });
+  const [delivery, setDelivery] = useState<Address>(normalizeAddressForUI({ ...EMPTY_ADDRESS }));
+  const [billing, setBilling] = useState<Address>(normalizeAddressForUI({ ...EMPTY_ADDRESS }));
 
   const [editingDelivery, setEditingDelivery] = useState(false);
   const [editingBilling, setEditingBilling] = useState(false);
@@ -128,11 +138,9 @@ export default function EditAddressCard() {
   const [deliveryErrors, setDeliveryErrors] = useState<FieldErrors>({});
   const [billingErrors, setBillingErrors] = useState<FieldErrors>({});
 
-  // ✅ 每个区块独立的表单级提示（不会互相覆盖）
   const deliveryAlert = useFormAlert();
   const billingAlert = useFormAlert();
 
-  // 初次加载地址
   useEffect(() => {
     let dead = false;
     (async () => {
@@ -140,7 +148,6 @@ export default function EditAddressCard() {
         setLoading(true);
         setGlobalErr(null);
 
-        // 初次加载时也清一下 alert
         deliveryAlert.clear();
         billingAlert.clear();
 
@@ -157,9 +164,6 @@ export default function EditAddressCard() {
         const data = (await r.json()) as AddressesResp;
         if (dead) return;
 
-        // ✅ 兼容两种返回结构：
-        // 1) { delivery, billing }
-        // 2) { addresses: { delivery, billing } }
         const d = (data as any)?.delivery ?? (data as any)?.addresses?.delivery ?? null;
         const b = (data as any)?.billing ?? (data as any)?.addresses?.billing ?? null;
 
@@ -177,11 +181,23 @@ export default function EditAddressCard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  function normalizeBeforeSave(addr: Address): Address {
+    return {
+      ...addr,
+      country: normalizeCountry(addr.country),
+    };
+  }
+
   async function saveAddress(kind: "delivery" | "billing") {
-    const addr = kind === "delivery" ? delivery : billing;
+    const addrRaw = kind === "delivery" ? delivery : billing;
+
+    // ✅ 关键：保存前把 country 真正写进 state 的值（兜底 AU）
+    const addr = normalizeBeforeSave(addrRaw);
+    if (kind === "delivery") setDelivery(addr);
+    else setBilling(addr);
+
     const { ok, errors, message } = validateAddress(addr, kind);
 
-    // 本地校验不通过 → 不发请求
     if (!ok) {
       if (kind === "delivery") {
         setDeliveryErrors(errors);
@@ -193,7 +209,6 @@ export default function EditAddressCard() {
       return;
     }
 
-    // 清除旧错误
     if (kind === "delivery") {
       setDeliveryErrors({});
       deliveryAlert.clear();
@@ -223,16 +238,10 @@ export default function EditAddressCard() {
       });
 
       const data = await r.json().catch(() => ({} as any));
-
       if (!r.ok || (data as any)?.error) {
-        throw new Error(
-          (data as any)?.error || `POST /api/addresses ${r.status} ${r.statusText}`
-        );
+        throw new Error((data as any)?.error || `POST /api/addresses ${r.status} ${r.statusText}`);
       }
 
-      // ✅ 兼容两种返回结构：
-      // 1) { delivery, billing }
-      // 2) { addresses: { delivery, billing } }
       const d = (data as any)?.delivery ?? (data as any)?.addresses?.delivery ?? null;
       const b = (data as any)?.billing ?? (data as any)?.addresses?.billing ?? null;
 
@@ -284,7 +293,6 @@ export default function EditAddressCard() {
             )}
           </div>
 
-          {/* name row */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="text-xs text-neutral-500">
@@ -331,7 +339,6 @@ export default function EditAddressCard() {
             </div>
           </div>
 
-          {/* phone */}
           <div>
             <label className="text-xs text-neutral-500">
               Phone<span className="text-red-500">*</span>
@@ -354,7 +361,6 @@ export default function EditAddressCard() {
             <FieldMessage variant="error">{deliveryErrors.phone}</FieldMessage>
           </div>
 
-          {/* line1 */}
           <div>
             <label className="text-xs text-neutral-500">
               Address line 1<span className="text-red-500">*</span>
@@ -377,7 +383,6 @@ export default function EditAddressCard() {
             <FieldMessage variant="error">{deliveryErrors.line1}</FieldMessage>
           </div>
 
-          {/* line2 optional */}
           <div>
             <label className="text-xs text-neutral-500">Address line 2 (optional)</label>
             <input
@@ -392,7 +397,6 @@ export default function EditAddressCard() {
             />
           </div>
 
-          {/* city / state */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="text-xs text-neutral-500">
@@ -439,7 +443,6 @@ export default function EditAddressCard() {
             </div>
           </div>
 
-          {/* postcode / country */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="text-xs text-neutral-500">
@@ -463,35 +466,36 @@ export default function EditAddressCard() {
               <FieldMessage variant="error">{deliveryErrors.postcode}</FieldMessage>
             </div>
 
+            {/* ✅ Country: use CountrySelect (NO UI fallback; state already normalized) */}
             <div>
               <label className="text-xs text-neutral-500">
                 Country<span className="text-red-500">*</span>
               </label>
-              <input
-                disabled={!editingDelivery}
-                value={delivery.country || ""}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setDelivery((prev) => ({ ...prev, country: v }));
-                  setDeliveryErrors((prev) => ({ ...prev, country: undefined }));
-                  deliveryAlert.clear();
-                }}
-                className={
-                  baseInputClass +
-                  (!editingDelivery ? readOnlyClass : "") +
-                  (deliveryErrors.country ? errorClass : "")
-                }
-              />
+
+              <div className="mt-1">
+                <CountrySelect
+                  value={delivery.country}
+                  disabled={!editingDelivery}
+                  invalid={!!deliveryErrors.country}
+                  onChange={(code) => {
+                    setDelivery((prev) => ({ ...prev, country: code }));
+                    setDeliveryErrors((prev) => ({ ...prev, country: undefined }));
+                    deliveryAlert.clear();
+                  }}
+                />
+              </div>
+
               <FieldMessage variant="error">{deliveryErrors.country}</FieldMessage>
             </div>
           </div>
 
-          {/* buttons + alert */}
           <div className="mt-3 flex items-center gap-3">
             {!editingDelivery ? (
               <button
                 type="button"
                 onClick={() => {
+                  // ✅ 进入编辑时也兜底一次，避免 state 里 country 为空但 UI 看起来有值
+                  setDelivery((prev) => normalizeAddressForUI(prev));
                   setEditingDelivery(true);
                   setDeliveryErrors({});
                   deliveryAlert.clear();
@@ -505,12 +509,9 @@ export default function EditAddressCard() {
                 <button
                   type="button"
                   onClick={() => {
-                    // 取消：回到初始状态（重新拉一次比较简单）
                     setEditingDelivery(false);
                     setDeliveryErrors({});
                     deliveryAlert.clear();
-                    // 简单起见从服务器再拉一遍
-                    // 也可以缓存初始值，这里为了代码短一点就直接刷新
                     location.reload();
                   }}
                   className="min-w-[96px] rounded-full border px-5 py-2 text-sm font-semibold hover:bg-neutral-50"
@@ -530,9 +531,7 @@ export default function EditAddressCard() {
           </div>
 
           {deliveryAlert.hasAlert && deliveryAlert.alert?.message ? (
-            <Alert variant={alertVariantOf(deliveryAlert.alert.type)}>
-              {deliveryAlert.alert.message}
-            </Alert>
+            <Alert variant={alertVariantOf(deliveryAlert.alert.type)}>{deliveryAlert.alert.message}</Alert>
           ) : null}
         </div>
       </section>
@@ -549,7 +548,6 @@ export default function EditAddressCard() {
             )}
           </div>
 
-          {/* name row */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="text-xs text-neutral-500">
@@ -596,7 +594,6 @@ export default function EditAddressCard() {
             </div>
           </div>
 
-          {/* phone */}
           <div>
             <label className="text-xs text-neutral-500">
               Phone<span className="text-red-500">*</span>
@@ -619,7 +616,6 @@ export default function EditAddressCard() {
             <FieldMessage variant="error">{billingErrors.phone}</FieldMessage>
           </div>
 
-          {/* line1 */}
           <div>
             <label className="text-xs text-neutral-500">
               Address line 1<span className="text-red-500">*</span>
@@ -642,7 +638,6 @@ export default function EditAddressCard() {
             <FieldMessage variant="error">{billingErrors.line1}</FieldMessage>
           </div>
 
-          {/* line2 optional */}
           <div>
             <label className="text-xs text-neutral-500">Address line 2 (optional)</label>
             <input
@@ -657,7 +652,6 @@ export default function EditAddressCard() {
             />
           </div>
 
-          {/* city / state */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="text-xs text-neutral-500">
@@ -704,7 +698,6 @@ export default function EditAddressCard() {
             </div>
           </div>
 
-          {/* postcode / country */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="text-xs text-neutral-500">
@@ -728,35 +721,35 @@ export default function EditAddressCard() {
               <FieldMessage variant="error">{billingErrors.postcode}</FieldMessage>
             </div>
 
+            {/* ✅ Country: use CountrySelect */}
             <div>
               <label className="text-xs text-neutral-500">
                 Country<span className="text-red-500">*</span>
               </label>
-              <input
-                disabled={!editingBilling}
-                value={billing.country || ""}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setBilling((prev) => ({ ...prev, country: v }));
-                  setBillingErrors((prev) => ({ ...prev, country: undefined }));
-                  billingAlert.clear();
-                }}
-                className={
-                  baseInputClass +
-                  (!editingBilling ? readOnlyClass : "") +
-                  (billingErrors.country ? errorClass : "")
-                }
-              />
+
+              <div className="mt-1">
+                <CountrySelect
+                  value={billing.country}
+                  disabled={!editingBilling}
+                  invalid={!!billingErrors.country}
+                  onChange={(code) => {
+                    setBilling((prev) => ({ ...prev, country: code }));
+                    setBillingErrors((prev) => ({ ...prev, country: undefined }));
+                    billingAlert.clear();
+                  }}
+                />
+              </div>
+
               <FieldMessage variant="error">{billingErrors.country}</FieldMessage>
             </div>
           </div>
 
-          {/* buttons + alert */}
           <div className="mt-3 flex items-center gap-3">
             {!editingBilling ? (
               <button
                 type="button"
                 onClick={() => {
+                  setBilling((prev) => normalizeAddressForUI(prev));
                   setEditingBilling(true);
                   setBillingErrors({});
                   billingAlert.clear();
@@ -792,9 +785,7 @@ export default function EditAddressCard() {
           </div>
 
           {billingAlert.hasAlert && billingAlert.alert?.message ? (
-            <Alert variant={alertVariantOf(billingAlert.alert.type)}>
-              {billingAlert.alert.message}
-            </Alert>
+            <Alert variant={alertVariantOf(billingAlert.alert.type)}>{billingAlert.alert.message}</Alert>
           ) : null}
         </div>
       </section>

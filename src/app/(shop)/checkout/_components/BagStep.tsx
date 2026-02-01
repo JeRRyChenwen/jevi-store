@@ -22,12 +22,12 @@ interface BagStepProps {
   savedMajor: number; // 省下的钱（元）
   hasItems: boolean;
 
-  // 运费策略
-  deliveryThreshold: number; // 满多少免邮
-  deliveryFlat: number; // 未满时运费（元）
+  // 运费策略（先保留 props，不用也没关系）
+  deliveryThreshold: number;
+  deliveryFlat: number;
 
   // 用于隐藏的 PayPal 预加载
-  amountInMajorUnit: number; // 总金额（PayPal 按钮的 amount）
+  amountInMajorUnit: number;
 }
 
 /* 和原来 page.tsx 里的 fmtPrice 一样 */
@@ -40,7 +40,6 @@ function fmtPrice(n: number, currency: string, locale?: string) {
   }).format(n);
 }
 
-/* 原来底部的 Row 小组件搬过来用 */
 function Row({
   label,
   value,
@@ -83,25 +82,19 @@ const BagStep: React.FC<BagStepProps> = ({
   itemsMajor,
   savedMajor,
   hasItems,
-  deliveryThreshold,
-  deliveryFlat,
   amountInMajorUnit,
 }) => {
   const isEmpty = (cart?.length || 0) === 0;
 
-  // 运费 & 总价（单位：元）
-  const deliveryFeeMajor =
-    !isEmpty && itemsMajor < deliveryThreshold ? deliveryFlat : 0;
-  const totalMajor = itemsMajor + deliveryFeeMajor;
+  // ✅ 这里的 Total 先按“不含运费”展示，避免误导
+  const totalExclDeliveryMajor = itemsMajor;
 
   return (
     <>
-      {/* 主体：Your Bag + Order Summary */}
       <section className="rounded-xl border">
         <div className="border-b px-4 py-3 font-semibold">Your Bag</div>
 
         <div className="p-4 space-y-3">
-          {/* ✅ 空购物车提示：业内常见做法（视觉提示 + 引导继续购物） */}
           {isEmpty && (
             <Alert variant="info">
               <div className="flex flex-col gap-2">
@@ -140,8 +133,13 @@ const BagStep: React.FC<BagStepProps> = ({
 
         <div className="border-t p-4">
           <div className="mb-2 text-sm font-semibold">Order Summary</div>
+
           <div className="space-y-2 text-sm">
-            <Row label="Subtotal" value={fmtPrice(itemsMajor, currency)} strongRight />
+            <Row
+              label="Subtotal"
+              value={fmtPrice(itemsMajor, currency)}
+              strongRight
+            />
 
             {savedMajor > 0 && (
               <Row
@@ -151,38 +149,25 @@ const BagStep: React.FC<BagStepProps> = ({
               />
             )}
 
-            {/* ✅ 这里用 isEmpty 判断，避免 hasItems 和 cart 不一致时显示异常 */}
-            {!isEmpty && (
-              <Row
-                label="Delivery fee"
-                value={
-                  itemsMajor >= deliveryThreshold
-                    ? `FREE for over ${fmtPrice(deliveryThreshold, currency)}`
-                    : fmtPrice(deliveryFlat, currency)
-                }
-                valueClass={
-                  itemsMajor >= deliveryThreshold
-                    ? "text-emerald-700 font-semibold"
-                    : undefined
-                }
-              />
-            )}
+            {/* ✅ 不展示 delivery fee（地址未填完时不误导） */}
 
             <div className="pt-1">
               <Row
-                label="Total"
-                value={fmtPrice(totalMajor, currency)}
+                label="Total (excl. delivery)"
+                value={fmtPrice(totalExclDeliveryMajor, currency)}
                 strongLeft
                 strongRight
                 bigRight
               />
-              <div className="mt-1 text-xs text-neutral-500">Including GST</div>
+              <div className="mt-1 text-xs text-neutral-500">
+                Delivery fee may apply after you enter the delivery address and choose a delivery option.
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* 隐藏的 PayPal 预加载（原来 step === "bag" && amountInMajorUnit > 0 那块） */}
+      {/* 隐藏的 PayPal 预加载（保留） */}
       {amountInMajorUnit > 0 && !isEmpty && hasItems && (
         <div
           aria-hidden="true"
@@ -199,7 +184,7 @@ const BagStep: React.FC<BagStepProps> = ({
         >
           <BraintreePayPalOnly
             amount={amountInMajorUnit}
-            currency="AUD" // 你现在就是固定 AUD
+            currency="AUD"
             onInitiate={() => {}}
             onSucceeded={() => {}}
           />
