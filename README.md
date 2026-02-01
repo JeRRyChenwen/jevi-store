@@ -934,16 +934,6 @@ PaymentStep 的金额是否随之变化
 
 在用户填写国家的时候必须弹出下拉菜单严格限制国家是正确的写法（无论用户登录与否），干脆直接把所有国家都写入 shipping_zone_members 表里面，然后 shipping_zone 里写的是洲，例如大洋洲，或者什么东亚，西亚
 
-（但只包standard 的delivery， 如果是express的话则是express的价格-standard 的价格，例如standard是）
-
-前端，由于你满足free delivery 的条件，所以express delivery的价格也会相应降低
-
-Free shipping unlocked
-You've reached the free shipping threshold.
-加上standard
-
-Banner 文案升级（你要的解释）
-
 ==============================================================================
 
 2. 我建议你采用的“最稳架构”：Approve 时生成退款记录 + 幂等执行退款 + 回写状态
