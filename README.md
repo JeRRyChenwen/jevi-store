@@ -901,6 +901,8 @@ Gift Card
 
 # ============================================================================
 
+裤子 袜子 暂时不开放，鞋子拆开category，同时他们对应的数据类型，variant title之类的东西要确认
+
 部署到 Vercel（免费 https），再在该预览域名上测试 PaymentElement。
 
 或者用 ngrok 给本地 3000 端口开 https 隧道：
@@ -910,11 +912,15 @@ Gift Card
 
 客服
 
+不同产品，有些产品我只是作为零售商，但是有些产品，我是作为全供应链者去售卖的
+
+profile 页面修改 email，可能需要进一步改进
+
+感觉还是在前端中得保留多币种，但结账的时候统一使用aud
+
 主页海报
 
 订单 → 地址 → zone → delivery_option → 运费规则 → fee，address表可以要添加限制
-
-不同产品，有些产品我只是作为零售商，但是有些产品，我是作为全供应链者去售卖的
 
 🔜 你下一步“刚刚好”的升级（不急）
 不是对接物流 API，而是 规则版本化：
@@ -932,19 +938,11 @@ PaymentStep 的金额是否随之变化
 
 前端，由于你满足free delivery 的条件，所以express delivery的价格也会相应降低
 
-profile 页面修改 email，可能需要进一步改进
+Free shipping unlocked
+You've reached the free shipping threshold.
+加上standard
 
-感觉还是在前端中得保留多币种，但结账的时候统一使用aud
-
-我明白了，strapi里的Product collection 里 base_price_cents 是没用的，看价格要去price component里看
-
-delivery fee 需要在checkout页面的bag step就显示出来吗
-
-checkout页面里的 address页面里的 Save delivery address and billing address as default 按钮出现的提示需要修改
-
-裤子 袜子 暂时不开放，鞋子拆开category，同时他们对应的数据类型，variant title之类的东西要确认
-
-统一shipping 表里的collumn名country code 以及加上country name
+Banner 文案升级（你要的解释）
 
 ==============================================================================
 

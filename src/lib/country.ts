@@ -49,3 +49,19 @@ export function coerceCountryCode(input: unknown, fallback: CountryCode = "AU"):
   }
   return fallback;
 }
+
+
+/**
+ * 把 ISO2 国家码（AU/NZ/US…）映射为展示用国家名
+ * - AU -> Australia
+ * - 未识别 -> 原样返回（兜底，避免 UI 炸）
+ */
+export function countryLabelOf(code?: unknown): string {
+  if (typeof code !== "string") return "";
+
+  const v = code.trim().toUpperCase();
+  if (!v) return "";
+
+  const found = COUNTRY_OPTIONS.find((c) => c.code === v);
+  return found?.label ?? v;
+}

@@ -25,14 +25,65 @@ const METHOD_META: Record<
 type DeliveryStepProps = {
   deliveryMethod: DeliveryMethod;
   setDeliveryMethod: (v: DeliveryMethod) => void;
-  showFreeShipping: boolean; // 是否显示“恭喜你，免邮”那条横幅
+
+  /**
+   * ✅ 是否显示免运费达标提示：建议由父组件用后端返回的
+   * standard_free_unlocked 来决定。
+   */
+  showFreeShipping: boolean;
+
+  /**
+   * ✅ 新增：免运费门槛（minor），以及货币
+   * 用于文案更准确（不再“只有 fee=0 才显示”）
+   */
+  standardFreeThresholdMinor?: number | null;
+  currency?: string | null;
+
+  /**
+   * ✅ 新增：当前 standard/express 运费（minor），用于文案告诉用户
+   * “Express 仍需支付 X”
+   */
+  deliveryFeeMinorByMethod?: Partial<Record<DeliveryMethod, number | null>>;
 };
+
+function formatMoney(minor: number, currency: string) {
+  // 你项目里如果已有 formatMoney/formatPrice，请优先替换成你自己的函数
+  // 这里做一个通用的兜底：minor -> dollars
+  const amount = (Number(minor) || 0) / 100;
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency,
+    }).format(amount);
+  } catch {
+    // Intl 失败兜底
+    return `${currency} ${amount.toFixed(2)}`;
+  }
+}
 
 const DeliveryStep: React.FC<DeliveryStepProps> = ({
   deliveryMethod,
   setDeliveryMethod,
   showFreeShipping,
+  standardFreeThresholdMinor = null,
+  currency = "AUD",
+  deliveryFeeMinorByMethod = {},
 }) => {
+  const cur = String(currency || "AUD");
+
+  const thresholdText =
+    standardFreeThresholdMinor != null
+      ? formatMoney(standardFreeThresholdMinor, cur)
+      : null;
+
+  const expressFeeMinor =
+    deliveryFeeMinorByMethod.express != null
+      ? Number(deliveryFeeMinorByMethod.express)
+      : null;
+
+  const expressFeeText =
+    expressFeeMinor != null ? formatMoney(expressFeeMinor, cur) : null;
+
   return (
     <>
       {/* 顶部：达到免邮门槛提示 */}
@@ -46,12 +97,41 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
             <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-white">
               <Check className="h-3.5 w-3.5" />
             </span>
+
             <div className="flex-1">
-              <div className="font-medium">
-                Free shipping unlocked
-              </div>
+              <div className="font-medium">Free shipping unlocked</div>
+
+              {/* ✅ 新文案：强调只对 standard 免运费，express 可能仍需付费/仅减免 */}
               <div className="text-neutral-600">
-                You&apos;ve reached the free shipping threshold.
+                {thresholdText ? (
+                  <>
+                    You&apos;ve reached the free shipping threshold{" "}
+                    <span className="font-medium text-neutral-900">
+                      ({thresholdText})
+                    </span>{" "}
+                    for <span className="font-medium text-neutral-900">Standard</span>{" "}
+                    delivery.{" "}
+                    {expressFeeText ? (
+                      <>
+                        Express delivery may still have a fee (currently{" "}
+                        <span className="font-medium text-neutral-900">
+                          {expressFeeText}
+                        </span>
+                        ).
+                      </>
+                    ) : (
+                      <>
+                        Express delivery may still have an additional fee.
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    You&apos;ve reached the free shipping threshold for{" "}
+                    <span className="font-medium text-neutral-900">Standard</span>{" "}
+                    delivery. Express delivery may still have an additional fee.
+                  </>
+                )}
               </div>
 
               <div className="mt-2 h-1 w-full overflow-hidden rounded bg-neutral-200">
@@ -93,7 +173,6 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
                   <div className="flex items-center justify-between gap-3">
                     <div className="font-medium">{METHOD_META[m].label}</div>
 
-                    {/* 业内常见：给选项一个小的“标签”辅助决策 */}
                     {METHOD_META[m].note ? (
                       <span
                         className={[

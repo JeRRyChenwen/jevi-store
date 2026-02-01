@@ -8,6 +8,9 @@ import { Check, AlertCircle } from "lucide-react";
 // import BraintreeHostedFields from "./BraintreeHostedFields";
 import PayPalBigButton from "./PayPalBigButton";
 
+// ✅ NEW: map country code -> label
+import { countryLabelOf } from "@/lib/country";
+
 /* ========== 类型 ========== */
 type Address = {
   firstName?: string;
@@ -19,7 +22,7 @@ type Address = {
   city?: string;
   state?: string;
   postcode?: string;
-  country?: string;
+  country?: string; // ISO2: "AU"
 };
 
 type PaymentStepProps = {
@@ -148,6 +151,14 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
       payFn();
     }
   };
+
+  // ✅ NEW: display label for country (AU -> Australia)
+  const countryDisplay = useMemo(() => {
+    const raw = (address?.country || "").trim();
+    if (!raw) return "";
+    const label = countryLabelOf(raw);
+    return label || raw;
+  }, [address?.country]);
 
   return (
     <section
@@ -306,12 +317,14 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                         .filter(Boolean)
                         .join(" ")}
                     </div>
+
                     {address.line1 && (
                       <div>
                         {address.line1}
                         {address.line2 ? ` ${address.line2}` : ""}
                       </div>
                     )}
+
                     {(address.city || address.state || address.postcode) && (
                       <div>
                         {[address.city, address.state, address.postcode]
@@ -319,7 +332,10 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                           .join(" ")}
                       </div>
                     )}
-                    {address.country && <div>{address.country}</div>}
+
+                    {/* ✅ CHANGED: AU -> Australia */}
+                    {countryDisplay && <div>{countryDisplay}</div>}
+
                     {address.email && <div className="mt-2">{address.email}</div>}
                     {address.phone && <div>{address.phone}</div>}
                   </div>

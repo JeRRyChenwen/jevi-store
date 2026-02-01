@@ -5,7 +5,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Check } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import PageBack from "@/components/PageBack";
-import type { CartItem as CartListItem } from "@/components/cart/CartList";
 import { effectiveMinor, type Currency } from "@/lib/pricing";
 import { fetchAuthedEmail, isLoggedInViaCookie } from "@/lib/auth";
 import BagStep from "./_components/BagStep";
@@ -27,7 +26,6 @@ import { Alert } from "@/components/ui/alert";
 import { useFormAlert } from "@/hooks/useFormAlert";
 import { coerceCountryCode } from "@/lib/country";
 
-type CartItem = CartListItem;
 
 /* ---------------- 常量 ---------------- */
 const LS_ADDRESS_KEY = "sp.checkout.address";
@@ -695,32 +693,81 @@ export default function CheckoutPage() {
   } = pricing;
 
   // ===============================
-  // ✅ NEW: server-side shipping quote state
+  // ✅ NEW: server-side shipping quote state (fetch BOTH standard + express)
   // ===============================
+  type ShippingQuoteAPIResult = {
+    ok: boolean;
+    zone_code?: string;
+    currency?: string;
+    delivery_fee_minor?: number;
+
+    // ✅ 你后端 quote.ts 下一步要返回的字段（用于横幅显示）
+    standard_free_unlocked?: boolean;
+    standard_free_threshold_minor?: number;
+
+    error?: string;
+  };
+
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
-  const [serverDeliveryFeeMinor, setServerDeliveryFeeMinor] = useState<number | null>(null);
+
+  // ✅ 分别保存 standard / express 的 quote（用于：显示 fee、横幅文案、调试信息）
+  const [quoteByMethod, setQuoteByMethod] = useState<Partial<Record<DeliveryMethod, ShippingQuoteAPIResult>>>({});
   const [lastQuoteMeta, setLastQuoteMeta] = useState<any | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
+
   const quoteReqKey = useMemo(() => {
-    // 只要影响 quote 的字段变了就重新 quote
     const country = (address?.country || "").trim();
     const state = (address?.state || "").trim();
     const postcode = (address?.postcode || "").trim();
     return JSON.stringify({
       hasItems: !!hasItems,
       itemsMinor: Number(itemsMinor) || 0,
-      deliveryMethod,
       country,
       state,
       postcode,
     });
-  }, [address?.country, address?.state, address?.postcode, deliveryMethod, hasItems, itemsMinor]);
+  }, [address?.country, address?.state, address?.postcode, hasItems, itemsMinor]);
 
-  async function fetchShippingQuote() {
+  async function fetchOneQuote(args: {
+    delivery_option: DeliveryMethod;
+    country: string;
+    state: string | null;
+    postcode: string | null;
+    items_total_minor: number;
+    signal: AbortSignal;
+  }): Promise<ShippingQuoteAPIResult> {
+    const target = apiURL("/shipping/quote");
+    const res = await fetch(target, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      credentials: "include",
+      signal: args.signal,
+      body: JSON.stringify({
+        country: args.country,
+        state: args.state,
+        postcode: args.postcode,
+        delivery_option: args.delivery_option,
+        items_total_minor: args.items_total_minor,
+      }),
+    });
+
+    const data = (await res.json().catch(() => null)) as any;
+
+    if (!res.ok || !data?.ok) {
+      return {
+        ok: false,
+        error: data?.error || `quote_failed_status_${res.status}`,
+      };
+    }
+
+    return data as ShippingQuoteAPIResult;
+  }
+
+  async function fetchShippingQuotesBoth() {
     if (!hasItems) {
-      setServerDeliveryFeeMinor(null);
+      setQuoteByMethod({});
       setLastQuoteMeta(null);
       setQuoteError(null);
       return;
@@ -730,8 +777,6 @@ export default function CheckoutPage() {
     const state = (address?.state || "").trim() || null;
     const postcode = (address?.postcode || "").trim() || null;
 
-    // 没填邮编/国家时，先不强制报错：让用户先填 Address；这里只做 best-effort
-    // 你也可以选择在 delivery step 强制需要 postcode
     setQuoteLoading(true);
     setQuoteError(null);
 
@@ -743,62 +788,89 @@ export default function CheckoutPage() {
     abortRef.current = ac;
 
     try {
-      // ✅ 默认走本地 /api 代理；如果你想直连 Worker，改成 `${REMOTE_BASE}/shipping/quote`
-      const target = apiURL("/shipping/quote");
+      const total = Number(itemsMinor) || 0;
 
-      const res = await fetch(target, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        credentials: "include",
-        signal: ac.signal,
-        body: JSON.stringify({
+      const [qStandard, qExpress] = await Promise.all([
+        fetchOneQuote({
+          delivery_option: "standard",
           country,
           state,
           postcode,
-          delivery_option: deliveryMethod,
-          items_total_minor: Number(itemsMinor) || 0,
+          items_total_minor: total,
+          signal: ac.signal,
         }),
-      });
+        fetchOneQuote({
+          delivery_option: "express",
+          country,
+          state,
+          postcode,
+          items_total_minor: total,
+          signal: ac.signal,
+        }),
+      ]);
 
-      const data = await res.json().catch(() => null);
+      const next: Partial<Record<DeliveryMethod, ShippingQuoteAPIResult>> = {
+        standard: qStandard,
+        express: qExpress,
+      };
 
-      if (!res.ok || !data?.ok) {
+      setQuoteByMethod(next);
+
+      // ✅ 用于你当前的 debug 行：优先展示当前选择的 method 的 quote meta
+      setLastQuoteMeta(deliveryMethod === "express" ? qExpress : qStandard);
+
+      // ✅ error 策略：任一失败就给提示，但仍然允许 fallback
+      const anyFail = !qStandard.ok || !qExpress.ok;
+      if (anyFail) {
         const msg =
-          data?.error ||
-          `quote_failed_status_${res.status}`;
-        setQuoteError(msg);
-        setServerDeliveryFeeMinor(null);
-        setLastQuoteMeta(data ?? null);
-        return;
+          (!qStandard.ok ? `standard: ${qStandard.error || "failed"}` : "") +
+          (!qStandard.ok && !qExpress.ok ? " | " : "") +
+          (!qExpress.ok ? `express: ${qExpress.error || "failed"}` : "");
+        setQuoteError(msg || "quote_failed");
+      } else {
+        setQuoteError(null);
       }
-
-      const feeMinor = Number(data?.delivery_fee_minor ?? 0) | 0;
-      setServerDeliveryFeeMinor(feeMinor);
-      setLastQuoteMeta(data);
-      setQuoteError(null);
     } catch (e: any) {
       if (String(e?.name) === "AbortError") return;
       setQuoteError(String(e?.message || e || "quote_failed"));
-      setServerDeliveryFeeMinor(null);
+      setQuoteByMethod({});
       setLastQuoteMeta(null);
     } finally {
       setQuoteLoading(false);
     }
   }
 
-  // ✅ 自动 quote：Address/Method/Items 变化就更新
+  // ✅ 自动 quote：Address/Items 变化就更新（同时拿 standard + express）
   useEffect(() => {
-    void fetchShippingQuote();
+    void fetchShippingQuotesBoth();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quoteReqKey]);
 
   // ===============================
-  // ✅ Use server quote fee for UI + totals (fallback if quote not ready)
+  // ✅ Effective fee / totals
   // ===============================
+
+  // ✅ 当前选中 deliveryMethod 的 fee：优先用 server quote；否则 fallback
+  const serverFeeMinorSelected =
+    quoteByMethod?.[deliveryMethod]?.ok
+      ? Number(quoteByMethod?.[deliveryMethod]?.delivery_fee_minor ?? 0)
+      : null;
+
   const deliveryFeeMinorEffective =
-    serverDeliveryFeeMinor != null ? serverDeliveryFeeMinor : deliveryFeeMinorFallback;
+    serverFeeMinorSelected != null ? serverFeeMinorSelected : deliveryFeeMinorFallback;
 
   const deliveryFeeMajorEffective = deliveryFeeMinorEffective / 100;
+
+  // ✅ 免邮横幅：只看 “standard 是否达标”，不管你当前选的是 standard/express
+  const standardUnlocked =
+    quoteByMethod?.standard?.ok && typeof quoteByMethod.standard.standard_free_unlocked === "boolean"
+      ? !!quoteByMethod.standard.standard_free_unlocked
+      : false;
+
+  const standardFreeThresholdMinor =
+    quoteByMethod?.standard?.ok && typeof quoteByMethod.standard.standard_free_threshold_minor === "number"
+      ? Number(quoteByMethod.standard.standard_free_threshold_minor)
+      : null;
 
   // 目前 tax/discount 在 checkout UI 里都为 0；如果你将来加税/折扣，继续在这里合并即可
   const discountMinor = 0;
@@ -810,7 +882,6 @@ export default function CheckoutPage() {
   );
 
   const totalMajorEffective = totalMinorEffective / 100;
-
   const amountInMajorUnitEffective = totalMajorEffective;
 
   const nextStepCore = () => {
@@ -1085,21 +1156,34 @@ export default function CheckoutPage() {
               <DeliveryStep
                 deliveryMethod={deliveryMethod}
                 setDeliveryMethod={setDeliveryMethod}
-                // ✅ 以 server quote fee == 0 判断 free shipping（比阈值更准确）
-                showFreeShipping={hasItems && deliveryFeeMinorEffective === 0}
+                // ✅ 横幅：只要 standard 达标，就显示（不受当前选中 standard/express 影响）
+                showFreeShipping={hasItems && standardUnlocked}
+                // ✅ 用于更准确的文案展示
+                standardFreeThresholdMinor={standardFreeThresholdMinor}
+                currency={currency}
+                // ✅ 用于文案告诉用户：express 当前仍需多少钱（或减免后多少钱）
+                deliveryFeeMinorByMethod={{
+                  standard: quoteByMethod?.standard?.ok
+                    ? Number(quoteByMethod.standard.delivery_fee_minor ?? 0)
+                    : null,
+                  express: quoteByMethod?.express?.ok
+                    ? Number(quoteByMethod.express.delivery_fee_minor ?? 0)
+                    : null,
+                }}
               />
 
-              {/* ✅ 可选：给自己 debug（你不想显示给用户就删掉这块） */}
+              {/* ✅ 可选：调试信息 */}
               {quoteLoading ? (
                 <div className="text-sm text-neutral-500">Calculating shipping…</div>
               ) : quoteError ? (
                 <div className="text-sm text-amber-600">
                   Shipping quote unavailable (fallback applied). ({quoteError})
                 </div>
-              ) : lastQuoteMeta ? (
+              ) : quoteByMethod?.[deliveryMethod]?.ok ? (
                 <div className="text-sm text-neutral-500">
-                  Shipping matched: {lastQuoteMeta.zone_code ?? "?"} · option {deliveryMethod} · fee{" "}
-                  {(deliveryFeeMinorEffective / 100).toFixed(2)} {currency}
+                  Shipping matched: {quoteByMethod?.[deliveryMethod]?.zone_code ?? "?"} · option {deliveryMethod} · fee{" "}
+                  {((Number(quoteByMethod?.[deliveryMethod]?.delivery_fee_minor ?? 0) || 0) / 100).toFixed(2)}{" "}
+                  {currency}
                 </div>
               ) : null}
             </div>
