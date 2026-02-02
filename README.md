@@ -920,20 +920,6 @@ profile 页面修改 email，可能需要进一步改进
 
 主页海报
 
-订单 → 地址 → zone → delivery_option → 运费规则 → fee，address表可以要添加限制
-
-🔜 你下一步“刚刚好”的升级（不急）
-不是对接物流 API，而是 规则版本化：
-shipping_zone（AU / NZ / US / EU / ROW）
-shipping_pricing_version（比如 "v1_flat_au"）
-这两个字段会在未来救你命（当你改规则、改价格时）。
-
-打开 checkout，改地址/邮编/切换 standard ↔ express，看控制台：
-Shipping matched: AU ... fee ... 是否出现
-PaymentStep 的金额是否随之变化
-
-在用户填写国家的时候必须弹出下拉菜单严格限制国家是正确的写法（无论用户登录与否），干脆直接把所有国家都写入 shipping_zone_members 表里面，然后 shipping_zone 里写的是洲，例如大洋洲，或者什么东亚，西亚
-
 ==============================================================================
 
 2. 我建议你采用的“最稳架构”：Approve 时生成退款记录 + 幂等执行退款 + 回写状态
