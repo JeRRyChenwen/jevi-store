@@ -123,15 +123,26 @@ export default function CategoryGridClient({
     productGenderSupported,
   } = useCategoryFacets({ slug, categoryDocIds, devLogPrefix: "GridFacets" });
 
-  // sort query
+  /**
+   * ✅ IMPORTANT：
+   * 你已经删除了 Product 的 legacy 字段 base_price_cents / discount_percent_off，
+   * 并且现在价格来自 prices 组件（多币种）。
+   *
+   * Strapi 无法直接对“组件数组 prices”做货币感知的排序，
+   * 所以这里先把 price-asc / price-desc 降级成默认排序，避免 400。
+   *
+   * 如果你未来一定要做“按价格排序”，需要另做方案：
+   * - 在 Strapi 存一个可排序的 numeric 字段（如 base_price_minor_aud）
+   * - 或在 D1/后端做排序后再返回
+   */
   const sortQueryString = useMemo(() => {
     switch (sortKey) {
-      case "price-desc":
-        return `&sort[0]=base_price_cents:desc&sort[1]=priority:asc`;
-      case "price-asc":
-        return `&sort[0]=base_price_cents:asc&sort[1]=priority:asc`;
       case "hot":
         return `&sort[0]=hot_score:desc&sort[1]=priority:asc`;
+      case "price-desc":
+      case "price-asc":
+        // 暂时降级：不按价格排序（避免请求不存在字段 base_price_cents）
+        return `&sort[0]=priority:asc&sort[1]=updatedAt:desc`;
       default:
         return `&sort[0]=priority:asc&sort[1]=updatedAt:desc`;
     }

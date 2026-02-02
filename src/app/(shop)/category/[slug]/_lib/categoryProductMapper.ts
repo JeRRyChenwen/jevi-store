@@ -11,9 +11,11 @@ export type ProductLite = {
 
   prices: PriceRec[];
 
-  price: number | null;
+  /** 兼容字段：用于旧 UI/旧逻辑展示（现在从 prices 推导） */
+  price: number | null; // major
   currency?: string | null;
 
+  /** 兼容字段：用于旧 sale 逻辑（现在从 prices 推导） */
   discountPercent?: number;
   saleStartsAt?: string | null;
   saleEndsAt?: string | null;
@@ -211,9 +213,11 @@ function _fallbackPickPriceForCurrency(prices: PriceRec[], currency: string) {
     const d = Number(rec.discount);
     const off = Number(rec.discount_percent_off);
 
+    // discount: 例如填 80 表示“打 8 折” -> base * (80/100)
     if (Number.isFinite(d) && d > 0 && d <= 100) {
       effective_minor = Math.max(0, Math.round(base_minor * (d / 100)));
     } else if (Number.isFinite(off) && off > 0 && off < 100) {
+      // percent_off: 例如 20 表示“减 20%” -> base * (1 - 20/100)
       effective_minor = Math.max(0, Math.round(base_minor * (1 - off / 100)));
     }
   }
@@ -221,14 +225,10 @@ function _fallbackPickPriceForCurrency(prices: PriceRec[], currency: string) {
   return { base_minor, effective_minor, currency: code };
 }
 
-/**
- * 适配器：
- * - 若存在 SP.pickPriceForCurrency（返回 baseMajor/effectiveMajor），先用它
- * - 把 major 转成 minor
- * - 若库函数没产生折扣（effective==base），再用兜底规则重算一次折扣
- * - 否则直接退回兜底
- */
-export const pickPriceForCurrency: (prices: PriceRec[], currency: string) => PickRes = (prices, currency) => {
+export const pickPriceForCurrency: (prices: PriceRec[], currency: string) => PickRes = (
+  prices,
+  currency
+) => {
   const ccy = String(currency || "AUD").toUpperCase();
   const libPick = (SP as any)?.pickPriceForCurrency;
 
@@ -276,16 +276,61 @@ export function formatPriceForCard(minor: number, currency: string) {
   return `${code} ${numStr}`;
 }
 
+/** ✅ 从 prices 推导一个“默认展示用”的 price/currency/discount/window（优先 AUD） */
+function deriveLegacyFieldsFromPrices(
+  prices: PriceRec[],
+  preferredCurrency = "AUD"
+): {
+  priceMajor: number | null;
+  currency: string;
+  discountPercent?: number;
+  saleStartsAt?: string | null;
+  saleEndsAt?: string | null;
+} {
+  const picked = _fallbackPickPriceForCurrency(prices, preferredCurrency);
+  const ccy = picked?.currency ?? String(preferredCurrency || "AUD").toUpperCase();
+
+  const baseMinor = picked && typeof picked.base_minor === "number" ? picked.base_minor : null;
+  const priceMajor = baseMinor != null ? baseMinor / 100 : null;
+
+  const rec: any =
+    prices.find((r: any) => String(r?.currency || "").toUpperCase() === ccy) ||
+    prices[0] ||
+    null;
+
+  // ✅ discountPercent 推导规则：
+  // - 若有 discount_percent_off（20） => 20
+  // - 否则若有 discount（80 表示 8 折） => percent_off = 100 - 80 = 20
+  const off = Number(rec?.discount_percent_off);
+  const d = Number(rec?.discount);
+
+  let discountPercent: number | undefined = undefined;
+  if (Number.isFinite(off) && off > 0 && off < 100) {
+    discountPercent = off;
+  } else if (Number.isFinite(d) && d > 0 && d < 100) {
+    discountPercent = Math.round(100 - d);
+  }
+
+  const normDateStr = (v: any): string | null => {
+    if (typeof v !== "string") return null;
+    const s = v.trim();
+    return s ? s : null;
+    // 不在这里强校验 Date.parse，留给 isSaleActiveByLegacy 的 NaN 逻辑兜底
+  };
+
+  const saleStartsAt = normDateStr(rec?.sale_starts_at);
+  const saleEndsAt = normDateStr(rec?.sale_ends_at);
+
+  return { priceMajor, currency: ccy, discountPercent, saleStartsAt, saleEndsAt };
+}
+
 // ---------- mapper ----------
 export function normalizeProduct(row: any): ProductLite {
   const attrs = row?.attributes ?? row ?? {};
   const name: string = attrs.title ?? attrs.name ?? attrs.slug ?? "Product";
 
-  const cents = Number(attrs.base_price_cents);
-  const price = Number.isFinite(cents) ? Math.max(0, cents) / 100 : null;
-  const currency: string | undefined = (attrs.currency ?? "AUD") as string;
-
   const prices = getPrices(attrs);
+  const derived = deriveLegacyFieldsFromPrices(prices, "AUD");
 
   const variantsByColor = getImagesByColorFromProduct(attrs);
 
@@ -309,23 +354,23 @@ export function normalizeProduct(row: any): ProductLite {
     String(attrs.slug ?? "") ||
     `${name}-${Math.random().toString(36).slice(2)}`;
 
-  const discountPercent: number | undefined =
-    typeof attrs.discount_percent_off === "number" ? attrs.discount_percent_off : undefined;
-
   return {
     key,
     slug: attrs.slug,
     name,
     prices,
-    price,
-    currency,
-    imageUrl,
-    discountPercent,
-    saleStartsAt: attrs.sale_starts_at ?? null,
-    saleEndsAt: attrs.sale_ends_at ?? null,
+
+    price: derived.priceMajor,
+    currency: derived.currency,
+
+    discountPercent: derived.discountPercent,
+    saleStartsAt: derived.saleStartsAt,
+    saleEndsAt: derived.saleEndsAt,
+
     hotScore: typeof attrs.hot_score === "number" ? attrs.hot_score : null,
     colors,
     sizes,
     variantsByColor,
+    imageUrl,
   };
 }

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  fetchTopLevelCategoryDocIdMap,
+  fetchNavTopCategories,
   fetchSubcategoriesByParentId,
   type CategoryLite,
 } from "@/lib/strapi";
@@ -32,16 +32,6 @@ function liteToCat(row: CategoryLite): Cat {
   };
 }
 
-/** 固定的 6 个顶级类目（静态） */
-const TOPS_FIXED: Cat[] = [
-  { attributes: { name: "Shoes", slug: "shoes" } },
-  { attributes: { name: "Bottoms", slug: "bottoms" } },
-  { attributes: { name: "Tops", slug: "tops" } },
-  { attributes: { name: "Suit", slug: "suit" } },
-  { attributes: { name: "Accessories", slug: "accessories" } },
-  { attributes: { name: "Outfit", slug: "outfit" } },
-];
-
 function sortCats(list: Cat[]) {
   list.sort((a, b) => {
     const ao = a.attributes.nav_order ?? 9999;
@@ -63,10 +53,22 @@ function SkeletonItem() {
 export default function CategoryBar() {
   const pathname = usePathname();
 
-  const tops = useMemo<Cat[]>(() => TOPS_FIXED, []);
+  // ✅ 顶级类目来自 Strapi（show_in_nav=true 的顶级分类）
+  const [tops, setTops] = useState<Cat[]>([]);
+  const [topsLoading, setTopsLoading] = useState(true);
 
-  // slug -> documentId
-  const [docIdMap, setDocIdMap] = useState<Record<string, string> | null>(null);
+  // ✅ slug -> documentId 由 tops 派生（不再单独 fetchTopLevelCategoryDocIdMap）
+  const docIdMap = useMemo<Record<string, string> | null>(() => {
+    if (!tops || tops.length === 0) return null;
+    const map: Record<string, string> = {};
+    for (const t of tops) {
+      const slug = t.attributes.slug;
+      const docId = t.documentId;
+      if (slug && docId) map[String(slug)] = String(docId);
+    }
+    return map;
+  }, [tops]);
+
   // 顶级分类子分类缓存：slug -> Cat[]
   const [childrenMap, setChildrenMap] = useState<Record<string, Cat[]>>({});
   // 当前打开的顶级分类
@@ -75,12 +77,26 @@ export default function CategoryBar() {
   const [loadingSlug, setLoadingSlug] = useState<string | null>(null);
   const closeTimer = useRef<number | null>(null);
 
-  // 初始化映射
+  // ✅ 初始化：拉取 Strapi 顶级导航分类
   useEffect(() => {
     let mounted = true;
-    fetchTopLevelCategoryDocIdMap()
-      .then((map) => mounted && setDocIdMap(map))
-      .catch(() => setDocIdMap({})); // 忽略错误
+    setTopsLoading(true);
+
+    fetchNavTopCategories()
+      .then((list) => {
+        if (!mounted) return;
+        const cats = list.map(liteToCat);
+        sortCats(cats);
+        setTops(cats);
+      })
+      .catch((e) => {
+        console.error("[CategoryBar] fetchNavTopCategories failed:", e);
+        if (mounted) setTops([]);
+      })
+      .finally(() => {
+        if (mounted) setTopsLoading(false);
+      });
+
     return () => {
       mounted = false;
     };
@@ -98,7 +114,7 @@ export default function CategoryBar() {
 
   // 悬停时按需加载子分类；若无子分类则不展示下拉
   const ensureChildren = async (slug: string) => {
-    // 映射还没好 -> 直接关闭
+    // 映射还没好（或 tops 为空） -> 直接关闭
     if (!docIdMap) {
       setOpenSlug(null);
       return;
@@ -135,7 +151,8 @@ export default function CategoryBar() {
       if (list.length === 0) {
         setOpenSlug((curr) => (curr === slug ? null : curr));
       }
-    } catch {
+    } catch (e) {
+      console.error("[CategoryBar] fetchSubcategoriesByParentId failed:", e);
       // 错误也当作无子类 -> 关闭
       setChildrenMap((prev) => ({ ...prev, [slug]: [] }));
       setOpenSlug((curr) => (curr === slug ? null : curr));
@@ -173,32 +190,43 @@ export default function CategoryBar() {
             aria-label="Shop categories"
             className="no-scrollbar -mx-2 flex w-full items-center gap-2 md:gap-3 overflow-x-auto md:overflow-visible py-2 md:py-3 px-2 justify-start md:justify-center"
           >
-            {tops.map((c) => {
-              const slug = c.attributes.slug;
-              const label = c.attributes.name || slug;
-              const active =
-                pathname === `/category/${slug}` ||
-                (pathname?.startsWith(`/category/${slug}/`) ?? false);
+            {topsLoading ? (
+              Array.from({ length: 6 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-8 w-20 rounded-full bg-neutral-100 animate-pulse"
+                />
+              ))
+            ) : tops.length === 0 ? (
+              <div className="text-sm text-neutral-500 py-1">No categories</div>
+            ) : (
+              tops.map((c) => {
+                const slug = c.attributes.slug;
+                const label = c.attributes.name || slug;
+                const active =
+                  pathname === `/category/${slug}` ||
+                  (pathname?.startsWith(`/category/${slug}/`) ?? false);
 
-              return (
-                <div key={slug} className="relative">
-                  <Link
-                    href={`/category/${slug}`}
-                    onMouseEnter={() => handleEnter(slug)}
-                    aria-current={active ? "page" : undefined}
-                    aria-expanded={openSlug === slug}
-                    className={[
-                      "inline-flex items-center gap-1 whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm transition-colors",
-                      active
-                        ? "bg-black text-white"
-                        : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200",
-                    ].join(" ")}
-                  >
-                    {label}
-                  </Link>
-                </div>
-              );
-            })}
+                return (
+                  <div key={slug} className="relative">
+                    <Link
+                      href={`/category/${slug}`}
+                      onMouseEnter={() => handleEnter(slug)}
+                      aria-current={active ? "page" : undefined}
+                      aria-expanded={openSlug === slug}
+                      className={[
+                        "inline-flex items-center gap-1 whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm transition-colors",
+                        active
+                          ? "bg-black text-white"
+                          : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200",
+                      ].join(" ")}
+                    >
+                      {label}
+                    </Link>
+                  </div>
+                );
+              })
+            )}
           </nav>
         </div>
       </div>

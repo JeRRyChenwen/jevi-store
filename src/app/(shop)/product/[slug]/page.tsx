@@ -86,7 +86,6 @@ function ProductMeta({
             <SizeClient options={sizeOptions} current={currentSize} slug={slug} />
           </div>
 
-          {/* ✅ 方案 2：尺寸下方的辅助提示 + 链接入口 */}
           <div className="pt-1 text-[11px] text-neutral-400 flex items-center gap-1">
             <span>Need help choosing your size?</span>
             <SizeGuideDialog
@@ -118,9 +117,6 @@ function ProductMeta({
   );
 }
 
-/** ----------------------------
- * 原有逻辑（保持不变）
- * ---------------------------- */
 function normalizeColor(s: any) {
   return normalizeColorName(s);
 }
@@ -160,14 +156,6 @@ function getImagesByColorFromProduct(attrs: any): Record<string, string[]> {
   return out;
 }
 
-/**
- * 颜色+尺码+增高 → 库存 / SKU
- * - stock3[color][size][height] = stock
- * - sku3[color][size][height]   = sku (string|null)
- * - sizesSum[color][size] = sum(stock for all heights)
- * - heightSum[color][height] = sum(stock for all sizes)
- * - colorSum[color] = sum(stock for all sizes/heights)
- */
 function getStockByColorSizeHeight(attrs: any): {
   stock3: Record<string, Record<string, Record<number, number>>>;
   sku3: Record<string, Record<string, Record<number, string | null>>>;
@@ -195,11 +183,9 @@ function getStockByColorSizeHeight(attrs: any): {
 
     const stock = Number(a.stock) || 0;
 
-    // 允许 0 表示 None
     const h = Number(a.height_increase_cm);
     const height = Number.isFinite(h) ? h : 0;
 
-    // ✅ NEW: sku
     const sku = typeof a.sku === "string" && a.sku.trim() ? a.sku.trim() : null;
 
     stock3[color] ??= {};
@@ -208,7 +194,6 @@ function getStockByColorSizeHeight(attrs: any): {
 
     sku3[color] ??= {};
     sku3[color][size] ??= {};
-    // 同一组合理论上只有一个 sku；如遇到重复，以第一次为准
     if (sku3[color][size][height] == null) {
       sku3[color][size][height] = sku;
     }
@@ -234,19 +219,6 @@ function formatPriceVal(n: number | null, currency?: string | null, locale?: str
     currencyDisplay: "code",
     maximumFractionDigits: 2,
   }).format(Number(n));
-}
-
-function isSaleActive(
-  discountPercent?: number | null,
-  startsAt?: string | null,
-  endsAt?: string | null
-) {
-  const d = Number(discountPercent) || 0;
-  if (d <= 0) return false;
-  const now = Date.now();
-  const startOk = !startsAt || now >= new Date(startsAt).getTime();
-  const endOk = !endsAt || now <= new Date(endsAt).getTime();
-  return startOk && endOk;
 }
 
 function Stars({ value = 0 }: { value?: number }) {
@@ -324,16 +296,12 @@ export async function generateMetadata({ params }: PageProps) {
   return { title: `Product – ${slug}` };
 }
 
-
-
-// ✅ 安全取出 category（兼容 Strapi v4/v5 各种形态），并额外取 parent
 function extractCategory(
   attrs: any
 ): { slug?: string; label?: string; parentSlug?: string; parentLabel?: string } | null {
   const raw = attrs?.category;
   if (!raw) return null;
 
-  // 可能是 v4: { data: { attributes: {...} } }
   const a = raw?.data?.attributes ?? raw?.attributes ?? raw?.data ?? raw;
 
   const slug = typeof a?.slug === "string" ? a.slug : undefined;
@@ -342,7 +310,6 @@ function extractCategory(
     (typeof a?.name === "string" && a.name) ||
     undefined;
 
-  // parent（如果存在）
   const pRaw = a?.parent;
   const p = pRaw?.data?.attributes ?? pRaw?.attributes ?? pRaw?.data ?? pRaw;
 
@@ -366,10 +333,10 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
   const sp = await searchParams;
 
+  // ✅ 删除 legacy 字段 base_price_cents / currency / discount_percent_off
   const qs =
     `/api/products?filters[slug][$eq]=${encodeURIComponent(slug)}` +
-    `&fields[0]=title&fields[1]=slug&fields[2]=base_price_cents&fields[3]=currency` +
-    `&fields[4]=discount_percent_off&fields[5]=sale_starts_at&fields[6]=sale_ends_at&fields[7]=hot_score` +
+    `&fields[0]=title&fields[1]=slug&fields[2]=hot_score` +
     `&populate[color_galleries][fields][0]=color` +
     `&populate[color_galleries][populate][images]=true` +
     `&populate[variants][fields][0]=color` +
@@ -378,10 +345,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     `&populate[variants][fields][3]=height_increase_cm` +
     `&populate[variants][fields][4]=sku` +
     `&populate[prices]=*` +
-    // ✅ 新增：把 category 一起取出来（用于面包屑）
     `&populate[category][fields][0]=slug` +
     `&populate[category][fields][1]=name` +
-    // ✅ NEW: populate category.parent（用于计算 root / leaf）
     `&populate[category][populate][parent][fields][0]=slug` +
     `&populate[category][populate][parent][fields][1]=name` +
     `&publicationState=live`;
@@ -393,32 +358,29 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const attrs = row?.attributes ?? row ?? {};
   const title: string = attrs.title ?? attrs.name ?? "Product";
 
-  // ✅ 用 product.category 生成面包屑
+  // 面包屑
   const category = extractCategory(attrs);
   const categorySlug = category?.slug;
   const categoryLabel = category?.label;
-  // ✅ NEW: category root/leaf slugs
   const categoryRootSlug = category?.parentSlug ? category.parentSlug : category?.slug;
   const categoryLeafSlug = category?.parentSlug ? (category?.slug ?? null) : null;
 
-  // ---- pricing ----
+  // ---- pricing (prices-only) ----
   const prices = getPrices(attrs);
   const availableCurrencies = prices.map((r) => r.currency);
-  const currencyPicked =
+
+  const currency =
     availableCurrencies.length > 0
       ? pickCurrency(availableCurrencies, { fallback: "AUD" })
-      : ((attrs.currency ?? "AUD") as string);
+      : "AUD";
 
   const rec = prices.find(
-    (r) => String(r.currency).toUpperCase() === String(currencyPicked).toUpperCase()
+    (r) => String(r.currency).toUpperCase() === String(currency).toUpperCase()
   );
 
   let baseMinor: number | null = null;
   if (rec) {
-    if (
-      typeof (rec as any).amount_minor === "number" &&
-      Number.isFinite((rec as any).amount_minor)
-    ) {
+    if (typeof (rec as any).amount_minor === "number" && Number.isFinite((rec as any).amount_minor)) {
       baseMinor = Math.max(0, Math.round((rec as any).amount_minor));
     } else if (typeof (rec as any).price === "number" && Number.isFinite((rec as any).price)) {
       baseMinor = Math.max(0, Math.round((rec as any).price * 100));
@@ -435,9 +397,11 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     };
     const s = (rec as any).sale_starts_at;
     const e = (rec as any).sale_ends_at;
+
     if (inWindow(s, e)) {
       const d = Number((rec as any).discount);
       const off = Number((rec as any).discount_percent_off);
+
       if (Number.isFinite(d) && d > 0 && d <= 100) {
         effectiveMinor = Math.max(0, Math.round(baseMinor * (d / 100)));
       } else if (Number.isFinite(off) && off > 0 && off < 100) {
@@ -446,34 +410,15 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     }
   }
 
-  const priceFromPrices = baseMinor != null ? baseMinor / 100 : null;
-  const effFromPrices = effectiveMinor != null ? effectiveMinor / 100 : null;
-
-  const discountFromPrices =
+  const price = baseMinor != null ? baseMinor / 100 : null;
+  const salePrice =
     baseMinor != null && effectiveMinor != null && effectiveMinor < baseMinor
-      ? Math.round((1 - effectiveMinor / baseMinor) * 100)
+      ? effectiveMinor / 100
       : null;
 
-  const cents = Number(attrs.base_price_cents);
-  const priceLegacy = Number.isFinite(cents) ? cents / 100 : null;
-  const currencyLegacy = (attrs.currency ?? "AUD") as string;
-  const discountLegacy = Number(attrs.discount_percent_off) || 0;
-  const saleActiveLegacy = isSaleActive(discountLegacy, attrs.sale_starts_at, attrs.sale_ends_at);
-  const salePriceLegacy =
-    saleActiveLegacy && priceLegacy != null ? priceLegacy * (1 - discountLegacy / 100) : null;
-
-  const currency = (currencyPicked || currencyLegacy) as string;
-  const price = priceFromPrices != null ? priceFromPrices : priceLegacy;
-  const salePrice =
-    effFromPrices != null && priceFromPrices != null && effFromPrices < priceFromPrices
-      ? effFromPrices
-      : salePriceLegacy;
-
   const discount =
-    discountFromPrices != null
-      ? discountFromPrices
-      : saleActiveLegacy
-      ? Math.round(discountLegacy)
+    baseMinor != null && effectiveMinor != null && effectiveMinor < baseMinor
+      ? Math.round((1 - effectiveMinor / baseMinor) * 100)
       : 0;
 
   const saleActive = salePrice != null && price != null && salePrice < price;
@@ -585,7 +530,6 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
 
   return (
     <main className="w-full px-2 sm:px-4 md:px-6 lg:px-0 py-8 overflow-x-hidden">
-      {/* ✅ 正确面包屑：Home > Category > Product（不再出现 /product 404） */}
       <nav className="flex items-center text-sm text-neutral-500 mb-4" aria-label="Breadcrumb">
         <Link
           href="/"
@@ -625,13 +569,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
         "
       >
         <aside className="order-2 lg:order-1 md:sticky md:top-24 self-start md:pr-0">
-          <GalleryClient
-            images={images}
-            title={title}
-            slug={slug}
-            selectedIndex={selected}
-            color={currentColor}
-          />
+          <GalleryClient images={images} title={title} slug={slug} selectedIndex={selected} color={currentColor} />
         </aside>
 
         <section className="order-1 lg:order-2 min-w-0">
@@ -645,22 +583,15 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
           >
             {total > 0 ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={images[selected]}
-                src={images[selected]}
-                alt={title}
-                className="w-full h-full object-contain"
-              />
+              <img key={images[selected]} src={images[selected]} alt={title} className="w-full h-full object-contain" />
             ) : (
               <div className="text-neutral-500">No Image</div>
             )}
           </div>
         </section>
 
-        {/* 右侧区域 */}
         <section className="order-3 lg:order-3 lg:pl-20 xl:pl-24 2xl:pl-20 lg:sticky lg:top-12 self-start overflow-x-clip">
           <div className="px-1 sm:px-2">
-            {/* Header: Title + rating + pricing */}
             <div className="space-y-3">
               <h2 className="text-2xl font-bold leading-snug tracking-tight">{title}</h2>
 
@@ -692,7 +623,6 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
 
             <div className="my-6 h-px bg-neutral-200" />
 
-            {/* ✅ ProductMeta 小块：统一文本风格 + 统一结构 */}
             <ProductMeta
               slug={slug}
               colorOptions={colorOptions}
@@ -704,7 +634,6 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
               validHeight={validHeight}
             />
 
-            {/* Stock status + CTA group */}
             <div className="mt-6 space-y-3">
               <div className="rounded-lg border bg-neutral-50 px-3 py-2">
                 {currentSize ? (
@@ -713,9 +642,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                       <FieldMessage variant="muted">Availability</FieldMessage>
                       <div className="text-sm text-neutral-700">
                         In stock:{" "}
-                        <span className="font-semibold text-neutral-900">
-                          {stockForCurrent}
-                        </span>
+                        <span className="font-semibold text-neutral-900">{stockForCurrent}</span>
                       </div>
                     </div>
                   ) : (
@@ -738,7 +665,6 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                 heightIncreaseCm={validHeight}
                 stock3={stock3}
                 sku3={sku3}
-                // ✅ NEW
                 categoryRootSlug={categoryRootSlug ?? "uncategorized"}
                 categoryLeafSlug={categoryLeafSlug ?? null}
               />

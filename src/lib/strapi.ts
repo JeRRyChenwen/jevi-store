@@ -4,8 +4,8 @@
 
 const DEFAULT_URL = "http://localhost:1337";
 
-const PUBLIC_URL = process.env.NEXT_PUBLIC_STRAPI_URL ?? DEFAULT_URL;  // 仅用于拼媒体绝对地址
-const SERVER_URL = process.env.STRAPI_URL ?? PUBLIC_URL;              // 服务器直连 Strapi
+const PUBLIC_URL = process.env.NEXT_PUBLIC_STRAPI_URL ?? DEFAULT_URL; // 仅用于拼媒体绝对地址
+const SERVER_URL = process.env.STRAPI_URL ?? PUBLIC_URL; // 服务器直连 Strapi
 
 const isServer = typeof window === "undefined";
 export function getStrapiURL() {
@@ -67,7 +67,11 @@ export async function api(path: string, opts: FetchOpts = {}) {
       }
       console.error("Strapi API error (server):", res.status, url, body);
       const msg =
-        body?.error?.message || body?.message || body || res.statusText || `HTTP ${res.status}`;
+        body?.error?.message ||
+        body?.message ||
+        body ||
+        res.statusText ||
+        `HTTP ${res.status}`;
       throw new Error(msg);
     }
     return res.json();
@@ -96,9 +100,18 @@ export async function api(path: string, opts: FetchOpts = {}) {
     } catch {
       body = await proxyRes.text().catch(() => "");
     }
-    console.error("Strapi API error (client via proxy):", proxyRes.status, path, body);
+    console.error(
+      "Strapi API error (client via proxy):",
+      proxyRes.status,
+      path,
+      body
+    );
     const msg =
-      body?.error?.message || body?.message || body || proxyRes.statusText || `HTTP ${proxyRes.status}`;
+      body?.error?.message ||
+      body?.message ||
+      body ||
+      proxyRes.statusText ||
+      `HTTP ${proxyRes.status}`;
     throw new Error(msg);
   }
   return proxyRes.json();
@@ -126,11 +139,50 @@ export type CategoryLite = {
   slug: string;
   documentId: string;
   nav_order?: number;
+  /** ✅ 新增：用于导航栏开关（Strapi boolean 字段） */
+  show_in_nav?: boolean;
 };
 
 let __topLevelDocIdMapCache: Record<string, string> | null = null;
+/** ✅ 新增：顶级导航分类缓存 */
+let __navTopCategoriesCache: CategoryLite[] | null = null;
 
-export async function fetchTopLevelCategoryDocIdMap(): Promise<Record<string, string>> {
+/**
+ * ✅ 新增：获取“用于导航栏”的顶级分类列表
+ * - parent=null（顶级）
+ * - show_in_nav=true（Strapi 控制是否显示在导航）
+ * - 按 nav_order/name 排序
+ */
+export async function fetchNavTopCategories(): Promise<CategoryLite[]> {
+  if (__navTopCategoriesCache) return __navTopCategoriesCache;
+
+  const res: any = await api(
+    `/api/categories` +
+      `?filters[parent][$null]=true` +
+      `&filters[show_in_nav][$eq]=true` +
+      `&fields[0]=name&fields[1]=slug&fields[2]=documentId&fields[3]=nav_order&fields[4]=show_in_nav` +
+      `&sort[0]=nav_order:asc&sort[1]=name:asc` +
+      `&pagination[pageSize]=200` +
+      `&publicationState=live`,
+    { noCache: true }
+  );
+
+  const list: any[] = res?.data ?? [];
+  const out: CategoryLite[] = list.map((c) => ({
+    name: c.name ?? c.attributes?.name ?? "",
+    slug: c.slug ?? c.attributes?.slug ?? "",
+    documentId: c.documentId ?? c.attributes?.documentId ?? "",
+    nav_order: c.nav_order ?? c.attributes?.nav_order,
+    show_in_nav: c.show_in_nav ?? c.attributes?.show_in_nav,
+  }));
+
+  __navTopCategoriesCache = out;
+  return out;
+}
+
+export async function fetchTopLevelCategoryDocIdMap(): Promise<
+  Record<string, string>
+> {
   if (__topLevelDocIdMapCache) return __topLevelDocIdMapCache;
 
   const res: any = await api(
@@ -181,6 +233,7 @@ export async function fetchSubcategoriesByParentId(
 
 export function __invalidateTopLevelCategoryCache() {
   __topLevelDocIdMapCache = null;
+  __navTopCategoriesCache = null;
 }
 
 /**
