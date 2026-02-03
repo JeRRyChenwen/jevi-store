@@ -892,6 +892,11 @@ My Fit Preferences
 Gift Card
 
 一步步传递」链路就真正闭环了（BagDrawer → Checkout → Bag/Address/Delivery → Payment 都吃同一份 cart/地址/配送选择
+BagDrawer 显示 real_price ✅
+Checkout BagStep/Address/Delivery/Payment 全部沿用同一份 cart ✅
+PaymentStep 的 Subtotal 永远来自 cart（不会再被旧 itemsMinor 污染）✅
+quote 与订单落库都用同一套 “cart -> itemsMinorEffective” 计算 ✅
+以后你再改价格字段，也不容易回归 ✅
 
 # ============================================================================
 
