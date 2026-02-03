@@ -3,131 +3,109 @@
 
 import { useMemo } from "react";
 import { selectCurrencyAndTotals } from "@/lib/cartPricing";
-import { effectiveMinor, type PriceRec, type Currency } from "@/lib/pricing";
+import { type PriceRec, type Currency } from "@/lib/pricing";
 
 /**
- * 把各种 price 形态统一成 minor（分）
- * - 优先 amount_minor
- * - 兼容 price 可能是 major（如 199.99）或 minor（如 19999）
+ * ✅ 统一：把各种字段都当作 minor（分）整数读取（不再 *100）
  */
-function toMinor(p: any): number {
-  const a = Number(p?.amount_minor);
-  if (Number.isFinite(a)) return Math.max(0, Math.round(a));
-
-  const v = Number(p?.price);
-  if (!Number.isFinite(v)) return 0;
-
-  // 若是小数，几乎确定是 major
-  if (!Number.isInteger(v)) return Math.max(0, Math.round(v * 100));
-
-  // 整数时：通常是 minor；（如果你曾经存 major 的整数，也会被当成 minor——但这种情况很少）
-  return Math.max(0, Math.round(v));
+function toMinorInt(v: any): number {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.round(n));
 }
 
 /**
- * 折扣字段兼容：
- * - discount_percent_off: 20 => -20%
- * - discount: 80 => 8折（等价 percent_off = 100 - 80）
- */
-function normalizeDiscountFields(p: any): {
-  discount_percent_off?: number;
-  discount?: number;
-} {
-  const out: { discount_percent_off?: number; discount?: number } = {};
-
-  const off = Number(p?.discount_percent_off);
-  if (Number.isFinite(off) && off > 0 && off < 100) {
-    out.discount_percent_off = off;
-  }
-
-  const d = Number(p?.discount);
-  if (Number.isFinite(d) && d > 0 && d <= 100) {
-    out.discount = d;
-  }
-
-  return out;
-}
-
-/**
- * 把商品条目转成定价记录数组（兼容 Strapi prices、多币种、折扣价）
+ * ✅ 从一条 price record 里读取：
+ * - baseMinor：原价（minor）
+ * - effMinor：成交价（minor）
  *
- * 约定：
- * - 返回的 PriceRec.amount_minor / price 都用 minor（分）
- * - currency 强制大写
+ * 兼容来源：
+ * 1) 你最新 bag 写入：price_minor + sale_price_minor
+ * 2) 旧/Strapi 写法：price + real_price / amount_minor
+ */
+function readBaseAndEffectiveMinor(p: any): { baseMinor: number; effMinor: number } {
+  const baseMinor =
+    toMinorInt(p?.price_minor) ||
+    toMinorInt(p?.price) ||
+    toMinorInt(p?.amount_minor) ||
+    0;
+
+  const effMinor =
+    toMinorInt(p?.sale_price_minor) ||
+    toMinorInt(p?.real_price) ||
+    toMinorInt(p?.amount_minor) ||
+    toMinorInt(p?.price_minor) ||
+    toMinorInt(p?.price) ||
+    0;
+
+  return { baseMinor, effMinor };
+}
+
+/**
+ * 把商品条目转成定价记录数组（给 cartPricing 统一计算用）
+ *
+ * ✅ 新约定：
+ * - rec.amount_minor = 成交价（最终价，minor）
+ * - rec.price = 同 amount_minor（兼容旧逻辑）
+ *
+ * 注意：不再在前端计算折扣；discount/window 字段对结算不再需要
  */
 export function itemToPriceRecs(it: any): PriceRec[] {
   const rawPrices = it?.prices;
 
-  // ✅ 1) 优先用 it.prices（来自 Strapi prices 组件 或你 cart 里保存的 prices）
+  // 1) 优先用 it.prices（来自 Strapi Product.prices 或 bag 中持久化的 prices）
   if (Array.isArray(rawPrices) && rawPrices.length) {
     const mapped = rawPrices
       .map((p: any) => {
         const currency = String(p?.currency || "").toUpperCase() as Currency;
         if (!currency) return null;
 
-        const amount = toMinor(p);
+        const { baseMinor, effMinor } = readBaseAndEffectiveMinor(p);
+
+        // ✅ 成交价必须 >0 才算有效；否则兜底 base
+        const finalMinor = effMinor > 0 ? effMinor : baseMinor;
 
         const rec: PriceRec = {
           currency,
-          amount_minor: amount,
-          // 兼容一些旧逻辑会读 rec.price：同样存 minor
-          price: amount,
+          amount_minor: finalMinor,
+          price: finalMinor, // 兼容旧逻辑读取 rec.price
+          // （可选）把原价带上，方便你未来做 savings/展示
+          price_minor: baseMinor > 0 ? baseMinor : undefined,
         };
-
-        // 折扣字段（两种都支持）
-        const disc = normalizeDiscountFields(p);
-        if (disc.discount_percent_off != null) rec.discount_percent_off = disc.discount_percent_off;
-        if (disc.discount != null) (rec as any).discount = disc.discount;
-
-        // sale window
-        if (p?.sale_starts_at) rec.sale_starts_at = String(p.sale_starts_at);
-        if (p?.sale_ends_at) rec.sale_ends_at = String(p.sale_ends_at);
 
         return rec;
       })
       .filter(Boolean) as PriceRec[];
 
-    // 确保是合法 minor
-    return mapped.filter((r) => Number.isInteger(Number((r as any).amount_minor ?? (r as any).price)));
+    return mapped;
   }
 
-  // ✅ 2) 否则 fallback：用 cart item 的 price/basePrice（major）推导一个单币种 PriceRec
+  // 2) fallback（旧 cart 结构过渡）
   const currency = String(it?.currency || "AUD").toUpperCase() as Currency;
 
-  const priceMajor = Number(it?.price) || 0; // 当前价（major）
-  const baseMajor = Number(it?.basePrice ?? it?.price ?? 0); // 原价（major）
+  // 如果旧 item 里有 real_price（minor）就用它，否则用 price（但这里无法判断它是不是 major）
+  const realMinor = toMinorInt(it?.real_price ?? 0);
+  const maybeMinor = toMinorInt(it?.price ?? 0);
+  const finalMinor = realMinor > 0 ? realMinor : maybeMinor;
 
-  const priceMinor = Math.max(0, Math.round(priceMajor * 100));
-  const baseMinor = Math.max(0, Math.round(baseMajor * 100));
-  const base = baseMinor || priceMinor;
-
-  const rec: PriceRec = { currency, amount_minor: base, price: base };
-
-  // 从 base/price 推导 percent_off（兼容旧 cart 结构）
-  if (baseMinor > priceMinor && baseMinor > 0) {
-    const off = Math.round((1 - priceMinor / baseMinor) * 100);
-    rec.discount_percent_off = Math.max(0, Math.min(99, off));
-  }
-
+  const rec: PriceRec = { currency, amount_minor: finalMinor, price: finalMinor };
   return [rec];
 }
 
-/** base 值（minor） */
-export const baseOf = (r: PriceRec) =>
-  Math.max(0, Number((r as any).price ?? r.amount_minor ?? 0));
-
 /**
  * 统一封装：
- * - 计算 itemsTotal（minor/major）
- * - 计算节省金额 savedMajor
- * - 计算运费、总价、Payment 金额
+ * - itemsMinor / itemsMajor
+ * - savedMajor（如果存在原价字段，则 base - effective）
+ * - delivery fee / total
+ *
+ * ✅ 重要：deliveryFreeThreshold / deliveryFlat 都按 minor（分）传入
  */
 export function usePricing(
   cart: any[],
   hasItems: boolean,
   displayCurrency: Currency,
-  deliveryFreeThreshold: number,
-  deliveryFlat: number
+  deliveryFreeThreshold: number, // minor（分）
+  deliveryFlat: number // minor（分）
 ) {
   // 1) 把 cart 转成 pricingInput
   const pricingInput = useMemo(
@@ -145,71 +123,80 @@ export function usePricing(
       return {
         currency: displayCurrency as Currency,
         itemsMinor: 0,
-        itemsMajor: 0,
       };
     }
-    const { currency, totalMinor, totalMajor } = selectCurrencyAndTotals(
+
+    const { currency, totalMinor } = selectCurrencyAndTotals(
       pricingInput,
       displayCurrency,
       undefined,
       displayCurrency
     );
+
     return {
-      currency,
+      currency: currency as Currency,
       itemsMinor: totalMinor,
-      itemsMajor: totalMajor,
     };
   }, [pricingInput, displayCurrency]);
 
-  const currency = itemsTotals.currency as string;
-  const itemsMinor = itemsTotals.itemsMinor;
-  const itemsMajor = itemsTotals.itemsMajor;
+  const currency = itemsTotals.currency as Currency;
+  const itemsMinor = toMinorInt(itemsTotals.itemsMinor);
+  const itemsMajor = Number((itemsMinor / 100).toFixed(2));
 
   // 3) 计算节省金额（原价 - 现价）
+  // ✅ 同时兼容：
+  // - price_minor - sale_price_minor
+  // - price - real_price
   const savedMajor = useMemo(() => {
     let savedMinor = 0;
 
     for (const it of cart as any[]) {
       const qty = Number(it?.qty) || 1;
-      const recs = itemToPriceRecs(it);
+      const prices = Array.isArray(it?.prices) ? it.prices : [];
 
-      const rec = recs.find((r) => r.currency === (currency as Currency));
-      if (rec) {
-        const base = baseOf(rec);
-        const eff = effectiveMinor(rec);
-        if (eff < base) savedMinor += (base - eff) * qty;
-        continue;
-      }
+      const p = prices.find(
+        (x: any) => String(x?.currency || "").toUpperCase() === String(currency).toUpperCase()
+      );
 
-      // fallback（旧 cart 结构）
-      const baseMajor = Number(it?.basePrice ?? it?.price ?? 0);
-      const priceMajor = Number(it?.price ?? 0);
-      if (baseMajor > priceMajor) {
-        savedMinor += Math.round((baseMajor - priceMajor) * 100) * qty;
+      if (!p) continue;
+
+      const { baseMinor, effMinor } = readBaseAndEffectiveMinor(p);
+
+      // base 必须 > eff 才有 savings
+      if (baseMinor > 0 && effMinor > 0 && baseMinor > effMinor) {
+        savedMinor += (baseMinor - effMinor) * qty;
       }
     }
 
-    return savedMinor / 100;
+    return Number((savedMinor / 100).toFixed(2));
   }, [cart, currency]);
 
-  // 4) 运费 & 总价
-  const deliveryFeeMajor = hasItems && itemsMajor < deliveryFreeThreshold ? deliveryFlat : 0;
-  const deliveryFeeMinor = Math.round(deliveryFeeMajor * 100);
+  // 4) 运费 & 总价（全程 minor）
+  const thresholdMinor = toMinorInt(deliveryFreeThreshold);
+  const flatMinor = toMinorInt(deliveryFlat);
+
+  const deliveryFeeMinor = hasItems && itemsMinor < thresholdMinor ? flatMinor : 0;
+  const deliveryFeeMajor = Number((deliveryFeeMinor / 100).toFixed(2));
 
   const totalMinor = itemsMinor + deliveryFeeMinor;
-  const totalMajor = itemsMajor + deliveryFeeMajor;
+  const totalMajor = Number((totalMinor / 100).toFixed(2));
 
-  const amountInMajorUnit = Math.max(0, Number(totalMajor.toFixed(2)));
+  const amountInMajorUnit = totalMajor;
 
   return {
     currency,
+
     itemsMinor,
     itemsMajor,
+
     savedMajor,
-    deliveryFeeMajor,
+
     deliveryFeeMinor,
+    deliveryFeeMajor,
+
     totalMinor,
     totalMajor,
+
     amountInMajorUnit,
   };
 }

@@ -1,7 +1,7 @@
 // src/app/checkout/_components/BagStep.tsx
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
 import Link from "next/link";
 import CartList from "@/components/cart/CartList";
 import type { CartItem as CartListItem } from "@/components/cart/CartList";
@@ -16,13 +16,13 @@ interface BagStepProps {
   cart: CartItem[];
   setCart: React.Dispatch<React.SetStateAction<CartItem[]>>;
 
-  // 价格相关
+  // 价格相关（先保留 props，避免你 checkout/page.tsx 现在的调用报错）
   currency: string; // 比如 "AUD"
-  itemsMajor: number; // 小计（以元为单位）
-  savedMajor: number; // 省下的钱（元）
+  itemsMajor: number; // ⚠️ 不再信任（可能是原价）
+  savedMajor: number; // ⚠️ 不再信任（可能基于旧 prices）
   hasItems: boolean;
 
-  // 运费策略（先保留 props，不用也没关系）
+  // 运费策略（保留 props，不用）
   deliveryThreshold: number;
   deliveryFlat: number;
 
@@ -79,15 +79,36 @@ const BagStep: React.FC<BagStepProps> = ({
   cart,
   setCart,
   currency,
-  itemsMajor,
-  savedMajor,
   hasItems,
   amountInMajorUnit,
 }) => {
   const isEmpty = (cart?.length || 0) === 0;
 
-  // ✅ 这里的 Total 先按“不含运费”展示，避免误导
-  const totalExclDeliveryMajor = itemsMajor;
+  /**
+   * ✅ 关键：Checkout 的 Bag Step 价格展示必须 100% 以 cart 里存的现价为准
+   * cartItem.price = 现价（major）
+   * cartItem.basePrice = 原价（major，可选）
+   */
+  const subtotalMajorFromCart = useMemo(() => {
+    return (cart || []).reduce((sum, it: any) => {
+      const unit = Number(it?.price) || 0; // ✅ 现价
+      const qty = Number(it?.qty) || 0;
+      return sum + unit * qty;
+    }, 0);
+  }, [cart]);
+
+  const savedMajorFromCart = useMemo(() => {
+    return (cart || []).reduce((sum, it: any) => {
+      const unit = Number(it?.price) || 0; // 现价
+      const base = typeof it?.basePrice === "number" ? it.basePrice : unit; // 原价
+      const qty = Number(it?.qty) || 0;
+      const diff = Math.max(0, base - unit);
+      return sum + diff * qty;
+    }, 0);
+  }, [cart]);
+
+  // ✅ 你现在的需求：这里不显示运费，Total 不加运费
+  const totalMajor = subtotalMajorFromCart;
 
   return (
     <>
@@ -137,31 +158,26 @@ const BagStep: React.FC<BagStepProps> = ({
           <div className="space-y-2 text-sm">
             <Row
               label="Subtotal"
-              value={fmtPrice(itemsMajor, currency)}
+              value={fmtPrice(subtotalMajorFromCart, currency)}
               strongRight
             />
 
-            {savedMajor > 0 && (
+            {savedMajorFromCart > 0 && (
               <Row
                 label="You saved"
-                value={fmtPrice(savedMajor, currency)}
+                value={fmtPrice(savedMajorFromCart, currency)}
                 valueClass="text-emerald-700 font-semibold"
               />
             )}
 
-            {/* ✅ 不展示 delivery fee（地址未填完时不误导） */}
-
             <div className="pt-1">
               <Row
-                label="Total (excl. delivery)"
-                value={fmtPrice(totalExclDeliveryMajor, currency)}
+                label="Total"
+                value={fmtPrice(totalMajor, currency)}
                 strongLeft
                 strongRight
                 bigRight
               />
-              <div className="mt-1 text-xs text-neutral-500">
-                Delivery fee may apply after you enter the delivery address and choose a delivery option.
-              </div>
             </div>
           </div>
         </div>

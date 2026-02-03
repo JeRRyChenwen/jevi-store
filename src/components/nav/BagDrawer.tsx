@@ -7,9 +7,6 @@ import { useRouter } from "next/navigation";
 import { useBag } from "@/components/bag/BagProvider";
 import CartList, { type CartItem as CartListItem } from "@/components/cart/CartList";
 
-const DELIVERY_FREE_THRESHOLD = 100;
-const DELIVERY_FLAT = 10;
-
 // 价格格式化
 function fmt(n: number, currency: string, locale?: string) {
   return new Intl.NumberFormat(locale, {
@@ -52,24 +49,29 @@ export default function BagDrawer({ ownerId = "global" }: { ownerId?: string }) 
   const currency = cartItems[0]?.currency ?? "AUD";
   const hasItems = cartItems.length > 0;
 
+  // ✅ Subtotal：仍然用 cartItems 里的 price * qty（你现在 price 已经是“最终价 major”，所以这里正确）
   const subtotal = useMemo(
-    () => cartItems.reduce((a: number, it: CartListItem) => a + (it.price ?? 0) * (it.qty ?? 0), 0),
+    () =>
+      cartItems.reduce(
+        (a: number, it: CartListItem) => a + (it.price ?? 0) * (it.qty ?? 0),
+        0
+      ),
     [cartItems]
   );
 
+  // ✅ You saved：仍按 basePrice - price 来算（如果你 basePrice 是原价）
   const saved = useMemo(
     () =>
       cartItems.reduce((a: number, it: CartListItem) => {
-        const base = typeof it.basePrice === "number" ? it.basePrice : (it.price ?? 0);
+        const base = typeof it.basePrice === "number" ? it.basePrice : it.price ?? 0;
         const diff = Math.max(0, base - (it.price ?? 0));
         return a + diff * (it.qty ?? 0);
       }, 0),
     [cartItems]
   );
 
-  const deliveryFee =
-    hasItems && subtotal < DELIVERY_FREE_THRESHOLD ? DELIVERY_FLAT : 0;
-  const total = hasItems ? subtotal + deliveryFee : 0;
+  // ✅ 关键：BagDrawer 不显示 Delivery fee，并且 Total = Subtotal
+  const total = hasItems ? subtotal : 0;
 
   const toCheckout = () => {
     closeFn();
@@ -108,7 +110,7 @@ export default function BagDrawer({ ownerId = "global" }: { ownerId?: string }) 
           <CartList cart={cartItems} onInc={inc} onDec={dec} onRemove={removeItem} />
         </div>
 
-        {/* 底部：Subtotal / You saved / Delivery fee / Total / Check out */}
+        {/* 底部：Subtotal / You saved / Total / Check out */}
         <footer className="sticky bottom-0 z-10 shrink-0 border-t bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60 p-4 pb-[calc(env(safe-area-inset-bottom,0px)+16px)]">
           <div className="space-y-2 text-sm">
             <div className="flex items-center justify-between">
@@ -119,25 +121,7 @@ export default function BagDrawer({ ownerId = "global" }: { ownerId?: string }) 
             {saved > 0 && (
               <div className="flex items-center justify-between">
                 <span className="text-neutral-600">You saved</span>
-                <span className="font-semibold text-emerald-700">
-                  {fmt(saved, currency)}
-                </span>
-              </div>
-            )}
-
-            {hasItems && (
-              <div className="flex items-center justify-between">
-                <span className="text-neutral-600">Delivery fee</span>
-                <span
-                  className={[
-                    "text-base font-semibold",
-                    subtotal >= DELIVERY_FREE_THRESHOLD ? "text-emerald-700" : "",
-                  ].join(" ")}
-                >
-                  {subtotal >= DELIVERY_FREE_THRESHOLD
-                    ? "FREE for over $100"
-                    : fmt(DELIVERY_FLAT, currency)}
-                </span>
+                <span className="font-semibold text-emerald-700">{fmt(saved, currency)}</span>
               </div>
             )}
 

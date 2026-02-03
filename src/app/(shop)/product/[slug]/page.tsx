@@ -260,6 +260,11 @@ function Stars({ value = 0 }: { value?: number }) {
   );
 }
 
+/**
+ * ✅ PDP 读取 prices（minor）
+ * - price / real_price 都是 integer minor（分）
+ * - amount_minor 作为旧字段兼容
+ */
 function getPrices(attrs: any): PriceRec[] {
   const arr: any[] = Array.isArray(attrs?.prices)
     ? attrs.prices
@@ -275,15 +280,19 @@ function getPrices(attrs: any): PriceRec[] {
 
     const amountMinorNum = Number(a.amount_minor);
     const priceNum = Number(a.price);
-    const discountNum = Number(a.discount);
-    const dpoNum = Number(a.discount_percent_off);
+    const realNum = Number((a as any).real_price);
 
     out.push({
       currency,
       amount_minor: Number.isFinite(amountMinorNum) ? Math.round(amountMinorNum) : undefined,
-      price: Number.isFinite(priceNum) ? priceNum : undefined,
-      discount: Number.isFinite(discountNum) ? discountNum : undefined,
-      discount_percent_off: Number.isFinite(dpoNum) ? dpoNum : undefined,
+
+      // ✅ 现在都视为 minor（分）
+      price: Number.isFinite(priceNum) ? Math.round(priceNum) : undefined,
+      real_price: Number.isFinite(realNum) ? Math.round(realNum) : undefined,
+
+      // 保留（但不再用来算最终价）
+      discount: a.discount ?? undefined,
+      discount_percent_off: a.discount_percent_off ?? undefined,
       sale_starts_at: a.sale_starts_at ?? undefined,
       sale_ends_at: a.sale_ends_at ?? undefined,
     } as PriceRec);
@@ -365,7 +374,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const categoryRootSlug = category?.parentSlug ? category.parentSlug : category?.slug;
   const categoryLeafSlug = category?.parentSlug ? (category?.slug ?? null) : null;
 
-  // ---- pricing (prices-only) ----
+  // ---- pricing (minor-only, real_price is final) ----
   const prices = getPrices(attrs);
   const availableCurrencies = prices.map((r) => r.currency);
 
@@ -378,46 +387,37 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     (r) => String(r.currency).toUpperCase() === String(currency).toUpperCase()
   );
 
-  let baseMinor: number | null = null;
-  if (rec) {
-    if (typeof (rec as any).amount_minor === "number" && Number.isFinite((rec as any).amount_minor)) {
-      baseMinor = Math.max(0, Math.round((rec as any).amount_minor));
-    } else if (typeof (rec as any).price === "number" && Number.isFinite((rec as any).price)) {
-      baseMinor = Math.max(0, Math.round((rec as any).price * 100));
-    }
-  }
-
-  let effectiveMinor: number | null = baseMinor;
-  if (rec && baseMinor != null) {
-    const now = Date.now();
-    const inWindow = (s?: string, e?: string) => {
-      const okS = !s || now >= Date.parse(s);
-      const okE = !e || now <= Date.parse(e);
-      return okS && okE;
-    };
-    const s = (rec as any).sale_starts_at;
-    const e = (rec as any).sale_ends_at;
-
-    if (inWindow(s, e)) {
-      const d = Number((rec as any).discount);
-      const off = Number((rec as any).discount_percent_off);
-
-      if (Number.isFinite(d) && d > 0 && d <= 100) {
-        effectiveMinor = Math.max(0, Math.round(baseMinor * (d / 100)));
-      } else if (Number.isFinite(off) && off > 0 && off < 100) {
-        effectiveMinor = Math.max(0, Math.round(baseMinor * (1 - off / 100)));
-      }
-    }
-  }
-
-  const price = baseMinor != null ? baseMinor / 100 : null;
-  const salePrice =
-    baseMinor != null && effectiveMinor != null && effectiveMinor < baseMinor
-      ? effectiveMinor / 100
+  // ✅ baseMinor: 原价（minor）
+  const baseMinor =
+    rec && Number.isFinite(Number((rec as any).price))
+      ? Math.max(0, Math.round(Number((rec as any).price)))
+      : rec && Number.isFinite(Number((rec as any).amount_minor))
+      ? Math.max(0, Math.round(Number((rec as any).amount_minor)))
       : null;
 
+  // ✅ effectiveMinor: 现价（minor），优先 real_price；没有就 fallback baseMinor
+  const effectiveMinor =
+    rec && Number.isFinite(Number((rec as any).real_price))
+      ? Math.max(0, Math.round(Number((rec as any).real_price)))
+      : baseMinor;
+
+  // ✅ major for UI
+  const price = baseMinor != null ? baseMinor / 100 : null; // 原价（major）
+  const salePrice =
+    baseMinor != null &&
+    effectiveMinor != null &&
+    typeof effectiveMinor === "number" &&
+    effectiveMinor > 0 &&
+    effectiveMinor < baseMinor
+      ? effectiveMinor / 100
+      : null; // 现价（major）
+
   const discount =
-    baseMinor != null && effectiveMinor != null && effectiveMinor < baseMinor
+    baseMinor != null &&
+    effectiveMinor != null &&
+    typeof effectiveMinor === "number" &&
+    effectiveMinor > 0 &&
+    effectiveMinor < baseMinor
       ? Math.round((1 - effectiveMinor / baseMinor) * 100)
       : 0;
 
@@ -569,7 +569,13 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
         "
       >
         <aside className="order-2 lg:order-1 md:sticky md:top-24 self-start md:pr-0">
-          <GalleryClient images={images} title={title} slug={slug} selectedIndex={selected} color={currentColor} />
+          <GalleryClient
+            images={images}
+            title={title}
+            slug={slug}
+            selectedIndex={selected}
+            color={currentColor}
+          />
         </aside>
 
         <section className="order-1 lg:order-2 min-w-0">
@@ -583,7 +589,12 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
           >
             {total > 0 ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img key={images[selected]} src={images[selected]} alt={title} className="w-full h-full object-contain" />
+              <img
+                key={images[selected]}
+                src={images[selected]}
+                alt={title}
+                className="w-full h-full object-contain"
+              />
             ) : (
               <div className="text-neutral-500">No Image</div>
             )}
@@ -656,6 +667,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
               <AddToBagClient
                 slug={slug}
                 title={title}
+                // ✅ 这里仍然传 major（与你当前 cart/checkout 的旧结构兼容）
                 price={price ?? null}
                 salePrice={saleActive ? (salePrice ?? null) : null}
                 currency={currency}

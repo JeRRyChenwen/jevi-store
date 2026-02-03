@@ -13,9 +13,12 @@ type ImagesByColor = Record<string, string[]>;
 type Props = {
   slug: string;
   title: string;
-  price: number | null;
-  salePrice: number | null;
+
+  /** ✅ 这里仍然是 major（元），来自 PDP 计算后的展示价 */
+  price: number | null; // base major
+  salePrice: number | null; // effective major
   currency: string;
+
   imagesByColor: ImagesByColor;
   stockMap: StockMap;
   stock3: Stock3;
@@ -23,10 +26,12 @@ type Props = {
   fallbackColor?: string;
   heightIncreaseCm?: number;
 
-  // ✅ NEW: category root/leaf slugs (from ProductPage server side)
   categoryRootSlug?: string;
   categoryLeafSlug?: string | null;
 };
+
+// ---------- helpers ----------
+const toMinor2 = (major: number) => Math.max(0, Math.round(Number(major || 0) * 100));
 
 export default function AddToBagClient({
   slug,
@@ -82,11 +87,11 @@ export default function AddToBagClient({
       return stockExact;
     }
 
-    // 兜底：如果三维不存在（历史数据/未建 0cm 变体），回退到汇总库存
+    // 兜底：回退到汇总库存
     return stockMap[currentColor]?.[currentSize] ?? 0;
   }, [currentColor, currentSize, pickedHeight, stock3, stockMap]);
 
-  // ✅ NEW：当前变体 SKU（用于下单后扣库存）
+  // ✅ 当前变体 SKU（用于下单后扣库存）
   const variantSku = useMemo(() => {
     if (!currentColor || !currentSize) return null;
     const sku = sku3?.[currentColor]?.[currentSize]?.[pickedHeight];
@@ -99,27 +104,45 @@ export default function AddToBagClient({
     return any;
   }, [currentColor, imagesByColor]);
 
-  const unitPrice = salePrice ?? price ?? 0;
+  /** ✅ unitPrice 仍然是 major（元） */
+  const unitPriceMajor = salePrice ?? price ?? 0;
+  const basePriceMajor = price ?? unitPriceMajor;
 
   // ✅ disabled：由 color/size/stock/price 决定
-  const disabled = !currentColor || !currentSize || stockForCurrent <= 0 || unitPrice <= 0;
+  const disabled =
+    !currentColor || !currentSize || stockForCurrent <= 0 || unitPriceMajor <= 0;
 
   const onAdd = () => {
     if (disabled) return;
 
     const heightPart = String(pickedHeight);
 
-    // ✅ 关键：把 SKU 写入购物袋 item（后端 /orders 会用 product_sku 落库）
-    // 说明：
-    // - product_sku：沿用你 orders.ts 里写库字段名（product_sku）
-    // - variant_sku / variantSku：额外冗余，方便你前端/后端后续演进
+    // ✅ 关键：同时写入 prices[]（minor, 分）——让 cart/checkout 统一走 minor 路径
+    const ccy = String(currency || "AUD").toUpperCase();
+
+    const baseMinor = toMinor2(basePriceMajor);
+    const effMinor = toMinor2(unitPriceMajor);
+
     const item = {
       key: `${slug}|${currentColor}|${currentSize}|${heightPart}`,
       slug,
       title,
-      price: unitPrice,
-      basePrice: price ?? unitPrice,
-      currency,
+
+      // ✅ legacy/compat：保留 major 字段（有的旧 UI/旧逻辑会读）
+      price: unitPriceMajor, // major（成交价）
+      basePrice: basePriceMajor, // major（原价）
+      currency: ccy,
+
+      // ✅ NEW：推荐统一读取这个（minor）
+      prices: [
+        {
+          currency: ccy,
+          price_minor: baseMinor,
+          sale_price_minor: effMinor < baseMinor ? effMinor : undefined,
+          // 不写 sale window：你的 pricing.ts 会把 undefined 当“总是激活窗口”
+        },
+      ],
+
       color: currentColor,
       size: currentSize,
       qty: 1,
@@ -129,12 +152,11 @@ export default function AddToBagClient({
 
       heightIncreaseCm: pickedHeight,
 
-      // ✅ NEW: category root/leaf (persist into bag -> checkout -> worker)
       category_root_slug: categoryRootSlug ?? "uncategorized",
       category_leaf_slug: categoryLeafSlug ?? null,
 
-      // ✅ NEW
-      product_sku: variantSku, // 给 orders.ts 用（你现在 log 里这里是 null）
+      // ✅ SKU
+      product_sku: variantSku,
       variant_sku: variantSku,
       variantSku: variantSku,
     } as unknown as CartItem;
@@ -169,11 +191,6 @@ export default function AddToBagClient({
       >
         ADD TO BAG
       </button>
-
-      {/* 可选：调试用（不想显示就删掉这段） */}
-      {/* <div className="mt-2 text-xs text-neutral-500">
-        SKU: {variantSku ?? "—"}
-      </div> */}
     </div>
   );
 }

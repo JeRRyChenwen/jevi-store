@@ -73,7 +73,6 @@ function baseMinor(p: PriceRec): number {
 
   // ⚠️ 再兼容旧字段 price（历史上可能有人当 major 填入）
   // 这里“只做兼容读取”，不做 *100 猜测，否则会更乱。
-  // 如果你确定历史 price 是 major，可以在外部统一转换后写入 price_minor。
   if (p.price != null) return clampMinor(p.price);
 
   return 0;
@@ -156,4 +155,46 @@ export function pickCurrency(
   if (byCountry && available.includes(byCountry)) return byCountry;
 
   return available.includes(fallback) ? fallback : available[0];
+}
+
+/* ================= Step A: 展示层统一入口（新增） ================= */
+
+/** ✅ 统一：把任何输入安全转成 “非负整数 minor” */
+export function toMinorInt(v: unknown): number {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.round(n));
+}
+
+/**
+ * ✅ 统一：minor -> 带货币符号的金额展示（推荐全站只用这个）
+ * - 8400 + AUD -> "A$84.00"
+ * - 3000 + USD -> "$30.00"
+ */
+export function formatMoneyFromMinor(
+  minor: number | null | undefined,
+  currency: Currency,
+  opts?: { showCode?: boolean }
+): string {
+  const amountMinor = toMinorInt(minor ?? 0);
+  const amountMajor = amountMinor / 10 ** (DECIMALS[currency] ?? 2);
+
+  // 用 Intl.NumberFormat 处理本地化 & 货币符号
+  const nf = new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency,
+    currencyDisplay: opts?.showCode ? "code" : "symbol",
+    minimumFractionDigits: DECIMALS[currency] ?? 2,
+    maximumFractionDigits: DECIMALS[currency] ?? 2,
+  });
+
+  return nf.format(amountMajor);
+}
+
+/**
+ * ✅ 统一：给你一个“简单格式化”别名，方便替换旧代码
+ *（如果你更喜欢 AUD 84.00 而不是 A$84.00，可以告诉我，我帮你改输出格式）
+ */
+export function formatMoneySmart(minor: number | null | undefined, currency: Currency): string {
+  return formatMoneyFromMinor(minor, currency);
 }

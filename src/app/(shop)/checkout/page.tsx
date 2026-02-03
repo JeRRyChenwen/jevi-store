@@ -1201,6 +1201,7 @@ export default function CheckoutPage() {
             currency={currency}
             onPayInitiated={handlePayInitiated}
             onPaySucceeded={handlePaySucceeded}
+            cart={cart}
           />
 
           {step === "payment" && (

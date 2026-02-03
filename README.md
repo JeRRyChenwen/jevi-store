@@ -873,6 +873,8 @@ AMEX 3782 822463 10005 任意四位 CVV，例如 1234
 
 # ============================================================================
 
+### 笔记：
+
 New In, Women, Men, Beauty, Home, Travel & Tech, Kids, Toys, Gifts, Sale, Myer one
 
 Category: Shoes, Bottoms, Tops, Suit, Accessories, Outfit
@@ -888,6 +890,8 @@ deploy 的时候保留本地测试的 localhost
 很好！然后我还想修改一下我的个人资料页面，也就是我的 profile 页面
 My Fit Preferences
 Gift Card
+
+一步步传递」链路就真正闭环了（BagDrawer → Checkout → Bag/Address/Delivery → Payment 都吃同一份 cart/地址/配送选择
 
 # ============================================================================
 
@@ -922,6 +926,8 @@ profile 页面修改 email，可能需要进一步改进
 
 ==============================================================================
 衣服裤子，结账的时候商品类型
+
+嗯，我的前端可能需要大改，因为我的前端的价格还是在把 minor 当 major 显示了，而且都在使用名为Product 的collection里的名为prices 的 component里的名为 price 的字段然后计算折扣再把结果作为最终价格显示在前端中，我打算改成使用名为Product 的collection里的名为prices 的 component里的名为 real_price的字段，然后这个字段不需要计算折扣（因为已经在strapi中计算好了），直接显示在前端中就好，
 
 ==============================================================================
 

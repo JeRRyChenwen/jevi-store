@@ -1,25 +1,46 @@
 // src/components/bag/bag.ts
 "use client";
 
+export type CartItemPrice = {
+  currency: string;
+
+  // ✅ 你新体系推荐字段（minor）
+  price_minor?: number; // 原价
+  sale_price_minor?: number; // 成交价（若有折扣）
+
+  // 🔁 兼容旧/Strapi 字段（minor）
+  price?: number; // 原价（minor）
+  real_price?: number; // 成交价（minor）
+  amount_minor?: number; // 成交价（minor）
+};
+
 export type CartItem = {
   key: string;
   slug: string;
   title: string;
+
+  // ⚠️ legacy：旧 UI/旧逻辑可能仍在用（major）
   price: number;
   basePrice?: number;
   currency: string;
+
+  // ✅ NEW：推荐用于 checkout 计算（minor）
+  prices?: CartItemPrice[];
 
   color?: string;
   size?: string;
   heightIncreaseCm?: number;
 
-  // ✅ NEW: Category slugs (derived from Strapi Category + parent)
   category_root_slug?: string;
   category_leaf_slug?: string | null;
 
-  // ✅ 建议新增（下一步会用到）
   variantDocumentId?: string;
   sku?: string;
+
+  // 你 AddToBagClient 里现在写了这些 sku 字段，也保留兼容
+  product_sku?: string | null;
+  variant_sku?: string | null;
+  variantSku?: string | null;
 
   qty: number;
   stock: number;
@@ -61,12 +82,24 @@ function markOpenState(v: boolean) {
 function add(item: CartItem) {
   const list = readCart();
   const i = list.findIndex((x) => x.key === item.key);
+
   if (i >= 0) {
     const cur = list[i];
-    list[i] = { ...cur, qty: Math.min((cur.qty || 0) + (item.qty || 1), cur.stock) };
+
+    // ✅ 关键修复：同 key 再次 add 时，覆盖旧字段（尤其是 price / prices），只累计 qty
+    const nextStock = Number(item.stock ?? cur.stock) || 0;
+    const nextQty = Math.min((Number(cur.qty) || 0) + (Number(item.qty) || 1), nextStock || 999999);
+
+    list[i] = {
+      ...cur,     // 保留旧字段兜底
+      ...item,    // ✅ 用新 item 覆盖旧字段（价格、prices、图片等）
+      stock: nextStock || cur.stock,
+      qty: Math.max(1, nextQty),
+    };
   } else {
     list.unshift({ ...item, qty: Math.max(1, item.qty || 1) });
   }
+
   writeCart(list);
 }
 
@@ -146,19 +179,16 @@ function on(type: "open" | "close" | "change", cb: (...args: any[]) => void) {
 }
 
 export const bag = {
-  // 数据
   add,
   setQty,
   remove,
   clear,
   get,
   count,
-  // 可视状态
   open,
   toggle,
   close,
   setOffset,
   isOpen,
-  // 订阅
   on,
 };

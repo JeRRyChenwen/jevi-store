@@ -1,6 +1,8 @@
 import { mediaUrl } from "@/lib/strapi";
 import { normalizeColorName } from "@/lib/colors";
-import * as SP from "@/lib/strapiPrice";
+
+// ⚠️ 旧的 strapiPrice 里可能仍以 major 逻辑工作，现阶段不要再依赖它做换算
+// import * as SP from "@/lib/strapiPrice";
 
 export type PriceRec = any;
 
@@ -12,7 +14,7 @@ export type ProductLite = {
   prices: PriceRec[];
 
   /** 兼容字段：用于旧 UI/旧逻辑展示（现在从 prices 推导） */
-  price: number | null; // major
+  price: number | null; // major（用于旧 UI 展示）
   currency?: string | null;
 
   /** 兼容字段：用于旧 sale 逻辑（现在从 prices 推导） */
@@ -121,6 +123,13 @@ export function getImagesByColorFromProduct(attrs: any): Record<string, string[]
   return out;
 }
 
+/**
+ * ✅ 读取 Product.prices component（Strapi）
+ * 你现在的新约定：
+ * - price / real_price 都是 integer minor（分）
+ * - amount_minor（旧字段）可以继续兼容读取
+ * - 不再使用 discount / sale window 来“计算最终价”
+ */
 export function getPrices(attrs: any): PriceRec[] {
   const arr: any[] = Array.isArray(attrs?.prices)
     ? attrs.prices
@@ -134,17 +143,26 @@ export function getPrices(attrs: any): PriceRec[] {
     const currency = String(a.currency ?? "").toUpperCase();
     if (!currency) continue;
 
-    const amountMinorNum = Number(a.amount_minor);
+    // ✅ 新字段：minor（integer）
     const priceNum = Number(a.price);
-    const discountNum = Number(a.discount);
-    const dpoNum = Number(a.discount_percent_off);
+    const realNum = Number(a.real_price);
+
+    // 🔁 兼容旧字段（如果你历史上存在 amount_minor）
+    const amountMinorNum = Number(a.amount_minor);
 
     out.push({
       currency,
+
+      // 旧兼容字段
       amount_minor: Number.isFinite(amountMinorNum) ? Math.round(amountMinorNum) : undefined,
-      price: Number.isFinite(priceNum) ? priceNum : undefined,
-      discount: Number.isFinite(discountNum) ? discountNum : undefined,
-      discount_percent_off: Number.isFinite(dpoNum) ? dpoNum : undefined,
+
+      // ✅ 现在这两个都视为 minor（分），不再 major 化
+      price: Number.isFinite(priceNum) ? Math.round(priceNum) : undefined,
+      real_price: Number.isFinite(realNum) ? Math.round(realNum) : undefined,
+
+      // 下面这些字段先保留读取，但不会再用于“算最终价”
+      discount: a.discount ?? undefined,
+      discount_percent_off: a.discount_percent_off ?? undefined,
       sale_starts_at: a.sale_starts_at ?? undefined,
       sale_ends_at: a.sale_ends_at ?? undefined,
     } as PriceRec);
@@ -153,6 +171,11 @@ export function getPrices(attrs: any): PriceRec[] {
 }
 
 // ---------- pricing / sale helpers ----------
+
+/**
+ * 这个函数在你项目里用于“展示”，但你现在传进来的 n 有时是 major、有时是 minor，
+ * 继续保留它（避免大范围改动），但建议以后只在“major 值”上用它。
+ */
 export function formatPriceVal(n: number | null, currency?: string | null, locale?: string) {
   if (n == null) return "—";
   const cur = (currency || "AUD").toUpperCase();
@@ -164,25 +187,30 @@ export function formatPriceVal(n: number | null, currency?: string | null, local
   }).format(Number(n));
 }
 
+/**
+ * ✅ Legacy sale 判断改为：原价（price） > 现价（real_price）
+ * 这样不用任何 discount 字段，也不会依赖 sale window。
+ */
 export function isSaleActiveByLegacy(p: ProductLite) {
-  const pct = p.discountPercent ?? 0;
-  if (!pct || pct <= 0) return false;
-  const now = Date.now();
-  const s = p.saleStartsAt ? Date.parse(p.saleStartsAt) : Number.NaN;
-  const e = p.saleEndsAt ? Date.parse(p.saleEndsAt) : Number.NaN;
-  const started = Number.isNaN(s) ? true : now >= s;
-  const notEnded = Number.isNaN(e) ? true : now <= e;
-  return started && notEnded;
+  const prices = Array.isArray(p?.prices) ? p.prices : [];
+  const picked = _fallbackPickPriceForCurrency(prices, String(p.currency || "AUD"));
+  if (!picked) return false;
+  const base = typeof picked.base_minor === "number" ? picked.base_minor : 0;
+  const eff = typeof picked.effective_minor === "number" ? picked.effective_minor : 0;
+  return base > 0 && eff > 0 && eff < base;
 }
 
+/**
+ * ✅ Legacy “sale price” 改为直接返回当前价（major）
+ * 这里 p.price 是 major（用于旧 UI），所以返回也用 major。
+ */
 export function salePriceLegacy(p: ProductLite) {
-  const base = p.price ?? 0;
-  const pct = p.discountPercent ?? 0;
-  return Math.max(0, base * (1 - pct / 100));
+  // p.price 现在被我们改成“现价 major”（见 deriveLegacyFieldsFromPrices）
+  return Math.max(0, Number(p.price ?? 0));
 }
 
 /** 兜底：按币种挑选并计算价格（minor） */
-function _fallbackPickPriceForCurrency(prices: PriceRec[], currency: string) {
+function _fallbackPickPriceForCurrency(prices: PriceRec[], currency: string): PickRes {
   if (!Array.isArray(prices) || prices.length === 0) return null;
   const code = String(currency || "AUD").toUpperCase();
 
@@ -192,81 +220,41 @@ function _fallbackPickPriceForCurrency(prices: PriceRec[], currency: string) {
     null;
   if (!rec) return null;
 
-  let base_minor: number | null = null;
-  if (typeof rec.amount_minor === "number" && Number.isFinite(rec.amount_minor)) {
-    base_minor = Math.max(0, Math.round(rec.amount_minor));
-  } else if (typeof rec.price === "number" && Number.isFinite(rec.price)) {
-    base_minor = Math.max(0, Math.round(rec.price * 100));
-  }
-  if (base_minor == null) return { base_minor: null, effective_minor: null, currency: code };
+  // ✅ base_minor：优先 price（原价，minor），其次 amount_minor（旧字段）
+  const baseFromPrice = toMinorInt(rec.price);
+  const baseFromAmount = toMinorInt(rec.amount_minor);
 
-  const now = Date.now();
-  let effective_minor = base_minor;
+  const base_minor =
+    baseFromPrice > 0 ? baseFromPrice : baseFromAmount > 0 ? baseFromAmount : null;
 
-  const inWindow = (s?: string, e?: string) => {
-    const okS = !s || now >= Date.parse(s);
-    const okE = !e || now <= Date.parse(e);
-    return okS && okE;
-  };
-
-  if (inWindow(rec.sale_starts_at, rec.sale_ends_at)) {
-    const d = Number(rec.discount);
-    const off = Number(rec.discount_percent_off);
-
-    // discount: 例如填 80 表示“打 8 折” -> base * (80/100)
-    if (Number.isFinite(d) && d > 0 && d <= 100) {
-      effective_minor = Math.max(0, Math.round(base_minor * (d / 100)));
-    } else if (Number.isFinite(off) && off > 0 && off < 100) {
-      // percent_off: 例如 20 表示“减 20%” -> base * (1 - 20/100)
-      effective_minor = Math.max(0, Math.round(base_minor * (1 - off / 100)));
-    }
-  }
+  // ✅ effective_minor：优先 real_price（现价，minor），否则退回 base
+  const effFromReal = toMinorInt(rec.real_price);
+  const effective_minor = effFromReal > 0 ? effFromReal : base_minor;
 
   return { base_minor, effective_minor, currency: code };
 }
 
+/**
+ * ⚠️ 以前这里会尝试调用 lib 的 pick（它可能按 major 处理），再 *100 转 minor。
+ * 你现在已经全面切换到 “Strapi 存 minor”，继续用它很容易造成二次换算。
+ *
+ * ✅ 现在直接使用我们的 fallback（只做 minor 读取、不做猜测）。
+ */
 export const pickPriceForCurrency: (prices: PriceRec[], currency: string) => PickRes = (
   prices,
   currency
 ) => {
   const ccy = String(currency || "AUD").toUpperCase();
-  const libPick = (SP as any)?.pickPriceForCurrency;
-
-  if (typeof libPick === "function") {
-    try {
-      const r = libPick(prices, ccy);
-      if (r) {
-        const baseMinor =
-          Number.isFinite(Number(r.baseMajor)) ? Math.round(Number(r.baseMajor) * 100) : null;
-        let effMinor =
-          Number.isFinite(Number(r.effectiveMajor)) ? Math.round(Number(r.effectiveMajor) * 100) : baseMinor;
-        const outCcy = String(r.currency || ccy).toUpperCase();
-
-        if (baseMinor != null && effMinor === baseMinor) {
-          const fb = _fallbackPickPriceForCurrency(prices, outCcy);
-          if (
-            fb &&
-            typeof fb.base_minor === "number" &&
-            typeof fb.effective_minor === "number" &&
-            fb.effective_minor < fb.base_minor
-          ) {
-            return fb;
-          }
-        }
-        return { base_minor: baseMinor, effective_minor: effMinor, currency: outCcy };
-      }
-    } catch {
-      // ignore
-    }
-  }
-
   return _fallbackPickPriceForCurrency(prices, ccy);
 };
 
 // ★ 卡片专用价格格式：AUD -> "AUD $425.00"
 export function formatPriceForCard(minor: number, currency: string) {
   const code = String(currency || "AUD").toUpperCase();
-  const major = (minor || 0) / 100;
+
+  // ✅ minor -> major 展示
+  const major = (toMinorInt(minor) || 0) / 100;
+
   const numStr = new Intl.NumberFormat(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
@@ -276,7 +264,17 @@ export function formatPriceForCard(minor: number, currency: string) {
   return `${code} ${numStr}`;
 }
 
-/** ✅ 从 prices 推导一个“默认展示用”的 price/currency/discount/window（优先 AUD） */
+/**
+ * ✅ 从 prices 推导一个“默认展示用”的 price/currency/discount/window（优先 AUD）
+ *
+ * 重要变化：
+ * - 以前 priceMajor 用 baseMinor/100（baseMinor 是“基础价”）
+ * - 现在为了配合你“直接展示 real_price（现价）”，我们让 priceMajor = effectiveMinor/100
+ *   这样旧 UI 如果只展示 p.price，会显示“现价”（符合你目标）
+ *
+ * - discountPercent 不再从 discount 字段推导；改为由 price vs real_price 推导
+ *   如果 base > eff，则 percent_off = round((1 - eff/base) * 100)
+ */
 function deriveLegacyFieldsFromPrices(
   prices: PriceRec[],
   preferredCurrency = "AUD"
@@ -291,31 +289,39 @@ function deriveLegacyFieldsFromPrices(
   const ccy = picked?.currency ?? String(preferredCurrency || "AUD").toUpperCase();
 
   const baseMinor = picked && typeof picked.base_minor === "number" ? picked.base_minor : null;
-  const priceMajor = baseMinor != null ? baseMinor / 100 : null;
+  const effMinor =
+    picked && typeof picked.effective_minor === "number" ? picked.effective_minor : null;
 
+  // ✅ 让 legacy price 显示“现价”（real_price）
+  const priceMajor = effMinor != null ? effMinor / 100 : null;
+
+  // 取对应币种的 rec，便于推导 discountPercent（不再依赖 discount 字段）
   const rec: any =
     prices.find((r: any) => String(r?.currency || "").toUpperCase() === ccy) ||
     prices[0] ||
     null;
 
-  // ✅ discountPercent 推导规则：
-  // - 若有 discount_percent_off（20） => 20
-  // - 否则若有 discount（80 表示 8 折） => percent_off = 100 - 80 = 20
-  const off = Number(rec?.discount_percent_off);
-  const d = Number(rec?.discount);
-
+  // ✅ discountPercent 推导：由 base/eff 自动算
   let discountPercent: number | undefined = undefined;
-  if (Number.isFinite(off) && off > 0 && off < 100) {
-    discountPercent = off;
-  } else if (Number.isFinite(d) && d > 0 && d < 100) {
-    discountPercent = Math.round(100 - d);
+  if (
+    typeof baseMinor === "number" &&
+    typeof effMinor === "number" &&
+    baseMinor > 0 &&
+    effMinor > 0 &&
+    effMinor < baseMinor
+  ) {
+    discountPercent = Math.round((1 - effMinor / baseMinor) * 100);
+    if (typeof discountPercent === "number" && discountPercent <= 0) discountPercent = undefined;
+
+    if (typeof discountPercent === "number" && discountPercent >= 100) discountPercent = 99;
+
   }
 
+  // 促销时间窗字段保留（但不用于计算）
   const normDateStr = (v: any): string | null => {
     if (typeof v !== "string") return null;
     const s = v.trim();
     return s ? s : null;
-    // 不在这里强校验 Date.parse，留给 isSaleActiveByLegacy 的 NaN 逻辑兜底
   };
 
   const saleStartsAt = normDateStr(rec?.sale_starts_at);
@@ -360,9 +366,11 @@ export function normalizeProduct(row: any): ProductLite {
     name,
     prices,
 
+    // ✅ legacy: 这里的 price 现在是“现价 major”（来自 real_price）
     price: derived.priceMajor,
     currency: derived.currency,
 
+    // ✅ legacy: 用 base vs real 自动推导出来的 percent（用于旧 UI badge）
     discountPercent: derived.discountPercent,
     saleStartsAt: derived.saleStartsAt,
     saleEndsAt: derived.saleEndsAt,
@@ -373,4 +381,11 @@ export function normalizeProduct(row: any): ProductLite {
     variantsByColor,
     imageUrl,
   };
+}
+
+// ------- local helper -------
+function toMinorInt(v: any): number {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.round(n));
 }
