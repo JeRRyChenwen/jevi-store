@@ -172,12 +172,17 @@ const BagStep: React.FC<BagStepProps> = ({
 
             <div className="pt-1">
               <Row
-                label="Total"
+                label="Total (excl. delivery fee)"
                 value={fmtPrice(totalMajor, currency)}
                 strongLeft
                 strongRight
                 bigRight
               />
+
+              {/* ✅ NEW: 提示文案（在 Total 下方） */}
+              <div className="mt-1 text-xs text-neutral-500">
+                Tips: Delivery fees are not included.
+              </div>
             </div>
           </div>
         </div>
