@@ -26,7 +26,6 @@ import { Alert } from "@/components/ui/alert";
 import { useFormAlert } from "@/hooks/useFormAlert";
 import { coerceCountryCode } from "@/lib/country";
 
-
 /* ---------------- 常量 ---------------- */
 const LS_ADDRESS_KEY = "sp.checkout.address";
 
@@ -238,25 +237,30 @@ async function sendOrderToServer(args: {
 
     // ① 计算每一行条目（与后端字段对齐）
     const items = (args.cart || []).map((it: any) => {
-      const recs = itemToPriceRecs(it);
-      const rec = recs.find((r) => r.currency === (args.currency as Currency));
-      const unitMinor = rec ? effectiveMinor(rec) : Math.round(Number(it?.price || 0) * 100);
+      // ✅ qty 先算出来（下面 lineMinor 可能需要）
       const qty = Math.max(1, Number(it?.qty) || 1);
-      const lineMinor = unitMinor * qty;
 
-      const hRaw =
-        it?.heightIncreaseCm ??
-        it?.heightIncrease ??
-        it?.height ??
-        it?.height_increase_cm ??
-        it?.attrs?.heightIncreaseCm ??
-        it?.attrs?.heightIncrease ??
-        it?.attrs?.height ??
-        0;
+      // ✅ NEW: 优先使用 PaymentStep/preview 里带过来的权威 minor
+      const unitMinorFromItem = Number(it?.unit_price_minor);
+      const lineMinorFromItem = Number(it?.line_total_minor);
 
-      const hNum = Number(hRaw);
-      const heightIncreaseCm = Number.isFinite(hNum) ? hNum : 0;
+      let unitMinor: number;
 
+      if (Number.isFinite(unitMinorFromItem) && unitMinorFromItem >= 0) {
+        unitMinor = Math.round(unitMinorFromItem);
+      } else {
+        // fallback：旧逻辑
+        const recs = itemToPriceRecs(it);
+        const rec = recs.find((r) => r.currency === (args.currency as Currency));
+        unitMinor = rec ? effectiveMinor(rec) : Math.round(Number(it?.price || 0) * 100);
+      }
+
+      const lineMinor =
+        Number.isFinite(lineMinorFromItem) && lineMinorFromItem >= 0
+          ? Math.round(lineMinorFromItem)
+          : unitMinor * qty;
+
+      // -------- category slugs --------
       const categoryRootSlug =
         it?.category_root_slug ??
         it?.categoryRootSlug ??
@@ -271,71 +275,77 @@ async function sendOrderToServer(args: {
         it?.attrs?.categoryLeafSlug ??
         null;
 
+      // product_type 仍然用 root slug（你现在的设计没问题）
       const productType =
         (typeof categoryRootSlug === "string" && categoryRootSlug.trim()
           ? categoryRootSlug.trim()
           : null) ?? "other";
 
+      // ✅ 宽松判断：只要包含 shoe（忽略大小写）就算鞋
+      const shoesKey = String(categoryRootSlug ?? productType ?? "");
+      const isShoesLike = /shoe/i.test(shoesKey);
+
+      // -------- height (only for shoes) --------
+      const hRaw =
+        it?.heightIncreaseCm ??
+        it?.heightIncrease ??
+        it?.height ??
+        it?.height_increase_cm ??
+        it?.attrs?.heightIncreaseCm ??
+        it?.attrs?.heightIncrease ??
+        it?.attrs?.height ??
+        null;
+
+      const hNum = Number(hRaw);
+      const heightForShoes = Number.isFinite(hNum) ? hNum : 0;
+
+      const heightIncreaseCm: number | null = isShoesLike ? heightForShoes : null;
+
+      const color = it?.color ?? it?.attrs?.color ?? null;
+      const size = it?.size ?? it?.attrs?.size ?? null;
+
+      const parts: string[] = [];
+      if (color) parts.push(`Color: ${String(color)}`);
+      if (size) parts.push(`Size: ${String(size)}`);
+      if (isShoesLike) parts.push(`Height: +${Number(heightIncreaseCm ?? 0)} cm`);
+
+      const variant_title = parts.length ? parts.join(" | ") : null;
+
       return {
         product_id: it?.product_id ?? it?.id ?? null,
-
         product_sku:
           it?.product_sku ??
           it?.variantSku ??
           it?.variant_sku ??
           it?.sku ??
           null,
-
         product_title: String(it?.title || it?.name || "Item"),
-
         product_type: productType,
-
         options: {
-          color: it?.color ?? it?.attrs?.color ?? null,
-          size: it?.size ?? it?.attrs?.size ?? null,
-          height_cm:
-            it?.height_cm ??
-            it?.height_increase_cm ??
-            it?.heightIncreaseCm ??
-            it?.heightIncrease ??
-            it?.height ??
-            it?.attrs?.height_cm ??
-            it?.attrs?.height_increase_cm ??
-            it?.attrs?.heightIncreaseCm ??
-            it?.attrs?.heightIncrease ??
-            it?.attrs?.height ??
-            heightIncreaseCm,
-
+          color,
+          size,
+          height_cm: heightIncreaseCm,
           category_root_slug: categoryRootSlug,
           category_leaf_slug: categoryLeafSlug,
         },
-
-        variant_title:
-          it?.variant ||
-          [it?.color, it?.size].filter(Boolean).join(" / ") ||
-          null,
-
+        variant_title,
         qty,
         currency: args.currency,
         unit_price_minor: unitMinor,
         line_total_minor: lineMinor,
         discount_minor: 0,
         tax_minor: 0,
-
         heightIncreaseCm,
-
         snapshot: {
           slug: it?.slug ?? null,
           image: it?.image || it?.img || null,
           attrs: {
-            color: it?.color ?? null,
-            size: it?.size ?? null,
-            heightIncreaseCm,
-
+            ...(it?.attrs || {}),
+            color: color ?? null,
+            size: size ?? null,
+            heightIncreaseCm: heightIncreaseCm,
             category_root_slug: categoryRootSlug,
             category_leaf_slug: categoryLeafSlug,
-
-            ...(it?.attrs || {}),
           },
         },
       };
@@ -448,7 +458,6 @@ async function sendOrderToServer(args: {
 
       currency: args.currency,
 
-      // ✅ Step 7: 这些值用于后端校验/落库（后端会以 server quote 重新计算）
       items_total_minor: Number(args.itemsMinor) || 0,
       delivery_fee_minor: Number(args.deliveryFeeMinor) || 0,
       discount_minor: 0,
@@ -484,6 +493,13 @@ async function sendOrderToServer(args: {
 
     console.log("[orders] POST /api/orders body.payment =", body.payment);
     console.log("[orders] POST /api/orders body.items[0] preview =", body.items?.[0]);
+    console.log("[orders] items debug height =", items.map(i => ({
+      product_title: i.product_title,
+      product_type: i.product_type,
+      height_cm: i.options?.height_cm,
+      snapshotHeight: i.snapshot?.attrs?.heightIncreaseCm,
+      variant_title: i.variant_title,
+    })));
 
     const res = await fetch(target, {
       method: "POST",
@@ -521,6 +537,7 @@ async function sendOrderToServer(args: {
     return { ok: false };
   }
 }
+
 
 /* ---------------- Page ---------------- */
 export default function CheckoutPage() {
@@ -626,57 +643,50 @@ export default function CheckoutPage() {
   }, []);
 
   useEffect(() => {
-  try {
-    const rawAddr = localStorage.getItem(LS_ADDRESS_KEY);
-    if (rawAddr) {
-      const a = JSON.parse(rawAddr) as any;
+    try {
+      const rawAddr = localStorage.getItem(LS_ADDRESS_KEY);
+      if (rawAddr) {
+        const a = JSON.parse(rawAddr) as any;
 
-      // ✅ Step 3-B: country 统一清洗成 ISO2（AU/NZ/...）
-      // - 如果用户手动输入了 "AU" / "au" / " AU "：会变成 "AU"
-      // - 如果是 "Australia"：会 fallback 为 "AU"（你现在的策略）
-      const countryCode = coerceCountryCode(a?.country, "AU");
-      const cleaned = { ...a, country: countryCode };
+        // ✅ Step 3-B: country 统一清洗成 ISO2（AU/NZ/...）
+        const countryCode = coerceCountryCode(a?.country, "AU");
+        const cleaned = { ...a, country: countryCode };
 
-      // ✅ 回写 localStorage：以后就不会再出现 "Australia" 导致 quote 变 INTL
-      try {
-        localStorage.setItem(LS_ADDRESS_KEY, JSON.stringify(cleaned));
-      } catch {}
+        try {
+          localStorage.setItem(LS_ADDRESS_KEY, JSON.stringify(cleaned));
+        } catch {}
 
-      // ✅ 只在当前还没填过 address 时才用 localStorage 覆盖（保留你原来的逻辑）
-      setAddress((prev) => (Object.keys(prev || {}).length ? prev : cleaned));
-
-      // emailInput 也用清洗后的对象（逻辑不变）
-      setEmailInput(cleaned?.email || "");
-    }
-  } catch {}
-
-  readLoginFromCookie();
-
-  (async () => {
-    if (isLoggedInViaCookie()) {
-      const authedEmail = await fetchAuthedEmail();
-      if (authedEmail) {
-        setEmailInput((prev) => prev || authedEmail);
-        setAddress((a) => {
-          // 这里顺便再确保 country 是 ISO2（防止 address 被别处写坏）
-          const ensuredCountry = coerceCountryCode((a as any)?.country, "AU");
-          const base = { ...(a as any), country: ensuredCountry };
-
-          if (base.email) return base;
-          const next = { ...base, email: authedEmail };
-
-          try {
-            localStorage.setItem(LS_ADDRESS_KEY, JSON.stringify(next));
-          } catch {}
-          return next;
-        });
+        setAddress((prev) => (Object.keys(prev || {}).length ? prev : cleaned));
+        setEmailInput(cleaned?.email || "");
       }
-    }
-  })();
+    } catch {}
 
-  window.addEventListener("focus", readLoginFromCookie);
-  return () => window.removeEventListener("focus", readLoginFromCookie);
-}, [setAddress]);
+    readLoginFromCookie();
+
+    (async () => {
+      if (isLoggedInViaCookie()) {
+        const authedEmail = await fetchAuthedEmail();
+        if (authedEmail) {
+          setEmailInput((prev) => prev || authedEmail);
+          setAddress((a) => {
+            const ensuredCountry = coerceCountryCode((a as any)?.country, "AU");
+            const base = { ...(a as any), country: ensuredCountry };
+
+            if (base.email) return base;
+            const next = { ...base, email: authedEmail };
+
+            try {
+              localStorage.setItem(LS_ADDRESS_KEY, JSON.stringify(next));
+            } catch {}
+            return next;
+          });
+        }
+      }
+    })();
+
+    window.addEventListener("focus", readLoginFromCookie);
+    return () => window.removeEventListener("focus", readLoginFromCookie);
+  }, [setAddress]);
 
   // 旧 hook 仍然用于 itemsMinor / itemsMajor（delivery fee 下面会用 server quote 覆盖）
   const pricing = usePricing(cart, hasItems, DISPLAY_CURRENCY, DELIVERY_FREE_THRESHOLD, DELIVERY_FLAT);
@@ -711,8 +721,9 @@ export default function CheckoutPage() {
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
 
-  // ✅ 分别保存 standard / express 的 quote（用于：显示 fee、横幅文案、调试信息）
-  const [quoteByMethod, setQuoteByMethod] = useState<Partial<Record<DeliveryMethod, ShippingQuoteAPIResult>>>({});
+  const [quoteByMethod, setQuoteByMethod] = useState<
+    Partial<Record<DeliveryMethod, ShippingQuoteAPIResult>>
+  >({});
   const [lastQuoteMeta, setLastQuoteMeta] = useState<any | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
@@ -780,7 +791,6 @@ export default function CheckoutPage() {
     setQuoteLoading(true);
     setQuoteError(null);
 
-    // abort in-flight
     try {
       abortRef.current?.abort();
     } catch {}
@@ -815,11 +825,8 @@ export default function CheckoutPage() {
       };
 
       setQuoteByMethod(next);
-
-      // ✅ 用于你当前的 debug 行：优先展示当前选择的 method 的 quote meta
       setLastQuoteMeta(deliveryMethod === "express" ? qExpress : qStandard);
 
-      // ✅ error 策略：任一失败就给提示，但仍然允许 fallback
       const anyFail = !qStandard.ok || !qExpress.ok;
       if (anyFail) {
         const msg =
@@ -840,7 +847,6 @@ export default function CheckoutPage() {
     }
   }
 
-  // ✅ 自动 quote：Address/Items 变化就更新（同时拿 standard + express）
   useEffect(() => {
     void fetchShippingQuotesBoth();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -850,7 +856,6 @@ export default function CheckoutPage() {
   // ✅ Effective fee / totals
   // ===============================
 
-  // ✅ 当前选中 deliveryMethod 的 fee：优先用 server quote；否则 fallback
   const serverFeeMinorSelected =
     quoteByMethod?.[deliveryMethod]?.ok
       ? Number(quoteByMethod?.[deliveryMethod]?.delivery_fee_minor ?? 0)
@@ -861,7 +866,6 @@ export default function CheckoutPage() {
 
   const deliveryFeeMajorEffective = deliveryFeeMinorEffective / 100;
 
-  // ✅ 免邮横幅：只看 “standard 是否达标”，不管你当前选的是 standard/express
   const standardUnlocked =
     quoteByMethod?.standard?.ok && typeof quoteByMethod.standard.standard_free_unlocked === "boolean"
       ? !!quoteByMethod.standard.standard_free_unlocked
@@ -872,7 +876,6 @@ export default function CheckoutPage() {
       ? Number(quoteByMethod.standard.standard_free_threshold_minor)
       : null;
 
-  // 目前 tax/discount 在 checkout UI 里都为 0；如果你将来加税/折扣，继续在这里合并即可
   const discountMinor = 0;
   const taxMinor = 0;
 
@@ -988,6 +991,31 @@ export default function CheckoutPage() {
     let orderId: number | null = null;
     let orderNumber: string | null = null;
 
+    // ✅ NEW: PaymentStep 可能传来权威 totals（避免确认页和持久化再算错）
+    const checkoutTotals = payload?.successMeta?.checkoutTotals ?? null;
+
+    const currencyForOrder = (checkoutTotals?.currency || currency) as string;
+
+    const itemsMinorForOrder =
+      typeof checkoutTotals?.items_total_minor === "number"
+        ? Number(checkoutTotals.items_total_minor)
+        : Number(itemsMinor) || 0;
+
+    const deliveryFeeMinorForOrder =
+      typeof checkoutTotals?.delivery_fee_minor === "number"
+        ? Number(checkoutTotals.delivery_fee_minor)
+        : Number(deliveryFeeMinorEffective) || 0;
+
+    const totalMinorForOrder =
+      typeof checkoutTotals?.total_minor === "number"
+        ? Number(checkoutTotals.total_minor)
+        : Number(totalMinorEffective) || 0;
+
+    const cartForPersist =
+      Array.isArray(checkoutTotals?.items) && checkoutTotals.items.length
+        ? checkoutTotals.items
+        : cart;
+
     let orderAddress = { ...address };
     if ((!orderAddress.email || !EMAIL_RE.test((orderAddress.email || "").trim())) && isLoggedIn) {
       const authedEmail = await fetchAuthedEmail();
@@ -1026,13 +1054,13 @@ export default function CheckoutPage() {
       console.log("[checkout] determined provider for persist =", provider);
 
       const persist = await sendOrderToServer({
-        cart,
+        cart: cartForPersist,
         address: orderAddress,
-        currency,
-        itemsMinor,
-        deliveryFeeMinor: deliveryFeeMinorEffective, // ✅ 用 server quote fee
+        currency: currencyForOrder,
+        itemsMinor: itemsMinorForOrder,
+        deliveryFeeMinor: deliveryFeeMinorForOrder,
         taxMinor: 0,
-        grandMinor: totalMinorEffective, // ✅ 用 server quote totals
+        grandMinor: totalMinorForOrder,
         payment: payload,
         paymentProvider: provider,
         deliveryMethod,
@@ -1055,24 +1083,55 @@ export default function CheckoutPage() {
         "last-order-preview",
         JSON.stringify({
           ts: Date.now(),
+
+          // ✅ 这两个字段可以保留（做兼容/调试用）
           orderId,
           orderNumber,
+
           currency,
-          totalMinor: totalMinorEffective,
-          items: cart,
+
+          // ✅ 这里保留当兜底展示用（如果 confirmation 拉不到订单）
+          totalMinor: totalMinorForOrder,
+
+          items: cartForPersist,
           address: orderAddress,
           deliveryMethod,
-          quote: lastQuoteMeta ?? null,
-          payload: payload ?? null,
+
+          // ✅ 选中的 quote（lastQuoteMeta 可能 stale）
+          quote: quoteByMethod?.[deliveryMethod]?.ok ? quoteByMethod[deliveryMethod] : (lastQuoteMeta ?? null),
+
+          // ✅ 关键改动：把“订单信息”写进 payload.order，且把支付信息写进 payload.payment
+          payload: {
+            order: orderId ? { id: orderId, order_number: orderNumber ?? null } : null,
+            payment: payload ?? null,
+            checkoutTotals: checkoutTotals ?? null,
+          },
         })
       );
     } catch {}
 
+    console.log("[checkout] ✅ payment succeeded, redirecting to", CONFIRM_PATH);
+
+
     clearCart();
 
-    sendSubscriptionIfNeeded().finally(() => {
-      router.push(CONFIRM_PATH);
-    });
+    // ✅ 不要阻塞跳转：订阅异步发就好
+    void sendSubscriptionIfNeeded();
+
+    // ✅ Next 路由跳转（不留历史记录，避免回退回空 checkout）
+    try {
+      router.replace(CONFIRM_PATH);
+    } catch {}
+
+    // ✅ 兜底：有些支付 SDK 会把页面“带回” return_url（比如 /checkout）
+    // 用 location.replace 强制跳过去，确保一定进入 confirmation
+    setTimeout(() => {
+      try {
+        if (typeof window !== "undefined" && window.location?.pathname !== CONFIRM_PATH) {
+          window.location.replace(CONFIRM_PATH);
+        }
+      } catch {}
+    }, 50);
   };
 
   const handlePayInitiated = () => {
@@ -1111,7 +1170,6 @@ export default function CheckoutPage() {
               itemsMajor={itemsMajor}
               savedMajor={savedMajor}
               hasItems={hasItems}
-              // ✅ 保留原 props（不想动 BagStep），但 flat 让它展示更接近真实 fee
               deliveryThreshold={DELIVERY_FREE_THRESHOLD}
               deliveryFlat={deliveryFeeMajorEffective}
               amountInMajorUnit={amountInMajorUnitEffective}
@@ -1156,12 +1214,9 @@ export default function CheckoutPage() {
               <DeliveryStep
                 deliveryMethod={deliveryMethod}
                 setDeliveryMethod={setDeliveryMethod}
-                // ✅ 横幅：只要 standard 达标，就显示（不受当前选中 standard/express 影响）
                 showFreeShipping={hasItems && standardUnlocked}
-                // ✅ 用于更准确的文案展示
                 standardFreeThresholdMinor={standardFreeThresholdMinor}
                 currency={currency}
-                // ✅ 用于文案告诉用户：express 当前仍需多少钱（或减免后多少钱）
                 deliveryFeeMinorByMethod={{
                   standard: quoteByMethod?.standard?.ok
                     ? Number(quoteByMethod.standard.delivery_fee_minor ?? 0)
@@ -1172,7 +1227,6 @@ export default function CheckoutPage() {
                 }}
               />
 
-              {/* ✅ 可选：调试信息 */}
               {quoteLoading ? (
                 <div className="text-sm text-neutral-500">Calculating shipping…</div>
               ) : quoteError ? (
@@ -1181,7 +1235,8 @@ export default function CheckoutPage() {
                 </div>
               ) : quoteByMethod?.[deliveryMethod]?.ok ? (
                 <div className="text-sm text-neutral-500">
-                  Shipping matched: {quoteByMethod?.[deliveryMethod]?.zone_code ?? "?"} · option {deliveryMethod} · fee{" "}
+                  Shipping matched: {quoteByMethod?.[deliveryMethod]?.zone_code ?? "?"} · option{" "}
+                  {deliveryMethod} · fee{" "}
                   {((Number(quoteByMethod?.[deliveryMethod]?.delivery_fee_minor ?? 0) || 0) / 100).toFixed(2)}{" "}
                   {currency}
                 </div>
@@ -1191,13 +1246,13 @@ export default function CheckoutPage() {
 
           <PaymentStep
             visible={step === "payment"}
-            amountInMajorUnit={amountInMajorUnitEffective} // ✅ server totals
+            amountInMajorUnit={amountInMajorUnitEffective}
             isPayProcessing={isPayProcessing}
             address={address}
             itemsCount={itemsCount}
             itemsMinor={itemsMinor}
-            deliveryFeeMinor={deliveryFeeMinorEffective} // ✅ server quote fee
-            totalMinor={totalMinorEffective} // ✅ server totals
+            deliveryFeeMinor={deliveryFeeMinorEffective}
+            totalMinor={totalMinorEffective}
             currency={currency}
             onPayInitiated={handlePayInitiated}
             onPaySucceeded={handlePaySucceeded}

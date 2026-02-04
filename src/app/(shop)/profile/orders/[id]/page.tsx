@@ -16,6 +16,8 @@ type OrderItem = {
   height_increase_cm?: number | null;
 };
 
+// ✅ 注意：你的 API 现在返回的是 total_minor（不是 grand_total_minor）
+// 所以这里把常见字段都兼容进来
 type OrderDetail = {
   id: number;
   order_number?: string | null;
@@ -23,11 +25,20 @@ type OrderDetail = {
   status: string | null;
   currency: string | null;
 
-  grand_total_minor: number;
+  // ✅ 兼容字段：API 可能叫 total_minor / grand_total_minor
+  total_minor?: number | null;
+  grand_total_minor?: number | null;
+
   items_total_minor?: number | null;
+
+  // ✅ 兼容字段：API 可能没给 delivery_fee_minor
   delivery_fee_minor?: number | null;
+
   discount_minor?: number | null;
   tax_minor?: number | null;
+
+  // 有些实现会把 meta 带回来（如果你后端加了就会有）
+  meta?: any;
 
   created_at_cn?: string | null; // 已格式化好的字符串（若后端有）
   created_at_ts?: number | null; // Unix 秒
@@ -82,7 +93,9 @@ async function fetchOrderDetail(idOrNo: string): Promise<OrderDetailResp> {
   }
 
   if (!res.ok || data?.error) {
-    throw new Error(data?.error || `GET ${url} failed: ${res.status} ${res.statusText}`);
+    throw new Error(
+      data?.error || `GET ${url} failed: ${res.status} ${res.statusText}`
+    );
   }
   return data;
 }
@@ -109,14 +122,42 @@ export default async function OrderDetailPage({ params }: PageProps) {
 
   const currency = order.currency || (items[0]?.currency ?? "AUD");
 
-  // 小计与总计
+  // ✅ items 小计：优先 order.items_total_minor，否则用 items 汇总
   const itemsTotalMinor =
-    order.items_total_minor ?? items.reduce((sum, it) => sum + (it.line_total_minor || 0), 0);
-  const deliveryFeeMinor = order.delivery_fee_minor ?? 0;
-  const discountMinor = order.discount_minor ?? 0;
-  const taxMinor = order.tax_minor ?? 0;
+    typeof order.items_total_minor === "number"
+      ? order.items_total_minor
+      : items.reduce((sum, it) => sum + (it.line_total_minor || 0), 0);
+
+  const discountMinor =
+    typeof order.discount_minor === "number" ? order.discount_minor : 0;
+  const taxMinor = typeof order.tax_minor === "number" ? order.tax_minor : 0;
+
+  // ✅ 总计：兼容 total_minor / grand_total_minor
+  const totalMinorFromOrder =
+    (typeof order.grand_total_minor === "number" && order.grand_total_minor) ||
+    (typeof order.total_minor === "number" && order.total_minor) ||
+    0;
+
+  /**
+   * ✅ Delivery fee：三层兜底
+   * 1) order.delivery_fee_minor（如果 API 有给）
+   * 2) order.meta.__shipping_quote.delivery_fee_minor（如果后端把 meta 带回来了）
+   * 3) 推断：total - items - tax + discount
+   *    （你这单 tax/discount 为 0，所以 9415 - 8415 = 1000，刚好就是 $10）
+   */
+  const deliveryFeeMinor =
+    (typeof order.delivery_fee_minor === "number" && order.delivery_fee_minor) ||
+    (typeof order?.meta?.__shipping_quote?.delivery_fee_minor === "number" &&
+      order.meta.__shipping_quote.delivery_fee_minor) ||
+    Math.max(
+      0,
+      (totalMinorFromOrder || 0) - (itemsTotalMinor || 0) - (taxMinor || 0) + (discountMinor || 0)
+    );
+
+  // ✅ grandTotal：优先用 totalMinorFromOrder，否则按公式算
   const grandTotalMinor =
-    order.grand_total_minor ?? itemsTotalMinor + deliveryFeeMinor + taxMinor - discountMinor;
+    totalMinorFromOrder ||
+    Math.max(0, itemsTotalMinor + deliveryFeeMinor + taxMinor - discountMinor);
 
   // ✅ 稳定的“下单时间”字符串（避免 Hydration mismatch）
   const createdAt = fmtDateStable(order.created_at_ts, order.created_at_cn);
@@ -157,7 +198,6 @@ export default async function OrderDetailPage({ params }: PageProps) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
           <div>
             <div className="text-xs text-neutral-500">Placed at</div>
-            {/* ✅ 双保险：即使偶发不一致也别报错 */}
             <div suppressHydrationWarning>{createdAt || "-"}</div>
           </div>
           <div>
@@ -177,14 +217,10 @@ export default async function OrderDetailPage({ params }: PageProps) {
           <div className="space-y-3">
             {items.map((it) => {
               const hNum =
-                typeof it.height_increase_cm === "number"
-                  ? it.height_increase_cm
-                  : null;
+                typeof it.height_increase_cm === "number" ? it.height_increase_cm : null;
 
               // ✅ 0 / 3 / 5 / 7 全部显示
-              const showHeight =
-                typeof hNum === "number" && Number.isFinite(hNum);
-
+              const showHeight = typeof hNum === "number" && Number.isFinite(hNum);
               const showMeta = Boolean(it.variant_title) || showHeight;
 
               return (
@@ -212,10 +248,11 @@ export default async function OrderDetailPage({ params }: PageProps) {
                   </div>
 
                   <div className="text-right">
-                    <div className="text-sm">{fmtCurrency(it.line_total_minor, it.currency || currency)}</div>
+                    <div className="text-sm">
+                      {fmtCurrency(it.line_total_minor, it.currency || currency)}
+                    </div>
                     <div className="text-xs text-neutral-500">
-                      {fmtCurrency(it.unit_price_minor, it.currency || currency)}{" "}
-                      each
+                      {fmtCurrency(it.unit_price_minor, it.currency || currency)} each
                     </div>
                   </div>
                 </div>
@@ -234,12 +271,11 @@ export default async function OrderDetailPage({ params }: PageProps) {
           <span>{fmtCurrency(itemsTotalMinor, currency)}</span>
         </div>
 
-        {deliveryFeeMinor ? (
-          <div className="flex justify-between">
-            <span className="text-neutral-600">Delivery</span>
-            <span>{fmtCurrency(deliveryFeeMinor, currency)}</span>
-          </div>
-        ) : null}
+        {/* ✅ 永远显示 Delivery（0 就显示 FREE，更符合电商习惯） */}
+        <div className="flex justify-between">
+          <span className="text-neutral-600">Delivery</span>
+          <span>{deliveryFeeMinor === 0 ? "FREE" : fmtCurrency(deliveryFeeMinor, currency)}</span>
+        </div>
 
         {taxMinor ? (
           <div className="flex justify-between">

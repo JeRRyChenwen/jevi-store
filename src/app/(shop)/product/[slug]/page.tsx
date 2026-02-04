@@ -151,7 +151,9 @@ function getImagesByColorFromProduct(attrs: any): Record<string, string[]> {
         m?.url;
       if (typeof u === "string") urls.push(mediaUrl(u));
     }
-    if (urls.length) out[color] = urls;
+    // ✅ 没有图片也保留颜色 key，这样 colorKeys 不会为空
+    if (!(color in out)) out[color] = urls;
+    else if (urls.length) out[color] = urls; // 有图就用有图的覆盖
   }
   return out;
 }

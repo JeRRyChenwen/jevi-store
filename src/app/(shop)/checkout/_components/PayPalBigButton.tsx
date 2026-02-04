@@ -1,14 +1,21 @@
-// src/app/checkout/_components/PayPalBigButton.tsx
+// D:\前端练习\social-platform\src\app\(shop)\checkout\_components\PayPalBigButton.tsx
 "use client";
 
 import { PayPalButtons, usePayPalScriptReducer } from "@paypal/react-paypal-js";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 type Props = {
-  amount: number; // 例如 425（单位：major）
-  currency: string; // 例如 "AUD"
-  onInitiate?: () => void; // 开始创建订单时回调（可以做 loading）
-  onSucceeded?: (details: any) => void; // 支付完成回调
+  amount: number; // major, e.g. 104.15
+  currency: string; // e.g. "AUD"
+  onInitiate?: () => void;
+
+  // ✅ 允许 async：await 它，确保上层 persist + sessionStorage 写完
+  onSucceeded?: (payload: any) => void | Promise<void>;
+
+  confirmPath?: string; // default "/order/confirmation"
+
+  // ✅ NEW: 让上层把“权威 totals / cart snapshot”等塞进来，成功后一起回传
+  successMeta?: any;
 };
 
 export default function PayPalBigButton({
@@ -16,10 +23,12 @@ export default function PayPalBigButton({
   currency,
   onInitiate,
   onSucceeded,
+  confirmPath = "/order/confirmation",
+  successMeta,
 }: Props) {
   const [{ options }, dispatch] = usePayPalScriptReducer();
+  const approvingRef = useRef(false);
 
-  // ✅ 只在 currency 真正变化时重置 PayPal SDK 选项，避免无限循环
   useEffect(() => {
     if (!options || !currency) return;
 
@@ -28,54 +37,87 @@ export default function PayPalBigButton({
 
     (dispatch as any)({
       type: "resetOptions" as any,
-      value: {
-        ...(options as any),
-        currency,
-      },
+      value: { ...(options as any), currency },
     });
   }, [currency, options, dispatch]);
 
-  const value = amount.toFixed(2); // "425.00"
+  const value = Number(amount || 0).toFixed(2);
 
   return (
     <div className="w-full flex justify-end">
-      {/* 👉 宽度和 Pay now 外层保持完全一致 */}
       <div className="w-[260px] max-w-full">
         <PayPalButtons
-          // 让按钮在容器里占满宽度
           className="w-full"
-          // 让外观尽量贴近你现在的 “Pay now” 大圆角按钮
           style={{
             layout: "horizontal",
-            height: 37, // 接近 py-3 的视觉高度
+            height: 37,
             color: "gold",
-            shape: "pill", // 和 rounded-full 类似
-            label: "pay", // 显示 “Pay with PayPal”
-            tagline: false, // 去掉下面那行小字，视觉上更接近单一按钮
+            shape: "pill",
+            label: "pay",
+            tagline: false,
           }}
-          forceReRender={[amount, currency]}
+          forceReRender={[value, currency]}
           createOrder={(_data, actions) => {
             onInitiate?.();
 
-            const value = amount.toFixed(2); // 比如 "425.00"
+            if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) {
+              throw new Error(`Invalid amount for PayPal: ${amount}`);
+            }
 
-            return actions.order.create(
-              {
-                intent: "CAPTURE",
-                purchase_units: [
-                  {
-                    amount: {
-                      value,
-                      currency_code: currency,
-                    },
+            return actions.order.create({
+              intent: "CAPTURE",
+              purchase_units: [
+                {
+                  amount: {
+                    value: Number(amount).toFixed(2),
+                    currency_code: currency,
                   },
-                ],
-              } as any
-            );
+                },
+              ],
+            } as any);
           }}
           onApprove={async (data, actions) => {
-            const details = await actions.order?.capture();
-            onSucceeded?.({ details, data });
+            if (approvingRef.current) return;
+            approvingRef.current = true;
+
+            try {
+              const details = await actions.order?.capture();
+
+              const capture =
+                (details as any)?.purchase_units?.[0]?.payments?.captures?.[0] ?? null;
+
+              const normalized = {
+                provider: "paypal",
+                orderId: data?.orderID ?? (details as any)?.id ?? null,
+                transactionId: capture?.id ?? null,
+                raw: details ?? null,
+                data,
+                details,
+              };
+
+              // ✅ 把 meta 一起回传（最重要：让父组件别再重算 totals）
+              const merged = successMeta
+                ? { ...normalized, successMeta }
+                : normalized;
+
+              await onSucceeded?.(merged);
+
+              try {
+                if (typeof window !== "undefined") {
+                  window.location.replace(confirmPath);
+                }
+              } catch {}
+            } catch (e) {
+              console.error("[paypal] onApprove/capture failed:", e);
+              approvingRef.current = false;
+            }
+          }}
+          onError={(err) => {
+            console.error("[paypal] error:", err);
+            approvingRef.current = false;
+          }}
+          onCancel={() => {
+            approvingRef.current = false;
           }}
         />
       </div>

@@ -59,7 +59,9 @@ export default function CartList({
 
   // 只有当需要显示 footer 时，这些值才有用
   const currency = cart[0]?.currency ?? "USD";
-  const subtotal = showFooter ? cart.reduce((a, it) => a + it.price * it.qty, 0) : 0;
+  const subtotal = showFooter
+    ? cart.reduce((a, it) => a + it.price * it.qty, 0)
+    : 0;
   const saved = showFooter
     ? cart.reduce((a, it) => {
         const base = typeof it.basePrice === "number" ? it.basePrice : it.price;
@@ -71,20 +73,36 @@ export default function CartList({
   return (
     <div className="space-y-3">
       {cart.map((it) => {
-        // ✅ NEW: 统一把 height 归一成显示值
-        // - undefined -> 0（兼容旧数据）
-        // - 非数字 -> 0
+        // ✅ 宽松判断：只要 root/leaf 里包含 "shoe"（忽略大小写），就认为是鞋子
+        const root = String(it.category_root_slug ?? "");
+        const leaf = String(it.category_leaf_slug ?? "");
+        const isShoes = /shoe/i.test(root) || /shoe/i.test(leaf);
+
+        // ✅ Height 值：不再把 undefined 归一成 0
+        // - 数字 => number
+        // - 其它 => null
         const h =
-          typeof it.heightIncreaseCm === "number" && Number.isFinite(it.heightIncreaseCm)
+          typeof it.heightIncreaseCm === "number" &&
+          Number.isFinite(it.heightIncreaseCm)
             ? it.heightIncreaseCm
-            : 0;
+            : null;
+
+        // ✅ 只有鞋子才显示 Height；鞋子哪怕 h=0 也允许显示（保持原逻辑）
+        const showHeight = isShoes && typeof h === "number";
 
         return (
-          <div key={it.key} className="flex gap-3 rounded-xl border p-3 hover:shadow-sm">
+          <div
+            key={it.key}
+            className="flex gap-3 rounded-xl border p-3 hover:shadow-sm"
+          >
             <div className="h-20 w-20 overflow-hidden rounded-lg bg-neutral-100">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               {it.image ? (
-                <img src={it.image} alt={it.title} className="h-full w-full object-cover" />
+                <img
+                  src={it.image}
+                  alt={it.title}
+                  className="h-full w-full object-cover"
+                />
               ) : (
                 <div className="h-full w-full" />
               )}
@@ -98,12 +116,16 @@ export default function CartList({
                 {it.color && <span>Color: {it.color}</span>}
                 {it.size && <span className="ml-3">Size: {it.size}</span>}
 
-                {/* ✅ NEW: Height increase（始终显示，默认 +0 cm；你也可以改成 h>0 才显示） */}
-                <span className="ml-3">Height: +{h} cm</span>
+                {/* ✅ 只有鞋子才显示 Height */}
+                {showHeight && (
+                  <span className="ml-3">Height: +{h} cm</span>
+                )}
               </div>
 
               <div className="mt-2 flex items-center justify-between">
-                <div className="text-sm font-semibold">{fmt(it.price, it.currency)}</div>
+                <div className="text-sm font-semibold">
+                  {fmt(it.price, it.currency)}
+                </div>
 
                 <div className="flex items-center rounded-full border">
                   <button
@@ -130,7 +152,9 @@ export default function CartList({
               </div>
 
               {/* ✅ Max stock 直接用 it.stock（你这里本来就对） */}
-              <div className="mt-1 text-[11px] text-neutral-500">Max {it.stock} available</div>
+              <div className="mt-1 text-[11px] text-neutral-500">
+                Max {it.stock} available
+              </div>
             </div>
 
             <button
@@ -160,7 +184,9 @@ export default function CartList({
           {saved > 0 && (
             <div className="mb-1 flex items-center justify-between">
               <div className="text-sm text-neutral-600">You saved</div>
-              <div className="text-sm font-semibold text-emerald-700">{fmt(saved, currency)}</div>
+              <div className="text-sm font-semibold text-emerald-700">
+                {fmt(saved, currency)}
+              </div>
             </div>
           )}
 

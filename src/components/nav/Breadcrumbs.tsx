@@ -57,7 +57,19 @@ export default function Breadcrumbs({ className }: { className?: string }) {
   const raw = pathname.split("/").filter(Boolean);
   if (!raw.length) return null;
 
-  const shown = raw.map((seg, i) => ({ seg, i })).filter(({ seg }) => seg !== "category");
+  // ✅ 过滤规则（通用）
+  // - 不显示 category 这个段
+  // - ✅ 特例：/order/confirmation 不显示 order（避免 404）
+  const shown = raw
+    .map((seg, i) => ({ seg, i }))
+    .filter(({ seg }) => seg !== "category")
+    .filter(({ seg }) => {
+      if (pathname.startsWith("/order/confirmation")) {
+        return seg !== "order"; // ✅ 关键：隐藏 order
+      }
+      return true;
+    });
+
   if (shown.length === 0) return null;
 
   const labelMap: Record<string, string> = {
@@ -67,10 +79,13 @@ export default function Breadcrumbs({ className }: { className?: string }) {
     account: "My Account",
     profile: "Profile",
     product: "Product",
+
+    // ✅ 可选：让 confirmation 显示更友好一点
+    confirmation: "Confirmation",
   };
 
   // ✅ 这些段没有 index page（点了会 404），所以不要生成链接
-  const noIndexLink = new Set<string>(["product"]);
+  const noIndexLink = new Set<string>(["product", "order"]);
 
   return (
     <nav

@@ -1,4 +1,4 @@
-// src/app/checkout/_components/PaymentStep.tsx
+// D:\前端练习\social-platform\src\app\(shop)\checkout\_components\PaymentStep.tsx
 "use client";
 
 import React, { useState, useCallback, useMemo } from "react";
@@ -24,13 +24,11 @@ type Address = {
 type PaymentStepProps = {
   visible: boolean;
 
-  // ⚠️ 保留但不再作为权威金额来源（会用 derivedAmountMajor 覆盖）
-  amountInMajorUnit: number;
+  amountInMajorUnit: number; // legacy, 不当权威
 
   isPayProcessing: boolean;
   address: Address;
 
-  // 这些也保留（父组件可能还在传），但显示/支付会以 cart derive 的为准
   itemsCount: number;
   itemsMinor: number;
   deliveryFeeMinor: number;
@@ -40,11 +38,13 @@ type PaymentStepProps = {
   onPayInitiated: () => void;
   onPaySucceeded: (payload?: any) => void;
 
-  // ✅ NEW：一步步传递的“同一份 checkout cart”
   cart: Array<{
-    price?: number; // major（例如 84.15）
+    price?: number; // major（折后价，如 84.15）
     qty?: number;
     currency?: string;
+
+    // 你的 item 里还有很多字段（basePrice、sku、title...），这里不限制
+    [k: string]: any;
   }>;
 };
 
@@ -62,44 +62,42 @@ function fmtMoneyMinor(minor: number, currency: string, locale?: string) {
   return fmtPrice((minor ?? 0) / 100, currency, locale);
 }
 
-/* ========== 组件本体 ========== */
 const PaymentStep: React.FC<PaymentStepProps> = ({
   visible,
-  amountInMajorUnit, // 保留但不使用它作为权威金额
+  amountInMajorUnit, // legacy
   isPayProcessing,
   address,
   itemsCount,
-  itemsMinor, // 保留
+  itemsMinor,
   deliveryFeeMinor,
-  totalMinor, // 保留
+  totalMinor,
   currency,
   onPayInitiated,
   onPaySucceeded,
   cart,
 }) => {
-  // ✅ Card payment currently disabled: keep states for future re-enable if needed
-  const [payFn, setPayFn] = useState<(() => void) | null>(null);
-  const [canPay, setCanPay] = useState(false);
-
-  // ✅ IMPORTANT: default to PayPal (card hidden)
   const [method, setMethod] = useState<"card" | "paypal">("paypal");
-
-  // ✅ NEW: 在用户点击支付后，屏蔽“bag empty”等阻止提示
   const [suppressBlockedHint, setSuppressBlockedHint] = useState(false);
 
-  // ✅ currency：优先 props，其次 cart[0].currency
   const safeCurrency = useMemo(() => {
-    const c = (currency || cart?.[0]?.currency || "AUD").toUpperCase();
-    return c;
+    return (currency || cart?.[0]?.currency || "AUD").toUpperCase();
   }, [currency, cart]);
 
-  // ✅ NEW：完全以“一步步传递下来的 cart”为准，重新汇总金额（权威）
+  const derivedItemsCount = useMemo(() => {
+    const list = Array.isArray(cart) ? cart : [];
+    return list.reduce((sum, it) => sum + Math.max(1, Number(it?.qty) || 1), 0);
+  }, [cart]);
+
   const derivedItemsMinor = useMemo(() => {
     const list = Array.isArray(cart) ? cart : [];
     return list.reduce((sum, it) => {
-      const qty = Number(it?.qty) || 1;
+      const qty = Math.max(1, Number(it?.qty) || 1);
+
+      // ✅ 注意：这里用的是 it.price（折后价），不要用 basePrice
       const priceMajor = Number(it?.price) || 0;
-      const lineMinor = Math.round(priceMajor * 100) * qty;
+      const unitMinor = Math.round(priceMajor * 100);
+      const lineMinor = unitMinor * qty;
+
       return sum + Math.max(0, lineMinor);
     }, 0);
   }, [cart]);
@@ -112,16 +110,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     return Number((derivedTotalMinor / 100).toFixed(2));
   }, [derivedTotalMinor]);
 
-  // 当前显示的支付方式（card）会通过这个回调把 pay() 暴露出来
-  const handleExposePay = useCallback((pay: () => void) => {
-    setPayFn(() => pay);
-  }, []);
-
-  const handleCanPayChange = useCallback((can: boolean) => {
-    setCanPay(can);
-  }, []);
-
-  // ✅ 统一的支付成功处理
+  // ✅ 统一的支付成功处理：原样把 payload 交给父组件
   const handlePaySucceeded = useCallback(
     (payload: any) => {
       console.log("[checkout] handlePaySucceeded payload", payload);
@@ -139,13 +128,12 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     address?.state ||
     address?.postcode;
 
-  // ✅ Payment step 再做一次 “能否支付” 防线，并给用户可见提示
   const payBlockedReason = useMemo(() => {
     if (!visible) return null;
     if (isPayProcessing) return null;
     if (suppressBlockedHint) return null;
 
-    if (itemsCount <= 0) {
+    if (derivedItemsCount <= 0) {
       return "Your bag is empty. Please add at least one item before paying.";
     }
     if (!hasAddress) {
@@ -159,30 +147,50 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     visible,
     isPayProcessing,
     suppressBlockedHint,
-    itemsCount,
+    derivedItemsCount,
     hasAddress,
     derivedTotalMinor,
   ]);
 
-  const handleClickPay = () => {
-    if (payBlockedReason) return;
-    if (!payFn || !visible || isPayProcessing) return;
-
-    setSuppressBlockedHint(true);
-
-    if (method === "card") {
-      onPayInitiated();
-      payFn();
-    }
-  };
-
-  // ✅ NEW: display label for country (AU -> Australia)
   const countryDisplay = useMemo(() => {
     const raw = (address?.country || "").trim();
     if (!raw) return "";
     const label = countryLabelOf(raw);
     return label || raw;
   }, [address?.country]);
+
+  // ✅ NEW: 生成一个“权威 checkoutTotals + cart snapshot(minor)”——支付成功后给父组件用
+  const checkoutTotalsMeta = useMemo(() => {
+    const itemsSnapshot = (Array.isArray(cart) ? cart : []).map((it) => {
+      const qty = Math.max(1, Number(it?.qty) || 1);
+      const unitMinor = Math.round((Number(it?.price) || 0) * 100); // 折后价
+      const lineMinor = unitMinor * qty;
+
+      return {
+        ...it,
+        qty,
+        unit_price_minor: unitMinor,
+        line_total_minor: lineMinor,
+      };
+    });
+
+    return {
+      pricing_source: "paymentstep-derived",
+      currency: safeCurrency,
+      items_count: derivedItemsCount,
+      items_total_minor: derivedItemsMinor,
+      delivery_fee_minor: Number(deliveryFeeMinor) || 0,
+      total_minor: derivedTotalMinor,
+      items: itemsSnapshot,
+    };
+  }, [
+    cart,
+    safeCurrency,
+    derivedItemsCount,
+    derivedItemsMinor,
+    deliveryFeeMinor,
+    derivedTotalMinor,
+  ]);
 
   return (
     <section
@@ -203,7 +211,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
             }
       }
     >
-      {/* 头部 */}
       <div className="px-4 py-3 border-b flex items-center justify-between">
         <div>
           <div className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">
@@ -220,7 +227,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
       </div>
 
       <div className="p-4 space-y-2 flex-1 flex flex-col">
-        {/* 地址提醒 */}
         <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800 flex gap-2">
           <span className="mt-0.5 text-base">ℹ️</span>
           <div>
@@ -231,7 +237,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
           </div>
         </div>
 
-        {/* ✅ 若被阻止支付，给用户一个明确提示 */}
         {visible && payBlockedReason && (
           <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 flex gap-2">
             <AlertCircle className="w-4 h-4 mt-0.5" />
@@ -241,12 +246,10 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
 
         <div className="flex-1 flex flex-col">
           <div className="grid gap-4 md:grid-cols-[minmax(0,1.5fr)_minmax(0,2fr)]">
-            {/* 左侧：支付方式 */}
             <div className="border rounded-lg p-4 h-[460px] flex flex-col">
               <div className="space-y-3">
                 <h3 className="text-sm font-semibold text-neutral-900">Choose a way to pay</h3>
 
-                {/* PayPal */}
                 <button
                   type="button"
                   onClick={() => setMethod("paypal")}
@@ -271,9 +274,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
               </div>
             </div>
 
-            {/* 右侧：Delivery + Summary */}
             <div className="space-y-4">
-              {/* Delivery Details */}
               <div className="border rounded-lg p-4">
                 <h3 className="text-base font-medium mb-3">Delivery Details</h3>
                 {hasAddress ? (
@@ -306,12 +307,11 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                 )}
               </div>
 
-              {/* Order Summary */}
               <div className="border rounded-lg p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-gray-600">Items</div>
                   <div className="text-base font-medium">
-                    {itemsCount} item{itemsCount > 1 ? "s" : ""}
+                    {derivedItemsCount} item{derivedItemsCount > 1 ? "s" : ""}
                   </div>
                 </div>
 
@@ -325,7 +325,9 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-gray-600">Delivery</div>
                   <div className="text-base font-medium">
-                    {deliveryFeeMinor === 0 ? "FREE" : fmtMoneyMinor(deliveryFeeMinor, safeCurrency)}
+                    {Number(deliveryFeeMinor) === 0
+                      ? "FREE"
+                      : fmtMoneyMinor(Number(deliveryFeeMinor) || 0, safeCurrency)}
                   </div>
                 </div>
 
@@ -337,7 +339,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                 </div>
               </div>
 
-              {/* PayPal */}
               {visible && derivedAmountMajor > 0 && (
                 <div className="pt-0 flex justify-end">
                   <div className="w-[260px] max-w-full">
@@ -361,31 +362,17 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                       <PayPalBigButton
                         amount={derivedAmountMajor}
                         currency={safeCurrency}
+                        successMeta={{
+                          checkoutTotals: checkoutTotalsMeta,
+                        }}
                         onInitiate={() => {
                           setSuppressBlockedHint(true);
                           onPayInitiated();
                         }}
-                        onSucceeded={(details) => {
-                          setSuppressBlockedHint(true);
-
-                          const d: any = details?.details ?? details ?? null;
-                          const captureId =
-                            d?.purchase_units?.[0]?.payments?.captures?.[0]?.id ??
-                            d?.purchase_units?.[0]?.payments?.captures?.[0]?.capture_id ??
-                            null;
-
-                          if (!captureId) {
-                            console.warn("[paypal] missing capture id in details:", d);
-                          }
-
-                          onPaySucceeded({
-                            provider: "paypal" as const,
-                            provider_txn_id: captureId,
-                            payment_method: "paypal" as const,
-                            cardBrand: null,
-                            cardLast4: null,
-                            raw: d,
-                          });
+                        onSucceeded={(paypalPayload) => {
+                          // ✅ 关键：不要重建/丢字段，直接把 PayPalBigButton 的 payload 原样交给父组件
+                          // 其中 paypalPayload.successMeta.checkoutTotals 就是权威 totals
+                          handlePaySucceeded(paypalPayload);
                         }}
                       />
                     )}
@@ -396,7 +383,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
           </div>
         </div>
 
-        {/* footer */}
         <div className="mt-auto pt-6 space-y-1 text-xs text-gray-500">
           <p>
             All charges are processed in <b>{safeCurrency}</b>. Your bank or PayPal may apply currency
