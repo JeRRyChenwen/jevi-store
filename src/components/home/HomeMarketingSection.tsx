@@ -14,7 +14,7 @@ type Props = {
   rightBottom: PromoTileProps;
 };
 
-export default function HomeHeroGrid({ sideLeft, leftHero, hero, rightTop, rightBottom }: Props) {
+export default function HomeMarketingSection({ sideLeft, leftHero, hero, rightTop, rightBottom }: Props) {
   // 传了 sideLeft -> 5 列；否则有 leftHero -> 4 列；都没有 -> 3 列（旧布局）
   const gridCols = sideLeft ? "md:grid-cols-5" : leftHero ? "md:grid-cols-4" : "md:grid-cols-3";
 
