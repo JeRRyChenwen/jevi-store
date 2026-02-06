@@ -2,9 +2,8 @@
 "use client";
 
 import Link from "next/link";
-import type { CSSProperties } from "react";
 
-import ProductGrid from "@/app/(shop)/category/[slug]/_components/ProductGrid";
+import HomeProductCard from "@/components/home/HomeProductCard";
 
 import { useCategoryProducts } from "@/app/(shop)/category/[slug]/_hooks/useCategoryProducts";
 import {
@@ -34,75 +33,80 @@ export default function HomeCategorySectionClient({
   pageSize = 8,
   displayCurrency = "AUD",
 }: Props) {
-  // 首页固定 hot 排序（跟你之前首页一致）
+  // 首页固定 hot 排序
   const sortQueryString =
     "&sort[0]=hot_score:desc&sort[1]=priority:asc&sort[2]=updatedAt:desc";
 
-  const { loading, list, error, filteredTotal: filteredTotalFromApi } =
-    useCategoryProducts({
-      slug,
-      categoryDocIds,
-      page: 1,
-      pageSize,
-      sortQueryString,
+  const { loading, list, error } = useCategoryProducts({
+    slug,
+    categoryDocIds,
+    page: 1,
+    pageSize,
+    sortQueryString,
 
-      // ✅ 关键：这些字段在 hook 类型里不是可选 string[]，不能给 undefined
-      appliedGenders: [],
-      appliedMaterials: [],
-      appliedSizes: [],
-      appliedColors: [],
+    appliedGenders: [],
+    appliedMaterials: [],
+    appliedSizes: [],
+    appliedColors: [],
 
-      // ✅ 关键：这里不能给 null，只能 undefined
-      appliedMin: undefined,
-      appliedMax: undefined,
+    appliedMin: undefined,
+    appliedMax: undefined,
 
-      toCents,
-      normalizeProduct,
-      devLogPrefix: `HomeSection:${slug}`,
-    });
-
-  // 首页不需要严格 total，这里用 hook 返回的 total，兜底用 list.length
-  const filteredTotal =
-    Number.isFinite(filteredTotalFromApi) && filteredTotalFromApi > 0
-      ? filteredTotalFromApi
-      : list?.length ?? 0;
-
-  const sectionMinHeightStyle: CSSProperties = {
-    // 首页不需要像分类页那样撑到完整一页，给个轻量高度防止跳动
-    minHeight: 480,
-  };
+    toCents,
+    normalizeProduct,
+    devLogPrefix: `HomeSection:${slug}`,
+  });
 
   return (
     <section className="space-y-3">
       <div className="flex items-end justify-between">
         <div>
-          <h2 className="text-2xl font-semibold">{title}</h2>
-          <p className="text-sm text-muted-foreground">Top picks based on hot score</p>
+          <h2 className="text-xl font-semibold">{title}</h2>
+          <p className="text-xs text-muted-foreground">Top picks based on hot score</p>
         </div>
 
         <Link
           href={`/category/${slug}`}
-          className="text-sm font-medium underline underline-offset-4"
+          className="text-xs font-medium underline underline-offset-4"
         >
           View all
         </Link>
       </div>
 
-      <ProductGrid
-        error={error}
-        loading={loading}
-        list={list}
-        start={0}
-        pageSize={pageSize}
-        filteredTotal={filteredTotal}
-        sectionMinHeightStyle={sectionMinHeightStyle}
-        displayCurrency={displayCurrency}
-        pickPriceForCurrency={pickPriceForCurrency}
-        formatPriceForCard={formatPriceForCard}
-        formatPriceVal={formatPriceVal}
-        isSaleActiveByLegacy={isSaleActiveByLegacy}
-        salePriceLegacy={salePriceLegacy}
-      />
+      {error ? (
+        <div className="py-6 text-xs text-red-600">
+          Failed to load products: {String(error)}
+        </div>
+      ) : loading ? (
+        <div className="py-6 text-xs text-muted-foreground">Loading...</div>
+      ) : !list || list.length === 0 ? (
+        <div className="py-6 text-center text-xs text-muted-foreground">No products yet.</div>
+      ) : (
+        <div
+          className="
+            grid gap-3
+            grid-cols-2
+            sm:grid-cols-3
+            lg:grid-cols-4
+            xl:grid-cols-5
+          "
+        >
+          {list.map((p: any, idx: number) => (
+            <HomeProductCard
+              key={p?.key ?? p?.slug ?? `${slug}-${idx}`}
+              p={p}
+              idx={idx}
+              start={0}
+              displayCurrency={displayCurrency}
+              pickPriceForCurrency={pickPriceForCurrency as any}
+              formatPriceForCard={formatPriceForCard as any}
+              formatPriceVal={formatPriceVal as any}
+              isSaleActiveByLegacy={isSaleActiveByLegacy as any}
+              salePriceLegacy={salePriceLegacy as any}
+            />
+          ))}
+        </div>
+      )}
     </section>
   );
 }
