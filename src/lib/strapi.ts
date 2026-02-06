@@ -255,8 +255,45 @@ export async function queryProductsByCategorySlug(
   // ✅ 默认补上 prices
   qs = withPricePopulate(qs);
 
-  // 你也可以在这里顺手补上封面/变体（按需）：
-  // qs += `&populate[cover]=true&populate[variants]=true`;
-
   return api(qs, { noCache: false });
+}
+
+/* -------------------------------------------------------------------------- */
+/*                             ✅ 首页热度查询工具                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * ✅ 首页：按 hot_score 取某分类最热的 N 个商品
+ *
+ * 关键点：
+ * - 绝对不要用 fields[0]=name（你的 Product 没有 name 字段，PDP 用的是 title）
+ * - 你的 Strapi 对 products 的 query 校验很严格，fields 会触发 400，所以这里不裁剪字段
+ * - 只保留 prices populate（你前端价格依赖它）
+ */
+export async function queryHotProductsByCategorySlug(slug: string, limit = 6) {
+  let qs =
+    `/api/products` +
+    `?filters[category][slug][$eq]=${encodeURIComponent(slug)}` +
+    `&pagination[page]=1&pagination[pageSize]=${limit}` +
+    `&sort[0]=hot_score:desc&sort[1]=priority:asc&sort[2]=updatedAt:desc` +
+    `&publicationState=live`;
+
+  qs = withPricePopulate(qs);
+  return api(qs, { noCache: true });
+}
+
+/**
+ * ✅ Debug：快速确认你库里到底有没有 “live products”
+ * - 用在排查 “No products yet” 时非常有用
+ */
+export async function debugProductTotal(): Promise<number> {
+  try {
+    const json: any = await api(
+      `/api/products?pagination[page]=1&pagination[pageSize]=1&publicationState=live`,
+      { noCache: true }
+    );
+    return Number(json?.meta?.pagination?.total ?? 0);
+  } catch {
+    return 0;
+  }
 }
