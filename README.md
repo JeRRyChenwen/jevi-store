@@ -993,30 +993,7 @@ terms and conditions
 
 我有一个前端购物react网站项目，cloudflare的D1数据库项目，以及一个strapi项目（负责用cms管理购物网站上售卖的产品），我想优化一下我的这个项目，你先大致看看我的项目内容吧 social-platform 是我的前端购物react网站项目，你看看我的项目 d1-worker是我的cloudflare的D1数据库项目，你看看我的项目
 
-// src/components/home/HomeMarketingSection.tsx
-import React from "react";
-import { PromoTile, PromoTileProps } from "./PromoTile";
-
-type Props = {
-/** 新增：左侧竖向大卡（跨两行，占 1 列） \*/
-sideLeft?: PromoTileProps;
-/** 左侧大卡（占 2 列，跨两行） _/
-leftHero?: PromoTileProps;
-/\*\* 右侧大卡（占 2 列，跨两行） _/
-hero?: PromoTileProps;
-/** 右侧第二行左半 \*/
-rightTop?: PromoTileProps;
-/** 右侧第二行右半 \*/
-rightBottom?: PromoTileProps;
-
-/\*_ 是否展示“信任/承诺条”（免运/退换/安全支付等） _/
-showTrustStrip?: boolean;
-
-/\*_ 自定义信任条内容（不传则用默认） _/
-trustItems?: Array<{ title: string; desc: string }>;
-};
-
-/\*\*
+你在解压我的 social-platform.zip 文件的时候可以直接跳转 node_modules/.next 因为我的这个zip比较大
 
 - ✅ 主页第一个区域：销售型信息架构（可卖货）
 -
@@ -1139,6 +1116,7 @@ trustItems ??
 ];
 
 return (
+
 <section aria-label="Featured promotions" className="space-y-4 md:space-y-5">
 {/_ ✅ 主销售区：多卡布局（你原来的布局升级版） _/}
 <div
