@@ -1,11 +1,10 @@
 // src/components/home/HomeProductCard.tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Star } from "lucide-react";
+import { Star, ChevronLeft, ChevronRight } from "lucide-react";
 import { normalizeColorName, colorNameToCss } from "@/lib/colors";
-import HomeImageCarousel from "./HomeImageCarousel";
 
 // 不依赖对方导出的类型，避免类型导出不一致时报错
 type PriceRec = any;
@@ -64,7 +63,9 @@ export default function HomeProductCard({
   isSaleActiveByLegacy,
   salePriceLegacy,
 }: HomeProductCardProps) {
-  const [selectedColor, setSelectedColor] = useState<string | null>(p.colors?.[0] ?? null);
+  const [selectedColor, setSelectedColor] = useState<string | null>(
+    p.colors?.[0] ?? null
+  );
 
   // 热度星级（0~5）
   let stars = p.hotScore ?? 0;
@@ -72,27 +73,34 @@ export default function HomeProductCard({
   stars = clamp(Math.round(stars), 0, 5);
 
   // 图片选择：按颜色取变体图，取不到就用任意颜色第一组，最后 fallback imageUrl
-  const colorKey = selectedColor ? normalizeColorName(selectedColor) : null;
-  const byColor = colorKey && p.variantsByColor[colorKey];
+  const urls = useMemo(() => {
+    const colorKey = selectedColor ? normalizeColorName(selectedColor) : null;
+    const byColor = colorKey && p.variantsByColor?.[colorKey];
 
-  const anyColor =
-    byColor && byColor.length
-      ? byColor
-      : (() => {
-          for (const arr of Object.values(p.variantsByColor)) {
-            if (arr?.length) return arr;
-          }
-          return [];
-        })();
+    const anyColor =
+      byColor && byColor.length
+        ? byColor
+        : (() => {
+            for (const arr of Object.values(p.variantsByColor || {})) {
+              if (arr?.length) return arr;
+            }
+            return [];
+          })();
 
-  const urls = (byColor && byColor.length ? byColor : anyColor) || (p.imageUrl ? [p.imageUrl] : []);
+    const picked =
+      (byColor && byColor.length ? byColor : anyColor) ||
+      (p.imageUrl ? [p.imageUrl] : []);
+
+    return Array.isArray(picked) ? picked.filter(Boolean) : [];
+  }, [p.imageUrl, p.variantsByColor, selectedColor]);
 
   // ✅ 选中币种并计算原价/折后价
   const pick = pickPriceForCurrency(p.prices, displayCurrency) || null;
 
   // 原价（minor）
   const baseMinor: number | null =
-    pick?.base_minor ?? (typeof p.price === "number" ? Math.round(Math.max(0, p.price) * 100) : null);
+    pick?.base_minor ??
+    (typeof p.price === "number" ? Math.round(Math.max(0, p.price) * 100) : null);
 
   // 折后价（minor）
   const effectiveMinor: number | null = pick?.effective_minor ?? baseMinor;
@@ -110,23 +118,76 @@ export default function HomeProductCard({
 
   const showCcy = pick?.currency || displayCurrency;
 
-  const displayBase = typeof baseMinor === "number" ? formatPriceForCard(baseMinor, showCcy) : null;
+  const displayBase =
+    typeof baseMinor === "number" ? formatPriceForCard(baseMinor, showCcy) : null;
 
   const displayEff =
     typeof effectiveMinor === "number"
       ? formatPriceForCard(effectiveMinor, showCcy)
       : p.price != null
-      ? formatPriceForCard(Math.round(Number(p.price) * 100), (p.currency || showCcy || "AUD") as string)
+      ? formatPriceForCard(
+          Math.round(Number(p.price) * 100),
+          (p.currency || showCcy || "AUD") as string
+        )
       : "No price";
 
   // 旧字段保底（如果没拿到 pick）
   const legacyOnSale = !pick && isSaleActiveByLegacy(p);
   const legacySalePrice = legacyOnSale ? salePriceLegacy(p) : null;
 
+  // ====== 主页专用：更“贴底”的轮播，减少图片下方留白 ======
+  const [imgIdx, setImgIdx] = useState(0);
+  const count = urls.length;
+
+  useEffect(() => {
+    setImgIdx(0);
+  }, [urls.join("|")]);
+
+  const go = (delta: number) => {
+    if (!count) return;
+    setImgIdx((i) => (i + delta + count) % count);
+  };
+
   return (
     <article className="group overflow-hidden rounded-2xl border bg-card shadow-sm transition-shadow hover:shadow-md">
+      {/* 图片区：用固定比例撑开，并让图片 object-bottom（贴底），最大化减少下方留白 */}
       <div className="relative">
-        <HomeImageCarousel urls={urls} alt={p.name || `Image #${start + idx + 1}`} />
+        <div className="relative aspect-[4/5] w-full bg-muted overflow-hidden">
+          {count ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={urls[imgIdx]}
+              alt={p.name || `Image #${start + idx + 1}`}
+              className="absolute inset-0 h-full w-full object-cover object-bottom"
+              loading="lazy"
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
+              No Image
+            </div>
+          )}
+
+          {count > 1 && (
+            <>
+              <button
+                type="button"
+                aria-label="Previous image"
+                onClick={() => go(-1)}
+                className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-white/85 hover:bg-white shadow p-1 z-20"
+              >
+                <ChevronLeft className="h-4 w-4 text-neutral-800" />
+              </button>
+              <button
+                type="button"
+                aria-label="Next image"
+                onClick={() => go(1)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-white/85 hover:bg-white shadow p-1 z-20"
+              >
+                <ChevronRight className="h-4 w-4 text-neutral-800" />
+              </button>
+            </>
+          )}
+        </div>
 
         {p.slug ? (
           <Link
@@ -137,7 +198,7 @@ export default function HomeProductCard({
         ) : null}
       </div>
 
-      {/* ✅ 白色信息区：更矮更紧凑 */}
+      {/* 白色信息区：更紧凑 */}
       <div className="px-3 py-2.5">
         {/* 标题 */}
         <h3 className="text-sm font-semibold leading-snug line-clamp-1">
@@ -161,9 +222,13 @@ export default function HomeProductCard({
         <div className="mt-1">
           {discountPct != null && displayBase ? (
             <div className="flex items-baseline gap-1.5">
-              <span className="text-[11px] text-neutral-400 line-through">{displayBase}</span>
+              <span className="text-[11px] text-neutral-400 line-through">
+                {displayBase}
+              </span>
               <span className="text-neutral-300">|</span>
-              <span className="text-[12px] font-bold text-emerald-700">{displayEff}</span>
+              <span className="text-[12px] font-bold text-emerald-700">
+                {displayEff}
+              </span>
             </div>
           ) : legacyOnSale && legacySalePrice != null ? (
             <div className="flex items-baseline gap-1.5">
@@ -209,7 +274,9 @@ export default function HomeProductCard({
               );
             })}
             {p.colors.length > 6 ? (
-              <span className="text-[10px] text-neutral-500">+{p.colors.length - 6}</span>
+              <span className="text-[10px] text-neutral-500">
+                +{p.colors.length - 6}
+              </span>
             ) : null}
           </div>
         ) : null}
@@ -227,7 +294,9 @@ export default function HomeProductCard({
               </span>
             ))}
             {p.sizes.length > 8 ? (
-              <span className="text-[10px] text-neutral-500">+{p.sizes.length - 8}</span>
+              <span className="text-[10px] text-neutral-500">
+                +{p.sizes.length - 8}
+              </span>
             ) : null}
           </div>
         ) : null}

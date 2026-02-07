@@ -1,8 +1,5 @@
 // src/app/(shop)/page.tsx
-import {
-  api,
-  fetchSubcategoriesByParentId,
-} from "@/lib/strapi";
+import { api, fetchSubcategoriesByParentId } from "@/lib/strapi";
 
 // ✅ 顶部营销区：复用你抽出来的组件
 import HomeMarketingSection from "@/components/home/HomeMarketingSection";
@@ -11,6 +8,9 @@ import HomeMarketingSection from "@/components/home/HomeMarketingSection";
 import HomeCategorySectionClient from "@/components/home/HomeCategorySectionClient";
 
 export const revalidate = 0;
+
+// ✅ 每个分类区块展示的商品数量（热度最高前 N 个）
+const HOME_SECTION_PAGE_SIZE = 10;
 
 /**
  * ✅ 不会 404 的 data-uri 占位图（灰色渐变）
@@ -89,7 +89,8 @@ export default async function HomePage() {
         <HomeMarketingSection
           leftHero={{
             title: "New Season Shoes",
-            subtitle: "Discover top picks based on hot score — updated continuously.",
+            subtitle:
+              "Discover top picks based on hot score — updated continuously.",
             eyebrow: "Featured",
             ctaLabel: "Shop shoes",
             href: "/category/shoes",
@@ -132,7 +133,7 @@ export default async function HomePage() {
         <div className="mt-8 h-px bg-neutral-200" />
       </section>
 
-      {/* ✅ 首页分区：只渲染 show_in_nav=true 的分类（Outfit 关掉就不会出现在这里） */}
+      {/* ✅ 首页分区：只渲染 show_in_nav=true 的分类；每个区只显示热度最高前 5 个（不足 5 个则显示已有的） */}
       <div className="px-4 md:px-6 lg:px-8 space-y-12 pt-8">
         {sections.map((s) => (
           <HomeCategorySectionClient
@@ -140,7 +141,7 @@ export default async function HomePage() {
             slug={s.slug}
             title={s.title}
             categoryDocIds={s.categoryDocIds}
-            pageSize={8}
+            pageSize={HOME_SECTION_PAGE_SIZE} // ✅ 改：8 -> 5
             displayCurrency="AUD"
           />
         ))}

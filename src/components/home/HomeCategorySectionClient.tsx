@@ -30,7 +30,7 @@ export default function HomeCategorySectionClient({
   slug,
   title,
   categoryDocIds,
-  pageSize = 8,
+  pageSize = 5,
   displayCurrency = "AUD",
 }: Props) {
   // 首页固定 hot 排序
