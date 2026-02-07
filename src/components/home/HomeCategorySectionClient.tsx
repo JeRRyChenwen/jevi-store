@@ -61,8 +61,10 @@ export default function HomeCategorySectionClient({
     <section className="space-y-3">
       <div className="flex items-end justify-between">
         <div>
-          <h2 className="text-xl font-semibold">{title}</h2>
-          <p className="text-xs text-muted-foreground">Top picks based on hot score</p>
+          {/* ✅ 标题改为：Top Picks for {Category} */}
+          <h2 className="text-xl font-semibold">{`Top Picks for ${title}`}</h2>
+
+          {/* ❌ 移除副标题 Top picks based on hot score */}
         </div>
 
         <Link
@@ -80,7 +82,9 @@ export default function HomeCategorySectionClient({
       ) : loading ? (
         <div className="py-6 text-xs text-muted-foreground">Loading...</div>
       ) : !list || list.length === 0 ? (
-        <div className="py-6 text-center text-xs text-muted-foreground">No products yet.</div>
+        <div className="py-6 text-center text-xs text-muted-foreground">
+          No products yet.
+        </div>
       ) : (
         <div
           className="
