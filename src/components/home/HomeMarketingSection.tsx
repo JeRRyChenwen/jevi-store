@@ -39,6 +39,16 @@ export default function HomeMarketingSection(props: Props) {
 
   if (!sales && !newIn && !core) return null;
 
+  /**
+   * ✅ 关键：默认禁止“整卡可点击”
+   * - 只保留 CTA（Shop now）可点击
+   * - 但如果某处调用方显式传 cardClickable=true，我们尊重它
+   */
+  const asButtonOnly = (p: PromoTileProps): PromoTileProps => ({
+    ...p,
+    cardClickable: p.cardClickable ?? false,
+  });
+
   return (
     <section className="w-full">
       <div className="grid gap-4 md:gap-5 lg:gap-6">
@@ -48,7 +58,7 @@ export default function HomeMarketingSection(props: Props) {
           {newIn ? (
             <div className="rounded-3xl overflow-hidden border bg-white shadow-sm hover:shadow-md transition-shadow">
               <div className="h-[260px] sm:h-[320px] md:h-[360px] lg:h-[420px]">
-                <PromoTile {...newIn} />
+                <PromoTile {...asButtonOnly(newIn)} />
               </div>
             </div>
           ) : null}
@@ -57,7 +67,7 @@ export default function HomeMarketingSection(props: Props) {
           {sales ? (
             <div className="rounded-3xl overflow-hidden border bg-white shadow-sm hover:shadow-md transition-shadow">
               <div className="h-[260px] sm:h-[320px] md:h-[360px] lg:h-[420px]">
-                <PromoTile {...sales} />
+                <PromoTile {...asButtonOnly(sales)} />
               </div>
             </div>
           ) : null}
@@ -67,7 +77,7 @@ export default function HomeMarketingSection(props: Props) {
         {core ? (
           <div className="rounded-3xl overflow-hidden border bg-white shadow-sm hover:shadow-md transition-shadow">
             <div className="h-[220px] sm:h-[260px] md:h-[300px]">
-              <PromoTile {...core} />
+              <PromoTile {...asButtonOnly(core)} />
             </div>
           </div>
         ) : null}

@@ -96,7 +96,7 @@ export default async function HomePage() {
               "Fresh drops, curated weekly — discover new styles and limited restocks.",
             eyebrow: "NEW IN",
             ctaLabel: "Shop now", // ✅ 统一按钮文案
-            href: "/category/outfit",
+            href: "/category/new-in",
             image: HERO_DATA_URI,
             darkText: true,
             align: "left",
@@ -118,7 +118,7 @@ export default async function HomePage() {
               "Selected styles at special prices — while stocks last.",
             eyebrow: "ON SALE",
             ctaLabel: "Shop now", // ✅ 统一按钮文案
-            href: "/category/accessories",
+            href: "/category/on-sale",
             image: HERO_DATA_URI,
             darkText: true, // ✅ 关键：统一为深色文字样式
             align: "left",

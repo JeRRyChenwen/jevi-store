@@ -1000,3 +1000,5 @@ terms and conditions
 主推区域是海报
 
 我感觉sales 区域，news in 区域，核心品类主推区域
+
+搜索bar出问题了
