@@ -33,6 +33,9 @@ type CornerRibbonProps = {
 
   /** top 模式：顶部留白（不压圆角），默认 10px */
   topGap?: number;
+
+  /** top 模式：呼吸速度（秒），默认 2.4 */
+  bannerPulseSeconds?: number;
 };
 
 export default function CornerRibbon({
@@ -50,6 +53,7 @@ export default function CornerRibbon({
   glass = false,
   bannerPulse = true,
   topGap = 10,
+  bannerPulseSeconds = 2.4,
 }: CornerRibbonProps) {
   const toneCls =
     tone === "new"
@@ -67,12 +71,17 @@ export default function CornerRibbon({
     const safeGap = Math.max(0, Math.min(topGap, height - 8));
     const bannerHeight = Math.max(18, height - safeGap);
 
+    // ✅ 用 inline 覆盖 duration（配合 animate-pulse 一定生效）
+    const pulseStyle: React.CSSProperties | undefined =
+      bannerPulse && Number.isFinite(bannerPulseSeconds) && bannerPulseSeconds > 0
+        ? { animationDuration: `${bannerPulseSeconds}s` }
+        : undefined;
+
     return (
       <div
         className={cn(
-          "absolute left-0 top-0 z-20 w-full",
-          // 仍然要裁切，避免内容跑出容器圆角
-          "rounded-none",
+          "absolute left-0 top-0 z-20 w-full rounded-none",
+          "pointer-events-none select-none", // ✅ 不挡点击
           className
         )}
         style={{ height }}
@@ -90,20 +99,17 @@ export default function CornerRibbon({
         >
           <div
             className={cn(
-              // ✅ 对齐容器（也就是图片容器）的全宽
-              "w-full h-full flex items-center justify-center",
-              // ✅ 纯长方形：无圆角
-              "rounded-none",
-              // 质感（轻一点）
+              "w-full h-full flex items-center justify-center rounded-none",
               "ring-1 ring-black/10",
-              // 文本
               "font-extrabold uppercase",
               "tracking-[0.35em]",
               "text-[12px] sm:text-[13px] md:text-[14px]",
+              "will-change-transform",
               toneCls,
-              // 动画
-              bannerPulse ? "animate-[pulse_2.4s_ease-in-out_infinite]" : ""
+              // ✅ Tailwind 内置动画：最稳（不会被 purge 掉）
+              bannerPulse ? "animate-pulse motion-reduce:animate-none" : ""
             )}
+            style={pulseStyle}
           >
             {text}
           </div>
@@ -113,7 +119,7 @@ export default function CornerRibbon({
   }
 
   // =========================
-  // ✅ Corner Ribbon（原来的）
+  // ✅ Corner Ribbon（角标）
   // =========================
   const pos = placement === "top-right" ? "top-0 right-0" : "top-0 left-0";
 
@@ -132,21 +138,30 @@ export default function CornerRibbon({
       : "h-9 w-9 text-[11px]";
 
   return (
-    <div className={cn("absolute z-20", pos, insetCls, className)}>
+    <div
+      className={cn(
+        "absolute z-20",
+        pos,
+        insetCls,
+        "pointer-events-none select-none", // ✅ 不挡点击
+        className
+      )}
+      aria-label={text}
+    >
       <div
         className={cn(
           "relative overflow-hidden",
           sizeCls,
           "rounded-md shadow-sm ring-1 ring-black/10"
         )}
-        aria-label={text}
       >
         <div
           className={cn(
             "absolute left-1/2 top-1/2 w-[140%] -translate-x-1/2 -translate-y-1/2 rotate-45",
             "px-2 py-1 text-center font-extrabold tracking-[0.18em] uppercase",
+            "will-change-transform",
             toneCls,
-            pulse ? "animate-pulse" : ""
+            pulse ? "animate-pulse motion-reduce:animate-none" : ""
           )}
         >
           {text}

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Star, ChevronLeft, ChevronRight } from "lucide-react";
 import { normalizeColorName, colorNameToCss } from "@/lib/colors";
+import CornerRibbon from "@/components/badges/CornerRibbon"; // ✅ NEW
 
 // 不依赖对方导出的类型，避免类型导出不一致时报错
 type PriceRec = any;
@@ -21,6 +22,11 @@ type ProductLite = {
   discountPercent?: number;
   saleStartsAt?: string | null;
   saleEndsAt?: string | null;
+
+  // ✅ NEW：用于 NEW banner 判断（要从 home 的 mapper/接口带出来）
+  newStartsAt?: string | null;
+  newEndsAt?: string | null;
+
   hotScore?: number | null;
 
   colors?: string[];
@@ -35,6 +41,23 @@ type PickRes =
 
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
+}
+
+// ✅ 判断 NEW 是否生效（跟你 category 里一致）
+// - 没有窗口：不显示（更稳）
+// - 有 starts/ends：按时间窗口判断
+function isNewActive(p: { newStartsAt?: string | null; newEndsAt?: string | null }) {
+  const now = Date.now();
+  const s = p.newStartsAt ? Date.parse(p.newStartsAt) : NaN;
+  const e = p.newEndsAt ? Date.parse(p.newEndsAt) : NaN;
+
+  const hasS = Number.isFinite(s);
+  const hasE = Number.isFinite(e);
+
+  if (!hasS && !hasE) return false;
+  if (hasS && now < s) return false;
+  if (hasE && now > e) return false;
+  return true;
 }
 
 export type HomeProductCardProps = {
@@ -65,6 +88,12 @@ export default function HomeProductCard({
 }: HomeProductCardProps) {
   const [selectedColor, setSelectedColor] = useState<string | null>(
     p.colors?.[0] ?? null
+  );
+
+  // ✅ NEW：是否显示 NEW（只依赖窗口字段，避免对象引用变化导致 useMemo 失效）
+  const showNew = useMemo(
+    () => isNewActive(p),
+    [p.newStartsAt, p.newEndsAt]
   );
 
   // 热度星级（0~5）
@@ -153,6 +182,19 @@ export default function HomeProductCard({
       {/* 图片区：用固定比例撑开，并让图片 object-bottom（贴底），最大化减少下方留白 */}
       <div className="relative">
         <div className="relative aspect-[4/5] w-full bg-muted overflow-hidden">
+          {/* ✅ NEW banner：放在图片容器里（必须 relative） */}
+          {showNew && (
+            <CornerRibbon
+              text="NEW"
+              variant="top"
+              tone="new"
+              height={28}
+              className="translate-y-2"
+              bannerPulse={true} // ✅ 闪烁
+              glass={false}
+            />
+          )}
+
           {count ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -173,7 +215,7 @@ export default function HomeProductCard({
                 type="button"
                 aria-label="Previous image"
                 onClick={() => go(-1)}
-                className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-white/85 hover:bg-white shadow p-1 z-20"
+                className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-white/85 hover:bg-white shadow p-1 z-30"
               >
                 <ChevronLeft className="h-4 w-4 text-neutral-800" />
               </button>
@@ -181,7 +223,7 @@ export default function HomeProductCard({
                 type="button"
                 aria-label="Next image"
                 onClick={() => go(1)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-white/85 hover:bg-white shadow p-1 z-20"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-white/85 hover:bg-white shadow p-1 z-30"
               >
                 <ChevronRight className="h-4 w-4 text-neutral-800" />
               </button>

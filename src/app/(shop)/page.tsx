@@ -84,46 +84,55 @@ export default async function HomePage() {
 
   return (
     <main className="w-full max-w-none pb-10">
-      {/* ✅ 顶部营销区：HomeMarketingSection（不再依赖会 404 的本地图片） */}
+      {/* ✅ 顶部营销区：3 个核心入口（New Arrival / On Sale / Shoes） */}
       <section className="px-4 md:px-6 lg:px-8 pt-2 md:pt-3">
         <HomeMarketingSection
+          /**
+           * ✅ New Arrival（上新主推）
+           */
           leftHero={{
-            title: "New Season Shoes",
+            title: "New Arrival",
             subtitle:
-              "Discover top picks based on hot score — updated continuously.",
-            eyebrow: "Featured",
-            ctaLabel: "Shop shoes",
-            href: "/category/shoes",
+              "Fresh drops, curated weekly — discover new styles and limited restocks.",
+            eyebrow: "NEW IN",
+            ctaLabel: "Shop now", // ✅ 统一按钮文案
+            href: "/category/outfit",
             image: HERO_DATA_URI,
             darkText: true,
             align: "left",
           }}
-          hero={{
-            title: "Tops",
-            subtitle: "Curated by hot score",
-            eyebrow: "Extra picks",
-            ctaLabel: "Shop tops",
-            href: "/category/tops",
-            image: HERO_DATA_URI,
-            darkText: false,
-            align: "left",
-          }}
+          /**
+           * ✅ On Sale（理性转化入口）
+           * 你的诉求：
+           * - 不要“ON SALE + On Sale”重复
+           * - 视觉风格要和 New Arrival / Shoes 一致（浅底 + 深字）
+           *
+           * 做法：
+           * - eyebrow 保留 ON SALE 当标签
+           * - title 改成 Sale Picks（不重复）
+           * - darkText 改为 true（统一深色字）
+           */
           rightTop={{
-            title: "Accessories",
-            subtitle: "Finish the look",
-            eyebrow: "Must-have",
-            ctaLabel: "Shop accessories",
+            title: "Sale Picks", // ✅ 不再重复 On Sale
+            subtitle:
+              "Selected styles at special prices — while stocks last.",
+            eyebrow: "ON SALE",
+            ctaLabel: "Shop now", // ✅ 统一按钮文案
             href: "/category/accessories",
             image: HERO_DATA_URI,
-            darkText: false,
+            darkText: true, // ✅ 关键：统一为深色文字样式
             align: "left",
           }}
+          /**
+           * ✅ Shoes（核心品类主推）
+           */
           rightBottom={{
-            title: "Bottoms & Suit",
-            subtitle: "Smart picks for daily wear",
-            eyebrow: "Trending",
-            ctaLabel: "Explore",
-            href: "/category/bottoms",
+            title: "Shoes",
+            subtitle:
+              "Small-foot friendly sizing + height-boost options. Find your perfect fit — no compromises.",
+            eyebrow: "CORE CATEGORY",
+            ctaLabel: "Shop now", // ✅ 统一按钮文案
+            href: "/category/shoes",
             image: HERO_DATA_URI,
             darkText: true,
             align: "left",
@@ -133,7 +142,7 @@ export default async function HomePage() {
         <div className="mt-8 h-px bg-neutral-200" />
       </section>
 
-      {/* ✅ 首页分区：只渲染 show_in_nav=true 的分类；每个区只显示热度最高前 5 个（不足 5 个则显示已有的） */}
+      {/* ✅ 首页分区：只渲染 show_in_nav=true 的分类 */}
       <div className="px-4 md:px-6 lg:px-8 space-y-12 pt-8">
         {sections.map((s) => (
           <HomeCategorySectionClient
@@ -141,7 +150,7 @@ export default async function HomePage() {
             slug={s.slug}
             title={s.title}
             categoryDocIds={s.categoryDocIds}
-            pageSize={HOME_SECTION_PAGE_SIZE} // ✅ 改：8 -> 5
+            pageSize={HOME_SECTION_PAGE_SIZE}
             displayCurrency="AUD"
           />
         ))}

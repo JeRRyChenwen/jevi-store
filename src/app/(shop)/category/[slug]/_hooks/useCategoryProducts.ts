@@ -1,3 +1,5 @@
+// D:\前端练习\social-platform\src\app\(shop)\category\[slug]\_hooks\useCategoryProducts.ts
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";

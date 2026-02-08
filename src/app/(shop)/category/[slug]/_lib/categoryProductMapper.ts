@@ -21,6 +21,11 @@ export type ProductLite = {
   discountPercent?: number;
   saleStartsAt?: string | null;
   saleEndsAt?: string | null;
+
+  /** ✅ NEW：用于 NEW banner 判断 */
+  newStartsAt?: string | null;
+  newEndsAt?: string | null;
+
   hotScore?: number | null;
 
   colors?: string[];
@@ -312,9 +317,7 @@ function deriveLegacyFieldsFromPrices(
   ) {
     discountPercent = Math.round((1 - effMinor / baseMinor) * 100);
     if (typeof discountPercent === "number" && discountPercent <= 0) discountPercent = undefined;
-
     if (typeof discountPercent === "number" && discountPercent >= 100) discountPercent = 99;
-
   }
 
   // 促销时间窗字段保留（但不用于计算）
@@ -360,6 +363,23 @@ export function normalizeProduct(row: any): ProductLite {
     String(attrs.slug ?? "") ||
     `${name}-${Math.random().toString(36).slice(2)}`;
 
+  // ✅ NEW：把 new window 映射出来（Strapi v4/v5 都兼容）
+  const normDateStr = (v: any): string | null => {
+    if (typeof v !== "string") return null;
+    const s = v.trim();
+    return s ? s : null;
+  };
+
+  const newStartsAt =
+    normDateStr(attrs?.new_starts_at) ??
+    normDateStr(attrs?.newStartsAt) ??
+    null;
+
+  const newEndsAt =
+    normDateStr(attrs?.new_ends_at) ??
+    normDateStr(attrs?.newEndsAt) ??
+    null;
+
   return {
     key,
     slug: attrs.slug,
@@ -374,6 +394,10 @@ export function normalizeProduct(row: any): ProductLite {
     discountPercent: derived.discountPercent,
     saleStartsAt: derived.saleStartsAt,
     saleEndsAt: derived.saleEndsAt,
+
+    // ✅ NEW：给 ProductCard 用
+    newStartsAt,
+    newEndsAt,
 
     hotScore: typeof attrs.hot_score === "number" ? attrs.hot_score : null,
     colors,

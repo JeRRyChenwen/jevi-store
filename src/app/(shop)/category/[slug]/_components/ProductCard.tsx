@@ -1,10 +1,13 @@
+// D:\前端练习\social-platform\src\app\(shop)\category\[slug]\_components\ProductCard.tsx
+
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { Star } from "lucide-react";
 import { normalizeColorName, colorNameToCss } from "@/lib/colors";
 import ImageCarousel from "./ImageCarousel";
+import CornerRibbon from "@/components/badges/CornerRibbon"; // ✅ NEW
 
 // 不依赖对方导出的类型，避免类型导出不一致时报错
 type PriceRec = any;
@@ -21,6 +24,11 @@ type ProductLite = {
   discountPercent?: number;
   saleStartsAt?: string | null;
   saleEndsAt?: string | null;
+
+  // ✅ NEW 字段（来自 normalizeProduct 映射）
+  newStartsAt?: string | null;
+  newEndsAt?: string | null;
+
   hotScore?: number | null;
 
   colors?: string[];
@@ -35,6 +43,21 @@ type PickRes =
 
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
+}
+
+// ✅ 判断 NEW 是否生效（有窗口才显示，更稳）
+function isNewActive(p: ProductLite) {
+  const now = Date.now();
+  const s = p.newStartsAt ? Date.parse(p.newStartsAt) : NaN;
+  const e = p.newEndsAt ? Date.parse(p.newEndsAt) : NaN;
+
+  const hasS = Number.isFinite(s);
+  const hasE = Number.isFinite(e);
+
+  if (!hasS && !hasE) return false;
+  if (hasS && now < s) return false;
+  if (hasE && now > e) return false;
+  return true;
 }
 
 export type ProductCardProps = {
@@ -65,6 +88,12 @@ export default function ProductCard({
 }: ProductCardProps) {
   const [selectedColor, setSelectedColor] = useState<string | null>(p.colors?.[0] ?? null);
 
+  // ✅ NEW: 是否显示 NEW（依赖写稳：只跟时间窗相关）
+  const showNew = useMemo(
+    () => isNewActive(p),
+    [p.newStartsAt, p.newEndsAt]
+  );
+
   // 热度星级（0~5）
   let stars = p.hotScore ?? 0;
   if (stars > 5) stars = Math.round(clamp(stars, 0, 100) / 20);
@@ -82,7 +111,9 @@ export default function ProductCard({
           }
           return [];
         })();
-  const urls = (byColor && byColor.length ? byColor : anyColor) || (p.imageUrl ? [p.imageUrl] : []);
+  const urls =
+    (byColor && byColor.length ? byColor : anyColor) ||
+    (p.imageUrl ? [p.imageUrl] : []);
 
   // ✅ 选中币种并计算原价/折后价
   const pick = pickPriceForCurrency(p.prices, displayCurrency) || null;
@@ -129,7 +160,21 @@ export default function ProductCard({
   return (
     <article className="group overflow-hidden rounded-3xl border bg-card shadow-sm transition-shadow hover:shadow-md">
       <div className="relative">
+        {/* ✅ NEW banner：放在图片区域 */}
+        {showNew && (
+          <CornerRibbon
+            text="NEW"
+            variant="top"
+            tone="new"
+            height={28}               // ✅ 更矮
+            className="translate-y-2" // ✅ 往下移一点
+            bannerPulse={true}        // ✅ 关键：打开呼吸闪烁
+            glass={false}
+          />
+        )}
+
         <ImageCarousel urls={urls} alt={p.name || `Image #${start + idx + 1}`} />
+
         {p.slug && (
           <Link
             href={`/product/${p.slug}`}
@@ -140,7 +185,6 @@ export default function ProductCard({
       </div>
 
       <div className="p-6 md:p-8">
-        {/* 1. 名称（点击到详情） */}
         <h3 className="text-lg md:text-xl font-semibold line-clamp-1">
           {p.slug ? (
             <Link href={`/product/${p.slug}`} className="hover:underline">
@@ -151,14 +195,12 @@ export default function ProductCard({
           )}
         </h3>
 
-        {/* 2. 折扣文案（新规则） */}
         {discountPct != null && (
           <p className="mt-1 text-base font-semibold text-emerald-700 uppercase tracking-wide">
             {discountPct}% OFF
           </p>
         )}
 
-        {/* 3. 价格区（优先新规则；无则回退旧字段） */}
         <div className="mt-2">
           {discountPct != null && displayBase ? (
             <div className="flex items-baseline gap-2">
@@ -181,7 +223,6 @@ export default function ProductCard({
           )}
         </div>
 
-        {/* 4. 颜色（可点击切图） */}
         {p.colors && p.colors.length > 0 && (
           <div className="mt-3 flex items-center gap-2.5">
             {p.colors.slice(0, 8).map((c) => {
@@ -215,7 +256,6 @@ export default function ProductCard({
           </div>
         )}
 
-        {/* 5. 尺码 */}
         {p.sizes && p.sizes.length > 0 && (
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             {p.sizes.slice(0, 10).map((sz) => (
@@ -233,7 +273,6 @@ export default function ProductCard({
           </div>
         )}
 
-        {/* 6. 热度（星级） */}
         <div className="mt-3 flex items-center gap-1">
           {Array.from({ length: 5 }).map((_, i3) => (
             <Star
