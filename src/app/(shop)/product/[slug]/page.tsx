@@ -12,6 +12,8 @@ import { normalizeColorName, colorNameToCss } from "@/lib/colors";
 import { FieldMessage } from "@/components/ui/field-message";
 import { type PriceRec, pickCurrency } from "@/lib/pricing";
 import SizeGuideDialog from "@/components/size-guide/SizeGuideDialog";
+import { isNewProduct } from "@/lib/productNew";
+import CornerRibbon from "@/components/badges/CornerRibbon";
 
 /** Next.js 15: params / searchParams 是 Promise，需要 await */
 type PageProps = {
@@ -348,6 +350,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const qs =
     `/api/products?filters[slug][$eq]=${encodeURIComponent(slug)}` +
     `&fields[0]=title&fields[1]=slug&fields[2]=hot_score` +
+    `&fields[3]=new_starts_at&fields[4]=new_ends_at` +
     `&populate[color_galleries][fields][0]=color` +
     `&populate[color_galleries][populate][images]=true` +
     `&populate[variants][fields][0]=color` +
@@ -368,6 +371,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
 
   const attrs = row?.attributes ?? row ?? {};
   const title: string = attrs.title ?? attrs.name ?? "Product";
+  const isNew = isNewProduct(attrs);
 
   // 面包屑
   const category = extractCategory(attrs);
@@ -583,12 +587,23 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
         <section className="order-1 lg:order-2 min-w-0">
           <div
             className="
+              relative
               rounded-3xl border bg-white
               overflow-hidden flex items-center justify-center
               aspect-[3/4] md:aspect-[2/3] lg:aspect-[3/5]
               min-h-[560px] md:min-h-[660px] lg:min-h-[760px] xl:min-h-[840px] 2xl:min-h-[920px]
             "
           >
+            {isNew ? (
+              <CornerRibbon
+                variant="top"
+                text="NEW"
+                tone="new"
+                height={50}  // 你想更大就调这里：56/64 都行
+                className="top-2"
+              />
+            ) : null}
+
             {total > 0 ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -607,6 +622,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
           <div className="px-1 sm:px-2">
             <div className="space-y-3">
               <h2 className="text-2xl font-bold leading-snug tracking-tight">{title}</h2>
+
+
 
               <div className="text-neutral-800">
                 <Stars value={rating} />

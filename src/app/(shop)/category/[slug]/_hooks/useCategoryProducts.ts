@@ -158,6 +158,7 @@ export function useCategoryProducts({
           `/api/products?${parts.join("&")}` +
           `&fields[0]=title&fields[1]=slug` +
           `&fields[2]=sale_starts_at&fields[3]=sale_ends_at&fields[4]=hot_score&fields[5]=priority` +
+          `&fields[6]=new_starts_at&fields[7]=new_ends_at` +
           `&populate[color_galleries][fields][0]=color` +
           `&populate[color_galleries][populate][images]=true` +
           `&populate[variants][fields][0]=color&populate[variants][fields][1]=size` +
