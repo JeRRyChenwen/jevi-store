@@ -1,10 +1,10 @@
+// src/app/(shop)/category/[slug]/_hooks/useCategoryFacets.ts
 "use client";
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/strapi";
 import { normalizeColorName } from "@/lib/colors";
 
-// ✅ 常见字母尺码顺序；数字尺码按数值升序；其他按字母序
 const SIZE_ORDER: Record<string, number> = {
   xxs: 0,
   xs: 1,
@@ -33,10 +33,61 @@ function sortSizes(arr: string[]) {
 type UseCategoryFacetsArgs = {
   slug: string;
   categoryDocIds?: string[];
-  devLogPrefix?: string; // optional
+  devLogPrefix?: string;
 };
 
-export function useCategoryFacets({ slug, categoryDocIds, devLogPrefix = "Facets" }: UseCategoryFacetsArgs) {
+const PROMO_SLUGS = new Set(["new-in", "on-sale"]);
+const isPromoSlug = (slug: string) => PROMO_SLUGS.has(slug);
+
+function buildPromoFiltersForProducts(slug: string, nowISO: string): string[] {
+  const parts: string[] = [];
+
+  if (slug === "on-sale") {
+    parts.push(`filters[sale_starts_at][$notNull]=true`);
+    parts.push(`filters[sale_starts_at][$lte]=${encodeURIComponent(nowISO)}`);
+    parts.push(`filters[$or][0][sale_ends_at][$null]=true`);
+    parts.push(`filters[$or][1][sale_ends_at][$gte]=${encodeURIComponent(nowISO)}`);
+    return parts;
+  }
+
+  if (slug === "new-in") {
+    parts.push(`filters[new_starts_at][$notNull]=true`);
+    parts.push(`filters[new_starts_at][$lte]=${encodeURIComponent(nowISO)}`);
+    parts.push(`filters[$or][0][new_ends_at][$null]=true`);
+    parts.push(`filters[$or][1][new_ends_at][$gte]=${encodeURIComponent(nowISO)}`);
+    return parts;
+  }
+
+  return parts;
+}
+
+function buildPromoFiltersForVariantsProduct(slug: string, nowISO: string): string[] {
+  const parts: string[] = [];
+
+  if (slug === "on-sale") {
+    parts.push(`filters[product][sale_starts_at][$notNull]=true`);
+    parts.push(`filters[product][sale_starts_at][$lte]=${encodeURIComponent(nowISO)}`);
+    parts.push(`filters[$or][0][product][sale_ends_at][$null]=true`);
+    parts.push(`filters[$or][1][product][sale_ends_at][$gte]=${encodeURIComponent(nowISO)}`);
+    return parts;
+  }
+
+  if (slug === "new-in") {
+    parts.push(`filters[product][new_starts_at][$notNull]=true`);
+    parts.push(`filters[product][new_starts_at][$lte]=${encodeURIComponent(nowISO)}`);
+    parts.push(`filters[$or][0][product][new_ends_at][$null]=true`);
+    parts.push(`filters[$or][1][product][new_ends_at][$gte]=${encodeURIComponent(nowISO)}`);
+    return parts;
+  }
+
+  return parts;
+}
+
+export function useCategoryFacets({
+  slug,
+  categoryDocIds,
+  devLogPrefix = "Facets",
+}: UseCategoryFacetsArgs) {
   const DEV = process.env.NODE_ENV !== "production";
   const dbg = (...args: unknown[]) => DEV && console.debug(`[${devLogPrefix}]`, ...args);
 
@@ -54,17 +105,27 @@ export function useCategoryFacets({ slug, categoryDocIds, devLogPrefix = "Facets
     async function fetchFacets() {
       const partsForProducts: string[] = [];
       const partsForVariants: string[] = [];
+      const promo = isPromoSlug(slug);
+      const nowISO = new Date().toISOString();
 
-      if (categoryDocIds?.length) {
-        categoryDocIds.forEach((id, i) => {
-          const enc = encodeURIComponent(id);
-          partsForProducts.push(`filters[category][documentId][$in][${i}]=${enc}`);
-          partsForVariants.push(`filters[product][category][documentId][$in][${i}]=${enc}`);
-        });
+      if (!promo) {
+        if (categoryDocIds?.length) {
+          categoryDocIds.forEach((id, i) => {
+            const enc = encodeURIComponent(id);
+            partsForProducts.push(`filters[category][documentId][$in][${i}]=${enc}`);
+            partsForVariants.push(
+              `filters[product][category][documentId][$in][${i}]=${enc}`
+            );
+          });
+        } else {
+          const enc = encodeURIComponent(slug);
+          partsForProducts.push(`filters[category][slug][$eq]=${enc}`);
+          partsForVariants.push(`filters[product][category][slug][$eq]=${enc}`);
+        }
       } else {
-        const enc = encodeURIComponent(slug);
-        partsForProducts.push(`filters[category][slug][$eq]=${enc}`);
-        partsForVariants.push(`filters[product][category][slug][$eq]=${enc}`);
+        // promo：全站聚合（挂在 product 上）
+        partsForProducts.push(...buildPromoFiltersForProducts(slug, nowISO));
+        partsForVariants.push(...buildPromoFiltersForVariantsProduct(slug, nowISO));
       }
 
       // 仅统计/展示「被上架显示」的商品

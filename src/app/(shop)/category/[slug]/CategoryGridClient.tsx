@@ -39,6 +39,33 @@ export type SortKey = "default" | "price-desc" | "price-asc" | "hot";
 const toCents = (n?: number | null) =>
   typeof n === "number" && Number.isFinite(n) ? Math.round(n * 100) : undefined;
 
+// ✅ 你新增的“虚拟分类”
+const VIRTUAL_SLUGS = ["new-in", "on-sale"] as const;
+type VirtualSlug = (typeof VIRTUAL_SLUGS)[number];
+
+function isVirtualSlug(slug: string): slug is VirtualSlug {
+  return (VIRTUAL_SLUGS as readonly string[]).includes(slug);
+}
+
+/**
+ * ✅ 生成虚拟分类的 products 过滤条件（用于 hook 内构建 Strapi 查询）
+ * - new-in: newStartsAt <= now AND (newEndsAt is null OR newEndsAt >= now)
+ * - on-sale: saleStartsAt <= now AND (saleEndsAt is null OR saleEndsAt >= now)
+ *
+ * 注意：字段名按 camelCase 写（与你前面 server 端 page.tsx 一致）
+ * 如果你 Strapi 实际字段是 snake_case，请在 hook 里替换字段名即可。
+ */
+type VirtualFilter =
+  | {
+      kind: "new-in";
+      nowISO: string;
+    }
+  | {
+      kind: "on-sale";
+      nowISO: string;
+    }
+  | null;
+
 export default function CategoryGridClient({
   slug,
   title,
@@ -54,6 +81,14 @@ export default function CategoryGridClient({
   // === Refs：无障碍焦点管理 ===
   const triggerBtnRef = useRef<HTMLButtonElement | null>(null);
   const closeBtnRef = useRef<HTMLButtonElement | null>(null);
+
+  // ✅ 给 new-in / on-sale 一个“稳定的 now”（同一次渲染周期内不抖动）
+  // - 这里用 useMemo 固定住，避免每次 re-render now 都变导致无限请求
+  const virtualFilter: VirtualFilter = useMemo(() => {
+    if (!isVirtualSlug(slug)) return null;
+    const nowISO = new Date().toISOString();
+    return slug === "new-in" ? { kind: "new-in", nowISO } : { kind: "on-sale", nowISO };
+  }, [slug]);
 
   // === URL query state（抽出）===
   const {
@@ -121,7 +156,13 @@ export default function CategoryGridClient({
     facetGenders,
     variantFiltersSupported,
     productGenderSupported,
-  } = useCategoryFacets({ slug, categoryDocIds, devLogPrefix: "GridFacets" });
+  } = useCategoryFacets({
+    slug,
+    categoryDocIds,
+    devLogPrefix: "GridFacets",
+    // ✅ NEW：虚拟分类过滤（让 hook 内改用时间窗 filters，而不是 category slug）
+    virtualFilter,
+  });
 
   /**
    * ✅ IMPORTANT：
@@ -130,10 +171,6 @@ export default function CategoryGridClient({
    *
    * Strapi 无法直接对“组件数组 prices”做货币感知的排序，
    * 所以这里先把 price-asc / price-desc 降级成默认排序，避免 400。
-   *
-   * 如果你未来一定要做“按价格排序”，需要另做方案：
-   * - 在 Strapi 存一个可排序的 numeric 字段（如 base_price_minor_aud）
-   * - 或在 D1/后端做排序后再返回
    */
   const sortQueryString = useMemo(() => {
     switch (sortKey) {
@@ -165,6 +202,8 @@ export default function CategoryGridClient({
       toCents,
       normalizeProduct,
       devLogPrefix: "GridProducts",
+      // ✅ NEW：虚拟分类过滤（让 hook 内改用时间窗 filters，而不是 category slug）
+      virtualFilter,
     });
 
   // ✅ 兜底：首次加载/接口异常时，仍然使用 server 传入的 total

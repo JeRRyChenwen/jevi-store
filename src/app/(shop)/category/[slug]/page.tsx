@@ -7,6 +7,10 @@ import { api } from "@/lib/strapi";
 // 兜底顶级分类（防止没连上 Strapi 时至少有这 6 个）
 const STATIC_SLUGS = ["shoes", "bottoms", "tops", "suit", "accessories", "outfit"];
 
+// ✅ 这两个是“聚合页”slug：不按 category 关系过滤
+const PROMO_SLUGS = new Set(["new-in", "on-sale"]);
+const isPromoSlug = (slug: string) => PROMO_SLUGS.has(slug);
+
 /** 遍历全部分类（不依赖 populate[children]），拿到所有 slug */
 async function fetchAllCategorySlugs(): Promise<string[]> {
   const set = new Set<string>(STATIC_SLUGS);
@@ -14,8 +18,6 @@ async function fetchAllCategorySlugs(): Promise<string[]> {
   const pageSize = 200;
 
   try {
-    // 分页把所有 category 的 slug 都取回来
-    // 说明：用 api() 会自动加 token，Public 读权限关闭也没问题
     while (true) {
       const json: any = await api(
         `/api/categories` +
@@ -52,16 +54,64 @@ export async function generateStaticParams() {
   }
 }
 
-// ✅ 与 output: export 兼容（现在你已去掉 output: 'export'，保留该静态策略即可）
 export const dynamic = "force-static";
 
-/** 统计商品总数：支持 slug 或 documentId 列表（$in） */
+/**
+ * ✅ promo 聚合页过滤：
+ * on-sale: sale_starts_at <= now && (sale_ends_at is null || sale_ends_at >= now)
+ * new-in:  new_starts_at  <= now && (new_ends_at  is null || new_ends_at  >= now)
+ */
+function buildPromoProductFilters(slug: string, nowISO: string): string[] {
+  const parts: string[] = [];
+
+  if (slug === "on-sale") {
+    parts.push(`filters[sale_starts_at][$notNull]=true`);
+    parts.push(`filters[sale_starts_at][$lte]=${encodeURIComponent(nowISO)}`);
+    parts.push(`filters[$or][0][sale_ends_at][$null]=true`);
+    parts.push(`filters[$or][1][sale_ends_at][$gte]=${encodeURIComponent(nowISO)}`);
+    return parts;
+  }
+
+  if (slug === "new-in") {
+    parts.push(`filters[new_starts_at][$notNull]=true`);
+    parts.push(`filters[new_starts_at][$lte]=${encodeURIComponent(nowISO)}`);
+    parts.push(`filters[$or][0][new_ends_at][$null]=true`);
+    parts.push(`filters[$or][1][new_ends_at][$gte]=${encodeURIComponent(nowISO)}`);
+    return parts;
+  }
+
+  return parts;
+}
+
+/** 统计商品总数：支持 slug 或 documentId 列表（$in）；✅ 支持 promo 聚合页 */
 async function getProductTotal(opts: {
   slug?: string;
   categoryDocIds?: string[];
 }): Promise<number> {
   const { slug, categoryDocIds } = opts;
 
+  // ✅ promo 聚合页：不按 category 过滤
+  if (slug && isPromoSlug(slug)) {
+    const nowISO = new Date().toISOString();
+    const parts: string[] = [];
+
+    // 只展示「被上架显示」的商品
+    parts.push(`filters[is_showed][$eq]=true`);
+    parts.push(...buildPromoProductFilters(slug, nowISO));
+
+    try {
+      const json: any = await api(
+        `/api/products?${parts.join("&")}` +
+          `&fields[0]=id&pagination[pageSize]=1&publicationState=live`,
+        { noCache: true }
+      );
+      return Number(json?.meta?.pagination?.total ?? 0);
+    } catch {
+      return 0;
+    }
+  }
+
+  // ✅ 普通分类页：按 category 过滤（原逻辑）
   const filterPart = categoryDocIds?.length
     ? categoryDocIds
         .map(
@@ -157,28 +207,19 @@ async function getRootChildren(rootDocId?: string): Promise<
 // 👇 Next 15 的异步 params 需要 await
 type ParamsPromise = Promise<{ slug: string }>;
 
-export default async function CategoryPage({
-  params,
-}: {
-  params: ParamsPromise;
-}) {
+export default async function CategoryPage({ params }: { params: ParamsPromise }) {
   const { slug } = await params;
 
-  // 1) 当前分类 + 顶级父分类 docId
-  const [{ current, rootDocId }] = await Promise.all([
-    getCurrentAndRootDocId(slug),
-  ]);
-
+  const [{ current, rootDocId }] = await Promise.all([getCurrentAndRootDocId(slug)]);
   if (!current?.slug) notFound();
 
-  // 2) 拿到顶级父分类的所有子分类（兄弟 = 顶级的 children）
-  const siblings = await getRootChildren(rootDocId);
+  // ✅ promo 聚合页：不展示 siblings（也不需要组 docIds）
+  const promo = isPromoSlug(slug);
+  const siblings = promo ? [] : await getRootChildren(rootDocId);
 
-  // 3) 如果当前就是顶级分类：把“自己 + 所有子分类”的 documentId 组成一个列表
-  //    用于产品过滤（$in）与 total 统计；否则子分类页面只看自己
   let categoryDocIds: string[] | undefined;
   const isTop =
-    current.documentId && rootDocId && current.documentId === rootDocId;
+    !promo && current.documentId && rootDocId && current.documentId === rootDocId;
 
   if (isTop) {
     const childIds = siblings
@@ -187,13 +228,11 @@ export default async function CategoryPage({
     categoryDocIds = [current.documentId!, ...childIds];
   }
 
-  // 4) 统计总数：顶级走 $in，子级走 slug
   const total = await getProductTotal({
     slug: isTop ? undefined : slug,
     categoryDocIds,
   });
 
-  // （可选）演示模式：没有商品时给一个占位总数，避免页面空白
   const DEMO = process.env.NEXT_PUBLIC_DEMO_MODE === "1";
   const totalForUI = DEMO && total === 0 ? 120 : total;
 
@@ -223,8 +262,6 @@ export default async function CategoryPage({
         </div>
       )}
 
-      {/* 列表：把顶级的 docId 列表传下去，子级则不传
-          👉 这里新增 displayCurrency，CategoryGridClient 内部使用 src/lib/strapiPrice.ts 计算并展示 */}
       <div className="mt-2">
         <CategoryGridClient
           slug={slug}
@@ -232,7 +269,7 @@ export default async function CategoryPage({
           total={totalForUI}
           pageSize={40}
           categoryDocIds={categoryDocIds}
-          displayCurrency="AUD"   // ★ 新增：明确用哪个币种展示（与 pickPriceForCurrency 对齐）
+          displayCurrency="AUD"
         />
       </div>
     </main>
