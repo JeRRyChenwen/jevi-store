@@ -1001,8 +1001,4 @@ terms and conditions
 
 邮件+物流track
 
-主推区域是海报
-
-主页里的new sale 区域要调整一下
-
 3大区域做成strapi的内容
