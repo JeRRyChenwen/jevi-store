@@ -59,7 +59,7 @@ export default function HomeBannerClient({
   const isManualPausedNow = () => Date.now() < manualPauseUntilRef.current;
 
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const trackRef = useRef<HTMLDivElement | null>(null); // ✅ NEW
+  const trackRef = useRef<HTMLDivElement | null>(null);
   const [containerW, setContainerW] = useState(0);
 
   // 动画锁：防止狂点导致 idx 越界
@@ -70,7 +70,7 @@ export default function HomeBannerClient({
   // autoplay timer
   const autoTimerRef = useRef<number | null>(null);
 
-  // ✅ autoplay token（版本号）+ 最近一次用户动作时间
+  // autoplay token（版本号）+ 最近一次用户动作时间
   const autoTokenRef = useRef(0);
   const lastUserActionAtRef = useRef(0);
 
@@ -79,7 +79,7 @@ export default function HomeBannerClient({
     autoTimerRef.current = null;
   };
 
-  // ✅ 一切“会打断自动轮播”的动作都调用这个
+  // 一切“会打断自动轮播”的动作都调用这个
   const invalidateAutoPlay = () => {
     autoTokenRef.current += 1; // 让所有旧 callback 失效
     clearAutoTimer();
@@ -121,7 +121,9 @@ export default function HomeBannerClient({
       if (isManualPausedNow()) return;
       if (paused) return;
       if (isAnimatingRef.current) return;
-      if (Date.now() - lastUserActionAtRef.current < transitionMs + 80) return;
+
+      // ✅ 防止“刚手动 next -> 又立刻自动 next”造成突兀/双动画
+      if (Date.now() - lastUserActionAtRef.current < transitionMs + 120) return;
 
       lock();
       setEnableTransition(true);
@@ -201,10 +203,8 @@ export default function HomeBannerClient({
     setIdx((p) => p + 1);
   };
 
-  // ✅ 关键修复：只处理轨道自身 transitionend + 回跳用 reflow + 双 rAF
-  const onTransitionEnd = (
-    e: React.TransitionEvent<HTMLDivElement>
-  ) => {
+  // ✅ 只处理轨道自身 transitionend + 回跳用 reflow + 双 rAF
+  const onTransitionEnd = (e: React.TransitionEvent<HTMLDivElement>) => {
     if (count <= 1) return;
 
     // ✅ 防止冒泡/子元素触发导致执行两次
@@ -252,6 +252,7 @@ export default function HomeBannerClient({
   // 兜底：极端情况下 idx 越界，立刻拉回
   useEffect(() => {
     if (count <= 1) return;
+
     if (idx < 0) {
       invalidateAutoPlay();
       setEnableTransition(false);
@@ -285,6 +286,7 @@ export default function HomeBannerClient({
   return (
     <section className="w-full">
       <div className="w-full">
+        {/* ✅ 图片占满宽度，左右箭头 absolute “凸出去”，不占图片宽 */}
         <div className="relative w-full overflow-visible">
           <div
             ref={containerRef}
@@ -319,84 +321,91 @@ export default function HomeBannerClient({
               style={trackStyle}
               onTransitionEnd={onTransitionEnd}
             >
-              {loopSlides.map((s, i) => (
-                <div
-                  key={`${s.documentId || "x"}-${i}`}
-                  className="relative h-full basis-full shrink-0 bg-neutral-100"
-                >
-                  <picture>
-                    {s.image_mobile_url ? (
-                      <source
-                        media="(max-width: 640px)"
-                        srcSet={s.image_mobile_url}
+              {loopSlides.map((s, i) => {
+                // ✅ 你的 Strapi slides 目前只有 image_desktop（mobile 不存在也没关系）
+                const desktopSrc = s?.image_desktop_url || "";
+                const mobileSrc = s?.image_mobile_url || ""; // 如果你在 fetch 里 fallback，这里就会等于 desktop
+
+                return (
+                  <div
+                    key={`${s.documentId || "x"}-${i}`}
+                    className="relative h-full basis-full shrink-0 bg-neutral-100"
+                  >
+                    <picture>
+                      {mobileSrc ? (
+                        <source media="(max-width: 640px)" srcSet={mobileSrc} />
+                      ) : null}
+
+                      {/* ✅ desktopSrc 必须有；没有的话用空字符串避免报错，但你服务端应已过滤 */}
+                      <img
+                        src={desktopSrc}
+                        alt={s.title || "Banner"}
+                        className="h-full w-full object-cover object-bottom"
+                        loading={i === idx ? "eager" : "lazy"}
+                        decoding="async"
+                        draggable={false}
                       />
-                    ) : null}
-                    <img
-                      src={s.image_desktop_url}
-                      alt={s.title || "Banner"}
-                      className="h-full w-full object-cover object-bottom"
-                      loading={i === idx ? "eager" : "lazy"}
-                      decoding="async"
-                      draggable={false}
-                    />
-                  </picture>
+                    </picture>
 
-                  <div className="absolute inset-0 bg-white/0" />
+                    <div className="absolute inset-0 bg-white/0" />
 
-                  {count > 1 ? (
-                    i === idx ? (
-                      <div className="absolute inset-0 z-10 h-full w-full px-5 sm:px-8">
-                        <div className="h-full flex items-end pb-8 sm:pb-10">
-                          <div className="max-w-[680px]">
-                            {s.title ? (
-                              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-neutral-900">
-                                {s.title}
-                              </h2>
-                            ) : null}
+                    {/* 内容层：只在当前 idx 显示 */}
+                    {count > 1 ? (
+                      i === idx ? (
+                        <div className="absolute inset-0 z-10 h-full w-full px-5 sm:px-8">
+                          <div className="flex h-full items-end pb-8 sm:pb-10">
+                            <div className="max-w-[680px]">
+                              {s.title ? (
+                                <h2 className="text-2xl font-bold tracking-tight text-neutral-900 sm:text-3xl md:text-4xl">
+                                  {s.title}
+                                </h2>
+                              ) : null}
 
-                            {s.subtitle ? (
-                              <p className="mt-2 text-sm sm:text-base text-neutral-700">
-                                {s.subtitle}
-                              </p>
-                            ) : null}
+                              {s.subtitle ? (
+                                <p className="mt-2 text-sm text-neutral-700 sm:text-base">
+                                  {s.subtitle}
+                                </p>
+                              ) : null}
 
-                            {s.cta_href && s.cta_href !== "#" ? (
-                              <div className="mt-4">
-                                <Link
-                                  href={s.cta_href}
-                                  className="inline-flex items-center gap-2 rounded-full bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-transform hover:-translate-y-0.5"
-                                  aria-label={s.cta_label || "Shop now"}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    pauseAutoForManual();
-                                  }}
-                                >
-                                  {s.cta_label || "Shop now"}
-                                  <svg
-                                    width="16"
-                                    height="16"
-                                    viewBox="0 0 24 24"
-                                    aria-hidden="true"
-                                    className="opacity-90"
+                              {s.cta_href && s.cta_href !== "#" ? (
+                                <div className="mt-4">
+                                  <Link
+                                    href={s.cta_href}
+                                    className="inline-flex items-center gap-2 rounded-full bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-transform hover:-translate-y-0.5"
+                                    aria-label={s.cta_label || "Shop now"}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      pauseAutoForManual();
+                                    }}
                                   >
-                                    <path
-                                      fill="currentColor"
-                                      d="M13.172 12l-4.95-4.95 1.414-1.414L16 12l-6.364 6.364-1.414-1.414z"
-                                    />
-                                  </svg>
-                                </Link>
-                              </div>
-                            ) : null}
+                                    {s.cta_label || "Shop now"}
+                                    <svg
+                                      width="16"
+                                      height="16"
+                                      viewBox="0 0 24 24"
+                                      aria-hidden="true"
+                                      className="opacity-90"
+                                    >
+                                      <path
+                                        fill="currentColor"
+                                        d="M13.172 12l-4.95-4.95 1.414-1.414L16 12l-6.364 6.364-1.414-1.414z"
+                                      />
+                                    </svg>
+                                  </Link>
+                                </div>
+                              ) : null}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ) : null
-                  ) : null}
-                </div>
-              ))}
+                      ) : null
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
+          {/* ✅ 左右箭头：图片外侧 + 更远一点 */}
           {count > 1 ? (
             <>
               <button
@@ -409,7 +418,7 @@ export default function HomeBannerClient({
                   "-left-16",
                   "h-10 w-10 items-center justify-center",
                   "rounded-full border border-neutral-200 bg-white/80",
-                  "text-neutral-500 hover:text-neutral-700 hover:bg-white",
+                  "text-neutral-500 hover:bg-white hover:text-neutral-700",
                   "shadow-sm",
                 ].join(" ")}
               >
@@ -426,7 +435,7 @@ export default function HomeBannerClient({
                   "-right-16",
                   "h-10 w-10 items-center justify-center",
                   "rounded-full border border-neutral-200 bg-white/80",
-                  "text-neutral-500 hover:text-neutral-700 hover:bg-white",
+                  "text-neutral-500 hover:bg-white hover:text-neutral-700",
                   "shadow-sm",
                 ].join(" ")}
               >
@@ -436,9 +445,11 @@ export default function HomeBannerClient({
           ) : null}
         </div>
 
+        {/* ✅ 控制区：图片下面（图片外），并且和下面卡片拉开距离 */}
         {count > 1 ? (
-          <div className="mt-5 mb-10 flex justify-center px-4">
-            <div className="rounded-full bg-white/70 backdrop-blur-md ring-1 ring-black/10 shadow-sm px-4 py-2">
+          <div className="mb-10 mt-5 flex justify-center px-4">
+            <div className="rounded-full bg-white/70 px-4 py-2 shadow-sm ring-1 ring-black/10 backdrop-blur-md">
+              {/* 进度条 */}
               <div className="flex items-center justify-center gap-2">
                 {slides.map((_, i) => {
                   const active = i === realIndex;
@@ -448,7 +459,7 @@ export default function HomeBannerClient({
                       type="button"
                       aria-label={`Go to banner ${i + 1}`}
                       onClick={() => goReal(i)}
-                      className="group relative h-2 w-10 rounded-full bg-black/10 overflow-hidden"
+                      className="group relative h-2 w-10 overflow-hidden rounded-full bg-black/10"
                     >
                       {active ? (
                         <span
@@ -462,12 +473,13 @@ export default function HomeBannerClient({
                           }}
                         />
                       ) : null}
-                      <span className="absolute inset-0 ring-1 ring-transparent group-hover:ring-black/10 rounded-full" />
+                      <span className="absolute inset-0 rounded-full ring-1 ring-transparent group-hover:ring-black/10" />
                     </button>
                   );
                 })}
               </div>
 
+              {/* dots：更大命中面积 */}
               <div className="mt-2 flex justify-center gap-2">
                 {slides.map((_, i) => (
                   <button
@@ -476,8 +488,7 @@ export default function HomeBannerClient({
                     aria-label={`Go to banner ${i + 1}`}
                     onClick={() => goReal(i)}
                     className={[
-                      "h-7 w-7 grid place-items-center rounded-full",
-                      "transition-colors",
+                      "grid h-7 w-7 place-items-center rounded-full transition-colors",
                       i === realIndex
                         ? "bg-neutral-900/10"
                         : "hover:bg-black/5",

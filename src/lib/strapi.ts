@@ -351,7 +351,7 @@ export type HomeBannerLite = {
   starts_at?: string | null;
   ends_at?: string | null;
   image_desktop_url?: string;
-  image_mobile_url?: string;
+  image_mobile_url?: string; // 你当前没有这个字段，但保留类型，前端可 fallback
 };
 
 function isWithinSchedule(
@@ -370,58 +370,123 @@ function isWithinSchedule(
   return true;
 }
 
+// ✅ 固定只取这一条（你想要的“写死”）
+const HOME_TOP_BANNER_NAME = "Home-Top-Banner";
+
 /**
  * ✅ v5：Home Banner 里存 slides（Repeatable Component）
  * 你的实际返回（curl）是：
  * data[0].slides = [{..., image_desktop: { url, formats... }}, ...]
  *
  * ✅ 注意：
- * - 目前 slides 里没有 image_mobile，所以不要 populate 它（会 400）
- * - 前端 mobile 图先 fallback 到 desktop
+ * - slides 里没有 image_mobile，所以不要 populate 它（会 400）
+ * - 前端 mobile 图：fallback 到 desktop
  */
 export async function fetchHomeBanners(limit = 20): Promise<HomeBannerLite[]> {
+  // ✅ 只查 name=Home-Top-Banner + 只取 1 条
   const qs =
     `?publicationState=live` +
-    `&pagination[page]=1&pagination[pageSize]=5` +
+    `&filters[name][$eq]=${encodeURIComponent(HOME_TOP_BANNER_NAME)}` +
+    `&pagination[page]=1&pagination[pageSize]=1` +
     `&populate[slides][populate][0]=image_desktop`;
 
   const res: any = await api(`/api/home-banners${qs}`, { noCache: true });
 
-  const banners: any[] = res?.data ?? [];
-  if (!banners.length) return [];
+  const rows: any[] = Array.isArray(res?.data) ? res.data : [];
+  const top = rows[0];
+  if (!top) return [];
+
+  // v5/v4 兼容
+  const a = top?.attributes ?? top ?? {};
+  const slides: any[] = Array.isArray(a?.slides) ? a.slides : [];
 
   const now = new Date();
-
-  // 你目前只有 1 条 home-banners（name: Home-Top-Banner）
-  const slides: any[] = Array.isArray(banners[0]?.slides) ? banners[0].slides : [];
 
   const out: HomeBannerLite[] = slides
     .map((s: any) => {
       const desktopUrl = resolveMediaURL(s?.image_desktop, "large");
-      // 目前没有 mobile 字段：先用 desktop fallback
-      const mobileUrl = resolveMediaURL(s?.image_mobile, "large") || desktopUrl;
+
+      // ✅ 你当前没有 image_mobile 字段：直接 fallback
+      const mobileUrl = desktopUrl;
 
       return {
-        documentId: String(s?.id ?? ""),
+        // ✅ client 侧 key 只要稳定即可（用组件项 id 最稳）
+        documentId: String(s?.id ?? s?.documentId ?? ""),
         title: String(s?.title ?? ""),
         subtitle: String(s?.subtitle ?? ""),
-        cta_label: s?.cta_label ?? "Shop now",
+        cta_label: s?.cta_label ?? null,
         cta_href: s?.cta_href ?? null,
-        order: Number(s?.order ?? 0) || 0,
+        order: Number.isFinite(Number(s?.order)) ? Number(s.order) : undefined,
         starts_at: s?.starts_at ?? null,
         ends_at: s?.ends_at ?? null,
         image_desktop_url: desktopUrl,
         image_mobile_url: mobileUrl,
-        // 其它字段不对外暴露（仅用于过滤）
-        // is_active: s?.is_active
       };
     })
-    .filter((b: any) => {
-      // 只展示 active + 在排期内 + 有图
-      const isActive = b && (b as any) && (slides.find((x) => String(x?.id) === b.documentId)?.is_active ?? true);
+    .filter((b) => {
+      // ✅ 只展示：active + 在排期内 + 有图
+      const src = slides.find((x) => String(x?.id ?? x?.documentId ?? "") === b.documentId);
+      const isActive = src?.is_active ?? true;
       if (!isActive) return false;
+
       if (!b.image_desktop_url) return false;
       return isWithinSchedule(now, b.starts_at, b.ends_at);
+    })
+    .sort((x, y) => {
+      const a = Number.isFinite(Number(x.order)) ? Number(x.order) : 1e9;
+      const b = Number.isFinite(Number(y.order)) ? Number(y.order) : 1e9;
+      return a - b;
+    })
+    .slice(0, limit);
+
+  return out;
+}
+
+
+export async function fetchHomeBannerSlidesByName(
+  name: string,
+  limit = 20
+): Promise<HomeBannerLite[]> {
+  const qs =
+    `?publicationState=live` +
+    `&filters[name][$eq]=${encodeURIComponent(name)}` +
+    `&pagination[page]=1&pagination[pageSize]=1` +
+    `&populate[slides][populate][0]=image_desktop`;
+
+  const res: any = await api(`/api/home-banners${qs}`, { noCache: true });
+
+  const row = Array.isArray(res?.data) ? res.data[0] : null;
+  if (!row) return [];
+
+  const slidesRaw: any[] = Array.isArray(row?.slides) ? row.slides : [];
+  const now = new Date();
+
+  const out: HomeBannerLite[] = slidesRaw
+    .map((s: any, idx: number) => {
+      const desktopUrl = resolveMediaURL(s?.image_desktop, "large");
+
+      return {
+        // 注意：slides component 自己只有 id（不是 documentId），用 id 做稳定 key 就够了
+        documentId: String(s?.id ?? `${name}-slide-${idx}`),
+        title: s?.title ?? "",
+        subtitle: s?.subtitle ?? "",
+        cta_label: s?.cta_label ?? "",
+        cta_href: s?.cta_href ?? null,
+        order: Number.isFinite(Number(s?.order)) ? Number(s?.order) : idx,
+        starts_at: s?.starts_at ?? null,
+        ends_at: s?.ends_at ?? null,
+        image_desktop_url: desktopUrl,
+        // 你 HomeBannerClient 里会用到 image_mobile_url，但 mid banner 只用背景也无所谓
+        image_mobile_url: desktopUrl,
+      };
+    })
+    .filter((x) => {
+      // active + 时间窗 + 有图
+      const src = slidesRaw.find((t) => String(t?.id) === x.documentId);
+      const isActive = typeof src?.is_active === "boolean" ? src.is_active : true;
+      if (!isActive) return false;
+      if (!x.image_desktop_url) return false;
+      return isWithinSchedule(now, x.starts_at, x.ends_at);
     })
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     .slice(0, limit);
