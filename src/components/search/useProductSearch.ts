@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { mediaUrl } from "@/lib/strapi";
+import { api, mediaUrl } from "@/lib/strapi";
 
 // ===== 前端展示项 =====
 export type SearchItem = {
@@ -34,23 +34,6 @@ type ProductAttrs = {
 type StrapiRowStandard = { id?: number; attributes?: ProductAttrs };
 type StrapiRowFlat = ProductAttrs & { id?: number };
 type StrapiRow = StrapiRowStandard | StrapiRowFlat;
-
-// ===== ENV / fetch 帮助函数 =====
-const STRAPI_BASE = (process.env.NEXT_PUBLIC_STRAPI_URL ?? "http://localhost:1337").replace(/\/$/, "");
-const STRAPI_TOKEN = process.env.NEXT_PUBLIC_STRAPI_TOKEN ?? "";
-
-async function fetchStrapiJson(pathWithQuery: string, init?: RequestInit) {
-  const url = pathWithQuery.startsWith("http") ? pathWithQuery : `${STRAPI_BASE}${pathWithQuery}`;
-  const headers = new Headers(init?.headers ?? {});
-  headers.set("accept", "application/json");
-  if (STRAPI_TOKEN) headers.set("authorization", `Bearer ${STRAPI_TOKEN}`);
-  const res = await fetch(url, { ...init, method: "GET", headers });
-  if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    throw new Error(`Strapi ${res.status} ${res.statusText}\nURL: ${url}\n${txt.slice(0, 500)}`);
-  }
-  return res.json();
-}
 
 // ===== 从 color_galleries 里取第一张图 =====
 function firstImageUrlFromColorGalleries(attrs?: ProductAttrs): string | null {
@@ -88,21 +71,20 @@ function firstImageUrlFromColorGalleries(attrs?: ProductAttrs): string | null {
   return null;
 }
 
-// ========== API 层 ==========
+// ========== API 层（统一走 /api/strapi 代理，由服务端注入 STRAPI_API_TOKEN） ==========
 
 // A. 单次查询：同时拿 title/slug 和 color_galleries.images（首选）
 async function searchProductsOneShot(q: string) {
   const p = new URLSearchParams();
   p.append("filters[title][$containsi]", q);
   p.append("pagination[pageSize]", "10");
-  p.append("publicationState", "live"); // 只查已发布，减少无图干扰
-  // 只要最小字段，避免 payload 过大
+  p.append("publicationState", "live");
   p.append("fields[0]", "title");
   p.append("fields[1]", "slug");
-  // 正确的 v5 嵌套 populate：组件 -> images（Multiple Media）
+  // v5 嵌套 populate：组件 -> images（Multiple Media）
   p.append("populate[color_galleries][populate][images]", "true");
 
-  return fetchStrapiJson(`/api/products?${p.toString()}`);
+  return api(`/api/products?${p.toString()}`, { noCache: true, requireAuth: true });
 }
 
 // B. 两步法：先查列表（只取 title/slug），再按 id 单条补图
@@ -113,15 +95,20 @@ async function searchProductsBasic(q: string) {
   p.append("publicationState", "live");
   p.append("fields[0]", "title");
   p.append("fields[1]", "slug");
-  return fetchStrapiJson(`/api/products?${p.toString()}`);
+
+  return api(`/api/products?${p.toString()}`, { noCache: true, requireAuth: true });
 }
 
 async function fetchProductFirstImageById(id: number | string): Promise<string | null> {
-  // 只 populate 你需要的节点
   const p = new URLSearchParams();
   p.append("populate[color_galleries][populate][images]", "true");
-  p.append("fields[0]", "title"); // 保留一个 fields，避免 * 带来大 payload
-  const r = await fetchStrapiJson(`/api/products/${id}?${p.toString()}`);
+  p.append("fields[0]", "title");
+
+  const r: any = await api(`/api/products/${id}?${p.toString()}`, {
+    noCache: true,
+    requireAuth: true,
+  });
+
   const attrs: ProductAttrs = r?.data?.attributes ?? r ?? {};
   return firstImageUrlFromColorGalleries(attrs);
 }
@@ -168,10 +155,10 @@ export function useProductSearch() {
       setError(null);
 
       try {
-        // 优先尝试 “一次拿齐”（包含 images）
         let rows: StrapiRow[] | undefined;
+
         try {
-          const resOne = await searchProductsOneShot(q);
+          const resOne: any = await searchProductsOneShot(q);
           rows = (resOne?.data as StrapiRow[]) ?? [];
           if (process.env.NODE_ENV !== "production") {
             console.debug("[search] one-shot ok, rows:", rows.length);
@@ -182,13 +169,11 @@ export function useProductSearch() {
           }
         }
 
-        // 如果一次式失败，退回“两步法”
         if (!rows) {
-          const resBasic = await searchProductsBasic(q);
+          const resBasic: any = await searchProductsBasic(q);
           rows = (resBasic?.data as StrapiRow[]) ?? [];
         }
 
-        // 先渲染 title/slug
         const baseList: SearchItem[] = rows.map((row) => {
           const attrs: ProductAttrs =
             (row as StrapiRowStandard).attributes ?? (row as StrapiRowFlat) ?? {};
@@ -208,7 +193,6 @@ export function useProductSearch() {
         setItems(baseList);
         setOpened(true);
 
-        // 如果 one-shot 已经带回了图片，直接填充；否则按 id 再补一次
         const oneShotHadImages = rows.some((row) => {
           const attrs: ProductAttrs =
             (row as StrapiRowStandard).attributes ?? (row as StrapiRowFlat) ?? {};
@@ -227,12 +211,11 @@ export function useProductSearch() {
             })
           );
         } else {
-          // 两步补图（按 id 单条查询）
           await Promise.all(
             baseList.map(async (it, idx) => {
               try {
                 const u = await fetchProductFirstImageById(it.id);
-                if (abortRef.current !== ac) return; // 已被新查询打断
+                if (abortRef.current !== ac) return;
                 if (u) {
                   setItems((prev) => {
                     if (!prev[idx] || prev[idx].id !== it.id) return prev;

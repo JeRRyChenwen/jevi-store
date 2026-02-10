@@ -4,10 +4,11 @@
 
 const DEFAULT_URL = "http://localhost:1337";
 
-const PUBLIC_URL = process.env.NEXT_PUBLIC_STRAPI_URL ?? DEFAULT_URL; // 仅用于拼媒体绝对地址
-const SERVER_URL = process.env.STRAPI_URL ?? PUBLIC_URL; // 服务器直连 Strapi
+const PUBLIC_URL = process.env.NEXT_PUBLIC_STRAPI_URL ?? DEFAULT_URL; // 仅用于拼媒体绝对地址（客户端可用）
+const SERVER_URL = process.env.STRAPI_URL ?? PUBLIC_URL; // 服务器直连 Strapi（服务端用）
 
 const isServer = typeof window === "undefined";
+
 export function getStrapiURL() {
   return isServer ? SERVER_URL : PUBLIC_URL;
 }
@@ -16,6 +17,12 @@ type FetchOpts = RequestInit & {
   next?: RequestInit["next"];
   /** 在客户端禁用缓存（加时间戳 + cache: 'no-store'；服务端等效 revalidate: 0） */
   noCache?: boolean;
+  /**
+   * ✅ NEW: 是否要求必须带 Token（默认 true）
+   * - 你现在走“关闭 Public + Token”的架构，默认强制更安全
+   * - 如果未来你有某些 Public endpoint（不建议），可传 requireAuth: false
+   */
+  requireAuth?: boolean;
 };
 
 // ------------------- 与“多币种价格组件”相关的小工具 -------------------
@@ -28,15 +35,24 @@ export function withPricePopulate(qs: string): string {
 
 // -------- 核心请求 --------
 export async function api(path: string, opts: FetchOpts = {}) {
-  const { noCache, ...rest } = opts;
+  const { noCache, requireAuth = true, ...rest } = opts;
 
-  // 允许传绝对 URL 或以 / 开头的路径
+  // ✅ 安全：客户端只允许传相对 path，避免把 /api/strapi 变成任意代理（SSRF 风险）
+  if (!isServer) {
+    if (path.startsWith("http")) {
+      throw new Error(
+        `[strapi.api] Client-side call must use relative path, got absolute URL: ${path}`
+      );
+    }
+  }
+
+  // 允许传绝对 URL（仅服务端允许）或以 / 开头的路径
   const base = (isServer ? SERVER_URL : PUBLIC_URL).replace(/\/+$/, "");
   const url = path.startsWith("http")
     ? path
     : `${base}${path.startsWith("/") ? "" : "/"}${path}`;
 
-  // 服务器：直连 Strapi，并在这里附上 Authorization 头（使用 STRAPI_API_TOKEN）
+  // ------------------- 服务器：直连 Strapi 并注入 Bearer Token -------------------
   if (isServer) {
     const headers = {
       Accept: "application/json",
@@ -45,7 +61,20 @@ export async function api(path: string, opts: FetchOpts = {}) {
     } as Record<string, string>;
 
     const token = process.env.STRAPI_API_TOKEN;
-    if (token) headers.Authorization = `Bearer ${token}`;
+
+    // ✅ NEW: 默认强制要求 token（避免“配置没生效但你不知道”）
+    if (requireAuth) {
+      if (!token) {
+        throw new Error(
+          "[strapi.api] STRAPI_API_TOKEN is missing on server. " +
+            "You are using Token-protected Strapi endpoints; please set STRAPI_API_TOKEN in .env.local."
+        );
+      }
+      headers.Authorization = `Bearer ${token}`;
+    } else {
+      // 若不强制，则存在 token 就加（可选）
+      if (token) headers.Authorization = `Bearer ${token}`;
+    }
 
     const fetchOpts: RequestInit & { next?: RequestInit["next"] } = {
       ...rest,
@@ -58,6 +87,7 @@ export async function api(path: string, opts: FetchOpts = {}) {
     if (noCache) fetchOpts.cache = "no-store";
 
     const res = await fetch(url, fetchOpts);
+
     if (!res.ok) {
       let body: any;
       try {
@@ -66,6 +96,7 @@ export async function api(path: string, opts: FetchOpts = {}) {
         body = await res.text().catch(() => "");
       }
       console.error("Strapi API error (server):", res.status, url, body);
+
       const msg =
         body?.error?.message ||
         body?.message ||
@@ -74,15 +105,18 @@ export async function api(path: string, opts: FetchOpts = {}) {
         `HTTP ${res.status}`;
       throw new Error(msg);
     }
+
     return res.json();
   }
 
-  // 浏览器：走 Next 代理。把 path 与原始 fetch 选项打包到 /api/strapi，由服务器注入 Token
+  // ------------------- 浏览器：走 Next 代理 /api/strapi（由服务端注入 Token） -------------------
   const payload = {
     path,
     opts: {
       ...rest,
       noCache: !!noCache,
+      // ✅ 把 requireAuth 也传过去，让 proxy 可以按需处理
+      requireAuth: !!requireAuth,
     },
   };
 
@@ -106,6 +140,7 @@ export async function api(path: string, opts: FetchOpts = {}) {
       path,
       body
     );
+
     const msg =
       body?.error?.message ||
       body?.message ||
@@ -114,6 +149,7 @@ export async function api(path: string, opts: FetchOpts = {}) {
       `HTTP ${proxyRes.status}`;
     throw new Error(msg);
   }
+
   return proxyRes.json();
 }
 
@@ -125,8 +161,38 @@ export function mediaUrl(url?: string | null) {
     : `${getStrapiURL()}${url.startsWith("/") ? "" : "/"}${url}`;
 }
 
-export function resolveMediaURL(media: any): string {
-  const u = media?.url ?? media?.attributes?.url ?? "";
+/**
+ * ✅ 统一解析媒体 URL（兼容 Strapi v5/v4；兼容单图/多图；兼容 formats）
+ * - media 可能是：对象 / 数组 / v4 的 { data: ... } 结构
+ */
+export function resolveMediaURL(
+  media: any,
+  prefer: "large" | "medium" | "small" | "thumbnail" | "original" = "large"
+): string {
+  if (!media) return "";
+
+  // v5 multiple media => array（取第一张）
+  const m = Array.isArray(media) ? media[0] : media;
+
+  // 兼容 v4 data/attributes 结构
+  const m2 = m?.data
+    ? Array.isArray(m.data)
+      ? m.data[0]?.attributes ?? m.data[0]
+      : m.data?.attributes ?? m.data
+    : m;
+
+  const formats = m2?.formats ?? m2?.attributes?.formats;
+
+  const u =
+    (prefer !== "original" ? formats?.[prefer]?.url : "") ||
+    formats?.large?.url ||
+    formats?.medium?.url ||
+    formats?.small?.url ||
+    formats?.thumbnail?.url ||
+    m2?.url ||
+    m2?.attributes?.url ||
+    "";
+
   return mediaUrl(u);
 }
 
@@ -147,12 +213,6 @@ let __topLevelDocIdMapCache: Record<string, string> | null = null;
 /** ✅ 新增：顶级导航分类缓存 */
 let __navTopCategoriesCache: CategoryLite[] | null = null;
 
-/**
- * ✅ 新增：获取“用于导航栏”的顶级分类列表
- * - parent=null（顶级）
- * - show_in_nav=true（Strapi 控制是否显示在导航）
- * - 按 nav_order/name 排序
- */
 export async function fetchNavTopCategories(): Promise<CategoryLite[]> {
   if (__navTopCategoriesCache) return __navTopCategoriesCache;
 
@@ -236,10 +296,6 @@ export function __invalidateTopLevelCategoryCache() {
   __navTopCategoriesCache = null;
 }
 
-/**
- * 旧的分类查询工具，默认带上 prices 组件，避免忘记 populate。
- * 如需进一步的图片/变体字段，可在调用处追加其它 populate 段。
- */
 export async function queryProductsByCategorySlug(
   slug: string,
   page = 1,
@@ -252,24 +308,11 @@ export async function queryProductsByCategorySlug(
     `&sort=updatedAt:desc` +
     `&publicationState=live`;
 
-  // ✅ 默认补上 prices
   qs = withPricePopulate(qs);
 
   return api(qs, { noCache: false });
 }
 
-/* -------------------------------------------------------------------------- */
-/*                             ✅ 首页热度查询工具                              */
-/* -------------------------------------------------------------------------- */
-
-/**
- * ✅ 首页：按 hot_score 取某分类最热的 N 个商品
- *
- * 关键点：
- * - 绝对不要用 fields[0]=name（你的 Product 没有 name 字段，PDP 用的是 title）
- * - 你的 Strapi 对 products 的 query 校验很严格，fields 会触发 400，所以这里不裁剪字段
- * - 只保留 prices populate（你前端价格依赖它）
- */
 export async function queryHotProductsByCategorySlug(slug: string, limit = 6) {
   let qs =
     `/api/products` +
@@ -282,10 +325,6 @@ export async function queryHotProductsByCategorySlug(slug: string, limit = 6) {
   return api(qs, { noCache: true });
 }
 
-/**
- * ✅ Debug：快速确认你库里到底有没有 “live products”
- * - 用在排查 “No products yet” 时非常有用
- */
 export async function debugProductTotal(): Promise<number> {
   try {
     const json: any = await api(
@@ -296,4 +335,96 @@ export async function debugProductTotal(): Promise<number> {
   } catch {
     return 0;
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/*                          ✅ Home Hero Banners (Strapi v5)                   */
+/* -------------------------------------------------------------------------- */
+
+export type HomeBannerLite = {
+  documentId: string;
+  title?: string;
+  subtitle?: string;
+  cta_label?: string;
+  cta_href?: string | null;
+  order?: number;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  image_desktop_url?: string;
+  image_mobile_url?: string;
+};
+
+function isWithinSchedule(
+  now: Date,
+  starts?: string | null,
+  ends?: string | null
+) {
+  const s = starts ? new Date(starts) : null;
+  const e = ends ? new Date(ends) : null;
+
+  const sOk = s && !Number.isNaN(+s) ? s : null;
+  const eOk = e && !Number.isNaN(+e) ? e : null;
+
+  if (sOk && now < sOk) return false;
+  if (eOk && now > eOk) return false;
+  return true;
+}
+
+/**
+ * ✅ v5：Home Banner 里存 slides（Repeatable Component）
+ * 你的实际返回（curl）是：
+ * data[0].slides = [{..., image_desktop: { url, formats... }}, ...]
+ *
+ * ✅ 注意：
+ * - 目前 slides 里没有 image_mobile，所以不要 populate 它（会 400）
+ * - 前端 mobile 图先 fallback 到 desktop
+ */
+export async function fetchHomeBanners(limit = 20): Promise<HomeBannerLite[]> {
+  const qs =
+    `?publicationState=live` +
+    `&pagination[page]=1&pagination[pageSize]=5` +
+    `&populate[slides][populate][0]=image_desktop`;
+
+  const res: any = await api(`/api/home-banners${qs}`, { noCache: true });
+
+  const banners: any[] = res?.data ?? [];
+  if (!banners.length) return [];
+
+  const now = new Date();
+
+  // 你目前只有 1 条 home-banners（name: Home-Top-Banner）
+  const slides: any[] = Array.isArray(banners[0]?.slides) ? banners[0].slides : [];
+
+  const out: HomeBannerLite[] = slides
+    .map((s: any) => {
+      const desktopUrl = resolveMediaURL(s?.image_desktop, "large");
+      // 目前没有 mobile 字段：先用 desktop fallback
+      const mobileUrl = resolveMediaURL(s?.image_mobile, "large") || desktopUrl;
+
+      return {
+        documentId: String(s?.id ?? ""),
+        title: String(s?.title ?? ""),
+        subtitle: String(s?.subtitle ?? ""),
+        cta_label: s?.cta_label ?? "Shop now",
+        cta_href: s?.cta_href ?? null,
+        order: Number(s?.order ?? 0) || 0,
+        starts_at: s?.starts_at ?? null,
+        ends_at: s?.ends_at ?? null,
+        image_desktop_url: desktopUrl,
+        image_mobile_url: mobileUrl,
+        // 其它字段不对外暴露（仅用于过滤）
+        // is_active: s?.is_active
+      };
+    })
+    .filter((b: any) => {
+      // 只展示 active + 在排期内 + 有图
+      const isActive = b && (b as any) && (slides.find((x) => String(x?.id) === b.documentId)?.is_active ?? true);
+      if (!isActive) return false;
+      if (!b.image_desktop_url) return false;
+      return isWithinSchedule(now, b.starts_at, b.ends_at);
+    })
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    .slice(0, limit);
+
+  return out;
 }

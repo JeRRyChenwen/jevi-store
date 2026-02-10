@@ -1,6 +1,9 @@
 // src/app/(shop)/page.tsx
 import { api, fetchSubcategoriesByParentId } from "@/lib/strapi";
 
+// ✅ 新增：首页顶部 Banner（Strapi 驱动轮播）
+import HomeBanner from "@/components/home/HomeBanner";
+
 // ✅ 顶部营销区：复用你抽出来的组件
 import HomeMarketingSection from "@/components/home/HomeMarketingSection";
 
@@ -84,8 +87,12 @@ export default async function HomePage() {
 
   return (
     <main className="w-full max-w-none pb-10">
-      {/* ✅ 顶部营销区：3 个核心入口（New Arrival / On Sale / Shoes） */}
-      <section className="px-4 md:px-6 lg:px-8 pt-2 md:pt-3">
+      {/* ✅ 顶部：Banner + Marketing（三个入口） */}
+      <section className="px-4 md:px-6 lg:px-8 pt-2 md:pt-3 space-y-6">
+        {/* ✅ 新增：Strapi 驱动轮播海报（只 CTA 可点） */}
+        <HomeBanner intervalMs={7000} />
+
+        {/* ✅ 顶部营销区：3 个核心入口（New Arrival / On Sale / Shoes） */}
         <HomeMarketingSection
           /**
            * ✅ New Arrival（上新主推）
@@ -103,19 +110,10 @@ export default async function HomePage() {
           }}
           /**
            * ✅ On Sale（理性转化入口）
-           * 你的诉求：
-           * - 不要“ON SALE + On Sale”重复
-           * - 视觉风格要和 New Arrival / Shoes 一致（浅底 + 深字）
-           *
-           * 做法：
-           * - eyebrow 保留 ON SALE 当标签
-           * - title 改成 Sale Picks（不重复）
-           * - darkText 改为 true（统一深色字）
            */
           rightTop={{
             title: "Sale Picks", // ✅ 不再重复 On Sale
-            subtitle:
-              "Selected styles at special prices — while stocks last.",
+            subtitle: "Selected styles at special prices — while stocks last.",
             eyebrow: "ON SALE",
             ctaLabel: "Shop now", // ✅ 统一按钮文案
             href: "/category/on-sale",
@@ -139,7 +137,7 @@ export default async function HomePage() {
           }}
         />
 
-        <div className="mt-8 h-px bg-neutral-200" />
+        <div className="h-px bg-neutral-200" />
       </section>
 
       {/* ✅ 首页分区：只渲染 show_in_nav=true 的分类 */}
