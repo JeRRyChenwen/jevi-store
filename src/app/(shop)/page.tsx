@@ -92,6 +92,8 @@ export default async function HomePage() {
         {/* ✅ 新增：Strapi 驱动轮播海报（只 CTA 可点） */}
         <HomeBanner intervalMs={7000} />
 
+        <div className="h-px bg-neutral-200" />
+
         {/* ✅ 顶部营销区：3 个核心入口（New Arrival / On Sale / Shoes） */}
         <HomeMarketingSection
           /**
@@ -142,16 +144,29 @@ export default async function HomePage() {
 
       {/* ✅ 首页分区：只渲染 show_in_nav=true 的分类 */}
       <div className="px-4 md:px-6 lg:px-8 space-y-12 pt-8">
-        {sections.map((s) => (
+        {sections.map((s) => {
+        let displayTitle = s.title;
+
+        // ✅ 只改这两个分类
+        if (s.slug === "new-in") {
+          displayTitle = "News In";
+        }
+
+        if (s.slug === "on-sale") {
+          displayTitle = "Sales";
+        }
+
+        return (
           <HomeCategorySectionClient
             key={s.slug}
             slug={s.slug}
-            title={s.title}
+            title={displayTitle}
             categoryDocIds={s.categoryDocIds}
             pageSize={HOME_SECTION_PAGE_SIZE}
             displayCurrency="AUD"
           />
-        ))}
+        );
+      })}
       </div>
     </main>
   );

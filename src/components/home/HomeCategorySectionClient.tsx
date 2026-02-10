@@ -57,14 +57,23 @@ export default function HomeCategorySectionClient({
     devLogPrefix: `HomeSection:${slug}`,
   });
 
+  // ✅ 只对这两个分类改标题
+  let displayHeading: string;
+
+  if (slug === "new-in") {
+    displayHeading = "News In";
+  } else if (slug === "on-sale") {
+    displayHeading = "Sales";
+  } else {
+    displayHeading = `Top Picks for ${title}`;
+  }
+
   return (
     <section className="space-y-3">
       <div className="flex items-end justify-between">
         <div>
-          {/* ✅ 标题改为：Top Picks for {Category} */}
-          <h2 className="text-xl font-semibold">{`Top Picks for ${title}`}</h2>
-
-          {/* ❌ 移除副标题 Top picks based on hot score */}
+          {/* ✅ 只影响 new-in 和 on-sale */}
+          <h2 className="text-xl font-semibold">{displayHeading}</h2>
         </div>
 
         <Link
