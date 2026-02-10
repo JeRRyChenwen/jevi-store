@@ -31,6 +31,13 @@ type Props = {
   rightBottom?: PromoTileProps;
 };
 
+function cardShellClass(hasBg: boolean) {
+  return [
+    "relative rounded-3xl overflow-hidden border shadow-sm hover:shadow-md transition-shadow",
+    hasBg ? "bg-neutral-900 bg-cover bg-center" : "bg-white",
+  ].join(" ");
+}
+
 export default function HomeMarketingSection(props: Props) {
   // ✅ 兼容映射（不改 page.tsx 也能工作）
   const sales = props.sales ?? props.rightTop ?? props.leftHero ?? props.sideLeft;
@@ -49,38 +56,58 @@ export default function HomeMarketingSection(props: Props) {
     cardClickable: p.cardClickable ?? false,
   });
 
+  /**
+   * ✅ NEW：为卡片提供背景图能力
+   * - 约定：PromoTileProps 支持 bgImageUrl?: string（你后面会在 PromoTile.tsx 里加）
+   * - 有 bgImageUrl：用图片做底 + overlay（保证文字可读）
+   * - 无 bgImageUrl：保持白底不变
+   */
+  const renderCard = (p: PromoTileProps, heightClassName: string) => {
+    const bg = (p as any)?.bgImageUrl as string | undefined;
+    const hasBg = !!bg;
+
+    return (
+      <div
+        className={cardShellClass(hasBg)}
+        style={hasBg ? { backgroundImage: `url(${bg})` } : undefined}
+      >
+        {/* ✅ overlay：有背景图时才加，避免文字看不清 */}
+        {hasBg ? (
+          <div className="absolute inset-0 bg-black/35" />
+        ) : null}
+
+        {/* 内容层 */}
+        <div className={["relative z-10", heightClassName].join(" ")}>
+          <PromoTile {...asButtonOnly(p)} />
+        </div>
+      </div>
+    );
+  };
+
   return (
     <section className="w-full">
       <div className="grid gap-4 md:gap-5 lg:gap-6">
         {/* 上方 2 个：并列 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-5 lg:gap-6">
           {/* New Arrival（左） */}
-          {newIn ? (
-            <div className="rounded-3xl overflow-hidden border bg-white shadow-sm hover:shadow-md transition-shadow">
-              <div className="h-[260px] sm:h-[320px] md:h-[360px] lg:h-[420px]">
-                <PromoTile {...asButtonOnly(newIn)} />
-              </div>
-            </div>
-          ) : null}
+          {newIn
+            ? renderCard(
+                newIn,
+                "h-[260px] sm:h-[320px] md:h-[360px] lg:h-[420px]"
+              )
+            : null}
 
           {/* Deals / Sales（右） */}
-          {sales ? (
-            <div className="rounded-3xl overflow-hidden border bg-white shadow-sm hover:shadow-md transition-shadow">
-              <div className="h-[260px] sm:h-[320px] md:h-[360px] lg:h-[420px]">
-                <PromoTile {...asButtonOnly(sales)} />
-              </div>
-            </div>
-          ) : null}
+          {sales
+            ? renderCard(
+                sales,
+                "h-[260px] sm:h-[320px] md:h-[360px] lg:h-[420px]"
+              )
+            : null}
         </div>
 
         {/* 下方 1 个：核心品类主推（Shoes） */}
-        {core ? (
-          <div className="rounded-3xl overflow-hidden border bg-white shadow-sm hover:shadow-md transition-shadow">
-            <div className="h-[220px] sm:h-[260px] md:h-[300px]">
-              <PromoTile {...asButtonOnly(core)} />
-            </div>
-          </div>
-        ) : null}
+        {core ? renderCard(core, "h-[220px] sm:h-[260px] md:h-[300px]") : null}
       </div>
     </section>
   );
