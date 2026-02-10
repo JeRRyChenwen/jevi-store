@@ -1,5 +1,5 @@
 // src/app/(shop)/page.tsx
-import { api, fetchSubcategoriesByParentId } from "@/lib/strapi";
+import { api, fetchSubcategoriesByParentId, resolveMediaURL } from "@/lib/strapi";
 
 import HomeBanner from "@/components/home/HomeBanner";
 import HomeMarketingSection from "@/components/home/HomeMarketingSection";
@@ -12,6 +12,20 @@ const HOME_SECTION_PAGE_SIZE = 10;
 /* -------------------------------------------------------------------------- */
 /*                          ✅ 读取 Home-Mid-Banner                           */
 /* -------------------------------------------------------------------------- */
+
+function absUrl(u?: string | null) {
+  if (!u) return undefined;
+  if (/^https?:\/\//i.test(u)) return u;
+
+  const base =
+    process.env.STRAPI_URL ||
+    process.env.NEXT_PUBLIC_STRAPI_URL ||
+    "http://127.0.0.1:1337";
+
+  const b = base.replace(/\/+$/, "");
+  const p = u.startsWith("/") ? u : `/${u}`;
+  return `${b}${p}`;
+}
 
 async function fetchHomeMidBannerImages(): Promise<{
   newIn?: string;
@@ -27,19 +41,19 @@ async function fetchHomeMidBannerImages(): Promise<{
   const json: any = await api(qs, { noCache: true });
 
   const row = Array.isArray(json?.data) ? json.data[0] : null;
-  const slides: any[] = Array.isArray(row?.slides) ? row.slides : [];
+  const slidesRaw: any[] = Array.isArray(row?.slides) ? row.slides : [];
 
-  const base =
-    process.env.STRAPI_URL ||
-    process.env.NEXT_PUBLIC_STRAPI_URL ||
-    "http://127.0.0.1:1337";
+  // ✅ 按 order 排序（没填 order 的放后面）
+  const slides = [...slidesRaw].sort((a, b) => {
+    const ao = Number.isFinite(Number(a?.order)) ? Number(a.order) : 9999;
+    const bo = Number.isFinite(Number(b?.order)) ? Number(b.order) : 9999;
+    return ao - bo;
+  });
 
-  const toAbs = (u?: string) =>
-    u?.startsWith("http") ? u : `${base}${u ?? ""}`;
-
+  // ✅ 取图：优先用你 lib/strapi.ts 的 resolveMediaURL（兼容 formats）
   const getImg = (s: any) => {
-    const url = s?.image_desktop?.url;
-    return url ? toAbs(url) : undefined;
+    const rel = resolveMediaURL(s?.image_desktop, "large") || "";
+    return absUrl(rel);
   };
 
   return {
@@ -71,9 +85,9 @@ async function fetchNavTopCategories(): Promise<
     .map((r) => {
       const a = r?.attributes ?? r ?? {};
       return {
-        slug: String(a?.slug ?? ""),
-        title: String(a?.name ?? ""),
-        documentId: String(a?.documentId ?? ""),
+        slug: String(a?.slug ?? "").trim(),
+        title: String(a?.name ?? "").trim(),
+        documentId: String(a?.documentId ?? "").trim(),
       };
     })
     .filter((x) => x.slug && x.documentId);
@@ -117,7 +131,10 @@ export default async function HomePage() {
             eyebrow: "NEW IN",
             ctaLabel: "Shop now",
             href: "/category/new-in",
+
+            // ✅ 只传 bgImageUrl（不要再传 image，避免叠图）
             bgImageUrl: midImages.newIn,
+
             textOn: "auto",
             overlay: "strong",
             align: "left",
@@ -129,7 +146,10 @@ export default async function HomePage() {
             eyebrow: "ON SALE",
             ctaLabel: "Shop now",
             href: "/category/on-sale",
+
+            // ✅ 只传 bgImageUrl
             bgImageUrl: midImages.sale,
+
             textOn: "auto",
             overlay: "strong",
             align: "left",
@@ -142,7 +162,10 @@ export default async function HomePage() {
             eyebrow: "CORE CATEGORY",
             ctaLabel: "Shop now",
             href: "/category/shoes",
+
+            // ✅ 只传 bgImageUrl
             bgImageUrl: midImages.shoes,
+
             textOn: "auto",
             overlay: "strong",
             align: "left",

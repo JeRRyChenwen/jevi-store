@@ -31,10 +31,10 @@ type Props = {
   rightBottom?: PromoTileProps;
 };
 
-function cardShellClass(hasBg: boolean) {
+function cardShellClass() {
   return [
-    "relative rounded-3xl overflow-hidden border shadow-sm hover:shadow-md transition-shadow",
-    hasBg ? "bg-neutral-900 bg-cover bg-center" : "bg-white",
+    "relative rounded-3xl overflow-hidden border bg-white",
+    "shadow-sm hover:shadow-md transition-shadow",
   ].join(" ");
 }
 
@@ -57,28 +57,14 @@ export default function HomeMarketingSection(props: Props) {
   });
 
   /**
-   * ✅ NEW：为卡片提供背景图能力
-   * - 约定：PromoTileProps 支持 bgImageUrl?: string（你后面会在 PromoTile.tsx 里加）
-   * - 有 bgImageUrl：用图片做底 + overlay（保证文字可读）
-   * - 无 bgImageUrl：保持白底不变
+   * ✅ 关键修复：不要在外层再做 background-image
+   * 只让 PromoTile 自己渲染背景图（避免“双层图”）
    */
   const renderCard = (p: PromoTileProps, heightClassName: string) => {
-    const bg = (p as any)?.bgImageUrl as string | undefined;
-    const hasBg = !!bg;
-
     return (
-      <div
-        className={cardShellClass(hasBg)}
-        style={hasBg ? { backgroundImage: `url(${bg})` } : undefined}
-      >
-        {/* ✅ overlay：有背景图时才加，避免文字看不清 */}
-        {hasBg ? (
-          <div className="absolute inset-0 bg-black/35" />
-        ) : null}
-
-        {/* 内容层 */}
-        <div className={["relative z-10", heightClassName].join(" ")}>
-          <PromoTile {...asButtonOnly(p)} />
+      <div className={cardShellClass()}>
+        <div className={["relative", heightClassName].join(" ")}>
+          <PromoTile {...asButtonOnly(p)} className="h-full w-full rounded-none" />
         </div>
       </div>
     );
