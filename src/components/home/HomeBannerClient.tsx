@@ -31,61 +31,92 @@ function mod(n: number, m: number) {
   return ((n % m) + m) % m;
 }
 
-export default function HomeHeroCarouselClient({
+export default function HomeBannerClient({
   banners,
   intervalMs = 8000,
   heightClassName = "h-[320px] sm:h-[380px] md:h-[460px] lg:h-[520px]",
   transitionMs = 650,
-  swipeThreshold: swipeThresholdProp = 0.18,
-  transitionThreshold,
 }: Props) {
-  const swipeThreshold = transitionThreshold ?? swipeThresholdProp;
-
   const slides = useMemo(() => (banners ?? []).filter(Boolean), [banners]);
   const count = slides.length;
 
   const reducedMotion = usePrefersReducedMotion();
 
+  // loop: [last, ...slides, first]
   const loopSlides = useMemo(() => {
     if (count <= 1) return slides;
-    const first = slides[0];
-    const last = slides[count - 1];
-    return [last, ...slides, first];
+    return [slides[count - 1], ...slides, slides[0]];
   }, [slides, count]);
 
+  // idx 是 loop 索引：1..count 对应真实 slides 0..count-1
   const [idx, setIdx] = useState(count > 1 ? 1 : 0);
   const [enableTransition, setEnableTransition] = useState(true);
 
   const [paused, setPaused] = useState(false);
 
-  // 拖动相关
-  const [dragging, setDragging] = useState(false);
-  const [dragDx, setDragDx] = useState(0);
-  const startXRef = useRef<number | null>(null);
+  // ✅ 手动操作后暂停自动轮播（ms）
+  const manualPauseMs = 12000;
 
+  // ✅ 用 ref 让“暂停”立刻生效（避免 scheduleAutoNext 读到旧 state）
+  const manualPauseUntilRef = useRef(0);
+  const [manualPauseUntil, setManualPauseUntil] = useState(0);
+
+  // 容器尺寸
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerW, setContainerW] = useState(0);
 
-  // ✅ setTimeout（一次性）实现：可暂停 + 重置计时
-  const autoTimerRef = useRef<number | null>(null);
+  // ✅ 动画锁：防止狂点导致 idx 乱套/越界
+  const isAnimatingRef = useRef(false);
+  const lock = () => (isAnimatingRef.current = true);
+  const unlock = () => (isAnimatingRef.current = false);
 
-  const canAutoPlay = count > 1 && !reducedMotion && !paused;
+  // autoplay：一次性 setTimeout（便于重置）
+  const autoTimerRef = useRef<number | null>(null);
 
   const clearAutoTimer = () => {
     if (autoTimerRef.current) window.clearTimeout(autoTimerRef.current);
     autoTimerRef.current = null;
   };
 
+  const pauseAutoForManual = () => {
+    const until = Date.now() + manualPauseMs;
+    manualPauseUntilRef.current = until;
+    setManualPauseUntil(until);
+    clearAutoTimer();
+  };
+
+  // 到点自动恢复（只负责把 state/ref 拉回）
+  useEffect(() => {
+    if (manualPauseUntil <= 0) return;
+    const left = manualPauseUntil - Date.now();
+    if (left <= 0) return;
+
+    const t = window.setTimeout(() => {
+      manualPauseUntilRef.current = 0;
+      setManualPauseUntil(0);
+    }, left);
+
+    return () => window.clearTimeout(t);
+  }, [manualPauseUntil]);
+
   const scheduleAutoNext = () => {
-    if (!canAutoPlay) return;
+    // ✅ 这里不要依赖闭包里的 canAutoPlay（可能是旧值），而是当场重新算
+    const isManualPausedNow = manualPauseUntilRef.current > Date.now();
+    const canAutoPlayNow =
+      count > 1 && !reducedMotion && !paused && !isManualPausedNow;
+
+    if (!canAutoPlayNow) return;
+
     clearAutoTimer();
     autoTimerRef.current = window.setTimeout(() => {
+      if (isAnimatingRef.current) return;
+      lock();
       setEnableTransition(true);
       setIdx((p) => p + 1);
     }, intervalMs);
   };
 
-  // 容器宽度
+  // ✅ 容器宽度（px）
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -100,64 +131,30 @@ export default function HomeHeroCarouselClient({
 
   // banners 改变时重置
   useEffect(() => {
+    unlock();
     setEnableTransition(false);
     setIdx(count > 1 ? 1 : 0);
     requestAnimationFrame(() => setEnableTransition(true));
   }, [count]);
 
-  // ✅ autoplay：只要 idx/paused/canAutoPlay 变化，就重新计时
+  // autoplay：idx / paused / interval / manualPause 变化就重置计时
   useEffect(() => {
-    if (!canAutoPlay) {
-      clearAutoTimer();
-      return;
-    }
+    clearAutoTimer();
     scheduleAutoNext();
     return () => clearAutoTimer();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canAutoPlay, idx, intervalMs]);
+  }, [idx, paused, intervalMs, reducedMotion, count, manualPauseUntil]);
 
   if (count === 0) return null;
 
   const realIndex = count <= 1 ? 0 : mod(idx - 1, count);
 
-  // ✅ 预加载：当前/前/后 真实 index
-  const prevReal = count <= 1 ? 0 : mod(realIndex - 1, count);
-  const nextReal = count <= 1 ? 0 : mod(realIndex + 1, count);
-
-  // ✅ JS 预加载相邻两张（desktop + mobile）
-  useEffect(() => {
-    if (count <= 1) return;
-
-    const urls: string[] = [];
-    const pick = (r: number) => slides[r];
-
-    for (const r of [prevReal, realIndex, nextReal]) {
-      const s = pick(r);
-      if (!s) continue;
-      if (s.image_desktop_url) urls.push(s.image_desktop_url);
-      if (s.image_mobile_url) urls.push(s.image_mobile_url);
-    }
-
-    const imgs: HTMLImageElement[] = [];
-    for (const u of urls) {
-      const img = new Image();
-      img.decoding = "async";
-      img.src = u;
-      imgs.push(img);
-    }
-
-    // 不需要清理也行；这里留着以免极端情况占用太多
-    return () => {
-      imgs.forEach((img) => {
-        // 释放引用
-        // @ts-ignore
-        img.src = "";
-      });
-    };
-  }, [count, slides, realIndex, prevReal, nextReal]);
-
   const goReal = (real: number) => {
     if (count <= 1) return;
+    if (isAnimatingRef.current) return;
+
+    pauseAutoForManual();
+    lock();
     setEnableTransition(true);
     setIdx(real + 1);
     scheduleAutoNext();
@@ -165,270 +162,319 @@ export default function HomeHeroCarouselClient({
 
   const prev = () => {
     if (count <= 1) return;
+    if (isAnimatingRef.current) return;
 
-    setIdx((p) => {
-      const nextIdx = p - 1;
-      if (nextIdx < 0) {
-        setEnableTransition(false);
-        requestAnimationFrame(() => setEnableTransition(true));
-        return count;
-      }
-      setEnableTransition(true);
-      return nextIdx;
-    });
-
+    pauseAutoForManual();
+    lock();
+    setEnableTransition(true);
+    setIdx((p) => p - 1);
     scheduleAutoNext();
   };
 
   const next = () => {
     if (count <= 1) return;
+    if (isAnimatingRef.current) return;
 
-    setIdx((p) => {
-      const nextIdx = p + 1;
-      if (nextIdx > count + 1) {
-        setEnableTransition(false);
-        requestAnimationFrame(() => setEnableTransition(true));
-        return 1;
-      }
-      setEnableTransition(true);
-      return nextIdx;
-    });
-
+    pauseAutoForManual();
+    lock();
+    setEnableTransition(true);
+    setIdx((p) => p + 1);
     scheduleAutoNext();
+  };
+
+  // ✅ 关键修复：clone -> 真图 的 snap 必须“无动画瞬移”
+  // 用双 requestAnimationFrame 确保：
+  // 1) transition 先关闭并落地
+  // 2) idx 再改变（瞬移）
+  // 3) transition 再打开
+  const snapTo = (targetIdx: number) => {
+    setEnableTransition(false);
+    requestAnimationFrame(() => {
+      setIdx(targetIdx);
+      requestAnimationFrame(() => {
+        setEnableTransition(true);
+        unlock();
+      });
+    });
   };
 
   const onTransitionEnd = () => {
     if (count <= 1) return;
 
+    // 到了最左 clone（idx=0） => 瞬移到真实最后一张（idx=count）
     if (idx === 0) {
-      setEnableTransition(false);
-      setIdx(count);
-      requestAnimationFrame(() => setEnableTransition(true));
+      snapTo(count);
       return;
     }
+
+    // 到了最右 clone（idx=count+1） => 瞬移到真实第一张（idx=1）
     if (idx === count + 1) {
-      setEnableTransition(false);
-      setIdx(1);
-      requestAnimationFrame(() => setEnableTransition(true));
+      snapTo(1);
       return;
     }
+
+    unlock();
   };
 
-  // ✅ 兜底：transitionend 丢失也强制拉回
+  // ✅ 额外兜底：极端情况下 idx 越界，立刻拉回（防白屏）
   useEffect(() => {
     if (count <= 1) return;
 
     if (idx < 0) {
-      setEnableTransition(false);
-      setIdx(count);
-      requestAnimationFrame(() => setEnableTransition(true));
+      snapTo(count);
       return;
     }
     if (idx > count + 1) {
-      setEnableTransition(false);
-      setIdx(1);
-      requestAnimationFrame(() => setEnableTransition(true));
+      snapTo(1);
       return;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx, count]);
 
-  // ===== 拖动 =====
-  const onPointerDown = (e: React.PointerEvent) => {
-    if (count <= 1) return;
-    if (e.pointerType === "mouse" && e.button !== 0) return;
-
-    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-
-    clearAutoTimer();
-
-    setDragging(true);
-    setEnableTransition(false);
-    setDragDx(0);
-    startXRef.current = e.clientX;
-  };
-
-  const onPointerMove = (e: React.PointerEvent) => {
-    if (!dragging) return;
-    const startX = startXRef.current;
-    if (startX == null) return;
-    setDragDx(e.clientX - startX);
-  };
-
-  const endDrag = () => {
-    if (!dragging) return;
-    setDragging(false);
-
-    const w = containerW || containerRef.current?.clientWidth || 0;
-    const dx = dragDx;
-
-    setDragDx(0);
-    startXRef.current = null;
-
-    setEnableTransition(true);
-
-    if (w) {
-      const ratio = Math.abs(dx) / w;
-      if (ratio >= swipeThreshold) {
-        if (dx < 0) next();
-        else prev();
-        return;
-      }
-    }
-
-    scheduleAutoNext();
-  };
-
+  // ✅ 轨道位移：用 px 绝对稳定
   const basePx = -(idx * (containerW || 0));
   const trackStyle: React.CSSProperties = {
-    transform: `translate3d(${basePx + dragDx}px, 0, 0)`,
+    transform: `translate3d(${basePx}px, 0, 0)`,
     transition:
-      dragging || reducedMotion || !enableTransition
+      reducedMotion || !enableTransition
         ? "none"
         : `transform ${transitionMs}ms ease`,
     willChange: "transform",
   };
 
-  // ✅ 让“正在看的 + 相邻两张”更积极加载（避免拖动半途空白）
-  const isNearLoopIndex = (i: number) => {
-    if (count <= 1) return true;
-    // loop 索引：真实 realIndex 对应 loop idx = realIndex + 1
-    const cur = realIndex + 1;
-    return i === cur || i === cur - 1 || i === cur + 1;
-  };
+  // 进度条：每次 realIndex 或 paused 变化，重置动画
+  const progressKey = `${realIndex}-${paused ? "p" : "r"}`;
 
   return (
     <section className="w-full">
-      <div
-        ref={containerRef}
-        className={[
-          "relative overflow-hidden rounded-3xl border bg-white shadow-sm",
-          "ring-1 ring-black/5",
-          heightClassName,
-          "select-none",
-        ].join(" ")}
-        onMouseEnter={() => {
-          setPaused(true);
-          clearAutoTimer();
-        }}
-        onMouseLeave={() => {
-          setPaused(false);
-          scheduleAutoNext();
-        }}
-        onFocus={() => {
-          setPaused(true);
-          clearAutoTimer();
-        }}
-        onBlur={() => {
-          setPaused(false);
-          scheduleAutoNext();
-        }}
-      >
-        <div
-          className="absolute inset-0"
-          style={{ touchAction: "pan-y" }}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={endDrag}
-          onPointerCancel={endDrag}
-          onPointerLeave={() => {
-            if (dragging) endDrag();
-          }}
-          aria-label="Home hero carousel"
-          role="region"
-        >
+      <div className="w-full">
+        <div className="mx-auto flex w-full items-center gap-3">
+          {/* 左箭头：图片之外，浅灰 */}
+          {count > 1 ? (
+            <button
+              type="button"
+              aria-label="Previous banner"
+              onClick={prev}
+              className={[
+                "hidden sm:inline-flex",
+                "h-10 w-10 items-center justify-center",
+                "rounded-full border border-neutral-200 bg-white/80",
+                "text-neutral-500 hover:text-neutral-700 hover:bg-white",
+                "shadow-sm",
+              ].join(" ")}
+            >
+              <span className="text-xl leading-none">‹</span>
+            </button>
+          ) : (
+            <div className="hidden sm:block w-10" />
+          )}
+
+          {/* 图片容器 */}
           <div
-            className="flex h-full w-full"
-            style={trackStyle}
-            onTransitionEnd={onTransitionEnd}
+            ref={containerRef}
+            className={[
+              "relative flex-1 overflow-hidden rounded-3xl border bg-white shadow-sm",
+              "ring-1 ring-black/5",
+              heightClassName,
+              "select-none",
+            ].join(" ")}
+            onMouseEnter={() => {
+              setPaused(true);
+              clearAutoTimer();
+            }}
+            onMouseLeave={() => {
+              setPaused(false);
+              scheduleAutoNext();
+            }}
+            onFocus={() => {
+              setPaused(true);
+              clearAutoTimer();
+            }}
+            onBlur={() => {
+              setPaused(false);
+              scheduleAutoNext();
+            }}
+            aria-label="Home hero carousel"
+            role="region"
           >
-            {loopSlides.map((s, i) => (
-              <div
-                key={`${s.documentId || "x"}-${i}`}
-                className="relative h-full w-full shrink-0 bg-neutral-100" // ✅ 就算图片没到，也不是白屏
-              >
-                <picture>
-                  {s.image_mobile_url ? (
-                    <source media="(max-width: 640px)" srcSet={s.image_mobile_url} />
-                  ) : null}
-                  <img
-                    src={s.image_desktop_url}
-                    alt={s.title || "Banner"}
-                    className="h-full w-full object-cover object-bottom"
-                    // ✅ 当前/相邻：eager；其它：lazy
-                    loading={isNearLoopIndex(i) ? "eager" : "lazy"}
-                    decoding="async"
-                    // @ts-ignore - 某些 TS 版本不认识这个属性，但浏览器支持
-                    fetchPriority={isNearLoopIndex(i) ? "high" : "auto"}
-                    draggable={false}
-                  />
-                </picture>
+            {/* 轨道 */}
+            <div
+              className="absolute inset-0 flex h-full"
+              style={trackStyle}
+              onTransitionEnd={onTransitionEnd}
+            >
+              {loopSlides.map((s, i) => (
+                <div
+                  key={`${s.documentId || "x"}-${i}`}
+                  className="relative h-full basis-full shrink-0 bg-neutral-100"
+                >
+                  <picture>
+                    {s.image_mobile_url ? (
+                      <source
+                        media="(max-width: 640px)"
+                        srcSet={s.image_mobile_url}
+                      />
+                    ) : null}
+                    <img
+                      src={s.image_desktop_url}
+                      alt={s.title || "Banner"}
+                      className="h-full w-full object-cover object-bottom"
+                      loading={i === idx ? "eager" : "lazy"}
+                      decoding="async"
+                      draggable={false}
+                    />
+                  </picture>
 
-                <div className="absolute inset-0 bg-white/0" />
+                  <div className="absolute inset-0 bg-white/0" />
 
-                {count > 1 ? (
-                  i === idx ? (
-                    <div className="absolute inset-0 z-10 h-full w-full px-5 sm:px-8">
-                      <div className="h-full flex items-end pb-8 sm:pb-10">
-                        <div className="max-w-[680px]">
-                          {s.title ? (
-                            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-neutral-900">
-                              {s.title}
-                            </h2>
-                          ) : null}
+                  {/* 内容层：只在当前 idx 显示 */}
+                  {count > 1 ? (
+                    i === idx ? (
+                      <div className="absolute inset-0 z-10 h-full w-full px-5 sm:px-8">
+                        <div className="h-full flex items-end pb-8 sm:pb-10">
+                          <div className="max-w-[680px]">
+                            {s.title ? (
+                              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-neutral-900">
+                                {s.title}
+                              </h2>
+                            ) : null}
 
-                          {s.subtitle ? (
-                            <p className="mt-2 text-sm sm:text-base text-neutral-700">
-                              {s.subtitle}
-                            </p>
-                          ) : null}
+                            {s.subtitle ? (
+                              <p className="mt-2 text-sm sm:text-base text-neutral-700">
+                                {s.subtitle}
+                              </p>
+                            ) : null}
 
-                          {s.cta_href && s.cta_href !== "#" ? (
-                            <div className="mt-4">
-                              <Link
-                                href={s.cta_href}
-                                className="inline-flex items-center gap-2 rounded-full bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-transform hover:-translate-y-0.5"
-                                aria-label={s.cta_label || "Shop now"}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  scheduleAutoNext();
-                                }}
-                              >
-                                {s.cta_label || "Shop now"}
-                                <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" className="opacity-90">
-                                  <path
-                                    fill="currentColor"
-                                    d="M13.172 12l-4.95-4.95 1.414-1.414L16 12l-6.364 6.364-1.414-1.414z"
-                                  />
-                                </svg>
-                              </Link>
-                            </div>
-                          ) : null}
+                            {s.cta_href && s.cta_href !== "#" ? (
+                              <div className="mt-4">
+                                <Link
+                                  href={s.cta_href}
+                                  className="inline-flex items-center gap-2 rounded-full bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-transform hover:-translate-y-0.5"
+                                  aria-label={s.cta_label || "Shop now"}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    // ✅ CTA 也算用户主动操作：暂停 autoplay，避免突兀跳走
+                                    pauseAutoForManual();
+                                  }}
+                                >
+                                  {s.cta_label || "Shop now"}
+                                  <svg
+                                    width="16"
+                                    height="16"
+                                    viewBox="0 0 24 24"
+                                    aria-hidden="true"
+                                    className="opacity-90"
+                                  >
+                                    <path
+                                      fill="currentColor"
+                                      d="M13.172 12l-4.95-4.95 1.414-1.414L16 12l-6.364 6.364-1.414-1.414z"
+                                    />
+                                  </svg>
+                                </Link>
+                              </div>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ) : null
-                ) : null}
+                    ) : null
+                  ) : null}
+                </div>
+              ))}
+            </div>
+
+            {/* 底部控制条 */}
+            {count > 1 ? (
+              <div className="absolute bottom-3 left-0 right-0 z-20 flex justify-center px-4">
+                <div className="rounded-full bg-white/70 backdrop-blur-md ring-1 ring-black/10 shadow-sm px-4 py-2">
+                  {/* 进度条 */}
+                  <div className="flex items-center justify-center gap-2">
+                    {slides.map((_, i) => {
+                      const active = i === realIndex;
+                      return (
+                        <button
+                          key={`bar-${slides[i].documentId || i}`}
+                          type="button"
+                          aria-label={`Go to banner ${i + 1}`}
+                          onClick={() => goReal(i)}
+                          className="group relative h-2 w-10 rounded-full bg-black/10 overflow-hidden"
+                        >
+                          {active ? (
+                            <span
+                              key={progressKey}
+                              className="absolute left-0 top-0 h-full w-full origin-left scale-x-0 bg-neutral-900/70"
+                              style={{
+                                animation:
+                                  paused || reducedMotion
+                                    ? "none"
+                                    : `heroProgress ${intervalMs}ms linear forwards`,
+                              }}
+                            />
+                          ) : null}
+                          <span className="absolute inset-0 ring-1 ring-transparent group-hover:ring-black/10 rounded-full" />
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* dots：更大命中面积 */}
+                  <div className="mt-2 flex justify-center gap-2">
+                    {slides.map((_, i) => (
+                      <button
+                        key={slides[i].documentId || String(i)}
+                        type="button"
+                        aria-label={`Go to banner ${i + 1}`}
+                        onClick={() => goReal(i)}
+                        className={[
+                          "h-7 w-7 grid place-items-center rounded-full",
+                          "transition-colors",
+                          i === realIndex ? "bg-neutral-900/10" : "hover:bg-black/5",
+                        ].join(" ")}
+                      >
+                        <span
+                          className={[
+                            "block h-3 w-3 rounded-full ring-1 ring-black/10",
+                            i === realIndex ? "bg-neutral-900" : "bg-white",
+                          ].join(" ")}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
-            ))}
+            ) : null}
           </div>
+
+          {/* 右箭头：图片之外，浅灰 */}
+          {count > 1 ? (
+            <button
+              type="button"
+              aria-label="Next banner"
+              onClick={next}
+              className={[
+                "hidden sm:inline-flex",
+                "h-10 w-10 items-center justify-center",
+                "rounded-full border border-neutral-200 bg-white/80",
+                "text-neutral-500 hover:text-neutral-700 hover:bg-white",
+                "shadow-sm",
+              ].join(" ")}
+            >
+              <span className="text-xl leading-none">›</span>
+            </button>
+          ) : (
+            <div className="hidden sm:block w-10" />
+          )}
         </div>
 
-        {count > 1 ? (
-          <div className="absolute bottom-3 left-0 right-0 z-20 flex justify-center gap-2">
-            {slides.map((_, i) => (
-              <button
-                key={slides[i].documentId || String(i)}
-                type="button"
-                aria-label={`Go to banner ${i + 1}`}
-                onClick={() => goReal(i)}
-                className={[
-                  "h-2.5 w-2.5 rounded-full ring-1 ring-black/10",
-                  i === realIndex ? "bg-neutral-900" : "bg-white/90 hover:bg-white",
-                ].join(" ")}
-              />
-            ))}
-          </div>
-        ) : null}
+        <style jsx>{`
+          @keyframes heroProgress {
+            from {
+              transform: scaleX(0);
+            }
+            to {
+              transform: scaleX(1);
+            }
+          }
+        `}</style>
       </div>
     </section>
   );
