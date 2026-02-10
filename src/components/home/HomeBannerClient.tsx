@@ -59,6 +59,7 @@ export default function HomeBannerClient({
   const isManualPausedNow = () => Date.now() < manualPauseUntilRef.current;
 
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const trackRef = useRef<HTMLDivElement | null>(null); // ✅ NEW
   const [containerW, setContainerW] = useState(0);
 
   // 动画锁：防止狂点导致 idx 越界
@@ -69,7 +70,7 @@ export default function HomeBannerClient({
   // autoplay timer
   const autoTimerRef = useRef<number | null>(null);
 
-  // ✅ 新增：autoplay token（版本号）+ 最近一次用户动作时间
+  // ✅ autoplay token（版本号）+ 最近一次用户动作时间
   const autoTokenRef = useRef(0);
   const lastUserActionAtRef = useRef(0);
 
@@ -106,25 +107,20 @@ export default function HomeBannerClient({
     return () => window.clearTimeout(t);
   }, [manualPauseUntil]);
 
-  const canAutoPlay = count > 1 && !reducedMotion && !paused && !isManualPausedNow();
+  const canAutoPlay =
+    count > 1 && !reducedMotion && !paused && !isManualPausedNow();
 
   const scheduleAutoNext = () => {
     if (!canAutoPlay) return;
 
-    // ✅ 每次 schedule 生成一个 token
     const token = ++autoTokenRef.current;
 
     clearAutoTimer();
     autoTimerRef.current = window.setTimeout(() => {
-      // ✅ 1) token 不一致：说明中途用户点击/暂停过，这个 callback 作废
       if (token !== autoTokenRef.current) return;
-
-      // ✅ 2) 仍处于手动暂停/hover 暂停/动画中：直接不动
       if (isManualPausedNow()) return;
       if (paused) return;
       if (isAnimatingRef.current) return;
-
-      // ✅ 3) 防止“刚点击完的瞬间”又自动触发（再加一道保险）
       if (Date.now() - lastUserActionAtRef.current < transitionMs + 80) return;
 
       lock();
@@ -152,12 +148,12 @@ export default function HomeBannerClient({
     setEnableTransition(false);
     setIdx(count > 1 ? 1 : 0);
 
-    // ✅ 重置暂停与 autoplay
     setManualPauseUntil(0);
     manualPauseUntilRef.current = 0;
     invalidateAutoPlay();
 
     requestAnimationFrame(() => setEnableTransition(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [count]);
 
   // autoplay：idx / paused / interval 变化就重置计时
@@ -205,27 +201,47 @@ export default function HomeBannerClient({
     setIdx((p) => p + 1);
   };
 
-  const onTransitionEnd = () => {
+  // ✅ 关键修复：只处理轨道自身 transitionend + 回跳用 reflow + 双 rAF
+  const onTransitionEnd = (
+    e: React.TransitionEvent<HTMLDivElement>
+  ) => {
     if (count <= 1) return;
+
+    // ✅ 防止冒泡/子元素触发导致执行两次
+    if (e.target !== e.currentTarget) return;
 
     // 到了最左 clone（idx=0） => 瞬间跳到真实最后一张（idx=count）
     if (idx === 0) {
+      invalidateAutoPlay();
       setEnableTransition(false);
-      setIdx(count);
+
       requestAnimationFrame(() => {
-        setEnableTransition(true);
-        unlock();
+        const el = trackRef.current;
+        if (el) el.getBoundingClientRect(); // force reflow
+        setIdx(count);
+
+        requestAnimationFrame(() => {
+          setEnableTransition(true);
+          unlock();
+        });
       });
       return;
     }
 
     // 到了最右 clone（idx=count+1） => 瞬间跳到真实第一张（idx=1）
     if (idx === count + 1) {
+      invalidateAutoPlay();
       setEnableTransition(false);
-      setIdx(1);
+
       requestAnimationFrame(() => {
-        setEnableTransition(true);
-        unlock();
+        const el = trackRef.current;
+        if (el) el.getBoundingClientRect(); // force reflow
+        setIdx(1);
+
+        requestAnimationFrame(() => {
+          setEnableTransition(true);
+          unlock();
+        });
       });
       return;
     }
@@ -237,16 +253,19 @@ export default function HomeBannerClient({
   useEffect(() => {
     if (count <= 1) return;
     if (idx < 0) {
+      invalidateAutoPlay();
       setEnableTransition(false);
       setIdx(count);
       requestAnimationFrame(() => setEnableTransition(true));
       unlock();
     } else if (idx > count + 1) {
+      invalidateAutoPlay();
       setEnableTransition(false);
       setIdx(1);
       requestAnimationFrame(() => setEnableTransition(true));
       unlock();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx, count]);
 
   // 轨道位移：用 px 绝对稳定
@@ -254,7 +273,9 @@ export default function HomeBannerClient({
   const trackStyle: React.CSSProperties = {
     transform: `translate3d(${basePx}px, 0, 0)`,
     transition:
-      reducedMotion || !enableTransition ? "none" : `transform ${transitionMs}ms ease`,
+      reducedMotion || !enableTransition
+        ? "none"
+        : `transform ${transitionMs}ms ease`,
     willChange: "transform",
   };
 
@@ -293,6 +314,7 @@ export default function HomeBannerClient({
             role="region"
           >
             <div
+              ref={trackRef}
               className="absolute inset-0 flex h-full"
               style={trackStyle}
               onTransitionEnd={onTransitionEnd}
@@ -304,7 +326,10 @@ export default function HomeBannerClient({
                 >
                   <picture>
                     {s.image_mobile_url ? (
-                      <source media="(max-width: 640px)" srcSet={s.image_mobile_url} />
+                      <source
+                        media="(max-width: 640px)"
+                        srcSet={s.image_mobile_url}
+                      />
                     ) : null}
                     <img
                       src={s.image_desktop_url}
@@ -453,7 +478,9 @@ export default function HomeBannerClient({
                     className={[
                       "h-7 w-7 grid place-items-center rounded-full",
                       "transition-colors",
-                      i === realIndex ? "bg-neutral-900/10" : "hover:bg-black/5",
+                      i === realIndex
+                        ? "bg-neutral-900/10"
+                        : "hover:bg-black/5",
                     ].join(" ")}
                   >
                     <span
