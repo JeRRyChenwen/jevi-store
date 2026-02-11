@@ -997,8 +997,24 @@ terms and conditions
 
 ================================================
 
+privacy，注册条款，网站footer条款
+
+ios
+
 客户真的下单之后，要怎么通知供货商
 
 邮件+物流track
 
 3大区域做成strapi的内容
+
+delivery tracking email
+
+================================================
+
+注册账号成功页要发email
+
+delivery发送到不同的地区所需要的时间也不一样，要把不同的时间写到数据库中
+
+return功能需要再做检查，一个item一个item的检查
+
+order confirmation 对应的图片
