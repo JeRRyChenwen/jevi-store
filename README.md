@@ -1009,6 +1009,8 @@ ios
 
 delivery tracking email
 
+order confirmation 对应的图片
+
 ================================================
 
 注册账号成功页要发email
@@ -1017,4 +1019,8 @@ delivery发送到不同的地区所需要的时间也不一样，要把不同的
 
 return功能需要再做检查，一个item一个item的检查
 
-order confirmation 对应的图片
+怎么stock不减少了
+
+退货的时候可以让顾客提交图片
+
+stock为0的时候不能交易

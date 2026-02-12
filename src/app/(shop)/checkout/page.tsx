@@ -25,6 +25,7 @@ import {
 import { Alert } from "@/components/ui/alert";
 import { useFormAlert } from "@/hooks/useFormAlert";
 import { coerceCountryCode } from "@/lib/country";
+import { mediaUrl } from "@/lib/strapi";
 
 /* ---------------- 常量 ---------------- */
 const LS_ADDRESS_KEY = "sp.checkout.address";
@@ -214,14 +215,19 @@ async function sendOrderToServer(args: {
   taxMinor?: number;
   grandMinor: number;
 
-  // 💳 通用支付结果（PayPal / Braintree）
   payment: any;
   paymentProvider?: "paypal" | "braintree";
 
   deliveryMethod?: "standard" | "express";
   billingAddress?: Address | null;
   sameAsDelivery?: boolean;
-}): Promise<{ ok: boolean; order?: { id: number; order_number: string | null } }> {
+}): Promise<{
+  ok: boolean;
+  order?: { id: number; order_number: string | null };
+  status?: number;
+  error?: string;
+  detail?: any;
+}> {
   try {
     const target = "/api/orders";
 
@@ -311,6 +317,24 @@ async function sendOrderToServer(args: {
 
       const variant_title = parts.length ? parts.join(" | ") : null;
 
+      // ===============================
+      // ✅ NEW: 商品图片（给邮件用）——生成绝对 URL
+      // ===============================
+      // 尽量从 cart item 里找“图片源”（你可以按你 cart 结构再扩展）
+      const rawImage =
+        it?.image ??
+        it?.img ??
+        it?.attrs?.image ??
+        it?.attrs?.thumbnail ??
+        it?.attrs?.cover ??
+        it?.attrs?.images?.[0] ?? // 有些项目会把图片数组放这里
+        it?.images?.[0] ??
+        null;
+
+      // 关键：把它变成“可用于邮件的绝对 URL”
+      // ⚠️ 你需要确保 mediaUrl(rawImage) 返回的是公网可访问的 https URL
+      const image_url = rawImage ? mediaUrl(rawImage) : null;
+
       return {
         product_id: it?.product_id ?? it?.id ?? null,
         product_sku:
@@ -336,9 +360,16 @@ async function sendOrderToServer(args: {
         discount_minor: 0,
         tax_minor: 0,
         heightIncreaseCm,
+
         snapshot: {
           slug: it?.slug ?? null,
-          image: it?.image || it?.img || null,
+
+          // 旧字段保留（兼容/调试）
+          image: rawImage,
+
+          // ✅ NEW：邮件端优先用这个字段
+          image_url,
+
           attrs: {
             ...(it?.attrs || {}),
             color: color ?? null,
@@ -531,13 +562,25 @@ async function sendOrderToServer(args: {
     }
 
     console.warn("[orders] server error:", { status: res.status, data, text });
-    return { ok: false };
-  } catch (e) {
-    console.warn("[orders] persist error:", e);
-    return { ok: false };
-  }
-}
 
+
+    // ✅ 把后端错误透传给上层（尤其是 409 out_of_stock）
+    return {
+      ok: false,
+      status: res.status,
+      error: data?.error || null,
+      detail: data?.detail || null,
+    };
+    } catch (e: any) {
+      console.warn("[orders] persist error:", e);
+      return {
+        ok: false,
+        status: 0,
+        error: "network_error",
+        detail: String(e?.message || e),
+      };
+    }
+  }
 
 /* ---------------- Page ---------------- */
 export default function CheckoutPage() {
@@ -603,6 +646,7 @@ export default function CheckoutPage() {
 
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>("standard");
   const [isPayProcessing, setIsPayProcessing] = useState(false);
+  const [payPersistErrMsg, setPayPersistErrMsg] = useState<string | null>(null);
 
   const initialStepFromURL = (() => {
     const s = searchParams.get("step");
@@ -616,6 +660,9 @@ export default function CheckoutPage() {
     p.set("step", next);
     router.replace(`${pathname}?${p.toString()}`, { scroll: false });
     setContinueErrMsg(null);
+
+    // ✅ 清掉 payment persist 错误提示（避免残留）
+    if (next !== "payment") setPayPersistErrMsg(null);
   };
 
   useEffect(() => {
@@ -986,6 +1033,7 @@ export default function CheckoutPage() {
 
   const handlePaySucceeded = async (payload?: any) => {
     console.log("[checkout] handlePaySucceeded() payload =", payload);
+    setPayPersistErrMsg(null);
 
     setIsPayProcessing(true);
     let orderId: number | null = null;
@@ -1070,12 +1118,36 @@ export default function CheckoutPage() {
 
       console.log("[checkout] sendOrderToServer result =", persist);
 
+
+      // ✅ 如果后端拒单（比如 409 out_of_stock），前端必须提示用户，并停止跳转/清空购物车
+      if (!persist.ok) {
+        if (persist.status === 409 && persist.error === "out_of_stock") {
+          setPayPersistErrMsg(
+            "Sorry — this item has just gone out of stock while you were checking out. Please go back to your bag, refresh, and try again."
+          );
+          setIsPayProcessing(false);
+          return;
+        }
+
+        // 其他错误（500 / 网络错误等）
+        setPayPersistErrMsg(
+          "We couldn’t finalize your order right now. Please try again. If you were charged, contact support."
+        );
+        setIsPayProcessing(false);
+        return;
+      }
+
       if (persist.ok && persist.order) {
         orderId = persist.order.id ?? null;
         orderNumber = persist.order.order_number ?? null;
       }
     } catch (e) {
-      console.warn("[checkout] /orders persist failed (will continue to confirmation)", e);
+      console.warn("[checkout] /orders persist failed", e);
+      setPayPersistErrMsg(
+        "We couldn’t finalize your order right now. Please try again. If you were charged, contact support."
+      );
+      setIsPayProcessing(false);
+      return;
     }
 
     try {
@@ -1243,6 +1315,12 @@ export default function CheckoutPage() {
               ) : null}
             </div>
           )}
+
+          {step === "payment" && payPersistErrMsg ? (
+            <div className="px-4">
+              <Alert variant={"error" as any}>{payPersistErrMsg}</Alert>
+            </div>
+          ) : null}
 
           <PaymentStep
             visible={step === "payment"}
