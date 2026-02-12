@@ -205,383 +205,6 @@ function LargeGhostButton({
   );
 }
 
-/* ========= 成功支付后把订单发送给 Worker（返回 order 对象） ========= */
-async function sendOrderToServer(args: {
-  cart: any[];
-  address: Address;
-  currency: string;
-  itemsMinor: number;
-  deliveryFeeMinor: number;
-  taxMinor?: number;
-  grandMinor: number;
-
-  payment: any;
-  paymentProvider?: "paypal" | "braintree";
-
-  deliveryMethod?: "standard" | "express";
-  billingAddress?: Address | null;
-  sameAsDelivery?: boolean;
-}): Promise<{
-  ok: boolean;
-  order?: { id: number; order_number: string | null };
-  status?: number;
-  error?: string;
-  detail?: any;
-}> {
-  try {
-    const target = "/api/orders";
-
-    console.log("[orders] sendOrderToServer() args =", {
-      cartCount: (args.cart || []).length,
-      currency: args.currency,
-      itemsMinor: args.itemsMinor,
-      deliveryFeeMinor: args.deliveryFeeMinor,
-      grandMinor: args.grandMinor,
-      payment: args.payment,
-      paymentProviderHint: args.paymentProvider,
-    });
-
-    // ① 计算每一行条目（与后端字段对齐）
-    const items = (args.cart || []).map((it: any) => {
-      // ✅ qty 先算出来（下面 lineMinor 可能需要）
-      const qty = Math.max(1, Number(it?.qty) || 1);
-
-      // ✅ NEW: 优先使用 PaymentStep/preview 里带过来的权威 minor
-      const unitMinorFromItem = Number(it?.unit_price_minor);
-      const lineMinorFromItem = Number(it?.line_total_minor);
-
-      let unitMinor: number;
-
-      if (Number.isFinite(unitMinorFromItem) && unitMinorFromItem >= 0) {
-        unitMinor = Math.round(unitMinorFromItem);
-      } else {
-        // fallback：旧逻辑
-        const recs = itemToPriceRecs(it);
-        const rec = recs.find((r) => r.currency === (args.currency as Currency));
-        unitMinor = rec ? effectiveMinor(rec) : Math.round(Number(it?.price || 0) * 100);
-      }
-
-      const lineMinor =
-        Number.isFinite(lineMinorFromItem) && lineMinorFromItem >= 0
-          ? Math.round(lineMinorFromItem)
-          : unitMinor * qty;
-
-      // -------- category slugs --------
-      const categoryRootSlug =
-        it?.category_root_slug ??
-        it?.categoryRootSlug ??
-        it?.attrs?.category_root_slug ??
-        it?.attrs?.categoryRootSlug ??
-        null;
-
-      const categoryLeafSlug =
-        it?.category_leaf_slug ??
-        it?.categoryLeafSlug ??
-        it?.attrs?.category_leaf_slug ??
-        it?.attrs?.categoryLeafSlug ??
-        null;
-
-      // product_type 仍然用 root slug（你现在的设计没问题）
-      const productType =
-        (typeof categoryRootSlug === "string" && categoryRootSlug.trim()
-          ? categoryRootSlug.trim()
-          : null) ?? "other";
-
-      // ✅ 宽松判断：只要包含 shoe（忽略大小写）就算鞋
-      const shoesKey = String(categoryRootSlug ?? productType ?? "");
-      const isShoesLike = /shoe/i.test(shoesKey);
-
-      // -------- height (only for shoes) --------
-      const hRaw =
-        it?.heightIncreaseCm ??
-        it?.heightIncrease ??
-        it?.height ??
-        it?.height_increase_cm ??
-        it?.attrs?.heightIncreaseCm ??
-        it?.attrs?.heightIncrease ??
-        it?.attrs?.height ??
-        null;
-
-      const hNum = Number(hRaw);
-      const heightForShoes = Number.isFinite(hNum) ? hNum : 0;
-
-      const heightIncreaseCm: number | null = isShoesLike ? heightForShoes : null;
-
-      const color = it?.color ?? it?.attrs?.color ?? null;
-      const size = it?.size ?? it?.attrs?.size ?? null;
-
-      const parts: string[] = [];
-      if (color) parts.push(`Color: ${String(color)}`);
-      if (size) parts.push(`Size: ${String(size)}`);
-      if (isShoesLike) parts.push(`Height: +${Number(heightIncreaseCm ?? 0)} cm`);
-
-      const variant_title = parts.length ? parts.join(" | ") : null;
-
-      // ===============================
-      // ✅ NEW: 商品图片（给邮件用）——生成绝对 URL
-      // ===============================
-      // 尽量从 cart item 里找“图片源”（你可以按你 cart 结构再扩展）
-      const rawImage =
-        it?.image ??
-        it?.img ??
-        it?.attrs?.image ??
-        it?.attrs?.thumbnail ??
-        it?.attrs?.cover ??
-        it?.attrs?.images?.[0] ?? // 有些项目会把图片数组放这里
-        it?.images?.[0] ??
-        null;
-
-      // 关键：把它变成“可用于邮件的绝对 URL”
-      // ⚠️ 你需要确保 mediaUrl(rawImage) 返回的是公网可访问的 https URL
-      const image_url = rawImage ? mediaUrl(rawImage) : null;
-
-      return {
-        product_id: it?.product_id ?? it?.id ?? null,
-        product_sku:
-          it?.product_sku ??
-          it?.variantSku ??
-          it?.variant_sku ??
-          it?.sku ??
-          null,
-        product_title: String(it?.title || it?.name || "Item"),
-        product_type: productType,
-        options: {
-          color,
-          size,
-          height_cm: heightIncreaseCm,
-          category_root_slug: categoryRootSlug,
-          category_leaf_slug: categoryLeafSlug,
-        },
-        variant_title,
-        qty,
-        currency: args.currency,
-        unit_price_minor: unitMinor,
-        line_total_minor: lineMinor,
-        discount_minor: 0,
-        tax_minor: 0,
-        heightIncreaseCm,
-
-        snapshot: {
-          slug: it?.slug ?? null,
-
-          // 旧字段保留（兼容/调试）
-          image: rawImage,
-
-          // ✅ NEW：邮件端优先用这个字段
-          image_url,
-
-          attrs: {
-            ...(it?.attrs || {}),
-            color: color ?? null,
-            size: size ?? null,
-            heightIncreaseCm: heightIncreaseCm,
-            category_root_slug: categoryRootSlug,
-            category_leaf_slug: categoryLeafSlug,
-          },
-        },
-      };
-    });
-
-    // ② 识别支付提供方 & 提取交易号 + 卡信息
-    const pay = args.payment || null;
-
-    const hinted =
-      args.paymentProvider === "paypal" || args.paymentProvider === "braintree"
-        ? args.paymentProvider
-        : pay?.provider === "paypal" || pay?.provider === "braintree"
-          ? (pay.provider as "paypal" | "braintree")
-          : null;
-
-    const isBraintree =
-      pay?.provider === "braintree" ||
-      !!pay?.transactionId ||
-      !!pay?.txnId ||
-      !!pay?.cardBrand ||
-      !!pay?.cardLast4 ||
-      pay?.payment_method === "card" ||
-      pay?.paymentMethod === "card";
-
-    const provider: "paypal" | "braintree" =
-      hinted === "paypal" || hinted === "braintree"
-        ? hinted
-        : isBraintree
-          ? "braintree"
-          : "paypal";
-
-    let provider_txn_id: string | null = null;
-    let payment_method: string | null = null;
-    let card_brand: string | null = null;
-    let card_last4: string | null = null;
-    let raw: any = pay || null;
-
-    if (provider === "braintree") {
-      provider_txn_id =
-        pay?.provider_txn_id ||
-        pay?.transactionId ||
-        pay?.txnId ||
-        pay?.id ||
-        null;
-
-      payment_method =
-        (pay?.payment_method || pay?.paymentMethod) === "card" ? "card" : "paypal";
-
-      card_brand = pay?.cardBrand ?? null;
-      card_last4 = pay?.cardLast4 ?? null;
-      raw = pay?.raw ?? pay ?? null;
-    } else {
-      const cap =
-        pay?.purchase_units?.[0]?.payments?.captures?.[0] ||
-        pay?.transaction ||
-        null;
-
-      provider_txn_id =
-        cap?.id ||
-        pay?.provider_txn_id ||
-        pay?.paypalCaptureId ||
-        pay?.id ||
-        pay?.paypalTransactionId ||
-        null;
-
-      payment_method = "paypal";
-      card_brand = null;
-      card_last4 = null;
-      raw = pay?.raw ?? pay ?? null;
-    }
-
-    console.log("[orders] normalized payment fields =", {
-      provider,
-      provider_txn_id,
-      payment_method,
-      card_brand,
-      card_last4,
-    });
-
-    // ③ 计算账单地址（只放到 meta 里）
-    const billing =
-      (args.sameAsDelivery ? args.address : args.billingAddress || args.address) || {};
-
-    const billingMeta = {
-      first_name: billing.firstName || null,
-      last_name: billing.lastName || null,
-      email: (billing.email || "").trim() || null,
-      phone: billing.phone || null,
-      line1: billing.line1 || null,
-      line2: billing.line2 || null,
-      city: billing.city || null,
-      state: billing.state || null,
-      postcode: billing.postcode || null,
-      country: billing.country || null,
-      same_as_delivery: !!args.sameAsDelivery,
-    };
-
-    // ④ 组装请求体
-    const body = {
-      email: (args.address?.email || "").trim() || "",
-      first_name: args.address?.firstName || null,
-      last_name: args.address?.lastName || null,
-      phone: args.address?.phone || null,
-      addr_line1: args.address?.line1 || null,
-      addr_line2: args.address?.line2 || null,
-      addr_city: args.address?.city || null,
-      addr_state: args.address?.state || null,
-      addr_postcode: args.address?.postcode || null,
-      addr_country: args.address?.country || null,
-
-      currency: args.currency,
-
-      items_total_minor: Number(args.itemsMinor) || 0,
-      delivery_fee_minor: Number(args.deliveryFeeMinor) || 0,
-      discount_minor: 0,
-      tax_minor: Number(args.taxMinor || 0),
-      grand_total_minor: Number(args.grandMinor) || 0,
-
-      delivery_option: args.deliveryMethod ?? "standard",
-      items,
-
-      payment: {
-        provider,
-        provider_txn_id,
-        amount_minor: Number(args.grandMinor) || 0,
-        currency: args.currency,
-        status: "captured",
-        captured_at: Math.floor(Date.now() / 1000),
-
-        payment_method,
-        card_brand,
-        card_last4,
-
-        raw,
-      },
-
-      meta: {
-        step: "payment",
-        path: "/checkout",
-        billing_address: billingMeta,
-      },
-
-      notes: null,
-    };
-
-    console.log("[orders] POST /api/orders body.payment =", body.payment);
-    console.log("[orders] POST /api/orders body.items[0] preview =", body.items?.[0]);
-    console.log("[orders] items debug height =", items.map(i => ({
-      product_title: i.product_title,
-      product_type: i.product_type,
-      height_cm: i.options?.height_cm,
-      snapshotHeight: i.snapshot?.attrs?.heightIncreaseCm,
-      variant_title: i.variant_title,
-    })));
-
-    const res = await fetch(target, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      credentials: "include",
-      keepalive: true,
-      body: JSON.stringify(body),
-    });
-
-    let data: any = null;
-    let text: string | null = null;
-    try {
-      data = await res.clone().json();
-    } catch {
-      try {
-        text = await res.text();
-      } catch {}
-    }
-
-    if (res.ok && data?.ok && data?.order && typeof data.order.id === "number") {
-      console.log("[orders] server created order =", data.order);
-      return {
-        ok: true,
-        order: {
-          id: data.order.id,
-          order_number: data.order.order_number ?? null,
-        },
-      };
-    }
-
-    console.warn("[orders] server error:", { status: res.status, data, text });
-
-
-    // ✅ 把后端错误透传给上层（尤其是 409 out_of_stock）
-    return {
-      ok: false,
-      status: res.status,
-      error: data?.error || null,
-      detail: data?.detail || null,
-    };
-    } catch (e: any) {
-      console.warn("[orders] persist error:", e);
-      return {
-        ok: false,
-        status: 0,
-        error: "network_error",
-        detail: String(e?.message || e),
-      };
-    }
-  }
-
 /* ---------------- Page ---------------- */
 export default function CheckoutPage() {
   const router = useRouter();
@@ -1032,179 +655,114 @@ export default function CheckoutPage() {
   };
 
   const handlePaySucceeded = async (payload?: any) => {
-    console.log("[checkout] handlePaySucceeded() payload =", payload);
-    setPayPersistErrMsg(null);
+  console.log("[checkout] handlePaySucceeded() payload =", payload);
+  setPayPersistErrMsg(null);
 
-    setIsPayProcessing(true);
-    let orderId: number | null = null;
-    let orderNumber: string | null = null;
+  setIsPayProcessing(true);
 
-    // ✅ NEW: PaymentStep 可能传来权威 totals（避免确认页和持久化再算错）
-    const checkoutTotals = payload?.successMeta?.checkoutTotals ?? null;
+  // ✅ 1) 从 PaymentStep 带来的 totals（用于 confirmation 兜底展示）
+  const checkoutTotals = payload?.successMeta?.checkoutTotals ?? null;
 
-    const currencyForOrder = (checkoutTotals?.currency || currency) as string;
+  const currencyForPreview = (checkoutTotals?.currency || currency) as string;
 
-    const itemsMinorForOrder =
-      typeof checkoutTotals?.items_total_minor === "number"
-        ? Number(checkoutTotals.items_total_minor)
-        : Number(itemsMinor) || 0;
+  const itemsMinorForPreview =
+    typeof checkoutTotals?.items_total_minor === "number"
+      ? Number(checkoutTotals.items_total_minor)
+      : Number(itemsMinor) || 0;
 
-    const deliveryFeeMinorForOrder =
-      typeof checkoutTotals?.delivery_fee_minor === "number"
-        ? Number(checkoutTotals.delivery_fee_minor)
-        : Number(deliveryFeeMinorEffective) || 0;
+  const deliveryFeeMinorForPreview =
+    typeof checkoutTotals?.delivery_fee_minor === "number"
+      ? Number(checkoutTotals.delivery_fee_minor)
+      : Number(deliveryFeeMinorEffective) || 0;
 
-    const totalMinorForOrder =
-      typeof checkoutTotals?.total_minor === "number"
-        ? Number(checkoutTotals.total_minor)
-        : Number(totalMinorEffective) || 0;
+  const totalMinorForPreview =
+    typeof checkoutTotals?.total_minor === "number"
+      ? Number(checkoutTotals.total_minor)
+      : Number(totalMinorEffective) || 0;
 
-    const cartForPersist =
-      Array.isArray(checkoutTotals?.items) && checkoutTotals.items.length
-        ? checkoutTotals.items
-        : cart;
+  const cartForPreview =
+    Array.isArray(checkoutTotals?.items) && checkoutTotals.items.length
+      ? checkoutTotals.items
+      : cart;
 
-    let orderAddress = { ...address };
-    if ((!orderAddress.email || !EMAIL_RE.test((orderAddress.email || "").trim())) && isLoggedIn) {
-      const authedEmail = await fetchAuthedEmail();
-      if (authedEmail) {
-        orderAddress.email = authedEmail;
-        setAddress(orderAddress);
-        setEmailInput((prev) => prev || authedEmail);
-        try {
-          localStorage.setItem(LS_ADDRESS_KEY, JSON.stringify(orderAddress));
-        } catch {}
-      }
-    }
+  // ✅ 2) 方案 A：订单一定是 PayPalBigButton 已经在 worker /orders 创建成功后才会触发 onSucceeded
+  // PayPalBigButton 里 merged = { ...paypalPayload, successMeta, order: orderResp }
+  // 这里的 payload.order 就是 orderResp（即 worker 的返回）
+  const orderResp = payload?.order ?? null;
 
-    try {
-      const hinted =
-        payload?.provider === "paypal" || payload?.provider === "braintree"
-          ? (payload.provider as "paypal" | "braintree")
-          : null;
+  // 兼容多种返回结构：尽量稳健提取 orderId / orderNumber
+  const createdOrder =
+    orderResp?.order?.order ?? // 极少数情况（如果你后端再包一层）
+    orderResp?.order ?? // 常见：{ ok:true, order:{...} }
+    orderResp?.data?.order ?? // 有些 fetch wrapper 会包 data
+    orderResp?.result?.order ??
+    null;
 
-      const isBraintree =
-        payload?.provider === "braintree" ||
-        !!payload?.transactionId ||
-        !!payload?.txnId ||
-        !!payload?.cardBrand ||
-        !!payload?.cardLast4 ||
-        payload?.payment_method === "card" ||
-        payload?.paymentMethod === "card";
+  const orderId: number | null =
+    createdOrder && typeof createdOrder.id === "number" ? createdOrder.id : null;
 
-      const provider: "paypal" | "braintree" =
-        hinted === "paypal" || hinted === "braintree"
-          ? hinted
-          : isBraintree
-            ? "braintree"
-            : "paypal";
+  const orderNumber: string | null =
+    createdOrder && (typeof createdOrder.order_number === "string" || createdOrder.order_number == null)
+      ? (createdOrder.order_number ?? null)
+      : null;
 
-      console.log("[checkout] determined provider for persist =", provider);
+  if (!orderId) {
+    console.warn("[checkout] missing order id in payload.order", { orderResp, payload });
+    setPayPersistErrMsg(
+      "We couldn’t finalize your order right now. If you were charged, contact support."
+    );
+    setIsPayProcessing(false);
+    return;
+  }
 
-      const persist = await sendOrderToServer({
-        cart: cartForPersist,
-        address: orderAddress,
-        currency: currencyForOrder,
-        itemsMinor: itemsMinorForOrder,
-        deliveryFeeMinor: deliveryFeeMinorForOrder,
-        taxMinor: 0,
-        grandMinor: totalMinorForOrder,
-        payment: payload,
-        paymentProvider: provider,
+  // ✅ 3) 写 preview（confirmation 拉不到订单时也能展示）
+  try {
+    sessionStorage.setItem(
+      "last-order-preview",
+      JSON.stringify({
+        ts: Date.now(),
+        orderId,
+        orderNumber,
+
+        currency: currencyForPreview,
+        totalMinor: totalMinorForPreview,
+
+        items: cartForPreview,
+        address: { ...address },
         deliveryMethod,
-        billingAddress,
-        sameAsDelivery,
-      });
 
-      console.log("[checkout] sendOrderToServer result =", persist);
+        quote: quoteByMethod?.[deliveryMethod]?.ok
+          ? quoteByMethod[deliveryMethod]
+          : (lastQuoteMeta ?? null),
 
+        payload: {
+          order: { id: orderId, order_number: orderNumber ?? null },
+          payment: payload ?? null,
+          checkoutTotals: checkoutTotals ?? null,
+        },
+      })
+    );
+  } catch {}
 
-      // ✅ 如果后端拒单（比如 409 out_of_stock），前端必须提示用户，并停止跳转/清空购物车
-      if (!persist.ok) {
-        if (persist.status === 409 && persist.error === "out_of_stock") {
-          setPayPersistErrMsg(
-            "Sorry — this item has just gone out of stock while you were checking out. Please go back to your bag, refresh, and try again."
-          );
-          setIsPayProcessing(false);
-          return;
-        }
+  console.log("[checkout] ✅ order already created by PayPalBigButton, redirecting to", CONFIRM_PATH);
 
-        // 其他错误（500 / 网络错误等）
-        setPayPersistErrMsg(
-          "We couldn’t finalize your order right now. Please try again. If you were charged, contact support."
-        );
-        setIsPayProcessing(false);
-        return;
-      }
+  // ✅ 4) 清空购物车 & 异步订阅
+  clearCart();
+  void sendSubscriptionIfNeeded();
 
-      if (persist.ok && persist.order) {
-        orderId = persist.order.id ?? null;
-        orderNumber = persist.order.order_number ?? null;
-      }
-    } catch (e) {
-      console.warn("[checkout] /orders persist failed", e);
-      setPayPersistErrMsg(
-        "We couldn’t finalize your order right now. Please try again. If you were charged, contact support."
-      );
-      setIsPayProcessing(false);
-      return;
-    }
+  // ✅ 5) 跳转 confirmation（不留历史）
+  try {
+    router.replace(CONFIRM_PATH);
+  } catch {}
 
+  setTimeout(() => {
     try {
-      sessionStorage.setItem(
-        "last-order-preview",
-        JSON.stringify({
-          ts: Date.now(),
-
-          // ✅ 这两个字段可以保留（做兼容/调试用）
-          orderId,
-          orderNumber,
-
-          currency,
-
-          // ✅ 这里保留当兜底展示用（如果 confirmation 拉不到订单）
-          totalMinor: totalMinorForOrder,
-
-          items: cartForPersist,
-          address: orderAddress,
-          deliveryMethod,
-
-          // ✅ 选中的 quote（lastQuoteMeta 可能 stale）
-          quote: quoteByMethod?.[deliveryMethod]?.ok ? quoteByMethod[deliveryMethod] : (lastQuoteMeta ?? null),
-
-          // ✅ 关键改动：把“订单信息”写进 payload.order，且把支付信息写进 payload.payment
-          payload: {
-            order: orderId ? { id: orderId, order_number: orderNumber ?? null } : null,
-            payment: payload ?? null,
-            checkoutTotals: checkoutTotals ?? null,
-          },
-        })
-      );
+      if (typeof window !== "undefined" && window.location?.pathname !== CONFIRM_PATH) {
+        window.location.replace(CONFIRM_PATH);
+      }
     } catch {}
-
-    console.log("[checkout] ✅ payment succeeded, redirecting to", CONFIRM_PATH);
-
-
-    clearCart();
-
-    // ✅ 不要阻塞跳转：订阅异步发就好
-    void sendSubscriptionIfNeeded();
-
-    // ✅ Next 路由跳转（不留历史记录，避免回退回空 checkout）
-    try {
-      router.replace(CONFIRM_PATH);
-    } catch {}
-
-    // ✅ 兜底：有些支付 SDK 会把页面“带回” return_url（比如 /checkout）
-    // 用 location.replace 强制跳过去，确保一定进入 confirmation
-    setTimeout(() => {
-      try {
-        if (typeof window !== "undefined" && window.location?.pathname !== CONFIRM_PATH) {
-          window.location.replace(CONFIRM_PATH);
-        }
-      } catch {}
-    }, 50);
-  };
+  }, 50);
+};
 
   const handlePayInitiated = () => {
     void sendSubscriptionIfNeeded();
@@ -1327,6 +885,7 @@ export default function CheckoutPage() {
             amountInMajorUnit={amountInMajorUnitEffective}
             isPayProcessing={isPayProcessing}
             address={address}
+            deliveryMethod={deliveryMethod}
             itemsCount={itemsCount}
             itemsMinor={itemsMinor}
             deliveryFeeMinor={deliveryFeeMinorEffective}

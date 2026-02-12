@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { Check, AlertCircle } from "lucide-react";
 import PayPalBigButton from "./PayPalBigButton";
 import { countryLabelOf } from "@/lib/country";
+import { mediaUrl } from "@/lib/strapi";
 
 /* ========== 类型 ========== */
 type Address = {
@@ -22,6 +23,8 @@ type Address = {
   country?: string; // ISO2: "AU"
 };
 
+type DeliveryMethod = "standard" | "express";
+
 type PaymentStepProps = {
   visible: boolean;
 
@@ -29,6 +32,9 @@ type PaymentStepProps = {
 
   isPayProcessing: boolean;
   address: Address;
+
+  // ✅ NEW: 让 PaymentStep 拿到真实 deliveryMethod，并传给 PayPalBigButton
+  deliveryMethod: DeliveryMethod;
 
   itemsCount: number;
   itemsMinor: number;
@@ -79,6 +85,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   amountInMajorUnit, // legacy
   isPayProcessing,
   address,
+  deliveryMethod,
   itemsCount,
   itemsMinor,
   deliveryFeeMinor,
@@ -153,7 +160,8 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
 
       setPayError({
         type: "out_of_stock",
-        message: "Sorry — this item just went out of stock. Please refresh your bag and try again.",
+        message:
+          "Sorry — this item just went out of stock. Please refresh your bag and try again.",
         detail: { sku, current, requested },
       });
       return;
@@ -210,14 +218,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
       return "Invalid total amount. Please review your order.";
     }
     return null;
-  }, [
-    visible,
-    isPayProcessing,
-    suppressBlockedHint,
-    derivedItemsCount,
-    hasAddress,
-    derivedTotalMinor,
-  ]);
+  }, [visible, isPayProcessing, suppressBlockedHint, derivedItemsCount, hasAddress, derivedTotalMinor]);
 
   const countryDisplay = useMemo(() => {
     const raw = (address?.country || "").trim();
@@ -274,21 +275,56 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     };
   }, [payError, cart]);
 
-
-  
-
   // ✅ NEW: 生成一个“权威 checkoutTotals + cart snapshot(minor)”——支付成功后给父组件用
   const checkoutTotalsMeta = useMemo(() => {
     const itemsSnapshot = (Array.isArray(cart) ? cart : []).map((it) => {
       const qty = Math.max(1, Number(it?.qty) || 1);
-      const unitMinor = Math.round((Number(it?.price) || 0) * 100); // 折后价
+
+      // 折后价（major -> minor）
+      const unitMinor = Math.round((Number(it?.price) || 0) * 100);
       const lineMinor = unitMinor * qty;
+
+      // ✅ 关键：补齐图片（尽量从常见字段里找）
+      const rawImage =
+        it?.image ??
+        it?.img ??
+        it?.image_url ?? // 有些地方可能已经是 url
+        it?.attrs?.image ??
+        it?.attrs?.thumbnail ??
+        it?.attrs?.cover ??
+        it?.attrs?.images?.[0] ??
+        it?.images?.[0] ??
+        it?.snapshot?.image ??
+        it?.snapshot?.image_url ??
+        it?.snapshot?.attrs?.image ??
+        null;
+
+      // ✅ 变成绝对 URL（用于 confirmation 页面直接展示）
+      const computedImageUrl = rawImage ? mediaUrl(rawImage) : null;
+
+      // ✅ 确保 snapshot 存在，并把 image/image_url 都写进去（confirmation 通常读 snapshot）
+      const prevSnap = (it as any)?.snapshot ?? {};
+      const nextSnap = {
+        ...prevSnap,
+        image: prevSnap?.image ?? rawImage ?? null,
+        image_url: prevSnap?.image_url ?? computedImageUrl ?? null,
+        attrs: {
+          ...(prevSnap?.attrs ?? {}),
+          ...(it as any)?.attrs,
+        },
+      };
 
       return {
         ...it,
         qty,
         unit_price_minor: unitMinor,
         line_total_minor: lineMinor,
+
+        // ✅ 同时给顶层也放一份（有些 UI 直接读 item.image_url）
+        image: (it as any)?.image ?? rawImage ?? null,
+        image_url: (it as any)?.image_url ?? computedImageUrl ?? null,
+
+        snapshot: nextSnap,
       };
     });
 
@@ -367,14 +403,11 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                   {outOfStockDisplay?.line ? (
                     <div>{outOfStockDisplay.line}</div>
                   ) : payError.detail?.sku ? (
-                    // 兜底：如果 cart 里没找到对应 item，就显示 sku
                     <div>Item: {payError.detail.sku}</div>
                   ) : null}
 
                   {typeof payError.detail?.current === "number" ? (
-                    <div>
-                      In stock quantity now: {payError.detail.current}
-                    </div>
+                    <div>In stock quantity now: {payError.detail.current}</div>
                   ) : null}
                 </div>
               )}
@@ -408,7 +441,12 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                   <span className="font-medium">PayPal</span>
                   <span className="inline-flex items-center rounded-sm border border-neutral-300 bg-white px-1.5 py-0.5">
                     <div className="relative h-6 w-14">
-                      <Image src="/cards/paypal.svg" alt="PayPal" fill className="object-contain" />
+                      <Image
+                        src="/cards/paypal.svg"
+                        alt="PayPal"
+                        fill
+                        className="object-contain"
+                      />
                     </div>
                   </span>
                 </button>
@@ -435,9 +473,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
 
                     {(address.city || address.state || address.postcode) && (
                       <div>
-                        {[address.city, address.state, address.postcode]
-                          .filter(Boolean)
-                          .join(" ")}
+                        {[address.city, address.state, address.postcode].filter(Boolean).join(" ")}
                       </div>
                     )}
 
@@ -509,8 +545,9 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                         currency={safeCurrency}
                         successMeta={{
                           checkoutTotals: checkoutTotalsMeta,
-                          address, // ✅ 关键：让 PayPalBigButton 调 /orders 时带上地址/邮箱
-                          // deliveryOption: "standard", // ✅ 只有你能拿到真实值时再传；拿不到先别传
+                          address,
+                          // ✅ 关键：把真实 deliveryMethod 传给 PayPalBigButton，让 worker 用对 delivery_option
+                          deliveryOption: deliveryMethod,
                           meta: { pricing_source: "paymentstep-derived" },
                         }}
                         onInitiate={() => {
