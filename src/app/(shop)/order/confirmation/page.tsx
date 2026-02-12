@@ -62,6 +62,9 @@ type ServerItem = {
   variant_options_json?: string | null;
 
   snapshot?: any;
+
+  // ✅ 兼容：有些后端会把 image_url 放顶层
+  image_url?: string | null;
 };
 
 type ServerResp = {
@@ -114,18 +117,6 @@ function pickOrderIdFromPreview(p: Preview | null): number | null {
 function getQty(it: any): number {
   const q = Number(it?.qty ?? it?.item_qty ?? 1);
   return Number.isFinite(q) && q > 0 ? Math.floor(q) : 1;
-}
-
-function pickImageFromItem(it: any): string | null {
-  const a =
-    it?.snapshot?.image ??
-    it?.snapshot?.attrs?.image ??
-    it?.image ??
-    it?.img ??
-    it?.attrs?.image ??
-    null;
-  if (typeof a === "string" && a.trim()) return a.trim();
-  return null;
 }
 
 function pickNameFromItem(it: any): string {
@@ -269,6 +260,105 @@ function getLineMinorSmart(it: any, currency: string): number {
   return (getUnitMinorSmart(it, currency) * getQty(it)) | 0;
 }
 
+/**
+ * ✅ 关键修复 #1：图片字段获取要支持 image_url / snapshot.image_url
+ * 同时兼容 Strapi 图片对象：{ url: "/uploads/xxx.png" } / { data: { attributes: { url } } }
+ * 注意：这里返回什么就直接喂给 <img src="...">
+ * - 如果是 http(s)://... -> OK
+ * - 如果是 /uploads/...（相对）-> 也能在同域 Strapi 时工作，但跨域/邮件不行（邮件另说）
+ */
+function pickImageFromItem(it: any): string | null {
+  const cand =
+    it?.image_url ??
+    it?.snapshot?.image_url ??
+    it?.snapshot?.attrs?.image_url ??
+    it?.imageUrl ??
+    it?.snapshot?.imageUrl ??
+    it?.snapshot?.attrs?.imageUrl ??
+    it?.snapshot?.image ??
+    it?.snapshot?.attrs?.image ??
+    it?.image ??
+    it?.img ??
+    it?.attrs?.image ??
+    null;
+
+  // string url
+  if (typeof cand === "string" && cand.trim()) return cand.trim();
+
+  // Strapi media object: { url }
+  if (cand && typeof cand === "object") {
+    const url1 = cand?.url;
+    if (typeof url1 === "string" && url1.trim()) return url1.trim();
+
+    // Strapi v4 style: { data: { attributes: { url } } }
+    const url2 = cand?.data?.attributes?.url;
+    if (typeof url2 === "string" && url2.trim()) return url2.trim();
+
+    // Sometimes: { attributes: { url } }
+    const url3 = cand?.attributes?.url;
+    if (typeof url3 === "string" && url3.trim()) return url3.trim();
+  }
+
+  return null;
+}
+
+/**
+ * ✅ 关键修复 #2：serverItems 拉回来后，用 preview.items 把 image_url 合并回去
+ * 目的：避免 serverItems 没图把 preview 的图覆盖掉
+ */
+function mergeImagesFromPreviewItems(serverItems: any[], previewItems: any[]) {
+  const sItems = Array.isArray(serverItems) ? serverItems : [];
+  const pItems = Array.isArray(previewItems) ? previewItems : [];
+
+  const mapBySku = new Map<string, any>();
+  for (const it of pItems) {
+    const sku = String(it?.product_sku ?? it?.sku ?? it?.variantSku ?? "").trim();
+    if (sku) mapBySku.set(sku, it);
+  }
+
+  return sItems.map((it: any) => {
+    const sku = String(it?.product_sku ?? it?.sku ?? it?.variantSku ?? "").trim();
+    const pv = sku ? mapBySku.get(sku) : null;
+
+    const serverImg =
+      it?.image_url ??
+      it?.snapshot?.image_url ??
+      it?.snapshot?.attrs?.image_url ??
+      null;
+
+    if (serverImg) return it;
+    if (!pv) return it;
+
+    const previewImg =
+      pv?.image_url ??
+      pv?.snapshot?.image_url ??
+      pv?.snapshot?.attrs?.image_url ??
+      pv?.imageUrl ??
+      pv?.snapshot?.imageUrl ??
+      pv?.snapshot?.attrs?.imageUrl ??
+      null;
+
+    if (typeof previewImg !== "string" || !previewImg.trim()) return it;
+
+    const nextSnapshot = {
+      ...(it?.snapshot ?? {}),
+      ...(pv?.snapshot ?? {}),
+      image_url: previewImg.trim(),
+      attrs: {
+        ...(it?.snapshot?.attrs ?? {}),
+        ...(pv?.snapshot?.attrs ?? {}),
+        image_url: previewImg.trim(),
+      },
+    };
+
+    return {
+      ...it,
+      image_url: it?.image_url ?? previewImg.trim(),
+      snapshot: nextSnapshot,
+    };
+  });
+}
+
 export default function OrderConfirmationPage() {
   const [preview, setPreview] = useState<Preview | null>(null);
 
@@ -289,9 +379,7 @@ export default function OrderConfirmationPage() {
     if (!preview) return;
     try {
       localStorage.setItem("bag:v1", "[]");
-      window.dispatchEvent(
-        new CustomEvent("bag:count", { detail: { count: 0 } })
-      );
+      window.dispatchEvent(new CustomEvent("bag:count", { detail: { count: 0 } }));
       window.dispatchEvent(new CustomEvent("bag:updated", { detail: {} }));
     } catch {}
   }, [preview]);
@@ -318,7 +406,12 @@ export default function OrderConfirmationPage() {
 
         if (res.ok && data?.ok && data.order) {
           setServerOrder(data.order);
-          if (Array.isArray(data.items)) setServerItems(data.items);
+
+          if (Array.isArray(data.items)) {
+            // ✅ 关键：把 preview 的 image_url 合并进来，避免“几秒后图片消失”
+            const merged = mergeImagesFromPreviewItems(data.items as any[], preview?.items ?? []);
+            setServerItems(merged as any[]);
+          }
         } else {
           console.warn("[order/confirmation] failed to fetch server order", {
             id,
@@ -426,9 +519,7 @@ export default function OrderConfirmationPage() {
     : "Standard";
 
   // ✅ 你现在的 “右侧 summary” 以 preview.quote 为准（最稳）
-  const shippingMinorFromPreview = isFiniteInt(
-    (preview as any)?.quote?.delivery_fee_minor
-  )
+  const shippingMinorFromPreview = isFiniteInt((preview as any)?.quote?.delivery_fee_minor)
     ? clampMinor((preview as any)?.quote?.delivery_fee_minor)
     : 0;
 
@@ -441,8 +532,7 @@ export default function OrderConfirmationPage() {
         <div className="mx-auto max-w-2xl text-center">
           <h1 className="text-2xl font-semibold mb-2">No order to show</h1>
           <p className="text-neutral-600 mb-6">
-            We couldn’t find your latest order details. If you just paid, try
-            refreshing this page.
+            We couldn’t find your latest order details. If you just paid, try refreshing this page.
           </p>
           <div className="flex gap-3 justify-center">
             <Link
@@ -478,8 +568,7 @@ export default function OrderConfirmationPage() {
                 Thanks for your order!
               </h1>
               <p className="mt-1 text-sm sm:text-base text-neutral-600">
-                We’ve emailed your receipt and order details
-                {address?.email ? ` to ${address.email}` : ""}.
+                We’ve emailed your receipt and order details{address?.email ? ` to ${address.email}` : ""}.
               </p>
 
               {/* ✅ 顶部：去掉 Delivery badge（按你要求） */}
@@ -525,9 +614,7 @@ export default function OrderConfirmationPage() {
 
             <div className="mt-4 divide-y">
               {itemsToRender.length === 0 ? (
-                <div className="py-8 text-sm text-neutral-500">
-                  No items to show.
-                </div>
+                <div className="py-8 text-sm text-neutral-500">No items to show.</div>
               ) : (
                 itemsToRender.map((it: any, idx: number) => {
                   const name = pickNameFromItem(it);
@@ -546,11 +633,10 @@ export default function OrderConfirmationPage() {
                             src={img}
                             alt={name}
                             className="h-full w-full object-cover"
+                            referrerPolicy="no-referrer"
                           />
                         ) : (
-                          <div className="text-xs text-neutral-400">
-                            No image
-                          </div>
+                          <div className="text-xs text-neutral-400">No image</div>
                         )}
                       </div>
 
@@ -559,9 +645,7 @@ export default function OrderConfirmationPage() {
                           <div className="min-w-0">
                             <div className="font-medium truncate">{name}</div>
                             {variant ? (
-                              <div className="text-sm text-neutral-600 mt-0.5">
-                                {variant}
-                              </div>
+                              <div className="text-sm text-neutral-600 mt-0.5">{variant}</div>
                             ) : null}
                             {sku ? (
                               <div className="text-[11px] text-neutral-400 mt-1">
@@ -627,9 +711,7 @@ export default function OrderConfirmationPage() {
               {address ? (
                 <div className="mt-3 text-sm leading-6 text-neutral-800">
                   <div className="font-medium text-neutral-900">
-                    {[address.firstName, address.lastName]
-                      .filter(Boolean)
-                      .join(" ")}
+                    {[address.firstName, address.lastName].filter(Boolean).join(" ")}
                   </div>
                   <div>
                     {address.line1}
@@ -642,16 +724,12 @@ export default function OrderConfirmationPage() {
                   {address.phone ? <div>{address.phone}</div> : null}
                 </div>
               ) : (
-                <div className="mt-3 text-sm text-neutral-500">
-                  No address provided.
-                </div>
+                <div className="mt-3 text-sm text-neutral-500">No address provided.</div>
               )}
 
               <div className="mt-4 flex items-center justify-between rounded-xl border bg-neutral-50/60 px-3 py-2 text-sm">
                 <span className="text-neutral-600">Delivery method</span>
-                <span className="font-semibold text-neutral-900">
-                  {deliveryLabel}
-                </span>
+                <span className="font-semibold text-neutral-900">{deliveryLabel}</span>
               </div>
             </section>
 
