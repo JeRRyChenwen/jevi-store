@@ -13,27 +13,28 @@ type Props = {
   // ✅ 成功：只有当“PayPal capture + 后端建单成功”才会触发
   onSucceeded?: (payload: any) => void | Promise<void>;
 
-  // ✅ NEW: 失败：包括 409 缺货、400 金额不一致、500 库存更新失败等
+  // ✅ 失败：包括 409 缺货、400 金额不一致、500 库存更新失败等
   onFailed?: (err: any) => void;
 
   confirmPath?: string; // default "/order/confirmation"
 
   // ✅ 上层传入：权威 totals / cart snapshot / address / delivery_option 等
-  // 建议至少包含 checkoutTotals.items（其中要有 product_sku/qty/title/price 等）
   successMeta?: any;
+
+  // ✅ 点击 PayPal 前先做库存预检（若失败，则 PayPal 不继续 createOrder）
+  preflight?: () => Promise<void>;
+  preflightItems?: Array<{ sku: string; qty: number }>;
 };
 
 function getApiBase() {
-  // 你可以按你的项目环境变量名改这一行
   const fromEnv =
-    (process.env.NEXT_PUBLIC_WORKER_BASE_URL ||
-      process.env.NEXT_PUBLIC_API_BASE ||
-      "") as string;
+    (process.env.NEXT_PUBLIC_WORKER_BASE_URL || process.env.NEXT_PUBLIC_API_BASE || "") as string;
 
-  const base = String(fromEnv || "").trim().replace(/\/+$/, "");
+  const base = String(fromEnv || "")
+    .trim()
+    .replace(/\/+$/, "");
   if (base) return base;
 
-  // 本地 wrangler 默认
   return "http://127.0.0.1:8787";
 }
 
@@ -41,7 +42,7 @@ async function postJson(url: string, body: any) {
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    credentials: "include", // 如果你 Worker 有 cookie auth，这句有用；没有也不影响
+    credentials: "include",
     body: JSON.stringify(body),
   });
 
@@ -55,6 +56,53 @@ async function postJson(url: string, body: any) {
   return { res, data };
 }
 
+/**
+ * ✅ 我们自己定义的“静默终止 createOrder”哨兵
+ * - 只要命中这个 sentinel，就不 console.error（不污染右侧红字）
+ */
+const ABORT_SENTINEL = "PAYPAL_CREATE_ORDER_ABORT";
+
+/**
+ * ✅ 我们认可的“可预期 createOrder 终止原因”
+ * - 命中这些 code：onError 静默
+ */
+const QUIET_CREATE_ORDER_CODES = new Set([
+  "create_order_in_progress",
+  "invalid_amount",
+  "preflight_failed",
+  "out_of_stock",
+  "sku_not_found",
+  "stock_lookup_failed",
+  "stock_check_failed",
+  "missing_items",
+]);
+
+function normalizeErrCode(err: any): string {
+  // PayPal SDK 有时候传 Error，有时候传 object，有时候 message 是 "[object Object]"
+  const code = String(err?.code || "").trim();
+  if (code) return code;
+
+  const name = String(err?.name || "").trim();
+  if (name && QUIET_CREATE_ORDER_CODES.has(name)) return name;
+
+  const msg = String(err?.message || "").trim();
+  if (msg && QUIET_CREATE_ORDER_CODES.has(msg)) return msg;
+
+  return "";
+}
+
+/**
+ * ✅ 构造一个“可识别、可静默”的 abort 错误
+ * - message 含 ABORT_SENTINEL
+ * - 同时挂上 code（便于你自己调试）
+ */
+function makeAbortError(code: string, payload?: any) {
+  const e: any = new Error(ABORT_SENTINEL);
+  e.code = code || "preflight_failed";
+  e.payload = payload ?? null;
+  return e;
+}
+
 export default function PayPalBigButton({
   amount,
   currency,
@@ -63,9 +111,14 @@ export default function PayPalBigButton({
   onFailed,
   confirmPath = "/order/confirmation",
   successMeta,
+  preflight,
+  preflightItems,
 }: Props) {
   const [{ options }, dispatch] = usePayPalScriptReducer();
   const approvingRef = useRef(false);
+
+  // ✅ 防止用户连点 PayPal（createOrder/approve 可能被触发多次）
+  const creatingRef = useRef(false);
 
   useEffect(() => {
     if (!options || !currency) return;
@@ -98,31 +151,68 @@ export default function PayPalBigButton({
             tagline: false,
           }}
           forceReRender={[value, currency]}
-          createOrder={(_data, actions) => {
-            onInitiate?.();
-
-            if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) {
-              onFailed?.({
-                status: 0,
-                code: "invalid_amount",
-                message: `Invalid amount for PayPal: ${amount}`,
-                detail: { amount, currency },
-              });
-              // 让 PayPal createOrder 失败即可
-              return Promise.reject(new Error("invalid_amount"));
+          createOrder={async (_data, actions) => {
+            // ✅ 防连点：createOrder 正在跑就终止（不进入 PayPal 流程）
+            if (creatingRef.current) {
+              // 不用 onFailed：UI 不需要提示“你点太快”
+              throw makeAbortError("create_order_in_progress");
             }
+            creatingRef.current = true;
 
-            return actions.order.create({
-              intent: "CAPTURE",
-              purchase_units: [
-                {
-                  amount: {
-                    value: Number(amount).toFixed(2),
-                    currency_code: currency,
+            try {
+              onInitiate?.();
+
+              // ✅ amount 校验
+              if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) {
+                const err = {
+                  status: 0,
+                  code: "invalid_amount",
+                  message: `Invalid amount for PayPal: ${amount}`,
+                  detail: { amount, currency },
+                };
+                onFailed?.(err);
+                // 关键：抛“可静默”的 abort error，避免 PayPal SDK 红字
+                throw makeAbortError("invalid_amount", err);
+              }
+
+              // ✅ Phase 1 Step 3：库存预检（失败直接终止，不进入 PayPal）
+              if (preflight) {
+                try {
+                  // 如果你也嫌 console 吵，可以删掉这两行
+                  // console.log("[paypal][preflight] checking stock…", { items: preflightItems ?? null });
+                  await preflight();
+                  // console.log("[paypal][preflight] ok");
+                } catch (e: any) {
+                  const err = {
+                    status: Number(e?.status || 409) || 409,
+                    code: String(e?.code || "preflight_failed"),
+                    message: e?.message || "Stock preflight failed.",
+                    detail: e?.detail ?? e ?? null,
+                  };
+
+                  // ✅ 交给 PaymentStep 展示
+                  onFailed?.(err);
+
+                  // ✅ 抛“可静默”的 abort error（这一步是降噪关键）
+                  throw makeAbortError(err.code, err);
+                }
+              }
+
+              // ✅ 继续走 PayPal create order
+              return actions.order.create({
+                intent: "CAPTURE",
+                purchase_units: [
+                  {
+                    amount: {
+                      value: Number(amount).toFixed(2),
+                      currency_code: currency,
+                    },
                   },
-                },
-              ],
-            } as any);
+                ],
+              } as any);
+            } finally {
+              creatingRef.current = false;
+            }
           }}
           onApprove={async (data, actions) => {
             if (approvingRef.current) return;
@@ -131,8 +221,7 @@ export default function PayPalBigButton({
             try {
               // 1) PayPal capture
               const details = await actions.order?.capture();
-              const capture =
-                (details as any)?.purchase_units?.[0]?.payments?.captures?.[0] ?? null;
+              const capture = (details as any)?.purchase_units?.[0]?.payments?.captures?.[0] ?? null;
 
               const paypalPayload = {
                 provider: "paypal",
@@ -143,13 +232,10 @@ export default function PayPalBigButton({
                 details,
               };
 
-              // 2) ✅ capture 成功 ≠ 下单成功
-              //    这里必须调用你自己的后端 /orders 建单，且严格判断 res.ok
-              //    你后端会做扣库存（你已经做了），缺货就 409
+              // 2) capture 成功 ≠ 下单成功：调用你自己的后端 /orders 建单
               const checkoutTotals = successMeta?.checkoutTotals;
               const itemsFromMeta = checkoutTotals?.items;
 
-              // 最少需要 items，否则后端根本不知道要扣哪个 sku
               if (!Array.isArray(itemsFromMeta) || itemsFromMeta.length === 0) {
                 const err = {
                   status: 0,
@@ -157,19 +243,18 @@ export default function PayPalBigButton({
                   message: "Missing cart items for creating order.",
                   detail: { successMeta },
                 };
-                console.warn("[paypal][orders] missing items in successMeta", err);
                 onFailed?.(err);
-                try { await (actions as any)?.order?.void?.(); } catch {}
+                try {
+                  await (actions as any)?.order?.void?.();
+                } catch {}
                 approvingRef.current = false;
                 return;
               }
 
-              // 你的 Worker /orders 期望的 body（按你 orders.ts 逻辑）
               const orderBody = {
                 currency: (checkoutTotals?.currency || currency || "AUD").toUpperCase(),
                 items: itemsFromMeta,
 
-                // 传给后端做 amount 校验（orders.ts 里会对比 grand_total_minor）
                 payment: {
                   provider: "paypal",
                   provider_txn_id: paypalPayload.transactionId,
@@ -178,10 +263,11 @@ export default function PayPalBigButton({
                   raw: paypalPayload.raw,
                 },
 
-                // 地址字段：你后端从 body 拿 email/addr_*（若你没传也能从 cookie/email 推断，但建议传）
                 ...(successMeta?.address
                   ? {
-                      email: String(successMeta.address?.email || "").trim().toLowerCase(),
+                      email: String(successMeta.address?.email || "")
+                        .trim()
+                        .toLowerCase(),
                       first_name: successMeta.address?.firstName ?? null,
                       last_name: successMeta.address?.lastName ?? null,
                       phone: successMeta.address?.phone ?? null,
@@ -194,63 +280,37 @@ export default function PayPalBigButton({
                     }
                   : {}),
 
-                // delivery option（你后端会从 body.delivery_option 等字段解析）
-                ...(successMeta?.deliveryOption
-                  ? { delivery_option: successMeta.deliveryOption }
-                  : {}),
+                ...(successMeta?.deliveryOption ? { delivery_option: successMeta.deliveryOption } : {}),
 
-                // meta 可选：用于调试/追踪
                 meta: {
                   ...(successMeta?.meta || {}),
                   __paypal_order_id: paypalPayload.orderId,
                 },
               };
 
-              console.log("[paypal][orders] creating order", {
-                url: ordersUrl,
-                amount,
-                currency,
-                items: orderBody.items?.map((x: any) => ({
-                  product_sku: x?.product_sku ?? x?.sku ?? null,
-                  qty: x?.qty ?? null,
-                  title: x?.product_title ?? x?.title ?? null,
-                })),
-              });
-
               const { res, data: orderResp } = await postJson(ordersUrl, orderBody);
 
               if (!res.ok) {
-                  const err = {
-                    status: res.status,
-                    code: orderResp?.error || orderResp?.code || "http_error",
-                    message:
-                      orderResp?.message ||
-                      (res.status === 409 ? "out_of_stock" : `HTTP ${res.status}`),
-                    detail: orderResp?.detail ?? orderResp ?? null,
-                  };
+                const err = {
+                  status: res.status,
+                  code: orderResp?.error || orderResp?.code || "http_error",
+                  message: orderResp?.message || (res.status === 409 ? "out_of_stock" : `HTTP ${res.status}`),
+                  detail: orderResp?.detail ?? orderResp ?? null,
+                };
 
-                  console.warn("[paypal][orders] create order failed", err);
+                onFailed?.(err);
 
-                  // ✅ 1) 先把错误抛给上层（PaymentStep 会弹 alert）
-                  onFailed?.(err);
+                // 尽力 void 掉 PayPal order
+                try {
+                  await (actions as any)?.order?.void?.();
+                } catch {}
 
-                  // ✅ 2) 尝试终止 PayPal 订单流程，避免用户卡在 PayPal 的 generic error 页面
-                  // 不同 SDK/版本下 void 可能不存在，所以用可选链 + try/catch
-                  try {
-                    await (actions as any)?.order?.void?.();
-                  } catch (e) {
-                    console.warn("[paypal][orders] actions.order.void failed (ignored):", e);
-                  }
+                approvingRef.current = false;
+                return;
+              }
 
-                  // ✅ 3) 允许用户再次点击支付
-                  approvingRef.current = false;
-                  return;
-                }
-
-              // 3) ✅ 真正成功：PayPal capture + 后端建单成功
-              const merged = successMeta
-                ? { ...paypalPayload, successMeta, order: orderResp }
-                : { ...paypalPayload, order: orderResp };
+              // 3) 真正成功
+              const merged = successMeta ? { ...paypalPayload, successMeta, order: orderResp } : { ...paypalPayload, order: orderResp };
 
               await onSucceeded?.(merged);
 
@@ -260,24 +320,43 @@ export default function PayPalBigButton({
                 }
               } catch {}
             } catch (e: any) {
+              // 这里是“真的 capture 失败”才需要打 error
               console.error("[paypal] onApprove/capture failed:", e);
+
               onFailed?.({
                 status: 0,
                 code: "paypal_capture_failed",
                 message: e?.message || "PayPal capture failed.",
                 detail: e,
               });
+
               approvingRef.current = false;
             }
           }}
           onError={(err) => {
+            // ✅ 关键：静默掉“我们自己主动终止 createOrder 的错误”
+            const msg = String((err as any)?.message || "");
+            if (msg.includes(ABORT_SENTINEL)) {
+              approvingRef.current = false;
+              return;
+            }
+
+            const code = normalizeErrCode(err);
+            if (code && QUIET_CREATE_ORDER_CODES.has(code)) {
+              approvingRef.current = false;
+              return;
+            }
+
+            // ✅ 其他真实错误：保留
             console.error("[paypal] error:", err);
+
             onFailed?.({
               status: 0,
               code: "paypal_error",
               message: "PayPal error.",
               detail: err,
             });
+
             approvingRef.current = false;
           }}
           onCancel={() => {

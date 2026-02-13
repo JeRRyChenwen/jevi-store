@@ -8,6 +8,61 @@ import { Check, AlertCircle } from "lucide-react";
 import PayPalBigButton from "./PayPalBigButton";
 import { countryLabelOf } from "@/lib/country";
 import { mediaUrl } from "@/lib/strapi";
+import { Alert } from "@/components/ui/alert";
+
+/* ========== Phase 1 / Step 3: stock preflight types ========== */
+type StockCheckItem = { sku: string; qty: number };
+
+type StockCheckOkItem = {
+  sku: string;
+  requested: number;
+  stock: number;
+  ok: boolean;
+  found?: boolean;
+};
+
+type StockCheckApiResp =
+  | { ok: true; items: StockCheckOkItem[] }
+  | {
+      ok: false;
+      error: string;
+      message?: string;
+      detail?: any;
+      items?: StockCheckOkItem[];
+    };
+
+function getCartSku(it: any): string {
+  return String(it?.product_sku ?? it?.sku ?? it?.variantSku ?? it?.variant_sku ?? "").trim();
+}
+
+function buildStockCheckItems(cart: any[]): StockCheckItem[] {
+  const list = Array.isArray(cart) ? cart : [];
+  const map = new Map<string, number>();
+
+  for (const it of list) {
+    const sku = getCartSku(it);
+    const qty = Math.max(1, Number(it?.qty) || 1);
+    if (!sku) continue;
+    map.set(sku, (map.get(sku) ?? 0) + qty);
+  }
+
+  return Array.from(map.entries()).map(([sku, qty]) => ({ sku, qty }));
+}
+
+async function preflightStockCheck(items: StockCheckItem[]): Promise<{
+  httpStatus: number;
+  data: StockCheckApiResp | null;
+}> {
+  const res = await fetch("/api/stock/check", {
+    method: "POST",
+    credentials: "include",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ items }),
+  });
+
+  const data: any = await res.json().catch(() => null);
+  return { httpStatus: res.status, data };
+}
 
 /* ========== 类型 ========== */
 type Address = {
@@ -33,7 +88,6 @@ type PaymentStepProps = {
   isPayProcessing: boolean;
   address: Address;
 
-  // ✅ NEW: 让 PaymentStep 拿到真实 deliveryMethod，并传给 PayPalBigButton
   deliveryMethod: DeliveryMethod;
 
   itemsCount: number;
@@ -46,7 +100,7 @@ type PaymentStepProps = {
   onPaySucceeded: (payload?: any) => void;
 
   cart: Array<{
-    price?: number; // major（折后价，如 84.15）
+    price?: number; // major（折后价）
     qty?: number;
     currency?: string;
     [k: string]: any;
@@ -72,6 +126,17 @@ type PayError =
       type: "out_of_stock";
       message: string;
       detail?: { sku?: string; current?: number; requested?: number };
+    }
+  | {
+      type: "sku_not_found";
+      message: string;
+      detail?: { sku?: string };
+    }
+  | {
+      type: "stock_lookup_failed";
+      message: string;
+      detail?: any;
+      status?: number;
     }
   | {
       type: "amount_mismatch" | "stock_update_failed" | "server_error" | "unknown";
@@ -100,7 +165,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   const [method, setMethod] = useState<"card" | "paypal">("paypal");
   const [suppressBlockedHint, setSuppressBlockedHint] = useState(false);
 
-  // ✅ NEW: 用于显示“缺货/下单失败”等错误
+  // ✅ 用于显示“缺货/下单失败”等错误
   const [payError, setPayError] = useState<PayError | null>(null);
 
   const safeCurrency = useMemo(() => {
@@ -117,7 +182,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     return list.reduce((sum, it) => {
       const qty = Math.max(1, Number(it?.qty) || 1);
 
-      // ✅ 注意：这里用的是 it.price（折后价），不要用 basePrice
       const priceMajor = Number(it?.price) || 0;
       const unitMinor = Math.round(priceMajor * 100);
       const lineMinor = unitMinor * qty;
@@ -134,10 +198,8 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     return Number((derivedTotalMinor / 100).toFixed(2));
   }, [derivedTotalMinor]);
 
-  // ✅ 统一的支付成功处理：原样把 payload 交给父组件
   const handlePaySucceeded = useCallback(
     (payload: any) => {
-      console.log("[checkout] handlePaySucceeded payload", payload);
       setPayError(null);
       setSuppressBlockedHint(true);
       onPaySucceeded(payload);
@@ -145,24 +207,43 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     [onPaySucceeded]
   );
 
-  // ✅ NEW: 统一的失败处理（尤其是 409 out_of_stock）
   const handlePayFailed = useCallback((err: any) => {
-    console.warn("[checkout] pay failed", err);
-
-    // 尽量兼容不同形态的错误对象
+    // ❌ 不要 console.warn，避免你右侧一直刷红（你自己需要 debug 再加）
     const status = Number(err?.status ?? err?.httpStatus ?? 0) || undefined;
     const code = String(err?.code ?? err?.error ?? "").trim();
 
-    if (status === 409 && (code === "out_of_stock" || err?.type === "out_of_stock")) {
+    if (status === 409 && code === "out_of_stock") {
       const sku = err?.detail?.sku ?? err?.sku;
       const current = err?.detail?.current ?? err?.current;
       const requested = err?.detail?.requested ?? err?.requested;
 
       setPayError({
         type: "out_of_stock",
+        // ✅ 改成英文（你要的第 2 点）
         message:
-          "Sorry — this item just went out of stock. Please refresh your bag and try again.",
+          "Sorry — the item you’re trying to purchase is out of stock (sold out or not enough quantity).",
         detail: { sku, current, requested },
+      });
+      return;
+    }
+
+    if (status === 409 && code === "sku_not_found") {
+      setPayError({
+        type: "sku_not_found",
+        message:
+          "Sorry — we couldn’t find one of the items in your bag in our inventory (SKU mismatch). Please go back to your bag, refresh, and try again.",
+        detail: { sku: err?.detail?.sku ?? err?.sku },
+      });
+      return;
+    }
+
+    if (status === 502 && code === "stock_lookup_failed") {
+      setPayError({
+        type: "stock_lookup_failed",
+        status,
+        message:
+          "Sorry — we can’t verify stock right now (inventory service temporarily unavailable). Please try again shortly.",
+        detail: err?.detail ?? err ?? null,
       });
       return;
     }
@@ -171,7 +252,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
       setPayError({
         type: "amount_mismatch",
         status,
-        message: "Order total changed. Please refresh checkout and try again.",
+        message: "Your order total has changed. Please refresh the page and check out again.",
         detail: err?.detail ?? null,
       });
       return;
@@ -181,7 +262,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
       setPayError({
         type: "stock_update_failed",
         status,
-        message: "Stock update failed. Please try again in a moment.",
+        message: "Stock update failed. Please try again shortly.",
         detail: err?.detail ?? null,
       });
       return;
@@ -227,7 +308,9 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     return label || raw;
   }, [address?.country]);
 
-  // ✅ NEW: out_of_stock 时，把 sku 映射回 cart item，展示更友好的信息（title/color/size/height）
+  /**
+   * ✅ 缺货展示信息：只从 cart snapshot 取（title/color/size/heightIncreaseCm/material）
+   */
   const outOfStockDisplay = useMemo(() => {
     if (!payError || payError.type !== "out_of_stock") return null;
 
@@ -237,12 +320,12 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     const hit =
       sku
         ? list.find((it: any) => {
-            const s = String(it?.product_sku ?? it?.sku ?? "").trim();
+            const s = getCartSku(it);
             return s && s === sku;
           })
         : null;
 
-    const title = String(hit?.title ?? hit?.product_title ?? "").trim();
+    const title = String(hit?.title ?? hit?.product_title ?? hit?.name ?? "").trim();
 
     // 兼容多种结构：item/attrs/options/snapshot.attrs/snapshot.options
     const attrs = hit?.attrs ?? hit?.snapshot?.attrs ?? {};
@@ -258,37 +341,40 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
       attrs?.height_increase_cm ??
       null;
 
+    const material = String(hit?.material ?? options?.material ?? attrs?.material ?? "").trim();
+
     const heightLabel =
       typeof height === "number" ? `${height} cm` : String(height || "").trim();
 
-    const parts = [
-      title || null,
+    const variantParts = [
       color ? `Color: ${color}` : null,
       size ? `Size: ${size}` : null,
       heightLabel ? `Height: +${heightLabel}` : null,
+      material ? `Material: ${material}` : null,
     ].filter(Boolean);
 
     return {
-      line: parts.join(" | "),
-      current: payError.detail?.current,
+      title: title || null,
+      variantLine: variantParts.join(" | "),
+      // ✅ 仍保留 sku 在内存里做匹配/调试，但 UI 不展示（你要的第 1 点）
       sku: sku || null,
+      current: payError.detail?.current,
+      requested: payError.detail?.requested,
     };
   }, [payError, cart]);
 
-  // ✅ NEW: 生成一个“权威 checkoutTotals + cart snapshot(minor)”——支付成功后给父组件用
+  // ✅ 给后端 /orders 的权威 totals + items snapshot（你原来的逻辑保留）
   const checkoutTotalsMeta = useMemo(() => {
     const itemsSnapshot = (Array.isArray(cart) ? cart : []).map((it) => {
       const qty = Math.max(1, Number(it?.qty) || 1);
 
-      // 折后价（major -> minor）
       const unitMinor = Math.round((Number(it?.price) || 0) * 100);
       const lineMinor = unitMinor * qty;
 
-      // ✅ 关键：补齐图片（尽量从常见字段里找）
       const rawImage =
         it?.image ??
         it?.img ??
-        it?.image_url ?? // 有些地方可能已经是 url
+        it?.image_url ??
         it?.attrs?.image ??
         it?.attrs?.thumbnail ??
         it?.attrs?.cover ??
@@ -299,10 +385,8 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
         it?.snapshot?.attrs?.image ??
         null;
 
-      // ✅ 变成绝对 URL（用于 confirmation 页面直接展示）
       const computedImageUrl = rawImage ? mediaUrl(rawImage) : null;
 
-      // ✅ 确保 snapshot 存在，并把 image/image_url 都写进去（confirmation 通常读 snapshot）
       const prevSnap = (it as any)?.snapshot ?? {};
       const nextSnap = {
         ...prevSnap,
@@ -320,7 +404,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
         unit_price_minor: unitMinor,
         line_total_minor: lineMinor,
 
-        // ✅ 同时给顶层也放一份（有些 UI 直接读 item.image_url）
         image: (it as any)?.image ?? rawImage ?? null,
         image_url: (it as any)?.image_url ?? computedImageUrl ?? null,
 
@@ -337,14 +420,85 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
       total_minor: derivedTotalMinor,
       items: itemsSnapshot,
     };
-  }, [
-    cart,
-    safeCurrency,
-    derivedItemsCount,
-    derivedItemsMinor,
-    deliveryFeeMinor,
-    derivedTotalMinor,
-  ]);
+  }, [cart, safeCurrency, derivedItemsCount, derivedItemsMinor, deliveryFeeMinor, derivedTotalMinor]);
+
+  // ✅ Phase 1 / Step 3: stock items from cart
+  const stockItems = useMemo(() => buildStockCheckItems(cart as any[]), [cart]);
+
+  /**
+   * ✅ Phase 1 / Step 3: preflight function passed to PayPalBigButton
+   * - 适配新 /stock/check 返回（error/detail/items）
+   * - 一律 throw {status, code, message, detail} 给 PayPalBigButton -> PaymentStep 统一处理
+   */
+  const runStockPreflight = useCallback(async () => {
+    if (!stockItems.length) {
+      throw { status: 400, code: "no_items", message: "No items to check." };
+    }
+
+    const { httpStatus, data } = await preflightStockCheck(stockItems);
+
+    // 1) 正常 OK
+    if (httpStatus === 200 && data && (data as any).ok === true) {
+      const items = Array.isArray((data as any).items) ? ((data as any).items as StockCheckOkItem[]) : [];
+      const firstBad = items.find((x) => x && x.ok === false);
+
+      if (firstBad) {
+        throw {
+          status: 409,
+          code: "out_of_stock",
+          message: "Stock preflight failed.",
+          detail: { sku: firstBad.sku, current: firstBad.stock, requested: firstBad.requested },
+        };
+      }
+      return;
+    }
+
+    // 2) 非 200 或 data.ok=false
+    const errCode = String((data as any)?.error || `http_${httpStatus}`);
+    const detail = (data as any)?.detail ?? null;
+    const items = Array.isArray((data as any)?.items) ? ((data as any).items as StockCheckOkItem[]) : [];
+
+    // out_of_stock：优先使用 detail，其次从 items 里找第一个 bad
+    if (httpStatus === 409 && errCode === "out_of_stock") {
+      const sku = String(detail?.sku ?? "").trim();
+      const current = detail?.current;
+      const requested = detail?.requested;
+
+      if (sku) {
+        throw { status: 409, code: "out_of_stock", message: "Stock preflight failed.", detail: { sku, current, requested } };
+      }
+
+      const firstBad = items.find((x) => x && x.ok === false);
+      if (firstBad) {
+        throw {
+          status: 409,
+          code: "out_of_stock",
+          message: "Stock preflight failed.",
+          detail: { sku: firstBad.sku, current: firstBad.stock, requested: firstBad.requested },
+        };
+      }
+
+      throw { status: 409, code: "out_of_stock", message: "Stock preflight failed.", detail: detail ?? { items } };
+    }
+
+    // sku_not_found
+    if (httpStatus === 409 && errCode === "sku_not_found") {
+      throw { status: 409, code: "sku_not_found", message: "SKU not found.", detail: detail ?? { items } };
+    }
+
+    // stock_lookup_failed (502)
+    if (httpStatus === 502 && errCode === "stock_lookup_failed") {
+      throw { status: 502, code: "stock_lookup_failed", message: "Stock lookup failed.", detail: detail ?? { items } };
+    }
+
+    // 兜底
+    throw {
+      status: httpStatus || 500,
+      code: "stock_check_failed",
+      message: `Stock check failed: ${errCode}`,
+      detail: { httpStatus, data },
+    };
+  }, [stockItems]);
 
   return (
     <section
@@ -370,9 +524,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
           <div className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">
             Step 4
           </div>
-          <div className="text-base font-semibold text-neutral-900">
-            Payment Options
-          </div>
+          <div className="text-base font-semibold text-neutral-900">Payment Options</div>
         </div>
         <div className="flex items-center gap-1 text-xs text-emerald-600">
           <Check className="w-4 h-4" />
@@ -391,35 +543,75 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
           </div>
         </div>
 
-        {/* ✅ NEW: 缺货/下单失败提示 */}
         {visible && payError && (
-          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 flex gap-2">
+          <Alert variant="error" className="flex gap-2">
             <AlertCircle className="w-4 h-4 mt-0.5" />
             <div className="flex-1">
               <div className="font-medium">{payError.message}</div>
 
               {payError.type === "out_of_stock" && (
-                <div className="mt-1 text-xs text-red-700">
-                  {outOfStockDisplay?.line ? (
-                    <div>{outOfStockDisplay.line}</div>
-                  ) : payError.detail?.sku ? (
-                    <div>Item: {payError.detail.sku}</div>
+                <div className="mt-2 text-xs leading-5">
+                  {outOfStockDisplay?.title ? (
+                    <div>
+                      <b>Item:</b> {outOfStockDisplay.title}
+                    </div>
                   ) : null}
 
-                  {typeof payError.detail?.current === "number" ? (
-                    <div>In stock quantity now: {payError.detail.current}</div>
+                  {outOfStockDisplay?.variantLine ? (
+                    <div>
+                      <b>Variant:</b> {outOfStockDisplay.variantLine}
+                    </div>
+                  ) : null}
+
+                  {/* ✅ 删除 SKU 显示（你要的第 1 点） */}
+                  {/* {outOfStockDisplay?.sku ? (
+                    <div>
+                      <b>SKU:</b> {outOfStockDisplay.sku}
+                    </div>
+                  ) : null} */}
+
+                  <div>
+                    <b>Stock:</b>{" "}
+                    {typeof outOfStockDisplay?.current === "number"
+                      ? outOfStockDisplay.current
+                      : "N/A"}{" "}
+                    / <b>Requested:</b>{" "}
+                    {typeof outOfStockDisplay?.requested === "number"
+                      ? outOfStockDisplay.requested
+                      : "N/A"}
+                  </div>
+
+                  {/* ✅ 底部提示改成英文（你要的第 3 点） */}
+                  <div className="mt-2">
+                    Please go back to your bag to adjust the quantity or remove the item, then try paying again.
+                  </div>
+                </div>
+              )}
+
+              {payError.type === "sku_not_found" && (
+                <div className="mt-1 text-xs">
+                  {payError.detail?.sku ? (
+                    <div>
+                      <b>SKU:</b> {payError.detail.sku}
+                    </div>
                   ) : null}
                 </div>
               )}
+
+              {payError.type === "stock_lookup_failed" && (
+                <div className="mt-1 text-xs">
+                  Please try again shortly, or refresh the page and check out again.
+                </div>
+              )}
             </div>
-          </div>
+          </Alert>
         )}
 
         {visible && payBlockedReason && (
-          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 flex gap-2">
+          <Alert variant="error" className="flex gap-2">
             <AlertCircle className="w-4 h-4 mt-0.5" />
             <div>{payBlockedReason}</div>
-          </div>
+          </Alert>
         )}
 
         <div className="flex-1 flex flex-col">
@@ -441,12 +633,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                   <span className="font-medium">PayPal</span>
                   <span className="inline-flex items-center rounded-sm border border-neutral-300 bg-white px-1.5 py-0.5">
                     <div className="relative h-6 w-14">
-                      <Image
-                        src="/cards/paypal.svg"
-                        alt="PayPal"
-                        fill
-                        className="object-contain"
-                      />
+                      <Image src="/cards/paypal.svg" alt="PayPal" fill className="object-contain" />
                     </div>
                   </span>
                 </button>
@@ -546,10 +733,11 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                         successMeta={{
                           checkoutTotals: checkoutTotalsMeta,
                           address,
-                          // ✅ 关键：把真实 deliveryMethod 传给 PayPalBigButton，让 worker 用对 delivery_option
                           deliveryOption: deliveryMethod,
                           meta: { pricing_source: "paymentstep-derived" },
                         }}
+                        preflight={runStockPreflight}
+                        preflightItems={stockItems}
                         onInitiate={() => {
                           setPayError(null);
                           setSuppressBlockedHint(true);
