@@ -844,6 +844,9 @@ wrangler d1 migrations apply socialplatform
 wrangler d1 migrations apply socialplatform --remote
 wrangler d1 migrations apply socialplatform --local
 
+新的执行命令：
+wrangler d1 execute socialplatform --remote --file migrations/0001_base.sql
+
 ==================================================================
 
 清库
