@@ -817,6 +817,8 @@ User API Tokens
 npm run dev
 
 npx wrangler dev --x-remote-bindings
+或者
+wrangler dev --remote
 
 wrangler dev --port 8789
 
@@ -1033,3 +1035,5 @@ stock为0的时候不能交易
 stock 小于50的时候才显示stock的数量
 
 order confirmation 页面貌似会刷新2次
+
+order-item 表的variant 字段，material也要存进去

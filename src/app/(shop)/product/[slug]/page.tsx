@@ -160,24 +160,22 @@ function getImagesByColorFromProduct(attrs: any): Record<string, string[]> {
   return out;
 }
 
-function getStockByColorSizeHeight(attrs: any): {
-  stock3: Record<string, Record<string, Record<number, number>>>;
-  sku3: Record<string, Record<string, Record<number, string | null>>>;
-  sizesSum: Record<string, Record<string, number>>;
-  heightSum: Record<string, Record<number, number>>;
-  colorSum: Record<string, number>;
-} {
+// ✅ NEW: 从 Strapi variants 提取 variant meta（不含 stock）
+type VariantMeta = {
+  sku: string | null;
+  color: string;
+  size: string;
+  height: number; // height_increase_cm（无/非法 -> 0）
+};
+
+function getVariantMetaList(attrs: any): VariantMeta[] {
   const arr: any[] = Array.isArray(attrs?.variants?.data)
     ? attrs.variants.data
     : Array.isArray(attrs?.variants)
     ? attrs.variants
     : [];
 
-  const stock3: Record<string, Record<string, Record<number, number>>> = {};
-  const sku3: Record<string, Record<string, Record<number, string | null>>> = {};
-  const sizesSum: Record<string, Record<string, number>> = {};
-  const heightSum: Record<string, Record<number, number>> = {};
-  const colorSum: Record<string, number> = {};
+  const out: VariantMeta[] = [];
 
   for (const v of arr) {
     const a = v?.attributes ?? v ?? {};
@@ -185,12 +183,78 @@ function getStockByColorSizeHeight(attrs: any): {
     const size = String(a.size ?? "").trim();
     if (!color || !size) continue;
 
-    const stock = Number(a.stock) || 0;
-
     const h = Number(a.height_increase_cm);
     const height = Number.isFinite(h) ? h : 0;
 
     const sku = typeof a.sku === "string" && a.sku.trim() ? a.sku.trim() : null;
+
+    out.push({ sku, color, size, height });
+  }
+
+  return out;
+}
+
+// ✅ NEW: 批量从 Worker/D1 拿 stock
+async function fetchStockBySkus(skus: string[]): Promise<Record<string, number>> {
+  const uniq = Array.from(new Set(skus.map((s) => String(s || "").trim()).filter(Boolean)));
+  if (!uniq.length) return {};
+
+  const baseRaw =
+    (process.env.API_PROXY && process.env.API_PROXY.trim()) ||
+    (process.env.NEXT_PUBLIC_API_BASE && process.env.NEXT_PUBLIC_API_BASE.trim()) ||
+    "";
+
+  const base = baseRaw.replace(/\/+$/, "");
+  if (!base) return {};
+
+  // d1-worker: GET /stock/bulk?skus=...
+  const url = `${base}/stock/bulk?skus=${encodeURIComponent(uniq.join(","))}`;
+
+  try {
+    const r = await fetch(url, { cache: "no-store" });
+    const j: any = await r.json().catch(() => null);
+
+    if (!r.ok || !j?.ok || !Array.isArray(j?.items)) return {};
+
+    const out: Record<string, number> = {};
+    for (const it of j.items) {
+      const sku = String(it?.sku ?? "").trim();
+      if (!sku) continue;
+      const n = Number(it?.stock);
+      out[sku] = Number.isFinite(n) ? Math.floor(n) : 0;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function getStockByColorSizeHeightFromD1(
+  variants: VariantMeta[],
+  stockBySku: Record<string, number>
+): {
+  stock3: Record<string, Record<string, Record<number, number>>>;
+  sku3: Record<string, Record<string, Record<number, string | null>>>;
+  sizesSum: Record<string, Record<string, number>>;
+  heightSum: Record<string, Record<number, number>>;
+  colorSum: Record<string, number>;
+} {
+  const stock3: Record<string, Record<string, Record<number, number>>> = {};
+  const sku3: Record<string, Record<string, Record<number, string | null>>> = {};
+  const sizesSum: Record<string, Record<string, number>> = {};
+  const heightSum: Record<string, Record<number, number>> = {};
+  const colorSum: Record<string, number> = {};
+
+  for (const v of variants) {
+    const color = v.color;
+    const size = v.size;
+    const height = v.height;
+
+    const sku = v.sku;
+    const stock =
+      sku && Object.prototype.hasOwnProperty.call(stockBySku, sku)
+        ? Number(stockBySku[sku] ?? 0) || 0
+        : 0;
 
     stock3[color] ??= {};
     stock3[color][size] ??= {};
@@ -346,7 +410,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
   const sp = await searchParams;
 
-  // ✅ 删除 legacy 字段 base_price_cents / currency / discount_percent_off
+  // ✅ Strapi 只取 meta（不信任 stock），但我们仍然取 sku/color/size/height
   const qs =
     `/api/products?filters[slug][$eq]=${encodeURIComponent(slug)}` +
     `&fields[0]=title&fields[1]=slug&fields[2]=hot_score` +
@@ -355,7 +419,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     `&populate[color_galleries][populate][images]=true` +
     `&populate[variants][fields][0]=color` +
     `&populate[variants][fields][1]=size` +
-    `&populate[variants][fields][2]=stock` +
+    // ⚠️ stock 字段不再需要（可以删掉，留着也行）
+    // `&populate[variants][fields][2]=stock` +
     `&populate[variants][fields][3]=height_increase_cm` +
     `&populate[variants][fields][4]=sku` +
     `&populate[prices]=*` +
@@ -393,7 +458,6 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     (r) => String(r.currency).toUpperCase() === String(currency).toUpperCase()
   );
 
-  // ✅ baseMinor: 原价（minor）
   const baseMinor =
     rec && Number.isFinite(Number((rec as any).price))
       ? Math.max(0, Math.round(Number((rec as any).price)))
@@ -401,14 +465,12 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
       ? Math.max(0, Math.round(Number((rec as any).amount_minor)))
       : null;
 
-  // ✅ effectiveMinor: 现价（minor），优先 real_price；没有就 fallback baseMinor
   const effectiveMinor =
     rec && Number.isFinite(Number((rec as any).real_price))
       ? Math.max(0, Math.round(Number((rec as any).real_price)))
       : baseMinor;
 
-  // ✅ major for UI
-  const price = baseMinor != null ? baseMinor / 100 : null; // 原价（major）
+  const price = baseMinor != null ? baseMinor / 100 : null;
   const salePrice =
     baseMinor != null &&
     effectiveMinor != null &&
@@ -416,7 +478,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     effectiveMinor > 0 &&
     effectiveMinor < baseMinor
       ? effectiveMinor / 100
-      : null; // 现价（major）
+      : null;
 
   const discount =
     baseMinor != null &&
@@ -459,8 +521,15 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     css: colorNameToCss(name) ?? "#000000",
   }));
 
-  // ---- variants stock + sku ----
-  const { stock3, sku3, sizesSum, heightSum, colorSum } = getStockByColorSizeHeight(attrs);
+  // ✅ NEW: variants meta（来自 Strapi） + stock（来自 D1）
+  const variantMeta = getVariantMetaList(attrs);
+  const skus = variantMeta.map((v) => v.sku).filter((s): s is string => Boolean(s));
+
+  const stockBySku = await fetchStockBySkus(skus);
+
+  // ---- variants stock + sku (computed from D1) ----
+  const { stock3, sku3, sizesSum, heightSum, colorSum } =
+    getStockByColorSizeHeightFromD1(variantMeta, stockBySku);
 
   const sizesForColor = currentColor ? Object.keys(sizesSum[currentColor] ?? {}) : [];
 
@@ -475,7 +544,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     stock: sizesSum[currentColor!]?.[s] ?? 0,
   }));
 
-  // ---- height selection (ALWAYS SHOW) ----
+  // ---- height selection ----
   const heightParamRaw = Array.isArray((sp as any).height)
     ? (sp as any).height[0]
     : (sp as any).height;
@@ -595,13 +664,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
             "
           >
             {isNew ? (
-              <CornerRibbon
-                variant="top"
-                text="NEW"
-                tone="new"
-                height={50}  // 你想更大就调这里：56/64 都行
-                className="top-2"
-              />
+              <CornerRibbon variant="top" text="NEW" tone="new" height={50} className="top-2" />
             ) : null}
 
             {total > 0 ? (
@@ -622,8 +685,6 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
           <div className="px-1 sm:px-2">
             <div className="space-y-3">
               <h2 className="text-2xl font-bold leading-snug tracking-tight">{title}</h2>
-
-
 
               <div className="text-neutral-800">
                 <Stars value={rating} />
@@ -686,7 +747,6 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
               <AddToBagClient
                 slug={slug}
                 title={title}
-                // ✅ 这里仍然传 major（与你当前 cart/checkout 的旧结构兼容）
                 price={price ?? null}
                 salePrice={saleActive ? (salePrice ?? null) : null}
                 currency={currency}

@@ -277,6 +277,15 @@ export default function CheckoutPage() {
   })();
   const [step, setStep] = useState<StepKey>(initialStepFromURL);
 
+  // ✅ NEW: keep local step state in sync with URL (?step=...)
+  const stepParam = searchParams.get("step");
+  useEffect(() => {
+    if (isStepKey(stepParam) && stepParam !== step) {
+      setStep(stepParam);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stepParam]);
+
   const setStepAndURL = (next: StepKey) => {
     setStep(next);
     const p = new URLSearchParams(window.location.search);
@@ -894,6 +903,7 @@ export default function CheckoutPage() {
             onPayInitiated={handlePayInitiated}
             onPaySucceeded={handlePaySucceeded}
             cart={cart}
+            onBackToBag={() => setStepAndURL("bag")} // ✅ NEW
           />
 
           {step === "payment" && (

@@ -98,6 +98,7 @@ type PaymentStepProps = {
 
   onPayInitiated: () => void;
   onPaySucceeded: (payload?: any) => void;
+  onBackToBag?: () => void; // ✅ NEW: let parent control step switch
 
   cart: Array<{
     price?: number; // major（折后价）
@@ -121,11 +122,49 @@ function fmtMoneyMinor(minor: number, currency: string, locale?: string) {
   return fmtPrice((minor ?? 0) / 100, currency, locale);
 }
 
+/** 把后端 options 里的 heightIncreaseCm / height_cm / height_increase_cm 统一成人类可读 */
+function buildVariantLineFromOptions(options: any): string {
+  const opt = options ?? {};
+  const color = String(opt?.color ?? "").trim();
+  const size = String(opt?.size ?? "").trim();
+
+  const hRaw =
+    opt?.heightIncreaseCm ??
+    opt?.height_cm ??
+    opt?.height_increase_cm ??
+    null;
+
+  let height_cm: number | null = null;
+  if (hRaw === 0 || hRaw === "0") height_cm = 0;
+  else if (hRaw == null) height_cm = null;
+  else if (typeof hRaw === "string" && hRaw.trim() === "") height_cm = null;
+  else {
+    const n = Number(hRaw);
+    height_cm = Number.isFinite(n) ? n : null;
+  }
+
+  const parts: string[] = [];
+  if (color) parts.push(`Color: ${color}`);
+  if (size) parts.push(`Size: ${size}`);
+  if (height_cm != null) parts.push(`Height: +${height_cm} cm`);
+
+  return parts.join(" | ");
+}
+
 type PayError =
   | {
       type: "out_of_stock";
       message: string;
-      detail?: { sku?: string; current?: number; requested?: number };
+      detail?: {
+        sku?: string;
+        current?: number;
+        requested?: number;
+
+        // ✅ Phase 2: allow server to pass richer info (方案1：不改DB不额外查Strapi)
+        product_title?: string;
+        variant_title?: string;
+        options?: any;
+      };
     }
   | {
       type: "sku_not_found";
@@ -159,6 +198,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   onPayInitiated,
   onPaySucceeded,
   cart,
+  onBackToBag, // ✅ NEW
 }) => {
   const router = useRouter();
 
@@ -208,21 +248,26 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   );
 
   const handlePayFailed = useCallback((err: any) => {
-    // ❌ 不要 console.warn，避免你右侧一直刷红（你自己需要 debug 再加）
     const status = Number(err?.status ?? err?.httpStatus ?? 0) || undefined;
     const code = String(err?.code ?? err?.error ?? "").trim();
 
     if (status === 409 && code === "out_of_stock") {
-      const sku = err?.detail?.sku ?? err?.sku;
-      const current = err?.detail?.current ?? err?.current;
-      const requested = err?.detail?.requested ?? err?.requested;
+      // ✅ 兼容：err.detail 可能来自 /orders 或 /stock/check
+      const d = err?.detail ?? {};
+      const sku = d?.sku ?? err?.sku;
+      const current = d?.current ?? err?.current;
+      const requested = d?.requested ?? err?.requested;
+
+      // ✅ Phase 2: 接住更丰富信息（来自 d1-worker /orders out_of_stock）
+      const product_title = d?.product_title ?? d?.productTitle ?? null;
+      const variant_title = d?.variant_title ?? d?.variantTitle ?? null;
+      const options = d?.options ?? null;
 
       setPayError({
         type: "out_of_stock",
-        // ✅ 改成英文（你要的第 2 点）
         message:
           "Sorry — the item you’re trying to purchase is out of stock (sold out or not enough quantity).",
-        detail: { sku, current, requested },
+        detail: { sku, current, requested, product_title, variant_title, options },
       });
       return;
     }
@@ -309,7 +354,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   }, [address?.country]);
 
   /**
-   * ✅ 缺货展示信息：只从 cart snapshot 取（title/color/size/heightIncreaseCm/material）
+   * ✅ 缺货展示信息：优先从 cart snapshot 取；找不到再用后端 detail（方案1）
    */
   const outOfStockDisplay = useMemo(() => {
     if (!payError || payError.type !== "out_of_stock") return null;
@@ -325,9 +370,13 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
           })
         : null;
 
-    const title = String(hit?.title ?? hit?.product_title ?? hit?.name ?? "").trim();
+    // ---------- title ----------
+    const titleFromCart = String(hit?.title ?? hit?.product_title ?? hit?.name ?? "").trim();
+    const titleFromServer = String(payError.detail?.product_title ?? "").trim();
 
-    // 兼容多种结构：item/attrs/options/snapshot.attrs/snapshot.options
+    const title = titleFromCart || titleFromServer || "";
+
+    // ---------- options ----------
     const attrs = hit?.attrs ?? hit?.snapshot?.attrs ?? {};
     const options = hit?.options ?? hit?.snapshot?.options ?? {};
 
@@ -343,8 +392,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
 
     const material = String(hit?.material ?? options?.material ?? attrs?.material ?? "").trim();
 
-    const heightLabel =
-      typeof height === "number" ? `${height} cm` : String(height || "").trim();
+    const heightLabel = typeof height === "number" ? `${height} cm` : String(height || "").trim();
 
     const variantParts = [
       color ? `Color: ${color}` : null,
@@ -353,15 +401,45 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
       material ? `Material: ${material}` : null,
     ].filter(Boolean);
 
+    const variantLineFromCart = variantParts.join(" | ").trim();
+
+    // 后端 detail 可能已经给了一个完整 variant_title
+    const variantTitleFromServer = String(payError.detail?.variant_title ?? "").trim();
+
+    // 或者后端给了 options，我们在前端生成
+    const variantLineFromServerOptions = buildVariantLineFromOptions(payError.detail?.options);
+
+    const variantLine =
+      variantLineFromCart ||
+      variantTitleFromServer ||
+      variantLineFromServerOptions ||
+      "";
+
     return {
       title: title || null,
-      variantLine: variantParts.join(" | "),
-      // ✅ 仍保留 sku 在内存里做匹配/调试，但 UI 不展示（你要的第 1 点）
-      sku: sku || null,
+      variantLine: variantLine || null,
+      sku: sku || null, // 不展示，只用于匹配/调试
       current: payError.detail?.current,
       requested: payError.detail?.requested,
     };
   }, [payError, cart]);
+
+  const goBackToBag = useCallback(() => {
+    // ✅ 先走父级：同时更新 step state + URL（最稳）
+    if (typeof onBackToBag === "function") {
+      onBackToBag();
+      return;
+    }
+
+    // fallback（理论上不会走到）
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.set("step", "bag");
+      router.push(u.pathname + "?" + u.searchParams.toString());
+      return;
+    } catch {}
+    router.push("/checkout?step=bag");
+  }, [onBackToBag, router]);
 
   // ✅ 给后端 /orders 的权威 totals + items snapshot（你原来的逻辑保留）
   const checkoutTotalsMeta = useMemo(() => {
@@ -425,11 +503,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   // ✅ Phase 1 / Step 3: stock items from cart
   const stockItems = useMemo(() => buildStockCheckItems(cart as any[]), [cart]);
 
-  /**
-   * ✅ Phase 1 / Step 3: preflight function passed to PayPalBigButton
-   * - 适配新 /stock/check 返回（error/detail/items）
-   * - 一律 throw {status, code, message, detail} 给 PayPalBigButton -> PaymentStep 统一处理
-   */
   const runStockPreflight = useCallback(async () => {
     if (!stockItems.length) {
       throw { status: 400, code: "no_items", message: "No items to check." };
@@ -437,7 +510,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
 
     const { httpStatus, data } = await preflightStockCheck(stockItems);
 
-    // 1) 正常 OK
     if (httpStatus === 200 && data && (data as any).ok === true) {
       const items = Array.isArray((data as any).items) ? ((data as any).items as StockCheckOkItem[]) : [];
       const firstBad = items.find((x) => x && x.ok === false);
@@ -453,12 +525,10 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
       return;
     }
 
-    // 2) 非 200 或 data.ok=false
     const errCode = String((data as any)?.error || `http_${httpStatus}`);
     const detail = (data as any)?.detail ?? null;
     const items = Array.isArray((data as any)?.items) ? ((data as any).items as StockCheckOkItem[]) : [];
 
-    // out_of_stock：优先使用 detail，其次从 items 里找第一个 bad
     if (httpStatus === 409 && errCode === "out_of_stock") {
       const sku = String(detail?.sku ?? "").trim();
       const current = detail?.current;
@@ -481,17 +551,14 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
       throw { status: 409, code: "out_of_stock", message: "Stock preflight failed.", detail: detail ?? { items } };
     }
 
-    // sku_not_found
     if (httpStatus === 409 && errCode === "sku_not_found") {
       throw { status: 409, code: "sku_not_found", message: "SKU not found.", detail: detail ?? { items } };
     }
 
-    // stock_lookup_failed (502)
     if (httpStatus === 502 && errCode === "stock_lookup_failed") {
       throw { status: 502, code: "stock_lookup_failed", message: "Stock lookup failed.", detail: detail ?? { items } };
     }
 
-    // 兜底
     throw {
       status: httpStatus || 500,
       code: "stock_check_failed",
@@ -521,9 +588,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     >
       <div className="px-4 py-3 border-b flex items-center justify-between">
         <div>
-          <div className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">
-            Step 4
-          </div>
+          <div className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">Step 4</div>
           <div className="text-base font-semibold text-neutral-900">Payment Options</div>
         </div>
         <div className="flex items-center gap-1 text-xs text-emerald-600">
@@ -537,9 +602,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
           <span className="mt-0.5 text-base">ℹ️</span>
           <div>
             <div className="font-medium">Make sure your delivery address is correct!</div>
-            <div className="text-xs text-blue-900">
-              You can go back to the Address step to make changes.
-            </div>
+            <div className="text-xs text-blue-900">You can go back to the Address step to make changes.</div>
           </div>
         </div>
 
@@ -563,27 +626,27 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                     </div>
                   ) : null}
 
-                  {/* ✅ 删除 SKU 显示（你要的第 1 点） */}
-                  {/* {outOfStockDisplay?.sku ? (
-                    <div>
-                      <b>SKU:</b> {outOfStockDisplay.sku}
-                    </div>
-                  ) : null} */}
-
-                  <div>
-                    <b>Stock:</b>{" "}
-                    {typeof outOfStockDisplay?.current === "number"
-                      ? outOfStockDisplay.current
-                      : "N/A"}{" "}
-                    / <b>Requested:</b>{" "}
-                    {typeof outOfStockDisplay?.requested === "number"
-                      ? outOfStockDisplay.requested
-                      : "N/A"}
+                  <div className="mt-1">
+                    <b>In stock:</b>{" "}
+                    {typeof outOfStockDisplay?.current === "number" ? outOfStockDisplay.current : "N/A"}
+                    {"  "}
+                    <span className="mx-1">|</span>
+                    <b>You selected:</b>{" "}
+                    {typeof outOfStockDisplay?.requested === "number" ? outOfStockDisplay.requested : "N/A"}
                   </div>
 
-                  {/* ✅ 底部提示改成英文（你要的第 3 点） */}
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={goBackToBag}
+                      className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium hover:bg-neutral-50"
+                    >
+                      Back to bag
+                    </button>
+                  </div>
+
                   <div className="mt-2">
-                    Please go back to your bag to adjust the quantity or remove the item, then try paying again.
+                    Please adjust the quantity or remove the item in your bag, then try paying again.
                   </div>
                 </div>
               )}
@@ -625,9 +688,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                   onClick={() => setMethod("paypal")}
                   className={[
                     "w-full flex items-center justify-between rounded-md border px-3 py-3 text-sm text-left",
-                    method === "paypal"
-                      ? "border-neutral-900 bg-neutral-50"
-                      : "border-neutral-300 hover:bg-neutral-50",
+                    method === "paypal" ? "border-neutral-900 bg-neutral-50" : "border-neutral-300 hover:bg-neutral-50",
                   ].join(" ")}
                 >
                   <span className="font-medium">PayPal</span>
@@ -685,25 +746,19 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
 
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-gray-600">Subtotal</div>
-                  <div className="text-base font-medium">
-                    {fmtMoneyMinor(derivedItemsMinor, safeCurrency)}
-                  </div>
+                  <div className="text-base font-medium">{fmtMoneyMinor(derivedItemsMinor, safeCurrency)}</div>
                 </div>
 
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-gray-600">Delivery</div>
                   <div className="text-base font-medium">
-                    {Number(deliveryFeeMinor) === 0
-                      ? "FREE"
-                      : fmtMoneyMinor(Number(deliveryFeeMinor) || 0, safeCurrency)}
+                    {Number(deliveryFeeMinor) === 0 ? "FREE" : fmtMoneyMinor(Number(deliveryFeeMinor) || 0, safeCurrency)}
                   </div>
                 </div>
 
                 <div className="border-t pt-3 flex items-center justify-between">
                   <div className="text-lg font-semibold">Total</div>
-                  <div className="text-xl font-bold">
-                    {fmtMoneyMinor(derivedTotalMinor, safeCurrency)}
-                  </div>
+                  <div className="text-xl font-bold">{fmtMoneyMinor(derivedTotalMinor, safeCurrency)}</div>
                 </div>
               </div>
 
@@ -760,8 +815,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
 
         <div className="mt-auto pt-6 space-y-1 text-xs text-gray-500">
           <p>
-            All charges are processed in <b>{safeCurrency}</b>. Your bank or PayPal may apply currency
-            conversion and fees.
+            All charges are processed in <b>{safeCurrency}</b>. Your bank or PayPal may apply currency conversion and fees.
           </p>
           <p>* Pay in 4 availability is determined by PayPal and may vary by account and region.</p>
         </div>

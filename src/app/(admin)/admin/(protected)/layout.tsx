@@ -42,11 +42,20 @@ export default function AdminProtectedLayout({
             >
               Dashboard
             </Link>
+
             <Link
               href="/admin/returns"
               className="block px-3 py-2 rounded-md text-sm hover:bg-slate-100"
             >
               Returns
+            </Link>
+
+            {/* ✅ NEW: Inventory */}
+            <Link
+              href="/admin/inventory"
+              className="block px-3 py-2 rounded-md text-sm hover:bg-slate-100"
+            >
+              Inventory
             </Link>
           </nav>
 
