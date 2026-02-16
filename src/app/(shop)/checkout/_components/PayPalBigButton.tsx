@@ -75,10 +75,11 @@ const QUIET_CREATE_ORDER_CODES = new Set([
   "stock_lookup_failed",
   "stock_check_failed",
   "missing_items",
+  // ✅ NEW: user cancelled
+  "paypal_cancelled",
 ]);
 
 function normalizeErrCode(err: any): string {
-  // PayPal SDK 有时候传 Error，有时候传 object，有时候 message 是 "[object Object]"
   const code = String(err?.code || "").trim();
   if (code) return code;
 
@@ -93,14 +94,29 @@ function normalizeErrCode(err: any): string {
 
 /**
  * ✅ 构造一个“可识别、可静默”的 abort 错误
- * - message 含 ABORT_SENTINEL
- * - 同时挂上 code（便于你自己调试）
  */
 function makeAbortError(code: string, payload?: any) {
   const e: any = new Error(ABORT_SENTINEL);
   e.code = code || "preflight_failed";
   e.payload = payload ?? null;
   return e;
+}
+
+/**
+ * ✅ NEW: 从 successMeta 提取 reservation id（兼容多种命名）
+ */
+function pickReservationId(meta: any): string | null {
+  const v =
+    meta?.reservation_id ??
+    meta?.reservationId ??
+    meta?.inventory_reservation_id ??
+    meta?.inventoryReservationId ??
+    meta?.meta?.reservation_id ??
+    meta?.meta?.reservationId ??
+    null;
+
+  const s = String(v || "").trim();
+  return s ? s : null;
 }
 
 export default function PayPalBigButton({
@@ -152,9 +168,7 @@ export default function PayPalBigButton({
           }}
           forceReRender={[value, currency]}
           createOrder={async (_data, actions) => {
-            // ✅ 防连点：createOrder 正在跑就终止（不进入 PayPal 流程）
             if (creatingRef.current) {
-              // 不用 onFailed：UI 不需要提示“你点太快”
               throw makeAbortError("create_order_in_progress");
             }
             creatingRef.current = true;
@@ -162,7 +176,6 @@ export default function PayPalBigButton({
             try {
               onInitiate?.();
 
-              // ✅ amount 校验
               if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) {
                 const err = {
                   status: 0,
@@ -171,34 +184,26 @@ export default function PayPalBigButton({
                   detail: { amount, currency },
                 };
                 onFailed?.(err);
-                // 关键：抛“可静默”的 abort error，避免 PayPal SDK 红字
                 throw makeAbortError("invalid_amount", err);
               }
 
-              // ✅ Phase 1 Step 3：库存预检（失败直接终止，不进入 PayPal）
+              // ✅ Phase 2：reserve（仍然复用 preflight 钩子）
               if (preflight) {
                 try {
-                  // 如果你也嫌 console 吵，可以删掉这两行
-                  // console.log("[paypal][preflight] checking stock…", { items: preflightItems ?? null });
                   await preflight();
-                  // console.log("[paypal][preflight] ok");
                 } catch (e: any) {
                   const err = {
                     status: Number(e?.status || 409) || 409,
-                    code: String(e?.code || "preflight_failed"),
+                    code: String(e?.code || e?.error || "preflight_failed"),
                     message: e?.message || "Stock preflight failed.",
                     detail: e?.detail ?? e ?? null,
                   };
 
-                  // ✅ 交给 PaymentStep 展示
                   onFailed?.(err);
-
-                  // ✅ 抛“可静默”的 abort error（这一步是降噪关键）
                   throw makeAbortError(err.code, err);
                 }
               }
 
-              // ✅ 继续走 PayPal create order
               return actions.order.create({
                 intent: "CAPTURE",
                 purchase_units: [
@@ -251,9 +256,15 @@ export default function PayPalBigButton({
                 return;
               }
 
+              // ✅ NEW: reservation id 注入到 /orders body（顶层字段最稳）
+              const reservation_id = pickReservationId(successMeta);
+
               const orderBody = {
                 currency: (checkoutTotals?.currency || currency || "AUD").toUpperCase(),
                 items: itemsFromMeta,
+
+                // ✅ NEW: 给 worker /orders 使用（Phase 2 consume）
+                ...(reservation_id ? { reservation_id } : {}),
 
                 payment: {
                   provider: "paypal",
@@ -285,6 +296,9 @@ export default function PayPalBigButton({
                 meta: {
                   ...(successMeta?.meta || {}),
                   __paypal_order_id: paypalPayload.orderId,
+
+                  // ✅ NEW: 冗余一份到 meta，方便你后端临时 debug
+                  ...(reservation_id ? { __reservation_id: reservation_id } : {}),
                 },
               };
 
@@ -300,7 +314,6 @@ export default function PayPalBigButton({
 
                 onFailed?.(err);
 
-                // 尽力 void 掉 PayPal order
                 try {
                   await (actions as any)?.order?.void?.();
                 } catch {}
@@ -310,7 +323,9 @@ export default function PayPalBigButton({
               }
 
               // 3) 真正成功
-              const merged = successMeta ? { ...paypalPayload, successMeta, order: orderResp } : { ...paypalPayload, order: orderResp };
+              const merged = successMeta
+                ? { ...paypalPayload, successMeta, order: orderResp }
+                : { ...paypalPayload, order: orderResp };
 
               await onSucceeded?.(merged);
 
@@ -320,7 +335,6 @@ export default function PayPalBigButton({
                 }
               } catch {}
             } catch (e: any) {
-              // 这里是“真的 capture 失败”才需要打 error
               console.error("[paypal] onApprove/capture failed:", e);
 
               onFailed?.({
@@ -334,7 +348,6 @@ export default function PayPalBigButton({
             }
           }}
           onError={(err) => {
-            // ✅ 关键：静默掉“我们自己主动终止 createOrder 的错误”
             const msg = String((err as any)?.message || "");
             if (msg.includes(ABORT_SENTINEL)) {
               approvingRef.current = false;
@@ -347,7 +360,6 @@ export default function PayPalBigButton({
               return;
             }
 
-            // ✅ 其他真实错误：保留
             console.error("[paypal] error:", err);
 
             onFailed?.({
@@ -360,6 +372,14 @@ export default function PayPalBigButton({
             approvingRef.current = false;
           }}
           onCancel={() => {
+            // ✅ NEW: cancel 也通知上层（PaymentStep 会 release reservation）
+            onFailed?.({
+              status: 0,
+              code: "paypal_cancelled",
+              message: "Payment cancelled.",
+              detail: null,
+            });
+
             approvingRef.current = false;
           }}
         />

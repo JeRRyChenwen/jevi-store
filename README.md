@@ -1037,3 +1037,53 @@ stock 小于50的时候才显示stock的数量
 order confirmation 页面貌似会刷新2次
 
 order-item 表的variant 字段，material也要存进去
+
+方案 2：定时同步（接近实时、成本低）
+
+让 Cloudflare Worker 按固定频率去拉 Strapi 然后同步，比如每 5 分钟一次。
+
+实现方式：Cron Trigger
+
+你在 wrangler.toml 里配 cron
+
+Worker 定时执行 sync 逻辑（不用你点）
+
+优点：
+
+不需要改 Strapi
+
+稳定、易维护
+
+对“新增 variant / 改 stock”几分钟内自动生效
+
+缺点：
+
+不是秒级实时（通常 1~5 分钟级别）
+
+Strapi 会被定时请求（但一般可接受）
+
+适合：上线初期、你想“准实时”但不想搞复杂 webhook。
+
+方案 3：事件驱动实时同步（真正实时、但实现复杂）
+
+你在 Strapi 里配置：
+
+当 variant 创建/更新/删除时（lifecycle / webhook）
+
+Strapi 主动请求 Worker 的某个 endpoint（例如 /admin/inventory/upsert 或 /inventory/webhook）
+
+Worker 立刻更新 D1
+
+优点：
+
+秒级实时
+
+只同步变更的 SKU（增量），效率最高
+
+缺点：
+
+需要 Strapi 端开发（lifecycle 或 webhook 插件/配置）
+
+需要鉴权（防止别人伪造请求）
+
+适合：你确定 Strapi 会长期作为运营后台，并且你真的需要实时一致性。

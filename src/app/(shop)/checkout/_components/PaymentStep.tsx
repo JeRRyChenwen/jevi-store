@@ -1,7 +1,7 @@
 // D:\前端练习\social-platform\src\app\(shop)\checkout\_components\PaymentStep.tsx
 "use client";
 
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Check, AlertCircle } from "lucide-react";
@@ -10,32 +10,33 @@ import { countryLabelOf } from "@/lib/country";
 import { mediaUrl } from "@/lib/strapi";
 import { Alert } from "@/components/ui/alert";
 
-/* ========== Phase 1 / Step 3: stock preflight types ========== */
+/* ========== Phase 2: reserve/release types ========== */
 type StockCheckItem = { sku: string; qty: number };
 
-type StockCheckOkItem = {
-  sku: string;
-  requested: number;
-  stock: number;
-  ok: boolean;
-  found?: boolean;
+type ReserveOkResp = {
+  ok: true;
+  reservation_id: string;
+  expires_at?: number; // ms
 };
 
-type StockCheckApiResp =
-  | { ok: true; items: StockCheckOkItem[] }
-  | {
-      ok: false;
-      error: string;
-      message?: string;
-      detail?: any;
-      items?: StockCheckOkItem[];
-    };
+type ReserveErrResp = {
+  ok: false;
+  error: string;
+  message?: string;
+  detail?: any;
+};
+
+type ReserveApiResp = ReserveOkResp | ReserveErrResp;
+
+type ReleaseApiResp =
+  | { ok: true }
+  | { ok: false; error: string; detail?: any };
 
 function getCartSku(it: any): string {
   return String(it?.product_sku ?? it?.sku ?? it?.variantSku ?? it?.variant_sku ?? "").trim();
 }
 
-function buildStockCheckItems(cart: any[]): StockCheckItem[] {
+function buildStockItems(cart: any[]): StockCheckItem[] {
   const list = Array.isArray(cart) ? cart : [];
   const map = new Map<string, number>();
 
@@ -49,15 +50,24 @@ function buildStockCheckItems(cart: any[]): StockCheckItem[] {
   return Array.from(map.entries()).map(([sku, qty]) => ({ sku, qty }));
 }
 
-async function preflightStockCheck(items: StockCheckItem[]): Promise<{
-  httpStatus: number;
-  data: StockCheckApiResp | null;
-}> {
-  const res = await fetch("/api/stock/check", {
+async function reserveStock(items: StockCheckItem[]): Promise<{ httpStatus: number; data: ReserveApiResp | null }> {
+  const res = await fetch("/api/stock/reserve", {
     method: "POST",
     credentials: "include",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ items }),
+  });
+
+  const data: any = await res.json().catch(() => null);
+  return { httpStatus: res.status, data };
+}
+
+async function releaseStock(reservation_id: string): Promise<{ httpStatus: number; data: ReleaseApiResp | null }> {
+  const res = await fetch("/api/stock/release", {
+    method: "POST",
+    credentials: "include",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ reservation_id }),
   });
 
   const data: any = await res.json().catch(() => null);
@@ -98,7 +108,7 @@ type PaymentStepProps = {
 
   onPayInitiated: () => void;
   onPaySucceeded: (payload?: any) => void;
-  onBackToBag?: () => void; // ✅ NEW: let parent control step switch
+  onBackToBag?: () => void; // let parent control step switch
 
   cart: Array<{
     price?: number; // major（折后价）
@@ -128,11 +138,7 @@ function buildVariantLineFromOptions(options: any): string {
   const color = String(opt?.color ?? "").trim();
   const size = String(opt?.size ?? "").trim();
 
-  const hRaw =
-    opt?.heightIncreaseCm ??
-    opt?.height_cm ??
-    opt?.height_increase_cm ??
-    null;
+  const hRaw = opt?.heightIncreaseCm ?? opt?.height_cm ?? opt?.height_increase_cm ?? null;
 
   let height_cm: number | null = null;
   if (hRaw === 0 || hRaw === "0") height_cm = 0;
@@ -159,30 +165,14 @@ type PayError =
         sku?: string;
         current?: number;
         requested?: number;
-
-        // ✅ Phase 2: allow server to pass richer info (方案1：不改DB不额外查Strapi)
         product_title?: string;
         variant_title?: string;
         options?: any;
       };
     }
-  | {
-      type: "sku_not_found";
-      message: string;
-      detail?: { sku?: string };
-    }
-  | {
-      type: "stock_lookup_failed";
-      message: string;
-      detail?: any;
-      status?: number;
-    }
-  | {
-      type: "amount_mismatch" | "stock_update_failed" | "server_error" | "unknown";
-      message: string;
-      detail?: any;
-      status?: number;
-    };
+  | { type: "reservation_failed"; message: string; detail?: any; status?: number }
+  | { type: "reservation_expired"; message: string; detail?: any; status?: number }
+  | { type: "amount_mismatch" | "server_error" | "unknown"; message: string; detail?: any; status?: number };
 
 const PaymentStep: React.FC<PaymentStepProps> = ({
   visible,
@@ -198,15 +188,20 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   onPayInitiated,
   onPaySucceeded,
   cart,
-  onBackToBag, // ✅ NEW
+  onBackToBag,
 }) => {
   const router = useRouter();
 
   const [method, setMethod] = useState<"card" | "paypal">("paypal");
   const [suppressBlockedHint, setSuppressBlockedHint] = useState(false);
 
-  // ✅ 用于显示“缺货/下单失败”等错误
+  // 缺货/失败等错误
   const [payError, setPayError] = useState<PayError | null>(null);
+
+  // ✅ Phase 2: reservation state
+  const [reservationId, setReservationId] = useState<string | null>(null);
+  const [reservationExpiresAt, setReservationExpiresAt] = useState<number | null>(null);
+  const paidOrSucceededRef = useRef(false); // 用来防止已成功支付还去 release
 
   const safeCurrency = useMemo(() => {
     return (currency || cart?.[0]?.currency || "AUD").toUpperCase();
@@ -221,11 +216,9 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     const list = Array.isArray(cart) ? cart : [];
     return list.reduce((sum, it) => {
       const qty = Math.max(1, Number(it?.qty) || 1);
-
       const priceMajor = Number(it?.price) || 0;
       const unitMinor = Math.round(priceMajor * 100);
       const lineMinor = unitMinor * qty;
-
       return sum + Math.max(0, lineMinor);
     }, 0);
   }, [cart]);
@@ -237,89 +230,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   const derivedAmountMajor = useMemo(() => {
     return Number((derivedTotalMinor / 100).toFixed(2));
   }, [derivedTotalMinor]);
-
-  const handlePaySucceeded = useCallback(
-    (payload: any) => {
-      setPayError(null);
-      setSuppressBlockedHint(true);
-      onPaySucceeded(payload);
-    },
-    [onPaySucceeded]
-  );
-
-  const handlePayFailed = useCallback((err: any) => {
-    const status = Number(err?.status ?? err?.httpStatus ?? 0) || undefined;
-    const code = String(err?.code ?? err?.error ?? "").trim();
-
-    if (status === 409 && code === "out_of_stock") {
-      // ✅ 兼容：err.detail 可能来自 /orders 或 /stock/check
-      const d = err?.detail ?? {};
-      const sku = d?.sku ?? err?.sku;
-      const current = d?.current ?? err?.current;
-      const requested = d?.requested ?? err?.requested;
-
-      // ✅ Phase 2: 接住更丰富信息（来自 d1-worker /orders out_of_stock）
-      const product_title = d?.product_title ?? d?.productTitle ?? null;
-      const variant_title = d?.variant_title ?? d?.variantTitle ?? null;
-      const options = d?.options ?? null;
-
-      setPayError({
-        type: "out_of_stock",
-        message:
-          "Sorry — the item you’re trying to purchase is out of stock (sold out or not enough quantity).",
-        detail: { sku, current, requested, product_title, variant_title, options },
-      });
-      return;
-    }
-
-    if (status === 409 && code === "sku_not_found") {
-      setPayError({
-        type: "sku_not_found",
-        message:
-          "Sorry — we couldn’t find one of the items in your bag in our inventory (SKU mismatch). Please go back to your bag, refresh, and try again.",
-        detail: { sku: err?.detail?.sku ?? err?.sku },
-      });
-      return;
-    }
-
-    if (status === 502 && code === "stock_lookup_failed") {
-      setPayError({
-        type: "stock_lookup_failed",
-        status,
-        message:
-          "Sorry — we can’t verify stock right now (inventory service temporarily unavailable). Please try again shortly.",
-        detail: err?.detail ?? err ?? null,
-      });
-      return;
-    }
-
-    if (status === 400 && code === "amount_mismatch") {
-      setPayError({
-        type: "amount_mismatch",
-        status,
-        message: "Your order total has changed. Please refresh the page and check out again.",
-        detail: err?.detail ?? null,
-      });
-      return;
-    }
-
-    if (status === 500 && code === "stock_update_failed") {
-      setPayError({
-        type: "stock_update_failed",
-        status,
-        message: "Stock update failed. Please try again shortly.",
-        detail: err?.detail ?? null,
-      });
-      return;
-    }
-
-    setPayError({
-      type: "unknown",
-      status,
-      message: err?.message || "Payment failed. Please try again.",
-      detail: err?.detail ?? err ?? null,
-    });
-  }, []);
 
   const hasAddress =
     address?.firstName ||
@@ -334,15 +244,9 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     if (isPayProcessing) return null;
     if (suppressBlockedHint) return null;
 
-    if (derivedItemsCount <= 0) {
-      return "Your bag is empty. Please add at least one item before paying.";
-    }
-    if (!hasAddress) {
-      return "No delivery address found. Please complete the Address step before paying.";
-    }
-    if (derivedTotalMinor <= 0) {
-      return "Invalid total amount. Please review your order.";
-    }
+    if (derivedItemsCount <= 0) return "Your bag is empty. Please add at least one item before paying.";
+    if (!hasAddress) return "No delivery address found. Please complete the Address step before paying.";
+    if (derivedTotalMinor <= 0) return "Invalid total amount. Please review your order.";
     return null;
   }, [visible, isPayProcessing, suppressBlockedHint, derivedItemsCount, hasAddress, derivedTotalMinor]);
 
@@ -354,7 +258,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   }, [address?.country]);
 
   /**
-   * ✅ 缺货展示信息：优先从 cart snapshot 取；找不到再用后端 detail（方案1）
+   * ✅ 缺货展示信息：优先从 cart snapshot 取；找不到再用后端 detail
    */
   const outOfStockDisplay = useMemo(() => {
     if (!payError || payError.type !== "out_of_stock") return null;
@@ -370,13 +274,10 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
           })
         : null;
 
-    // ---------- title ----------
     const titleFromCart = String(hit?.title ?? hit?.product_title ?? hit?.name ?? "").trim();
     const titleFromServer = String(payError.detail?.product_title ?? "").trim();
-
     const title = titleFromCart || titleFromServer || "";
 
-    // ---------- options ----------
     const attrs = hit?.attrs ?? hit?.snapshot?.attrs ?? {};
     const options = hit?.options ?? hit?.snapshot?.options ?? {};
 
@@ -391,7 +292,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
       null;
 
     const material = String(hit?.material ?? options?.material ?? attrs?.material ?? "").trim();
-
     const heightLabel = typeof height === "number" ? `${height} cm` : String(height || "").trim();
 
     const variantParts = [
@@ -402,36 +302,166 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     ].filter(Boolean);
 
     const variantLineFromCart = variantParts.join(" | ").trim();
-
-    // 后端 detail 可能已经给了一个完整 variant_title
     const variantTitleFromServer = String(payError.detail?.variant_title ?? "").trim();
-
-    // 或者后端给了 options，我们在前端生成
     const variantLineFromServerOptions = buildVariantLineFromOptions(payError.detail?.options);
 
-    const variantLine =
-      variantLineFromCart ||
-      variantTitleFromServer ||
-      variantLineFromServerOptions ||
-      "";
+    const variantLine = variantLineFromCart || variantTitleFromServer || variantLineFromServerOptions || "";
 
     return {
       title: title || null,
       variantLine: variantLine || null,
-      sku: sku || null, // 不展示，只用于匹配/调试
+      sku: sku || null,
       current: payError.detail?.current,
       requested: payError.detail?.requested,
     };
   }, [payError, cart]);
 
-  const goBackToBag = useCallback(() => {
-    // ✅ 先走父级：同时更新 step state + URL（最稳）
+  // ✅ Phase 2: stock items from cart
+  const stockItems = useMemo(() => buildStockItems(cart as any[]), [cart]);
+
+  const releaseReservationIfAny = useCallback(
+    async (reason: string) => {
+      if (paidOrSucceededRef.current) return;
+      const rid = String(reservationId || "").trim();
+      if (!rid) return;
+
+      // 防止重复 release
+      setReservationId(null);
+      setReservationExpiresAt(null);
+
+      try {
+        const { httpStatus, data } = await releaseStock(rid);
+        if (httpStatus !== 200 || !data || (data as any).ok !== true) {
+          console.warn("[checkout] release reservation failed", { reason, rid, httpStatus, data });
+        } else {
+          console.log("[checkout] reservation released", { reason, rid });
+        }
+      } catch (e) {
+        console.warn("[checkout] release reservation exception", { reason, rid, e });
+      }
+    },
+    [reservationId]
+  );
+
+  // ✅ 离开 PaymentStep（卸载/切 step）自动释放（如果还没成功付款）
+  useEffect(() => {
+    return () => {
+      // 组件卸载时执行
+      void releaseReservationIfAny("unmount");
+    };
+  }, [releaseReservationIfAny]);
+
+  // ✅ 如果购物袋内容变化，旧 reservation 也应该释放（避免占着错误 sku）
+  const cartSignature = useMemo(() => {
+    const pairs = (stockItems || []).map((x) => `${x.sku}:${x.qty}`).sort();
+    return pairs.join(",");
+  }, [stockItems]);
+  const prevCartSigRef = useRef<string>("");
+  useEffect(() => {
+    if (!prevCartSigRef.current) {
+      prevCartSigRef.current = cartSignature;
+      return;
+    }
+    if (prevCartSigRef.current !== cartSignature) {
+      prevCartSigRef.current = cartSignature;
+      void releaseReservationIfAny("cart_changed");
+    }
+  }, [cartSignature, releaseReservationIfAny]);
+
+  const handlePaySucceeded = useCallback(
+    (payload: any) => {
+      setPayError(null);
+      setSuppressBlockedHint(true);
+
+      // ✅ 已成功：不要再 release
+      paidOrSucceededRef.current = true;
+
+      // 成功后把 reservation 状态清掉（后端 /orders 会 consume）
+      setReservationId(null);
+      setReservationExpiresAt(null);
+
+      onPaySucceeded(payload);
+    },
+    [onPaySucceeded]
+  );
+
+  const handlePayFailed = useCallback(
+    async (err: any) => {
+      const status = Number(err?.status ?? err?.httpStatus ?? 0) || undefined;
+      const code = String(err?.code ?? err?.error ?? err?.message ?? "").trim();
+
+      // ✅ 支付失败/创建订单失败：释放预留
+      await releaseReservationIfAny("pay_failed");
+
+      // ✅ 兼容你的 out_of_stock 展示
+      if (status === 409 && (code === "out_of_stock" || err?.error === "out_of_stock")) {
+        const d = err?.detail ?? {};
+        const sku = d?.sku ?? err?.sku;
+        const current = d?.current ?? err?.current;
+        const requested = d?.requested ?? err?.requested;
+
+        const product_title = d?.product_title ?? d?.productTitle ?? null;
+        const variant_title = d?.variant_title ?? d?.variantTitle ?? null;
+        const options = d?.options ?? null;
+
+        setPayError({
+          type: "out_of_stock",
+          message: "Sorry — the item you’re trying to purchase is out of stock (sold out or not enough quantity).",
+          detail: { sku, current, requested, product_title, variant_title, options },
+        });
+        return;
+      }
+
+      // reservation 相关错误（来自 /orders consume）
+      if (status === 409 && String(err?.error || "") === "reservation_expired") {
+        setPayError({
+          type: "reservation_expired",
+          status,
+          message: "Your stock reservation has expired. Please try paying again.",
+          detail: err?.detail ?? err ?? null,
+        });
+        return;
+      }
+
+      if (status && status >= 400 && String(err?.error || "").includes("reservation")) {
+        setPayError({
+          type: "reservation_failed",
+          status,
+          message: "We couldn’t confirm your stock reservation. Please try again.",
+          detail: err?.detail ?? err ?? null,
+        });
+        return;
+      }
+
+      if (status === 400 && code === "amount_mismatch") {
+        setPayError({
+          type: "amount_mismatch",
+          status,
+          message: "Your order total has changed. Please refresh the page and check out again.",
+          detail: err?.detail ?? null,
+        });
+        return;
+      }
+
+      setPayError({
+        type: "unknown",
+        status,
+        message: err?.message || "Payment failed. Please try again.",
+        detail: err?.detail ?? err ?? null,
+      });
+    },
+    [releaseReservationIfAny]
+  );
+
+  const goBackToBag = useCallback(async () => {
+    // ✅ Back to bag 先释放 reservation
+    await releaseReservationIfAny("back_to_bag");
+
     if (typeof onBackToBag === "function") {
       onBackToBag();
       return;
     }
 
-    // fallback（理论上不会走到）
     try {
       const u = new URL(window.location.href);
       u.searchParams.set("step", "bag");
@@ -439,9 +469,9 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
       return;
     } catch {}
     router.push("/checkout?step=bag");
-  }, [onBackToBag, router]);
+  }, [onBackToBag, router, releaseReservationIfAny]);
 
-  // ✅ 给后端 /orders 的权威 totals + items snapshot（你原来的逻辑保留）
+  // ✅ 给后端 /orders 的权威 totals + items snapshot（保留你原来的逻辑）
   const checkoutTotalsMeta = useMemo(() => {
     const itemsSnapshot = (Array.isArray(cart) ? cart : []).map((it) => {
       const qty = Math.max(1, Number(it?.qty) || 1);
@@ -500,72 +530,74 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     };
   }, [cart, safeCurrency, derivedItemsCount, derivedItemsMinor, deliveryFeeMinor, derivedTotalMinor]);
 
-  // ✅ Phase 1 / Step 3: stock items from cart
-  const stockItems = useMemo(() => buildStockCheckItems(cart as any[]), [cart]);
-
-  const runStockPreflight = useCallback(async () => {
+  /**
+   * ✅ Phase 2 preflight：reserve（替换 Phase 1 的 /stock/check）
+   * - 成功：保存 reservation_id（给 PayPalBigButton /orders 用）
+   * - 失败：抛出 err，让 PayPalBigButton 走 onFailed -> handlePayFailed
+   */
+  const runStockReservePreflight = useCallback(async () => {
     if (!stockItems.length) {
-      throw { status: 400, code: "no_items", message: "No items to check." };
+      throw { status: 400, error: "no_items", message: "No items to reserve." };
     }
 
-    const { httpStatus, data } = await preflightStockCheck(stockItems);
+    // 如果已有 reservation 且未过期，则复用（避免重复 reserve）
+    if (reservationId && reservationExpiresAt && Date.now() < reservationExpiresAt - 1000) {
+      return;
+    }
 
+    const { httpStatus, data } = await reserveStock(stockItems);
+
+    // ✅ OK
     if (httpStatus === 200 && data && (data as any).ok === true) {
-      const items = Array.isArray((data as any).items) ? ((data as any).items as StockCheckOkItem[]) : [];
-      const firstBad = items.find((x) => x && x.ok === false);
-
-      if (firstBad) {
-        throw {
-          status: 409,
-          code: "out_of_stock",
-          message: "Stock preflight failed.",
-          detail: { sku: firstBad.sku, current: firstBad.stock, requested: firstBad.requested },
-        };
+      const rid = String((data as any).reservation_id || "").trim();
+      const exp = Number((data as any).expires_at ?? 0);
+      if (!rid) {
+        throw { status: 500, error: "reserve_failed", message: "Reserve succeeded but missing reservation_id." };
       }
+      setReservationId(rid);
+      setReservationExpiresAt(Number.isFinite(exp) && exp > 0 ? exp : null);
       return;
     }
 
     const errCode = String((data as any)?.error || `http_${httpStatus}`);
     const detail = (data as any)?.detail ?? null;
-    const items = Array.isArray((data as any)?.items) ? ((data as any).items as StockCheckOkItem[]) : [];
 
+    // 统一转换为 handlePayFailed 能识别的结构
     if (httpStatus === 409 && errCode === "out_of_stock") {
-      const sku = String(detail?.sku ?? "").trim();
-      const current = detail?.current;
-      const requested = detail?.requested;
-
-      if (sku) {
-        throw { status: 409, code: "out_of_stock", message: "Stock preflight failed.", detail: { sku, current, requested } };
-      }
-
-      const firstBad = items.find((x) => x && x.ok === false);
-      if (firstBad) {
-        throw {
-          status: 409,
-          code: "out_of_stock",
-          message: "Stock preflight failed.",
-          detail: { sku: firstBad.sku, current: firstBad.stock, requested: firstBad.requested },
-        };
-      }
-
-      throw { status: 409, code: "out_of_stock", message: "Stock preflight failed.", detail: detail ?? { items } };
+      throw { status: 409, error: "out_of_stock", detail: detail ?? null };
     }
-
-    if (httpStatus === 409 && errCode === "sku_not_found") {
-      throw { status: 409, code: "sku_not_found", message: "SKU not found.", detail: detail ?? { items } };
-    }
-
-    if (httpStatus === 502 && errCode === "stock_lookup_failed") {
-      throw { status: 502, code: "stock_lookup_failed", message: "Stock lookup failed.", detail: detail ?? { items } };
+    if (httpStatus === 409 && errCode === "reservation_expired") {
+      throw { status: 409, error: "reservation_expired", detail: detail ?? null };
     }
 
     throw {
       status: httpStatus || 500,
-      code: "stock_check_failed",
-      message: `Stock check failed: ${errCode}`,
+      error: errCode || "reserve_failed",
+      message: (data as any)?.message || "Reserve failed",
       detail: { httpStatus, data },
     };
-  }, [stockItems]);
+  }, [stockItems, reservationId, reservationExpiresAt]);
+
+  /**
+   * ✅ IMPORTANT:
+   * 这里把 reservation_id 注入到 successMeta 里。
+   * 你的 PayPalBigButton 如果在创建订单时会 merge successMeta/meta 到 body，
+   * 那么 /orders 就能收到 reservation_id。
+   */
+  const successMetaWithReservation = useMemo(() => {
+    return {
+      checkoutTotals: checkoutTotalsMeta,
+      address,
+      deliveryOption: deliveryMethod,
+      meta: {
+        pricing_source: "paymentstep-derived",
+      },
+      // ✅ NEW: 按多种命名冗余一份，最大化兼容你不同层的 merge 逻辑
+      reservation_id: reservationId,
+      reservationId: reservationId,
+      inventory_reservation_id: reservationId,
+    };
+  }, [checkoutTotalsMeta, address, deliveryMethod, reservationId]);
 
   return (
     <section
@@ -651,19 +683,17 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                 </div>
               )}
 
-              {payError.type === "sku_not_found" && (
-                <div className="mt-1 text-xs">
-                  {payError.detail?.sku ? (
-                    <div>
-                      <b>SKU:</b> {payError.detail.sku}
-                    </div>
-                  ) : null}
-                </div>
-              )}
-
-              {payError.type === "stock_lookup_failed" && (
-                <div className="mt-1 text-xs">
-                  Please try again shortly, or refresh the page and check out again.
+              {(payError.type === "reservation_failed" || payError.type === "reservation_expired") && (
+                <div className="mt-2 text-xs leading-5">
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={goBackToBag}
+                      className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium hover:bg-neutral-50"
+                    >
+                      Back to bag
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -760,6 +790,19 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                   <div className="text-lg font-semibold">Total</div>
                   <div className="text-xl font-bold">{fmtMoneyMinor(derivedTotalMinor, safeCurrency)}</div>
                 </div>
+
+                {/* ✅ 可选：显示 reservation 状态（调试用，上线可删） */}
+                {visible && reservationId && (
+                  <div className="text-[11px] text-neutral-500 pt-2">
+                    Stock reserved · id: <span className="font-mono">{reservationId}</span>
+                    {reservationExpiresAt ? (
+                      <>
+                        {" "}
+                        · expires: {new Date(reservationExpiresAt).toLocaleTimeString()}
+                      </>
+                    ) : null}
+                  </div>
+                )}
               </div>
 
               {visible && derivedAmountMajor > 0 && (
@@ -785,13 +828,9 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                       <PayPalBigButton
                         amount={derivedAmountMajor}
                         currency={safeCurrency}
-                        successMeta={{
-                          checkoutTotals: checkoutTotalsMeta,
-                          address,
-                          deliveryOption: deliveryMethod,
-                          meta: { pricing_source: "paymentstep-derived" },
-                        }}
-                        preflight={runStockPreflight}
+                        successMeta={successMetaWithReservation}
+                        // ✅ Phase 2：改为 reserve preflight
+                        preflight={runStockReservePreflight}
                         preflightItems={stockItems}
                         onInitiate={() => {
                           setPayError(null);
@@ -802,7 +841,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                           handlePaySucceeded(paypalPayload);
                         }}
                         onFailed={(err: any) => {
-                          handlePayFailed(err);
+                          void handlePayFailed(err);
                         }}
                       />
                     )}

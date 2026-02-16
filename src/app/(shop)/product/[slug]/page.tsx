@@ -194,10 +194,16 @@ function getVariantMetaList(attrs: any): VariantMeta[] {
   return out;
 }
 
-// ✅ NEW: 批量从 Worker/D1 拿 stock
+/**
+ * ✅ 从 D1 worker 获取库存（目前你的 d1-worker 实际可用的是 /inventory/bulk）
+ * 你之前 console 里测的是 /inventory/bulk 并且能返回 stocks: { [sku]: number }
+ */
 async function fetchStockBySkus(skus: string[]): Promise<Record<string, number>> {
   const uniq = Array.from(new Set(skus.map((s) => String(s || "").trim()).filter(Boolean)));
-  if (!uniq.length) return {};
+  if (!uniq.length) {
+    console.log("[PDP][stock] uniq skus empty -> return {}");
+    return {};
+  }
 
   const baseRaw =
     (process.env.API_PROXY && process.env.API_PROXY.trim()) ||
@@ -205,26 +211,69 @@ async function fetchStockBySkus(skus: string[]): Promise<Record<string, number>>
     "";
 
   const base = baseRaw.replace(/\/+$/, "");
-  if (!base) return {};
+  if (!base) {
+    console.log("[PDP][stock] base empty -> return {}", { baseRaw });
+    return {};
+  }
 
-  // d1-worker: GET /stock/bulk?skus=...
-  const url = `${base}/stock/bulk?skus=${encodeURIComponent(uniq.join(","))}`;
+  // ✅ 统一使用 inventory/bulk（你已经在浏览器里验证过它能返回数据）
+  const url = `${base}/inventory/bulk?skus=${encodeURIComponent(uniq.join(","))}`;
+
+  console.log("[PDP][stock] baseRaw =", baseRaw);
+  console.log("[PDP][stock] base =", base);
+  console.log("[PDP][stock] url =", url);
+  console.log("[PDP][stock] skuCount =", uniq.length, "sample =", uniq.slice(0, 5));
 
   try {
     const r = await fetch(url, { cache: "no-store" });
-    const j: any = await r.json().catch(() => null);
 
-    if (!r.ok || !j?.ok || !Array.isArray(j?.items)) return {};
+    // ⭐️ 不要直接 r.json()：先读 text，避免遇到 Not Found/HTML 时你看不到内容
+    const text = await r.text();
+    console.log("[PDP][stock] status =", r.status, r.statusText);
+    console.log("[PDP][stock] bodyText(first200) =", text.slice(0, 200));
+
+    let j: any = null;
+    try {
+      j = JSON.parse(text);
+    } catch (e) {
+      console.log("[PDP][stock] JSON.parse failed", e);
+      return {};
+    }
+
+    console.log("[PDP][stock] jsonKeys =", j ? Object.keys(j) : null);
+    console.log("[PDP][stock] ok =", j?.ok, "stocksType =", typeof j?.stocks);
+
+    // ✅ inventory/bulk 约定返回：{ ok: true, stocks: { [sku]: number } }
+    if (!r.ok || !j?.ok || typeof j?.stocks !== "object" || !j?.stocks) {
+      console.log("[PDP][stock] invalid response shape -> return {}", { ok: j?.ok });
+      return {};
+    }
 
     const out: Record<string, number> = {};
-    for (const it of j.items) {
-      const sku = String(it?.sku ?? "").trim();
-      if (!sku) continue;
-      const n = Number(it?.stock);
-      out[sku] = Number.isFinite(n) ? Math.floor(n) : 0;
+    for (const sku of Object.keys(j.stocks)) {
+      const n = Number(j.stocks[sku]);
+      out[String(sku).trim()] = Number.isFinite(n) ? Math.floor(n) : 0;
     }
+
+    // ✅ 没返回的 sku 也补 0
+    for (const s of uniq) {
+      if (!(s in out)) out[s] = 0;
+    }
+
+    // ✅ 快速看一下 top 值（避免刷屏）
+    const nonZero = Object.entries(out).filter(([, v]) => (Number(v) || 0) > 0);
+    console.log(
+      "[PDP][stock] out size=",
+      Object.keys(out).length,
+      "nonZeroCount=",
+      nonZero.length,
+      "nonZeroSample=",
+      nonZero.slice(0, 5)
+    );
+
     return out;
-  } catch {
+  } catch (e) {
+    console.log("[PDP][stock] fetch error", e);
     return {};
   }
 }
@@ -410,6 +459,9 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
   const sp = await searchParams;
 
+  console.log("[PDP] render start slug =", slug);
+  console.log("[PDP] searchParams =", sp);
+
   // ✅ Strapi 只取 meta（不信任 stock），但我们仍然取 sku/color/size/height
   const qs =
     `/api/products?filters[slug][$eq]=${encodeURIComponent(slug)}` +
@@ -419,8 +471,6 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     `&populate[color_galleries][populate][images]=true` +
     `&populate[variants][fields][0]=color` +
     `&populate[variants][fields][1]=size` +
-    // ⚠️ stock 字段不再需要（可以删掉，留着也行）
-    // `&populate[variants][fields][2]=stock` +
     `&populate[variants][fields][3]=height_increase_cm` +
     `&populate[variants][fields][4]=sku` +
     `&populate[prices]=*` +
@@ -430,6 +480,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     `&populate[category][populate][parent][fields][1]=name` +
     `&publicationState=live`;
 
+  console.log("[PDP] strapi qs =", qs);
+
   const json = await api(qs, { noCache: true });
   const row = json?.data?.[0];
   if (!row) notFound();
@@ -438,12 +490,16 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const title: string = attrs.title ?? attrs.name ?? "Product";
   const isNew = isNewProduct(attrs);
 
+  console.log("[PDP] title =", title, "isNew =", isNew);
+
   // 面包屑
   const category = extractCategory(attrs);
   const categorySlug = category?.slug;
   const categoryLabel = category?.label;
   const categoryRootSlug = category?.parentSlug ? category.parentSlug : category?.slug;
   const categoryLeafSlug = category?.parentSlug ? (category?.slug ?? null) : null;
+
+  console.log("[PDP] category =", category);
 
   // ---- pricing (minor-only, real_price is final) ----
   const prices = getPrices(attrs);
@@ -491,13 +547,26 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
 
   const saleActive = salePrice != null && price != null && salePrice < price;
 
+  console.log("[PDP][price] currency =", currency);
+  console.log("[PDP][price] baseMinor =", baseMinor, "effectiveMinor =", effectiveMinor);
+  console.log("[PDP][price] price =", price, "salePrice =", salePrice, "discount =", discount);
+
   // ---- media / colors ----
   const byColor = getImagesByColorFromProduct(attrs);
   const colorKeys = Object.keys(byColor);
 
+  console.log("[PDP][colors] colorKeys =", colorKeys);
+  console.log(
+    "[PDP][colors] imagesCountByColor =",
+    Object.fromEntries(colorKeys.map((k) => [k, (byColor[k] ?? []).length]))
+  );
+
   const colorParamRaw = Array.isArray(sp.color) ? sp.color[0] : sp.color;
   const colorParam = normalizeColor(colorParamRaw);
   const currentColor = colorKeys.find((k) => k === colorParam) ?? colorKeys[0] ?? undefined;
+
+  console.log("[PDP][colors] colorParamRaw =", colorParamRaw, "normalized =", colorParam);
+  console.log("[PDP][colors] currentColor =", currentColor);
 
   let images: string[] = [];
   if (currentColor) {
@@ -514,6 +583,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const idxNum = Number(rawIdx);
   if (Number.isFinite(idxNum) && idxNum >= 0 && idxNum < total) selected = idxNum;
 
+  console.log("[PDP][gallery] totalImages =", total, "selected =", selected, "rawIdx =", rawIdx);
+
   const rating = Math.max(0, Math.min(5, Number(attrs.hot_score) || 0));
 
   const colorOptions = colorKeys.map((name) => ({
@@ -523,13 +594,35 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
 
   // ✅ NEW: variants meta（来自 Strapi） + stock（来自 D1）
   const variantMeta = getVariantMetaList(attrs);
+
+  console.log("[PDP][variants] count =", variantMeta.length);
+  console.log("[PDP][variants] sample =", variantMeta.slice(0, 5));
+  console.log(
+    "[PDP][variants] sku null ratio =",
+    variantMeta.filter((v) => !v.sku).length,
+    "/",
+    variantMeta.length
+  );
+
   const skus = variantMeta.map((v) => v.sku).filter((s): s is string => Boolean(s));
+  console.log("[PDP][variants] sku count =", skus.length, "sample =", skus.slice(0, 5));
 
   const stockBySku = await fetchStockBySkus(skus);
 
   // ---- variants stock + sku (computed from D1) ----
-  const { stock3, sku3, sizesSum, heightSum, colorSum } =
-    getStockByColorSizeHeightFromD1(variantMeta, stockBySku);
+  const { stock3, sku3, sizesSum, heightSum, colorSum } = getStockByColorSizeHeightFromD1(
+    variantMeta,
+    stockBySku
+  );
+
+  console.log("[PDP][stockMap] colors =", Object.keys(sizesSum));
+  console.log("[PDP][stockMap] currentColor =", currentColor);
+
+  if (currentColor) {
+    console.log("[PDP][stockMap] sizesSum[currentColor] =", sizesSum[currentColor]);
+    console.log("[PDP][stockMap] heightSum[currentColor] =", heightSum[currentColor]);
+    console.log("[PDP][stockMap] colorSum[currentColor] =", colorSum[currentColor]);
+  }
 
   const sizesForColor = currentColor ? Object.keys(sizesSum[currentColor] ?? {}) : [];
 
@@ -544,10 +637,12 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     stock: sizesSum[currentColor!]?.[s] ?? 0,
   }));
 
+  console.log("[PDP][ui] sizesForColor =", sizesForColor);
+  console.log("[PDP][ui] sizeParamRaw =", sizeParamRaw, "currentSize =", currentSize);
+  console.log("[PDP][ui] sizeOptions =", sizeOptions);
+
   // ---- height selection ----
-  const heightParamRaw = Array.isArray((sp as any).height)
-    ? (sp as any).height[0]
-    : (sp as any).height;
+  const heightParamRaw = Array.isArray((sp as any).height) ? (sp as any).height[0] : (sp as any).height;
   const parsedHeight = Number(heightParamRaw);
   const heightFromUrl = Number.isFinite(parsedHeight) ? parsedHeight : 0;
 
@@ -557,8 +652,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     .filter((v) => Number.isFinite(v) && v > 0)
     .sort((a, b) => a - b);
 
-  const heightsForCurrentSize =
-    currentColor && currentSize ? stock3[currentColor]?.[currentSize] ?? {} : {};
+  const heightsForCurrentSize = currentColor && currentSize ? stock3[currentColor]?.[currentSize] ?? {} : {};
 
   const realHeightsForSize = Object.keys(heightsForCurrentSize)
     .map((k) => Number(k))
@@ -567,9 +661,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
 
   const stockZeroForSize =
     currentColor && currentSize
-      ? (stock3[currentColor]?.[currentSize]?.[0] ??
-          sizesSum[currentColor]?.[currentSize] ??
-          0)
+      ? (stock3[currentColor]?.[currentSize]?.[0] ?? sizesSum[currentColor]?.[currentSize] ?? 0)
       : 0;
 
   const heightOptions =
@@ -595,13 +687,18 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const stockForCurrent =
     currentColor && currentSize
       ? validHeight === 0
-        ? (stock3[currentColor]?.[currentSize]?.[0] ??
-            sizesSum[currentColor]?.[currentSize] ??
-            0)
+        ? (stock3[currentColor]?.[currentSize]?.[0] ?? sizesSum[currentColor]?.[currentSize] ?? 0)
         : stock3[currentColor]?.[currentSize]?.[validHeight] ?? 0
       : 0;
 
   const shouldShowHeightPicker = Boolean(currentColor) && realHeightsAll.length > 0;
+
+  console.log("[PDP][ui] heightParamRaw =", heightParamRaw, "heightFromUrl =", heightFromUrl, "validHeight =", validHeight);
+  console.log("[PDP][ui] realHeightsAll =", realHeightsAll);
+  console.log("[PDP][ui] realHeightsForSize =", realHeightsForSize);
+  console.log("[PDP][ui] shouldShowHeightPicker =", shouldShowHeightPicker);
+  console.log("[PDP][ui] heightOptions =", heightOptions);
+  console.log("[PDP][ui] stockForCurrent =", stockForCurrent);
 
   return (
     <main className="w-full px-2 sm:px-4 md:px-6 lg:px-0 py-8 overflow-x-hidden">
@@ -644,13 +741,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
         "
       >
         <aside className="order-2 lg:order-1 md:sticky md:top-24 self-start md:pr-0">
-          <GalleryClient
-            images={images}
-            title={title}
-            slug={slug}
-            selectedIndex={selected}
-            color={currentColor}
-          />
+          <GalleryClient images={images} title={title} slug={slug} selectedIndex={selected} color={currentColor} />
         </aside>
 
         <section className="order-1 lg:order-2 min-w-0">
@@ -669,12 +760,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
 
             {total > 0 ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={images[selected]}
-                src={images[selected]}
-                alt={title}
-                className="w-full h-full object-contain"
-              />
+              <img key={images[selected]} src={images[selected]} alt={title} className="w-full h-full object-contain" />
             ) : (
               <div className="text-neutral-500">No Image</div>
             )}
@@ -699,12 +785,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                   ) : null}
 
                   <div className="flex items-baseline gap-3">
-                    <div className="text-sm text-neutral-500 line-through">
-                      {formatPriceVal(price, currency)}
-                    </div>
-                    <div className="text-xl font-semibold text-emerald-700">
-                      {formatPriceVal(salePrice, currency)}
-                    </div>
+                    <div className="text-sm text-neutral-500 line-through">{formatPriceVal(price, currency)}</div>
+                    <div className="text-xl font-semibold text-emerald-700">{formatPriceVal(salePrice, currency)}</div>
                   </div>
                 </div>
               ) : (
@@ -732,8 +814,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                     <div className="flex items-center justify-between gap-3">
                       <FieldMessage variant="muted">Availability</FieldMessage>
                       <div className="text-sm text-neutral-700">
-                        In stock:{" "}
-                        <span className="font-semibold text-neutral-900">{stockForCurrent}</span>
+                        In stock: <span className="font-semibold text-neutral-900">{stockForCurrent}</span>
                       </div>
                     </div>
                   ) : (
