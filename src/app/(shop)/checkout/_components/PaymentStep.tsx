@@ -50,12 +50,15 @@ function buildStockItems(cart: any[]): StockCheckItem[] {
   return Array.from(map.entries()).map(([sku, qty]) => ({ sku, qty }));
 }
 
-async function reserveStock(items: StockCheckItem[]): Promise<{ httpStatus: number; data: ReserveApiResp | null }> {
+async function reserveStock(
+  items: StockCheckItem[],
+  request_id?: string
+): Promise<{ httpStatus: number; data: ReserveApiResp | null }> {
   const res = await fetch("/api/stock/reserve", {
     method: "POST",
     credentials: "include",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ items }),
+    body: JSON.stringify({ items, ...(request_id ? { request_id } : {}) }),
   });
 
   const data: any = await res.json().catch(() => null);
@@ -203,6 +206,16 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   const [reservationExpiresAt, setReservationExpiresAt] = useState<number | null>(null);
   const paidOrSucceededRef = useRef(false); // 用来防止已成功支付还去 release
 
+  // ✅ NEW: checkout session id（用于 reserve 幂等 request_id）
+  const checkoutSessionIdRef = useRef<string>(() => {
+    try {
+      // @ts-ignore
+      return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `cs_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    } catch {
+      return `cs_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    }
+  }) as any;
+
   const safeCurrency = useMemo(() => {
     return (currency || cart?.[0]?.currency || "AUD").toUpperCase();
   }, [currency, cart]);
@@ -346,7 +359,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   // ✅ 离开 PaymentStep（卸载/切 step）自动释放（如果还没成功付款）
   useEffect(() => {
     return () => {
-      // 组件卸载时执行
       void releaseReservationIfAny("unmount");
     };
   }, [releaseReservationIfAny]);
@@ -393,7 +405,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
       // ✅ 支付失败/创建订单失败：释放预留
       await releaseReservationIfAny("pay_failed");
 
-      // ✅ 兼容你的 out_of_stock 展示
       if (status === 409 && (code === "out_of_stock" || err?.error === "out_of_stock")) {
         const d = err?.detail ?? {};
         const sku = d?.sku ?? err?.sku;
@@ -412,7 +423,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
         return;
       }
 
-      // reservation 相关错误（来自 /orders consume）
       if (status === 409 && String(err?.error || "") === "reservation_expired") {
         setPayError({
           type: "reservation_expired",
@@ -454,7 +464,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   );
 
   const goBackToBag = useCallback(async () => {
-    // ✅ Back to bag 先释放 reservation
     await releaseReservationIfAny("back_to_bag");
 
     if (typeof onBackToBag === "function") {
@@ -531,8 +540,8 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   }, [cart, safeCurrency, derivedItemsCount, derivedItemsMinor, deliveryFeeMinor, derivedTotalMinor]);
 
   /**
-   * ✅ Phase 2 preflight：reserve（替换 Phase 1 的 /stock/check）
-   * - 成功：保存 reservation_id（给 PayPalBigButton /orders 用）
+   * ✅ Phase 2 preflight：reserve
+   * - 成功：保存 reservation_id
    * - 失败：抛出 err，让 PayPalBigButton 走 onFailed -> handlePayFailed
    */
   const runStockReservePreflight = useCallback(async () => {
@@ -540,14 +549,16 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
       throw { status: 400, error: "no_items", message: "No items to reserve." };
     }
 
-    // 如果已有 reservation 且未过期，则复用（避免重复 reserve）
+    // 如果已有 reservation 且未过期，则复用
     if (reservationId && reservationExpiresAt && Date.now() < reservationExpiresAt - 1000) {
       return;
     }
 
-    const { httpStatus, data } = await reserveStock(stockItems);
+    // ✅ NEW: 幂等键（同一 checkout session + 同一购物车签名）
+    const request_id = `${checkoutSessionIdRef.current}:${cartSignature}`;
 
-    // ✅ OK
+    const { httpStatus, data } = await reserveStock(stockItems, request_id);
+
     if (httpStatus === 200 && data && (data as any).ok === true) {
       const rid = String((data as any).reservation_id || "").trim();
       const exp = Number((data as any).expires_at ?? 0);
@@ -562,7 +573,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     const errCode = String((data as any)?.error || `http_${httpStatus}`);
     const detail = (data as any)?.detail ?? null;
 
-    // 统一转换为 handlePayFailed 能识别的结构
     if (httpStatus === 409 && errCode === "out_of_stock") {
       throw { status: 409, error: "out_of_stock", detail: detail ?? null };
     }
@@ -576,14 +586,8 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
       message: (data as any)?.message || "Reserve failed",
       detail: { httpStatus, data },
     };
-  }, [stockItems, reservationId, reservationExpiresAt]);
+  }, [stockItems, reservationId, reservationExpiresAt, cartSignature]);
 
-  /**
-   * ✅ IMPORTANT:
-   * 这里把 reservation_id 注入到 successMeta 里。
-   * 你的 PayPalBigButton 如果在创建订单时会 merge successMeta/meta 到 body，
-   * 那么 /orders 就能收到 reservation_id。
-   */
   const successMetaWithReservation = useMemo(() => {
     return {
       checkoutTotals: checkoutTotalsMeta,
@@ -592,7 +596,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
       meta: {
         pricing_source: "paymentstep-derived",
       },
-      // ✅ NEW: 按多种命名冗余一份，最大化兼容你不同层的 merge 逻辑
       reservation_id: reservationId,
       reservationId: reservationId,
       inventory_reservation_id: reservationId,
@@ -750,9 +753,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                     )}
 
                     {(address.city || address.state || address.postcode) && (
-                      <div>
-                        {[address.city, address.state, address.postcode].filter(Boolean).join(" ")}
-                      </div>
+                      <div>{[address.city, address.state, address.postcode].filter(Boolean).join(" ")}</div>
                     )}
 
                     {countryDisplay && <div>{countryDisplay}</div>}
@@ -791,16 +792,10 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                   <div className="text-xl font-bold">{fmtMoneyMinor(derivedTotalMinor, safeCurrency)}</div>
                 </div>
 
-                {/* ✅ 可选：显示 reservation 状态（调试用，上线可删） */}
                 {visible && reservationId && (
                   <div className="text-[11px] text-neutral-500 pt-2">
                     Stock reserved · id: <span className="font-mono">{reservationId}</span>
-                    {reservationExpiresAt ? (
-                      <>
-                        {" "}
-                        · expires: {new Date(reservationExpiresAt).toLocaleTimeString()}
-                      </>
-                    ) : null}
+                    {reservationExpiresAt ? <> · expires: {new Date(reservationExpiresAt).toLocaleTimeString()}</> : null}
                   </div>
                 )}
               </div>
@@ -829,7 +824,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                         amount={derivedAmountMajor}
                         currency={safeCurrency}
                         successMeta={successMetaWithReservation}
-                        // ✅ Phase 2：改为 reserve preflight
                         preflight={runStockReservePreflight}
                         preflightItems={stockItems}
                         onInitiate={() => {

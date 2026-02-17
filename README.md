@@ -849,6 +849,9 @@ wrangler d1 migrations apply socialplatform --local
 新的执行命令：
 wrangler d1 execute socialplatform --remote --file migrations/0001_base.sql
 
+查找所有数据库的名字：
+wrangler d1 list
+
 ==================================================================
 
 清库

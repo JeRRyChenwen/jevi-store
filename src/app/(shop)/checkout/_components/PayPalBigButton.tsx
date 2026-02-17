@@ -21,7 +21,7 @@ type Props = {
   // ✅ 上层传入：权威 totals / cart snapshot / address / delivery_option 等
   successMeta?: any;
 
-  // ✅ 点击 PayPal 前先做库存预检（若失败，则 PayPal 不继续 createOrder）
+  // ✅ 点击 PayPal 前先做库存预检/预留（若失败，则 PayPal 不继续 createOrder）
   preflight?: () => Promise<void>;
   preflightItems?: Array<{ sku: string; qty: number }>;
 };
@@ -56,16 +56,8 @@ async function postJson(url: string, body: any) {
   return { res, data };
 }
 
-/**
- * ✅ 我们自己定义的“静默终止 createOrder”哨兵
- * - 只要命中这个 sentinel，就不 console.error（不污染右侧红字）
- */
 const ABORT_SENTINEL = "PAYPAL_CREATE_ORDER_ABORT";
 
-/**
- * ✅ 我们认可的“可预期 createOrder 终止原因”
- * - 命中这些 code：onError 静默
- */
 const QUIET_CREATE_ORDER_CODES = new Set([
   "create_order_in_progress",
   "invalid_amount",
@@ -75,7 +67,6 @@ const QUIET_CREATE_ORDER_CODES = new Set([
   "stock_lookup_failed",
   "stock_check_failed",
   "missing_items",
-  // ✅ NEW: user cancelled
   "paypal_cancelled",
 ]);
 
@@ -92,9 +83,6 @@ function normalizeErrCode(err: any): string {
   return "";
 }
 
-/**
- * ✅ 构造一个“可识别、可静默”的 abort 错误
- */
 function makeAbortError(code: string, payload?: any) {
   const e: any = new Error(ABORT_SENTINEL);
   e.code = code || "preflight_failed";
@@ -102,9 +90,6 @@ function makeAbortError(code: string, payload?: any) {
   return e;
 }
 
-/**
- * ✅ NEW: 从 successMeta 提取 reservation id（兼容多种命名）
- */
 function pickReservationId(meta: any): string | null {
   const v =
     meta?.reservation_id ??
@@ -132,8 +117,6 @@ export default function PayPalBigButton({
 }: Props) {
   const [{ options }, dispatch] = usePayPalScriptReducer();
   const approvingRef = useRef(false);
-
-  // ✅ 防止用户连点 PayPal（createOrder/approve 可能被触发多次）
   const creatingRef = useRef(false);
 
   useEffect(() => {
@@ -187,7 +170,7 @@ export default function PayPalBigButton({
                 throw makeAbortError("invalid_amount", err);
               }
 
-              // ✅ Phase 2：reserve（仍然复用 preflight 钩子）
+              // ✅ Phase 2：reserve preflight（由 PaymentStep 实现）
               if (preflight) {
                 try {
                   await preflight();
@@ -224,7 +207,6 @@ export default function PayPalBigButton({
             approvingRef.current = true;
 
             try {
-              // 1) PayPal capture
               const details = await actions.order?.capture();
               const capture = (details as any)?.purchase_units?.[0]?.payments?.captures?.[0] ?? null;
 
@@ -237,7 +219,6 @@ export default function PayPalBigButton({
                 details,
               };
 
-              // 2) capture 成功 ≠ 下单成功：调用你自己的后端 /orders 建单
               const checkoutTotals = successMeta?.checkoutTotals;
               const itemsFromMeta = checkoutTotals?.items;
 
@@ -256,14 +237,12 @@ export default function PayPalBigButton({
                 return;
               }
 
-              // ✅ NEW: reservation id 注入到 /orders body（顶层字段最稳）
               const reservation_id = pickReservationId(successMeta);
 
               const orderBody = {
                 currency: (checkoutTotals?.currency || currency || "AUD").toUpperCase(),
                 items: itemsFromMeta,
 
-                // ✅ NEW: 给 worker /orders 使用（Phase 2 consume）
                 ...(reservation_id ? { reservation_id } : {}),
 
                 payment: {
@@ -276,9 +255,7 @@ export default function PayPalBigButton({
 
                 ...(successMeta?.address
                   ? {
-                      email: String(successMeta.address?.email || "")
-                        .trim()
-                        .toLowerCase(),
+                      email: String(successMeta.address?.email || "").trim().toLowerCase(),
                       first_name: successMeta.address?.firstName ?? null,
                       last_name: successMeta.address?.lastName ?? null,
                       phone: successMeta.address?.phone ?? null,
@@ -296,8 +273,6 @@ export default function PayPalBigButton({
                 meta: {
                   ...(successMeta?.meta || {}),
                   __paypal_order_id: paypalPayload.orderId,
-
-                  // ✅ NEW: 冗余一份到 meta，方便你后端临时 debug
                   ...(reservation_id ? { __reservation_id: reservation_id } : {}),
                 },
               };
@@ -322,7 +297,6 @@ export default function PayPalBigButton({
                 return;
               }
 
-              // 3) 真正成功
               const merged = successMeta
                 ? { ...paypalPayload, successMeta, order: orderResp }
                 : { ...paypalPayload, order: orderResp };
@@ -372,7 +346,6 @@ export default function PayPalBigButton({
             approvingRef.current = false;
           }}
           onCancel={() => {
-            // ✅ NEW: cancel 也通知上层（PaymentStep 会 release reservation）
             onFailed?.({
               status: 0,
               code: "paypal_cancelled",
