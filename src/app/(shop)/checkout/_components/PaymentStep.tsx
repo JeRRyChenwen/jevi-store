@@ -206,15 +206,25 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   const [reservationExpiresAt, setReservationExpiresAt] = useState<number | null>(null);
   const paidOrSucceededRef = useRef(false); // 用来防止已成功支付还去 release
 
-  // ✅ NEW: checkout session id（用于 reserve 幂等 request_id）
-  const checkoutSessionIdRef = useRef<string>(() => {
-    try {
-      // @ts-ignore
-      return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `cs_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-    } catch {
-      return `cs_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  // ✅ NEW: auto-preflight reserve (avoid "click twice" for PayPal)
+  const [isReserving, setIsReserving] = useState(false);
+  const reserveInFlightRef = useRef<Promise<void> | null>(null);
+
+    // ✅ NEW: checkout session id（用于 reserve 幂等 request_id）
+    // ⚠️ 注意：useRef(initialValue) 不会执行函数；你之前写法把“函数本体”存进去了
+    const checkoutSessionIdRef = useRef<string>("");
+
+    if (!checkoutSessionIdRef.current) {
+      try {
+        // @ts-ignore
+        checkoutSessionIdRef.current =
+          typeof crypto !== "undefined" && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `cs_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      } catch {
+        checkoutSessionIdRef.current = `cs_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      }
     }
-  }) as any;
 
   const safeCurrency = useMemo(() => {
     return (currency || cart?.[0]?.currency || "AUD").toUpperCase();
@@ -262,6 +272,8 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     if (derivedTotalMinor <= 0) return "Invalid total amount. Please review your order.";
     return null;
   }, [visible, isPayProcessing, suppressBlockedHint, derivedItemsCount, hasAddress, derivedTotalMinor]);
+
+  
 
   const countryDisplay = useMemo(() => {
     const raw = (address?.country || "").trim();
@@ -555,18 +567,19 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     }
 
     // ✅ NEW: 幂等键（同一 checkout session + 同一购物车签名）
-    const request_id = `${checkoutSessionIdRef.current}:${cartSignature}`;
+    const request_id = `${checkoutSessionIdRef.current}:${cartSignature || "empty"}`;
 
     const { httpStatus, data } = await reserveStock(stockItems, request_id);
 
     if (httpStatus === 200 && data && (data as any).ok === true) {
       const rid = String((data as any).reservation_id || "").trim();
-      const exp = Number((data as any).expires_at ?? 0);
+      const expSec = Number((data as any).expires_at ?? 0);
+      const expMs = Number.isFinite(expSec) && expSec > 0 ? expSec * 1000 : 0;
       if (!rid) {
         throw { status: 500, error: "reserve_failed", message: "Reserve succeeded but missing reservation_id." };
       }
       setReservationId(rid);
-      setReservationExpiresAt(Number.isFinite(exp) && exp > 0 ? exp : null);
+      setReservationExpiresAt(expMs > 0 ? expMs : null);
       return;
     }
 
@@ -587,6 +600,47 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
       detail: { httpStatus, data },
     };
   }, [stockItems, reservationId, reservationExpiresAt, cartSignature]);
+
+
+  // ✅ Auto reserve when entering Payment step so PayPal opens with ONE click
+  useEffect(() => {
+    if (!visible) return;
+    if (isPayProcessing) return;
+    if (payBlockedReason) return;
+    if (!stockItems.length) return;
+
+    // already have valid reservation
+    if (reservationId && reservationExpiresAt && Date.now() < reservationExpiresAt - 1000) return;
+
+    // avoid spamming reserve on re-render
+    if (reserveInFlightRef.current) return;
+
+    setIsReserving(true);
+
+    const p = (async () => {
+      try {
+        await runStockReservePreflight();
+      } catch (e) {
+        // reserve 失败的话，交给你现有的错误处理逻辑
+        // 这里用 handlePayFailed 能把错误展示成你已有的 Alert UI
+        await handlePayFailed(e);
+      } finally {
+        reserveInFlightRef.current = null;
+        setIsReserving(false);
+      }
+    })();
+
+    reserveInFlightRef.current = p;
+  }, [
+    visible,
+    isPayProcessing,
+    payBlockedReason,
+    stockItems,
+    reservationId,
+    reservationExpiresAt,
+    runStockReservePreflight,
+    handlePayFailed,
+  ]);
 
   const successMetaWithReservation = useMemo(() => {
     return {
@@ -793,10 +847,19 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                 </div>
 
                 {visible && reservationId && (
-                  <div className="text-[11px] text-neutral-500 pt-2">
-                    Stock reserved · id: <span className="font-mono">{reservationId}</span>
-                    {reservationExpiresAt ? <> · expires: {new Date(reservationExpiresAt).toLocaleTimeString()}</> : null}
-                  </div>
+                  <Alert variant="info" className="mt-3">
+                    <div className="flex items-start gap-2">
+                      <span className="text-base">🛍️</span>
+                      <div className="leading-5">
+                        <div className="font-medium">
+                          Your items are reserved for 15 minutes.
+                        </div>
+                        <div className="text-xs opacity-90">
+                          Please complete your payment before the reservation expires.
+                        </div>
+                      </div>
+                    </div>
+                  </Alert>
                 )}
               </div>
 
@@ -818,6 +881,14 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                         className="w-full rounded-full px-6 py-3 text-sm font-semibold bg-[#FFC439] text-[#111827] opacity-70 cursor-not-allowed"
                       >
                         PayPal unavailable
+                      </button>
+                    ) : isReserving ? (
+                      <button
+                        type="button"
+                        disabled
+                        className="w-full rounded-full px-6 py-3 text-sm font-semibold bg-[#FFC439] text-[#111827] opacity-70 cursor-not-allowed"
+                      >
+                        Preparing PayPal...
                       </button>
                     ) : (
                       <PayPalBigButton

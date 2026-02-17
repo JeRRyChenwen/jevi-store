@@ -6,7 +6,7 @@ const nextConfig = {
   images: {
     remotePatterns: [
       { protocol: "http", hostname: "127.0.0.1", port: "1337", pathname: "/uploads/**" },
-      { protocol: "http", hostname: "localhost",  port: "1337", pathname: "/uploads/**" },
+      { protocol: "http", hostname: "localhost", port: "1337", pathname: "/uploads/**" },
     ],
   },
 
@@ -15,13 +15,19 @@ const nextConfig = {
     if (!proxy) return [];
 
     return [
+      // ✅ 0) Stock API：必须交给 Next Route Handlers（否则 cookie 到不了 Worker）
+      {
+        source: "/api/stock/:path*",
+        destination: "/api/stock/:path*",
+      },
+
       // ✅ ① Braintree：交给 Next API
       {
         source: "/api/braintree/:path*",
         destination: "/api/braintree/:path*",
       },
 
-      // ✅ ② Admin API：交给 Next Route Handlers（非常关键）
+      // ✅ ② Admin API：交给 Next Route Handlers
       {
         source: "/api/admin/:path*",
         destination: "/api/admin/:path*",
