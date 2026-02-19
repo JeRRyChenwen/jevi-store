@@ -447,24 +447,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     async (err: any) => {
       setIsReserving(false);
       reserveInFlightRef.current = null;
-
-      const existing = payErrorRef.current;
-      if (existing?.type === "out_of_stock") {
-        const incomingStatus = Number(err?.status ?? err?.httpStatus ?? 0) || 0;
-
-        // 判断这次错误是否是“结构化 out_of_stock”（即你第一张截图那种：409 + out_of_stock + detail）
-        const incomingCode = String(err?.code ?? err?.error ?? "").trim();
-        const hasDetail = !!(err?.detail && (err.detail.sku || err.detail.requested != null || err.detail.current != null));
-
-        const isStructuredOutOfStock = incomingStatus === 409 && (incomingCode === "out_of_stock" || err?.error === "out_of_stock") && hasDetail;
-
-        // 如果不是结构化 out_of_stock（比如只有 "out_of_stock" 字符串），直接忽略，避免覆盖 UI
-        if (!isStructuredOutOfStock) {
-          return;
-        }
-      }
-
-
       const status = Number(err?.status ?? err?.httpStatus ?? 0) || undefined;
       const code = String(err?.code ?? err?.error ?? err?.message ?? "").trim();
 
