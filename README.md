@@ -819,6 +819,9 @@ npm run dev
 npx wrangler dev --x-remote-bindings
 或者
 wrangler dev --remote
+或者
+npx wrangler dev
+或者npx wrangler dev --log-level debug
 
 wrangler dev --port 8789
 
@@ -851,6 +854,30 @@ wrangler d1 execute socialplatform --remote --file migrations/0001_base.sql
 
 查找所有数据库的名字：
 wrangler d1 list
+
+让所有stock都为44的命令：
+UPDATE inventory SET stock = 44;
+
+====================================================================
+
+我的staging database 的内容：
+
+D:\前端练习\d1-worker>npx wrangler d1 create socialplatform_staging
+
+⛅️ wrangler 4.31.0 (update available 4.66.0)
+─────────────────────────────────────────────
+✅ Successfully created DB 'socialplatform_staging' in region OC
+Created your new D1 database.
+
+{
+"d1_databases": [
+{
+"binding": "DB",
+"database_name": "socialplatform_staging",
+"database_id": "dc0640a0-607b-4c76-94a7-df2b64bd443e"
+}
+]
+}
 
 ==================================================================
 
@@ -1049,4 +1076,98 @@ order-item 表的variant 字段，material也要存进去
 
 reserve倒计时提醒
 
+我感觉好像倒计时结束之后我reserve的库存也不会加回来是怎么回事
+
+首先我们先解决 为什么倒计时结束后，又自动触发了新的 reserve（一直 reserve）的问题吧
+
 🏆 Phase 3 — Shopify级库存系统
+
+======================================
+
+🚀 下一步我建议（非常重要）
+
+现在库存 reservation 已经 100% 稳定
+下一步可以进入：
+
+👉 Phase 3：支付绑定 reservation（最终闭环）
+
+也就是：
+
+PayPal 成功 → consume reservation → 才真正扣库存
+
+这是整个库存系统的最后一块。
+
+如果你愿意继续，我们可以直接进入：
+
+🧠 Phase 3（终极阶段）
+支付成功 → consume reservation → 完整订单闭环
+
+我会一步一步带你做，而且这一段会非常帅。
+
+===========================
+
+简单实现（强烈推荐）：
+
+cart 存 localStorage 时，用 window.addEventListener("storage", ...) 监听变化
+
+发现 cart 变了 → 提示用户 “Your bag changed in another tab. We’ll refresh reservation.”
+
+然后重新 reserve（会触发你现在的 release old + create new 逻辑）
+
+=============================
+
+方案 1（生产推荐）：Worker 加 Cron 定时 cleanup（最稳）
+
+每 1 分钟跑一次 cleanup，把所有过期 active reservation 变 expired + 加回库存
+
+这才是真正的“自动返还”
+
+==========================
+
+B2：解释“库存返还”的正确做法（为什么你现在没立刻加回去）
+
+你 Worker 的逻辑是：
+
+reserve 时：先扣 inventory.stock
+
+到期时：只是把 reservation 标记成 expired（或到期后仍是 active，但 expires_at 已过），不会立刻加回
+
+真正把库存加回：发生在 cleanupExpiredReservations() 里（你已经写了：active->expired CAS 成功后，再把 items 加回库存）
+
+所以如果没有一个“定时触发 cleanup”的机制，那么你只能靠：
+
+下一次有人访问 /stock/_ 或 /inventory/_ 之类的接口时顺便跑 cleanup（你确实在多个路由开头调用了 cleanup）
+
+这就会出现你看到的现象：倒计时结束了，但数据库库存没变回去（因为 cleanup 还没跑）。
+
+生产推荐就是：用 Cron 让 cleanup 自动跑（没人访问也跑），这样“过期后很快返还”。
+
+======================
+
+如果你希望订单还有一个“confirmed”概念（比如 paid 之后再确认发货），那应该做法是：新增一个列（比如 fulfillment_status）或用 meta，而不是挤到 orders.status（因为你 DB 已经用 CHECK 锁死了允许值）。
+
+=========================
+
+🚀 下一步建议（真正生产级）
+
+我建议我们下一步做：
+
+方案：维护一个 inventory_available 聚合表
+
+在 reserve / release / consume 时：
+
+更新 available 数值
+
+不再每次 SUM
+
+这样库存查询变 O(1)
+
+==================
+
+聚合表
+
+而且 如果真实stock =0 就不应该reserve
+
+reserve时间结束的提示需要修改
+
+stock 为0的提示也需要修改

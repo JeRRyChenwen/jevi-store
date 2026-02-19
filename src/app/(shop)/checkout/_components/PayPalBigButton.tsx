@@ -22,7 +22,7 @@ type Props = {
   successMeta?: any;
 
   // ✅ 点击 PayPal 前先做库存预检/预留（若失败，则 PayPal 不继续 createOrder）
-  preflight?: () => Promise<void>;
+  preflight?: () => Promise<string>;
   preflightItems?: Array<{ sku: string; qty: number }>;
 };
 
@@ -117,7 +117,9 @@ export default function PayPalBigButton({
 }: Props) {
   const [{ options }, dispatch] = usePayPalScriptReducer();
   const approvingRef = useRef(false);
+  const reservedIdRef = useRef<string | null>(null);
   const creatingRef = useRef(false);
+  const reservationRef = useRef<string | null>(null); 
 
   useEffect(() => {
     if (!options || !currency) return;
@@ -135,6 +137,7 @@ export default function PayPalBigButton({
 
   const apiBase = useMemo(() => getApiBase(), []);
   const ordersUrl = useMemo(() => `${apiBase}/orders`, [apiBase]);
+  reservationRef.current = pickReservationId(successMeta);
 
   return (
     <div className="w-full flex justify-end">
@@ -173,7 +176,8 @@ export default function PayPalBigButton({
               // ✅ Phase 2：reserve preflight（由 PaymentStep 实现）
               if (preflight) {
                 try {
-                  await preflight();
+                  const rid = await preflight();           // ✅ NEW
+                  reservedIdRef.current = rid || null;     // ✅ NEW
                 } catch (e: any) {
                   const err = {
                     status: Number(e?.status || 409) || 409,
@@ -237,7 +241,20 @@ export default function PayPalBigButton({
                 return;
               }
 
-              const reservation_id = pickReservationId(successMeta);
+              const reservation_id = reservedIdRef.current || pickReservationId(successMeta);
+
+              if (!reservation_id) {
+                const err = {
+                  status: 400,
+                  code: "missing_reservation_id",
+                  message: "Missing reservation_id when creating order.",
+                  detail: { successMeta },
+                };
+                onFailed?.(err);
+                try { await (actions as any)?.order?.void?.(); } catch {}
+                approvingRef.current = false;
+                return;
+              }
 
               const orderBody = {
                 currency: (checkoutTotals?.currency || currency || "AUD").toUpperCase(),
@@ -276,6 +293,15 @@ export default function PayPalBigButton({
                   ...(reservation_id ? { __reservation_id: reservation_id } : {}),
                 },
               };
+
+              console.log("[paypal] creating order with reservation", {
+                reservation_id,
+                hasReservation: !!reservation_id,
+              });
+
+              console.log("[paypal] posting /orders with reservation_id =", reservation_id, {
+                bodyHasReservationId: !!(orderBody as any)?.reservation_id,
+              });
 
               const { res, data: orderResp } = await postJson(ordersUrl, orderBody);
 
