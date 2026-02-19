@@ -183,7 +183,8 @@ export default function PayPalBigButton({
                     status: Number(e?.status || 409) || 409,
                     code: String(e?.code || e?.error || "preflight_failed"),
                     message: e?.message || "Stock preflight failed.",
-                    detail: e?.detail ?? e ?? null,
+                    // ✅ 关键：把 preflightItems 补进去，给上层做展示 fallback
+                    detail: { ...(e?.detail ?? {}), items: preflightItems ?? null },
                   };
 
                   onFailed?.(err);
@@ -308,9 +309,16 @@ export default function PayPalBigButton({
               if (!res.ok) {
                 const err = {
                   status: res.status,
-                  code: orderResp?.error || orderResp?.code || "http_error",
+                  // ✅ 409 时强制 code=out_of_stock，避免出现奇怪 code 导致上层走 unknown
+                  code: res.status === 409 ? "out_of_stock" : (orderResp?.error || orderResp?.code || "http_error"),
                   message: orderResp?.message || (res.status === 409 ? "out_of_stock" : `HTTP ${res.status}`),
-                  detail: orderResp?.detail ?? orderResp ?? null,
+
+                  // ✅ 关键：补上 items，让 PaymentStep 即使缺 sku 也能从 cart/stockItems 推导展示
+                  detail: {
+                    ...(orderResp?.detail ?? {}),
+                    ...(orderResp ?? {}),
+                    items: preflightItems ?? null,
+                  },
                 };
 
                 onFailed?.(err);
@@ -336,6 +344,13 @@ export default function PayPalBigButton({
               } catch {}
             } catch (e: any) {
               console.error("[paypal] onApprove/capture failed:", e);
+
+              // ✅ 如果上面已经构造过结构化错误（含 status/code/error），直接透传给 PaymentStep
+              if (e && (e.status || e.code || e.error)) {
+                onFailed?.(e);
+                approvingRef.current = false;
+                return;
+              }
 
               onFailed?.({
                 status: 0,

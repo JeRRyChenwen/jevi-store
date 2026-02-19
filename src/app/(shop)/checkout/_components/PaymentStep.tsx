@@ -224,6 +224,12 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   // 缺货/失败等错误
   const [payError, setPayError] = useState<PayError | null>(null);
 
+  const payErrorRef = useRef<PayError | null>(null);
+
+  useEffect(() => {
+    payErrorRef.current = payError;
+  }, [payError]);
+
   // ✅ Phase 2: reservation state
   const [reservationId, setReservationId] = useState<string | null>(null);
   const [reservationExpiresAt, setReservationExpiresAt] = useState<number | null>(null);
@@ -439,6 +445,26 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
 
   const handlePayFailed = useCallback(
     async (err: any) => {
+      setIsReserving(false);
+      reserveInFlightRef.current = null;
+
+      const existing = payErrorRef.current;
+      if (existing?.type === "out_of_stock") {
+        const incomingStatus = Number(err?.status ?? err?.httpStatus ?? 0) || 0;
+
+        // 判断这次错误是否是“结构化 out_of_stock”（即你第一张截图那种：409 + out_of_stock + detail）
+        const incomingCode = String(err?.code ?? err?.error ?? "").trim();
+        const hasDetail = !!(err?.detail && (err.detail.sku || err.detail.requested != null || err.detail.current != null));
+
+        const isStructuredOutOfStock = incomingStatus === 409 && (incomingCode === "out_of_stock" || err?.error === "out_of_stock") && hasDetail;
+
+        // 如果不是结构化 out_of_stock（比如只有 "out_of_stock" 字符串），直接忽略，避免覆盖 UI
+        if (!isStructuredOutOfStock) {
+          return;
+        }
+      }
+
+
       const status = Number(err?.status ?? err?.httpStatus ?? 0) || undefined;
       const code = String(err?.code ?? err?.error ?? err?.message ?? "").trim();
 
@@ -447,9 +473,11 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
 
       if (status === 409 && (code === "out_of_stock" || err?.error === "out_of_stock")) {
         const d = err?.detail ?? {};
-        const sku = d?.sku ?? err?.sku;
-        const current = d?.current ?? err?.current;
-        const requested = d?.requested ?? err?.requested;
+        const firstItem = Array.isArray(d?.items) ? d.items[0] : null;
+
+        const sku = d?.sku ?? err?.sku ?? firstItem?.sku ?? null;
+        const requested = d?.requested ?? err?.requested ?? firstItem?.qty ?? null;
+        const current = d?.current ?? err?.current ?? null; // current 没拿到也没关系，至少能显示 Item/Variant/You selected
 
         const product_title = d?.product_title ?? d?.productTitle ?? null;
         const variant_title = d?.variant_title ?? d?.variantTitle ?? null;
@@ -633,6 +661,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
 
     setReservationId(rid);
     setReservationExpiresAt(expMs > 0 ? expMs : null);
+    
 
     return rid; // ✅ NEW: 成功后返回 rid
   }
@@ -662,7 +691,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     if (isPayProcessing) return;
     if (payBlockedReason) return;
     if (!stockItems.length) return;
-    if (payError?.type === "reservation_expired") return;
+    if (payError) return;
 
     // already have valid reservation
     if (reservationId && reservationExpiresAt && Date.now() < reservationExpiresAt - 1000) return;
@@ -817,21 +846,11 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
 
                   <div className="mt-1">
                     <b>In stock:</b>{" "}
-                    {typeof outOfStockDisplay?.current === "number" ? outOfStockDisplay.current : "N/A"}
+                    {typeof outOfStockDisplay?.current === "number" ? outOfStockDisplay.current : "0"}
                     {"  "}
                     <span className="mx-1">|</span>
                     <b>You selected:</b>{" "}
-                    {typeof outOfStockDisplay?.requested === "number" ? outOfStockDisplay.requested : "N/A"}
-                  </div>
-
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={goBackToBag}
-                      className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium hover:bg-neutral-50"
-                    >
-                      Back to bag
-                    </button>
+                    {typeof outOfStockDisplay?.requested === "number" ? outOfStockDisplay.requested : "0"}
                   </div>
 
                   <div className="mt-2">
@@ -840,19 +859,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                 </div>
               )}
 
-              {(payError.type === "reservation_failed" || payError.type === "reservation_expired") && (
-                <div className="mt-2 text-xs leading-5">
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={goBackToBag}
-                      className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium hover:bg-neutral-50"
-                    >
-                      Back to bag
-                    </button>
-                  </div>
-                </div>
-              )}
+              {(payError.type === "reservation_failed" || payError.type === "reservation_expired") && null}
             </div>
           </Alert>
         )}

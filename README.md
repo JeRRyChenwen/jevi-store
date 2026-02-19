@@ -1171,3 +1171,5 @@ reserve 时：先扣 inventory.stock
 reserve时间结束的提示需要修改
 
 stock 为0的提示也需要修改
+
+原本 payment step 文件里添加的限制，限制out_of_stock提示的逻辑
