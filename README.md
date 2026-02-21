@@ -821,7 +821,8 @@ npx wrangler dev --x-remote-bindings
 wrangler dev --remote
 或者
 npx wrangler dev
-或者npx wrangler dev --log-level debug
+或者
+npx wrangler dev --log-level debug
 
 wrangler dev --port 8789
 
@@ -884,6 +885,8 @@ Created your new D1 database.
 清库
 
 wrangler d1 execute socialplatform --remote --file=reset.sql
+
+wrangler d1 execute socialplatform --remote --file migrations/0001_base.sql
 
 ==================================================================
 
