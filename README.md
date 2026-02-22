@@ -1207,3 +1207,7 @@ WHERE reservations.status IN ('active','committing') AND reservations.expires_at
 卫生清理（delete expired rows / 压缩表 / 防止无限膨胀）
 
 不是 correctness 的一部分
+
+============================
+
+reserve 过期后重新点击paypal按钮
