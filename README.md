@@ -1167,4 +1167,43 @@ reserve 时：先扣 inventory.stock
 
 ==================
 
-聚合表
+我认为这是更稳、更像生产的方向，尤其是你最开始追求的目标是：
+
+不依赖 cron/cleanup 也不会卡死
+
+过期自动失效
+
+inventory.stock 永远是权威 on-hand
+
+reservation 只是 soft hold
+
+这些目标要“100%成立”，唯一干净的做法就是：
+
+正确性 = 直接从 reservations（未过期）算出来
+聚合表只用来加速/观测/排查，不参与 correctness。
+
+你按这个方向改，建议采用的“原则”
+
+1. 统一所有读库存的接口：都用同一套可用库存算法
+
+available = inventory.stock − reserved_live
+
+其中：
+
+reserved_live = SUM(reservation_items.qty)
+JOIN reservations
+WHERE reservations.status IN ('active','committing') AND reservations.expires_at_ts > now
+
+注意：这里的 “expires_at_ts > now” 本身就是“自动释放”的定义，所以不需要任何“加回去”的动作。
+
+2. 聚合表 inventory_reserved_agg 只做两件事
+
+性能缓存（可选）：你可以把它当“近似值/加速值”，但不能当真值
+
+观测/排查：比如看某 SKU 被 hold 的趋势、异常 reservation 是否暴涨等
+
+3. cleanup 的定位
+
+卫生清理（delete expired rows / 压缩表 / 防止无限膨胀）
+
+不是 correctness 的一部分
