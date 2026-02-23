@@ -104,6 +104,34 @@ function pickReservationId(meta: any): string | null {
   return s ? s : null;
 }
 
+/**
+ * ✅ 统一把后端 /orders 的错误响应转成前端可用 err：
+ * - 保留后端的 error/message（不再强制 409=out_of_stock）
+ * - 永远补上 items fallback（方便 PaymentStep 用 cart/sku 做展示）
+ */
+function makeOrdersError(resStatus: number, orderResp: any, fallbackItems: any) {
+  const backendCode = String(orderResp?.error || orderResp?.code || "").trim();
+  const code = backendCode || (resStatus ? `http_${resStatus}` : "http_error");
+
+  // ✅ 优先用后端 message（你后端现在会返回 message）
+  const backendMsg = String(orderResp?.message || "").trim();
+  const message = backendMsg || (resStatus ? `HTTP ${resStatus}` : "Request failed");
+
+  // ✅ detail：优先 detail，其次把整个响应塞进去（方便你调试/前端做 fallback）
+  const detail = {
+    ...(orderResp?.detail ?? {}),
+    ...(orderResp ?? {}),
+    items: fallbackItems ?? null,
+  };
+
+  return {
+    status: resStatus || 0,
+    code,
+    message,
+    detail,
+  };
+}
+
 export default function PayPalBigButton({
   amount,
   currency,
@@ -119,7 +147,6 @@ export default function PayPalBigButton({
   const approvingRef = useRef(false);
   const reservedIdRef = useRef<string | null>(null);
   const creatingRef = useRef(false);
-  const reservationRef = useRef<string | null>(null); 
 
   useEffect(() => {
     if (!options || !currency) return;
@@ -137,7 +164,6 @@ export default function PayPalBigButton({
 
   const apiBase = useMemo(() => getApiBase(), []);
   const ordersUrl = useMemo(() => `${apiBase}/orders`, [apiBase]);
-  reservationRef.current = pickReservationId(successMeta);
 
   return (
     <div className="w-full flex justify-end">
@@ -176,14 +202,13 @@ export default function PayPalBigButton({
               // ✅ Phase 2：reserve preflight（由 PaymentStep 实现）
               if (preflight) {
                 try {
-                  const rid = await preflight();           // ✅ NEW
-                  reservedIdRef.current = rid || null;     // ✅ NEW
+                  const rid = await preflight();
+                  reservedIdRef.current = rid || null;
                 } catch (e: any) {
                   const err = {
                     status: Number(e?.status || 409) || 409,
                     code: String(e?.code || e?.error || "preflight_failed"),
-                    message: e?.message || "Stock preflight failed.",
-                    // ✅ 关键：把 preflightItems 补进去，给上层做展示 fallback
+                    message: String(e?.message || "Stock preflight failed."),
                     detail: { ...(e?.detail ?? {}), items: preflightItems ?? null },
                   };
 
@@ -252,7 +277,9 @@ export default function PayPalBigButton({
                   detail: { successMeta },
                 };
                 onFailed?.(err);
-                try { await (actions as any)?.order?.void?.(); } catch {}
+                try {
+                  await (actions as any)?.order?.void?.();
+                } catch {}
                 approvingRef.current = false;
                 return;
               }
@@ -261,7 +288,7 @@ export default function PayPalBigButton({
                 currency: (checkoutTotals?.currency || currency || "AUD").toUpperCase(),
                 items: itemsFromMeta,
 
-                ...(reservation_id ? { reservation_id } : {}),
+                reservation_id,
 
                 payment: {
                   provider: "paypal",
@@ -291,14 +318,9 @@ export default function PayPalBigButton({
                 meta: {
                   ...(successMeta?.meta || {}),
                   __paypal_order_id: paypalPayload.orderId,
-                  ...(reservation_id ? { __reservation_id: reservation_id } : {}),
+                  __reservation_id: reservation_id,
                 },
               };
-
-              console.log("[paypal] creating order with reservation", {
-                reservation_id,
-                hasReservation: !!reservation_id,
-              });
 
               console.log("[paypal] posting /orders with reservation_id =", reservation_id, {
                 bodyHasReservationId: !!(orderBody as any)?.reservation_id,
@@ -306,31 +328,38 @@ export default function PayPalBigButton({
 
               const { res, data: orderResp } = await postJson(ordersUrl, orderBody);
 
+              // ✅ 非 2xx：用后端的 error/message（不再强制 409=out_of_stock）
               if (!res.ok) {
-                const err = {
-                  status: res.status,
-                  // ✅ 409 时强制 code=out_of_stock，避免出现奇怪 code 导致上层走 unknown
-                  code: res.status === 409 ? "out_of_stock" : (orderResp?.error || orderResp?.code || "http_error"),
-                  message: orderResp?.message || (res.status === 409 ? "out_of_stock" : `HTTP ${res.status}`),
+                  const backendCode = String(orderResp?.error || orderResp?.code || "").trim();
+                  const backendMsg =
+                    String(orderResp?.message || "").trim() ||
+                    (backendCode ? backendCode : `HTTP ${res.status}`);
 
-                  // ✅ 关键：补上 items，让 PaymentStep 即使缺 sku 也能从 cart/stockItems 推导展示
-                  detail: {
-                    ...(orderResp?.detail ?? {}),
-                    ...(orderResp ?? {}),
-                    items: preflightItems ?? null,
-                  },
-                };
+                  // ✅ 只在“后端没给 code”时才兜底
+                  let code = backendCode || "http_error";
 
-                onFailed?.(err);
+                  // ✅ 仅对少数情况做“状态码兜底映射”（可选，但很实用）
+                  if (!backendCode && res.status === 409) code = "conflict";
 
-                try {
-                  await (actions as any)?.order?.void?.();
-                } catch {}
+                  const err = {
+                    status: res.status,
+                    code,
+                    message: backendMsg,
+                    detail: {
+                      ...(orderResp?.detail ?? {}),
+                      ...(orderResp ?? {}),
+                      items: preflightItems ?? null, // 给 PaymentStep 做 fallback 展示
+                    },
+                  };
 
-                approvingRef.current = false;
-                return;
-              }
+                  onFailed?.(err);
 
+                  try { await (actions as any)?.order?.void?.(); } catch {}
+                  approvingRef.current = false;
+                  return;
+                }
+
+              // ✅ 兼容：后端可能返回 ok:true duplicate:true
               const merged = successMeta
                 ? { ...paypalPayload, successMeta, order: orderResp }
                 : { ...paypalPayload, order: orderResp };
