@@ -50,15 +50,26 @@ function buildStockItems(cart: any[]): StockCheckItem[] {
   return Array.from(map.entries()).map(([sku, qty]) => ({ sku, qty }));
 }
 
+function buildCartHash(items: StockCheckItem[]): string {
+  const pairs = (items || [])
+    .map((x) => `${String(x.sku).trim()}:${Math.max(1, Math.floor(Number(x.qty) || 1))}`)
+    .sort();
+  return pairs.join("|");
+}
+
 async function reserveStock(
   items: StockCheckItem[],
-  request_id?: string
+  args?: { request_id?: string; cart_hash?: string }
 ): Promise<{ httpStatus: number; data: ReserveApiResp | null }> {
   const res = await fetch("/api/stock/reserve", {
     method: "POST",
     credentials: "include",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ items, ...(request_id ? { request_id } : {}) }),
+    body: JSON.stringify({
+      items,
+      ...(args?.request_id ? { request_id: args.request_id } : {}),
+      ...(args?.cart_hash ? { cart_hash: args.cart_hash } : {}),
+    }),
   });
 
   const data: any = await res.json().catch(() => null);
@@ -141,6 +152,12 @@ type PaymentStepProps = {
     currency?: string;
     [k: string]: any;
   }>;
+
+  preReservationId?: string | null;
+  preReservationExpiresAtSec?: number | null;
+  preReservationCartHash?: string | null;
+  preReserveLoading?: boolean;
+  preReserveError?: string | null;
 };
 
 /* ========== 金额格式化小工具 ========== */
@@ -243,6 +260,11 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   onPaySucceeded,
   cart,
   onBackToBag,
+  preReservationId,
+  preReservationExpiresAtSec,
+  preReservationCartHash,
+  preReserveLoading,
+  preReserveError,
 }) => {
   const router = useRouter();
 
@@ -402,6 +424,38 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
 
   // ✅ Phase 2: stock items from cart
   const stockItems = useMemo(() => buildStockItems(cart as any[]), [cart]);
+
+  // ✅ cart_hash（与 page.tsx / worker 对齐）
+  const cartHash = useMemo(() => buildCartHash(stockItems), [stockItems]);
+
+  // ✅ 同步 page.tsx 预加载的 reservation → PaymentStep 内部状态
+  useEffect(() => {
+    const rid = String(preReservationId || "").trim();
+    const expSec = Number(preReservationExpiresAtSec || 0);
+    const preHash = String(preReservationCartHash || "").trim();
+
+    if (!rid || !Number.isFinite(expSec) || expSec <= 0) return;
+
+    // 必须 cart_hash 一致才复用（避免用户改了 bag）
+    if (preHash && preHash !== cartHash) return;
+
+    const expMs = expSec * 1000;
+    if (Date.now() >= expMs - 1000) return; // 已过期/即将过期不复用
+
+    // 只在本地还没有有效 reservation 时写入（避免覆盖更“新”的）
+    const localValid =
+      reservationId &&
+      reservationExpiresAt &&
+      Date.now() < reservationExpiresAt - 1000;
+
+    if (localValid) return;
+
+    setReservationId(rid);
+    setReservationExpiresAt(expMs);
+    reservationIdRef.current = rid;
+    setPayError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preReservationId, preReservationExpiresAtSec, preReservationCartHash, cartHash]);
 
   const releaseReservationIfAny = useCallback(
     async (reason: string) => {
@@ -676,10 +730,29 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
         throw { status: 400, error: "no_items", message: "No items to reserve." };
       }
 
-      // 如果已有 reservation 且未过期，则复用
+      // ✅ 1) 如果已有 reservation 且未过期，则复用
       if (reservationId && reservationExpiresAt && Date.now() < reservationExpiresAt - 1000) {
         reservationIdRef.current = reservationId;
         return reservationId;
+      }
+
+      // ✅ 2) 如果 page.tsx 预加载的 reservation 可用，并且 cart_hash 一致，也复用
+      {
+        const rid = String(preReservationId || "").trim();
+        const expSec = Number(preReservationExpiresAtSec || 0);
+        const preHash = String(preReservationCartHash || "").trim();
+
+        if (rid && Number.isFinite(expSec) && expSec > 0) {
+          if (!preHash || preHash === cartHash) {
+            const expMs = expSec * 1000;
+            if (Date.now() < expMs - 1000) {
+              setReservationId(rid);
+              setReservationExpiresAt(expMs);
+              reservationIdRef.current = rid;
+              return rid;
+            }
+          }
+        }
       }
 
       // ✅ PayPal 点击前：用 available 做一次前置校验（best-effort）
@@ -705,7 +778,10 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
       }
 
       const request_id = `${checkoutSessionIdRef.current}:${cartSignature || "empty"}`;
-      const { httpStatus, data } = await reserveStock(stockItems, request_id);
+      const { httpStatus, data } = await reserveStock(stockItems, {
+        request_id,
+        cart_hash: cartHash,
+      });
 
       if (httpStatus === 200 && data && (data as any).ok === true) {
         const rid = String((data as any).reservation_id || "").trim();
@@ -742,7 +818,16 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
         detail: { httpStatus, data },
       };
     },
-    [stockItems, reservationId, reservationExpiresAt, cartSignature]
+    [
+      stockItems,
+      reservationId,
+      reservationExpiresAt,
+      cartSignature,
+      cartHash,
+      preReservationId,
+      preReservationExpiresAtSec,
+      preReservationCartHash,
+    ]
   );
 
   // ✅ Auto reserve when entering Payment step so PayPal opens with ONE click
@@ -1098,7 +1183,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                       >
                         PayPal unavailable
                       </button>
-                    ) : isReserving ? (
+                    ) : (isReserving || preReserveLoading) ? (
                       <button
                         type="button"
                         disabled
