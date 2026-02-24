@@ -361,6 +361,37 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   cartHash,
 ]);
 
+// ✅ NEW: PayPal 按钮是否应变成 unavailable（灰掉）
+  const paypalUnavailable = useMemo(() => {
+    if (!visible) return true;
+
+    // 正在处理支付时，也应该不可点
+    if (isPayProcessing) return true;
+
+    // reserve 正在跑：保持不可点（你已有 Preparing PayPal... 分支，这里也防止 PayPalButtons 被渲染）
+    if (preReserveLoading) return true;
+
+    // 没有 address / bag 空 / totals 异常 等阻断原因：不可点
+    if (payBlockedReason) return true;
+
+    // ✅ 关键：只要出现这些错误，就直接禁用 PayPal（你要的两种情况）
+    if (payError?.type === "out_of_stock") return true;
+    if (payError?.type === "reservation_expired") return true;
+    if (payError?.type === "reservation_failed") return true;
+
+    // 你也可以把 amount_mismatch / server_error 一起禁用（更合理）
+    if (payError?.type === "amount_mismatch") return true;
+    if (payError?.type === "server_error") return true;
+
+    return false;
+  }, [
+    visible,
+    isPayProcessing,
+    preReserveLoading,
+    payBlockedReason,
+    payError,
+  ]);
+
 
 
   const countryDisplay = useMemo(() => {
@@ -1039,7 +1070,7 @@ useEffect(() => {
                   <div className="text-xl font-bold">{fmtMoneyMinor(derivedTotalMinor, safeCurrency)}</div>
                 </div>
 
-                {visible && reservationId && (
+                {visible && reservationId && !(payError && (payError.type === "out_of_stock" || payError.type === "reservation_expired" || payError.type === "reservation_failed")) && (
                   <Alert variant="info" className="mt-3">
                     <div className="flex items-start gap-2">
                       <span className="text-base">🛍️</span>
@@ -1085,16 +1116,11 @@ useEffect(() => {
                       >
                         Preparing PayPal...
                       </button>
-                    ) : payBlockedReason ? (
-                      <button
-                        type="button"
-                        disabled
-                        className="w-full rounded-full px-6 py-3 text-sm font-semibold bg-[#FFC439] text-[#111827] opacity-70 cursor-not-allowed"
-                      >
-                        PayPal unavailable
-                      </button>
                     ) : (
                       <PayPalBigButton
+                        // ✅ NEW: 统一禁用逻辑（满足你两张截图：expired / out_of_stock 都会灰）
+                        disabled={paypalUnavailable}
+                        disabledText="PayPal unavailable"
                         amount={derivedAmountMajor}
                         currency={safeCurrency}
                         successMeta={successMetaWithReservation}

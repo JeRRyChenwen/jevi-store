@@ -24,6 +24,10 @@ type Props = {
   // ✅ 点击 PayPal 前先做库存预检/预留（若失败，则 PayPal 不继续 createOrder）
   preflight?: () => Promise<string>;
   preflightItems?: Array<{ sku: string; qty: number }>;
+
+  // ✅ NEW: 上层控制禁用（reservation expired / out_of_stock 时用）
+  disabled?: boolean;
+  disabledText?: string; // 默认 "PayPal unavailable"
 };
 
 function getApiBase() {
@@ -68,6 +72,7 @@ const QUIET_CREATE_ORDER_CODES = new Set([
   "stock_check_failed",
   "missing_items",
   "paypal_cancelled",
+  "paypal_unavailable",
 ]);
 
 function normalizeErrCode(err: any): string {
@@ -142,6 +147,8 @@ export default function PayPalBigButton({
   successMeta,
   preflight,
   preflightItems,
+  disabled,
+  disabledText,
 }: Props) {
   const [{ options }, dispatch] = usePayPalScriptReducer();
   const approvingRef = useRef(false);
@@ -165,171 +172,198 @@ export default function PayPalBigButton({
   const apiBase = useMemo(() => getApiBase(), []);
   const ordersUrl = useMemo(() => `${apiBase}/orders`, [apiBase]);
 
+  const isDisabled = !!disabled;
+  const disabledLabel = (disabledText && String(disabledText).trim()) || "PayPal unavailable";
+
   return (
     <div className="w-full flex justify-end">
       <div className="w-[260px] max-w-full">
-        <PayPalButtons
-          className="w-full"
-          style={{
-            layout: "horizontal",
-            height: 37,
-            color: "gold",
-            shape: "pill",
-            label: "pay",
-            tagline: false,
-          }}
-          forceReRender={[value, currency]}
-          createOrder={async (_data, actions) => {
-            if (creatingRef.current) {
-              throw makeAbortError("create_order_in_progress");
-            }
-            creatingRef.current = true;
-
-            try {
-              onInitiate?.();
-
-              if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) {
-                const err = {
-                  status: 0,
-                  code: "invalid_amount",
-                  message: `Invalid amount for PayPal: ${amount}`,
-                  detail: { amount, currency },
-                };
-                onFailed?.(err);
-                throw makeAbortError("invalid_amount", err);
+        {isDisabled ? (
+          <button
+            type="button"
+            disabled
+            aria-disabled="true"
+            className={[
+              "w-full rounded-full px-6 py-3 text-sm font-semibold",
+              "bg-neutral-200 text-neutral-500 cursor-not-allowed",
+            ].join(" ")}
+            title={disabledLabel}
+          >
+            {disabledLabel}
+          </button>
+        ) : (
+          <PayPalButtons
+            className="w-full"
+            style={{
+              layout: "horizontal",
+              height: 37,
+              color: "gold",
+              shape: "pill",
+              label: "pay",
+              tagline: false,
+            }}
+            forceReRender={[value, currency]}
+            createOrder={async (_data, actions) => {
+              // ✅ safety: 如果 disabled 状态被上层瞬间切换，也直接拒绝
+              if (isDisabled) {
+                throw makeAbortError("paypal_unavailable");
               }
 
-              // ✅ Phase 2：reserve preflight（由 PaymentStep 实现）
-              if (preflight) {
-                try {
-                  const rid = await preflight();
-                  reservedIdRef.current = rid || null;
-                } catch (e: any) {
+              if (creatingRef.current) {
+                throw makeAbortError("create_order_in_progress");
+              }
+              creatingRef.current = true;
+
+              try {
+                onInitiate?.();
+
+                if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) {
                   const err = {
-                    status: Number(e?.status || 409) || 409,
-                    code: String(e?.code || e?.error || "preflight_failed"),
-                    message: String(e?.message || "Stock preflight failed."),
-                    detail: { ...(e?.detail ?? {}), items: preflightItems ?? null },
+                    status: 0,
+                    code: "invalid_amount",
+                    message: `Invalid amount for PayPal: ${amount}`,
+                    detail: { amount, currency },
                   };
-
                   onFailed?.(err);
-                  throw makeAbortError(err.code, err);
+                  throw makeAbortError("invalid_amount", err);
                 }
-              }
 
-              return actions.order.create({
-                intent: "CAPTURE",
-                purchase_units: [
-                  {
-                    amount: {
-                      value: Number(amount).toFixed(2),
-                      currency_code: currency,
+                // ✅ Phase 2：reserve preflight（由 PaymentStep 实现）
+                if (preflight) {
+                  try {
+                    const rid = await preflight();
+                    reservedIdRef.current = rid || null;
+                  } catch (e: any) {
+                    const err = {
+                      status: Number(e?.status || 409) || 409,
+                      code: String(e?.code || e?.error || "preflight_failed"),
+                      message: String(e?.message || "Stock preflight failed."),
+                      detail: { ...(e?.detail ?? {}), items: preflightItems ?? null },
+                    };
+
+                    onFailed?.(err);
+                    throw makeAbortError(err.code, err);
+                  }
+                }
+
+                return actions.order.create({
+                  intent: "CAPTURE",
+                  purchase_units: [
+                    {
+                      amount: {
+                        value: Number(amount).toFixed(2),
+                        currency_code: currency,
+                      },
                     },
-                  },
-                ],
-              } as any);
-            } finally {
-              creatingRef.current = false;
-            }
-          }}
-          onApprove={async (data, actions) => {
-            if (approvingRef.current) return;
-            approvingRef.current = true;
-
-            try {
-              const details = await actions.order?.capture();
-              const capture = (details as any)?.purchase_units?.[0]?.payments?.captures?.[0] ?? null;
-
-              const paypalPayload = {
-                provider: "paypal",
-                orderId: data?.orderID ?? (details as any)?.id ?? null,
-                transactionId: capture?.id ?? null,
-                raw: details ?? null,
-                data,
-                details,
-              };
-
-              const checkoutTotals = successMeta?.checkoutTotals;
-              const itemsFromMeta = checkoutTotals?.items;
-
-              if (!Array.isArray(itemsFromMeta) || itemsFromMeta.length === 0) {
-                const err = {
-                  status: 0,
-                  code: "missing_items",
-                  message: "Missing cart items for creating order.",
-                  detail: { successMeta },
-                };
-                onFailed?.(err);
-                try {
-                  await (actions as any)?.order?.void?.();
-                } catch {}
-                approvingRef.current = false;
-                return;
+                  ],
+                } as any);
+              } finally {
+                creatingRef.current = false;
               }
+            }}
+            onApprove={async (data, actions) => {
+              if (approvingRef.current) return;
+              approvingRef.current = true;
 
-              const reservation_id = reservedIdRef.current || pickReservationId(successMeta);
+              try {
+                const details = await actions.order?.capture();
+                const capture =
+                  (details as any)?.purchase_units?.[0]?.payments?.captures?.[0] ?? null;
 
-              if (!reservation_id) {
-                const err = {
-                  status: 400,
-                  code: "missing_reservation_id",
-                  message: "Missing reservation_id when creating order.",
-                  detail: { successMeta },
-                };
-                onFailed?.(err);
-                try {
-                  await (actions as any)?.order?.void?.();
-                } catch {}
-                approvingRef.current = false;
-                return;
-              }
-
-              const orderBody = {
-                currency: (checkoutTotals?.currency || currency || "AUD").toUpperCase(),
-                items: itemsFromMeta,
-
-                reservation_id,
-
-                payment: {
+                const paypalPayload = {
                   provider: "paypal",
-                  provider_txn_id: paypalPayload.transactionId,
-                  amount_minor: Number(checkoutTotals?.total_minor ?? 0) | 0,
-                  status: "captured",
-                  raw: paypalPayload.raw,
-                },
+                  orderId: data?.orderID ?? (details as any)?.id ?? null,
+                  transactionId: capture?.id ?? null,
+                  raw: details ?? null,
+                  data,
+                  details,
+                };
 
-                ...(successMeta?.address
-                  ? {
-                      email: String(successMeta.address?.email || "").trim().toLowerCase(),
-                      first_name: successMeta.address?.firstName ?? null,
-                      last_name: successMeta.address?.lastName ?? null,
-                      phone: successMeta.address?.phone ?? null,
-                      addr_line1: successMeta.address?.line1 ?? null,
-                      addr_line2: successMeta.address?.line2 ?? null,
-                      addr_city: successMeta.address?.city ?? null,
-                      addr_state: successMeta.address?.state ?? null,
-                      addr_postcode: successMeta.address?.postcode ?? null,
-                      addr_country: successMeta.address?.country ?? null,
-                    }
-                  : {}),
+                const checkoutTotals = successMeta?.checkoutTotals;
+                const itemsFromMeta = checkoutTotals?.items;
 
-                ...(successMeta?.deliveryOption ? { delivery_option: successMeta.deliveryOption } : {}),
+                if (!Array.isArray(itemsFromMeta) || itemsFromMeta.length === 0) {
+                  const err = {
+                    status: 0,
+                    code: "missing_items",
+                    message: "Missing cart items for creating order.",
+                    detail: { successMeta },
+                  };
+                  onFailed?.(err);
+                  try {
+                    await (actions as any)?.order?.void?.();
+                  } catch {}
+                  approvingRef.current = false;
+                  return;
+                }
 
-                meta: {
-                  ...(successMeta?.meta || {}),
-                  __paypal_order_id: paypalPayload.orderId,
-                  __reservation_id: reservation_id,
-                },
-              };
+                const reservation_id = reservedIdRef.current || pickReservationId(successMeta);
 
-              console.log("[paypal] posting /orders with reservation_id =", reservation_id, {
-                bodyHasReservationId: !!(orderBody as any)?.reservation_id,
-              });
+                if (!reservation_id) {
+                  const err = {
+                    status: 400,
+                    code: "missing_reservation_id",
+                    message: "Missing reservation_id when creating order.",
+                    detail: { successMeta },
+                  };
+                  onFailed?.(err);
+                  try {
+                    await (actions as any)?.order?.void?.();
+                  } catch {}
+                  approvingRef.current = false;
+                  return;
+                }
 
-              const { res, data: orderResp } = await postJson(ordersUrl, orderBody);
+                const orderBody = {
+                  currency: (checkoutTotals?.currency || currency || "AUD").toUpperCase(),
+                  items: itemsFromMeta,
 
-              // ✅ 非 2xx：用后端的 error/message（不再强制 409=out_of_stock）
-              if (!res.ok) {
+                  reservation_id,
+
+                  payment: {
+                    provider: "paypal",
+                    provider_txn_id: paypalPayload.transactionId,
+                    amount_minor: Number(checkoutTotals?.total_minor ?? 0) | 0,
+                    status: "captured",
+                    raw: paypalPayload.raw,
+                  },
+
+                  ...(successMeta?.address
+                    ? {
+                        email: String(successMeta.address?.email || "")
+                          .trim()
+                          .toLowerCase(),
+                        first_name: successMeta.address?.firstName ?? null,
+                        last_name: successMeta.address?.lastName ?? null,
+                        phone: successMeta.address?.phone ?? null,
+                        addr_line1: successMeta.address?.line1 ?? null,
+                        addr_line2: successMeta.address?.line2 ?? null,
+                        addr_city: successMeta.address?.city ?? null,
+                        addr_state: successMeta.address?.state ?? null,
+                        addr_postcode: successMeta.address?.postcode ?? null,
+                        addr_country: successMeta.address?.country ?? null,
+                      }
+                    : {}),
+
+                  ...(successMeta?.deliveryOption
+                    ? { delivery_option: successMeta.deliveryOption }
+                    : {}),
+
+                  meta: {
+                    ...(successMeta?.meta || {}),
+                    __paypal_order_id: paypalPayload.orderId,
+                    __reservation_id: reservation_id,
+                  },
+                };
+
+                console.log("[paypal] posting /orders with reservation_id =", reservation_id, {
+                  bodyHasReservationId: !!(orderBody as any)?.reservation_id,
+                });
+
+                const { res, data: orderResp } = await postJson(ordersUrl, orderBody);
+
+                // ✅ 非 2xx：用后端的 error/message（不再强制 409=out_of_stock）
+                if (!res.ok) {
                   const backendCode = String(orderResp?.error || orderResp?.code || "").trim();
                   const backendMsg =
                     String(orderResp?.message || "").trim() ||
@@ -354,78 +388,81 @@ export default function PayPalBigButton({
 
                   onFailed?.(err);
 
-                  try { await (actions as any)?.order?.void?.(); } catch {}
+                  try {
+                    await (actions as any)?.order?.void?.();
+                  } catch {}
                   approvingRef.current = false;
                   return;
                 }
 
-              // ✅ 兼容：后端可能返回 ok:true duplicate:true
-              const merged = successMeta
-                ? { ...paypalPayload, successMeta, order: orderResp }
-                : { ...paypalPayload, order: orderResp };
+                // ✅ 兼容：后端可能返回 ok:true duplicate:true
+                const merged = successMeta
+                  ? { ...paypalPayload, successMeta, order: orderResp }
+                  : { ...paypalPayload, order: orderResp };
 
-              await onSucceeded?.(merged);
+                await onSucceeded?.(merged);
 
-              try {
-                if (typeof window !== "undefined") {
-                  window.location.replace(confirmPath);
+                try {
+                  if (typeof window !== "undefined") {
+                    window.location.replace(confirmPath);
+                  }
+                } catch {}
+              } catch (e: any) {
+                console.error("[paypal] onApprove/capture failed:", e);
+
+                // ✅ 如果上面已经构造过结构化错误（含 status/code/error），直接透传给 PaymentStep
+                if (e && (e.status || e.code || e.error)) {
+                  onFailed?.(e);
+                  approvingRef.current = false;
+                  return;
                 }
-              } catch {}
-            } catch (e: any) {
-              console.error("[paypal] onApprove/capture failed:", e);
 
-              // ✅ 如果上面已经构造过结构化错误（含 status/code/error），直接透传给 PaymentStep
-              if (e && (e.status || e.code || e.error)) {
-                onFailed?.(e);
+                onFailed?.({
+                  status: 0,
+                  code: "paypal_capture_failed",
+                  message: e?.message || "PayPal capture failed.",
+                  detail: e,
+                });
+
+                approvingRef.current = false;
+              }
+            }}
+            onError={(err) => {
+              const msg = String((err as any)?.message || "");
+              if (msg.includes(ABORT_SENTINEL)) {
                 approvingRef.current = false;
                 return;
               }
 
+              const code = normalizeErrCode(err);
+              if (code && QUIET_CREATE_ORDER_CODES.has(code)) {
+                approvingRef.current = false;
+                return;
+              }
+
+              console.error("[paypal] error:", err);
+
               onFailed?.({
                 status: 0,
-                code: "paypal_capture_failed",
-                message: e?.message || "PayPal capture failed.",
-                detail: e,
+                code: "paypal_error",
+                message: "PayPal error.",
+                detail: err,
               });
 
               approvingRef.current = false;
-            }
-          }}
-          onError={(err) => {
-            const msg = String((err as any)?.message || "");
-            if (msg.includes(ABORT_SENTINEL)) {
+            }}
+            onCancel={() => {
+              onFailed?.({
+                status: 0,
+                code: "paypal_cancelled",
+                message: "Payment cancelled.",
+                detail: null,
+              });
+
               approvingRef.current = false;
-              return;
-            }
-
-            const code = normalizeErrCode(err);
-            if (code && QUIET_CREATE_ORDER_CODES.has(code)) {
-              approvingRef.current = false;
-              return;
-            }
-
-            console.error("[paypal] error:", err);
-
-            onFailed?.({
-              status: 0,
-              code: "paypal_error",
-              message: "PayPal error.",
-              detail: err,
-            });
-
-            approvingRef.current = false;
-          }}
-          onCancel={() => {
-            onFailed?.({
-              status: 0,
-              code: "paypal_cancelled",
-              message: "Payment cancelled.",
-              detail: null,
-            });
-
-            approvingRef.current = false;
-          }}
-        />
+            }}
+          />
+        )}
       </div>
     </div>
   );
