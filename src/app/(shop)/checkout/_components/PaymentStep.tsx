@@ -301,9 +301,25 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   if (!visible) return null;
   if (isPayProcessing) return null;
   if (suppressBlockedHint) return null;
+  if (payError) return null;
 
-  if (derivedItemsCount <= 0) return "Your bag is empty. Please add at least one item before paying.";
-  if (!hasAddress) return "No delivery address found. Please complete the Address step before paying.";
+  if (derivedItemsCount <= 0) {
+    return "Your bag is empty. Please add at least one item before paying.";
+  }
+  if (!hasAddress) {
+    return "No delivery address found. Please complete the Address step before paying.";
+  }
+
+  // ✅ 关键：reserve 还在进行中时，不要报 “No reservation found”
+  if (preReserveLoading) {
+    // 你可以返回一个“友好提示”，也可以 return null（不显示红条）
+    return "Reserving stock… Please wait a moment.";
+  }
+
+  // ✅ reserve 已结束，但如果有错误，优先显示错误
+  if (preReserveError && String(preReserveError).trim()) {
+    return String(preReserveError).trim();
+  }
 
   // ✅ PaymentStep 不再 reserve，所以必须依赖 Address step 的 preReservation
   const rid = String(preReservationId || "").trim();
@@ -311,20 +327,34 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   const expSec = Number(preReservationExpiresAtSec || 0);
   const expMs = Number.isFinite(expSec) && expSec > 0 ? expSec * 1000 : 0;
 
-  if (!rid) return "No stock reservation found. Please go back to the Address step and reserve again.";
-  if (preHash && preHash !== cartHash) return "Your bag changed. Please go back to the Address step and reserve again.";
-  if (!expMs) return "Invalid reservation. Please go back to the Address step and reserve again.";
-  if (Date.now() >= expMs - 1000) return "Your stock reservation has expired. Please go back to the Address step and reserve again.";
+  if (!rid) {
+    return "No stock reservation found. Please go back to the Address step and reserve again.";
+  }
+  if (preHash && preHash !== cartHash) {
+    return "Your bag changed. Please go back to the Address step and reserve again.";
+  }
+  if (!expMs) {
+    return "Invalid reservation. Please go back to the Address step and reserve again.";
+  }
+  if (Date.now() >= expMs - 1000) {
+    return "Your stock reservation has expired. Please go back to the Address step and reserve again.";
+  }
 
-  if (derivedTotalMinor <= 0) return "Invalid total amount. Please review your order.";
+  if (derivedTotalMinor <= 0) {
+    return "Invalid total amount. Please review your order.";
+  }
+
   return null;
 }, [
   visible,
   isPayProcessing,
   suppressBlockedHint,
+  payError,
   derivedItemsCount,
   hasAddress,
   derivedTotalMinor,
+  preReserveLoading,
+  preReserveError,
   preReservationId,
   preReservationCartHash,
   preReservationExpiresAtSec,
@@ -911,12 +941,21 @@ useEffect(() => {
           </Alert>
         )}
 
-        {visible && payBlockedReason && (
+        {/* ✅ Reserve loading: show INFO banner instead of ERROR */}
+        {visible && !payError && preReserveLoading ? (
+          <Alert variant="info" className="flex gap-2">
+            <span className="mt-0.5 text-base">ℹ️</span>
+            <div>Reserving stock… Please wait a moment.</div>
+          </Alert>
+        ) : null}
+
+        {/* ✅ Reserve done / other blocked reasons */}
+        {visible && !payError && !preReserveLoading && payBlockedReason ? (
           <Alert variant="error" className="flex gap-2">
             <AlertCircle className="w-4 h-4 mt-0.5" />
             <div>{payBlockedReason}</div>
           </Alert>
-        )}
+        ) : null}
 
         <div className="flex-1 flex flex-col">
           <div className="grid gap-4 md:grid-cols-[minmax(0,1.5fr)_minmax(0,2fr)]">
@@ -1038,14 +1077,6 @@ useEffect(() => {
                       >
                         Processing payment...
                       </button>
-                    ) : payBlockedReason ? (
-                      <button
-                        type="button"
-                        disabled
-                        className="w-full rounded-full px-6 py-3 text-sm font-semibold bg-[#FFC439] text-[#111827] opacity-70 cursor-not-allowed"
-                      >
-                        PayPal unavailable
-                      </button>
                     ) : preReserveLoading ? (
                       <button
                         type="button"
@@ -1053,6 +1084,14 @@ useEffect(() => {
                         className="w-full rounded-full px-6 py-3 text-sm font-semibold bg-[#FFC439] text-[#111827] opacity-70 cursor-not-allowed"
                       >
                         Preparing PayPal...
+                      </button>
+                    ) : payBlockedReason ? (
+                      <button
+                        type="button"
+                        disabled
+                        className="w-full rounded-full px-6 py-3 text-sm font-semibold bg-[#FFC439] text-[#111827] opacity-70 cursor-not-allowed"
+                      >
+                        PayPal unavailable
                       </button>
                     ) : (
                       <PayPalBigButton

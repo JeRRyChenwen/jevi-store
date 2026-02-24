@@ -324,6 +324,7 @@ export default function CheckoutPage() {
 
   // ✅ 修法2：防止在 address step 里重复触发 enter_address reserve
   const didEnterAddressReserveRef = useRef(false);
+  const reservePromiseRef = useRef<Promise<ReserveCache | null> | null>(null);
 
   const initialStepFromURL = (() => {
     const s = searchParams.get("step");
@@ -347,9 +348,43 @@ export default function CheckoutPage() {
     router.replace(`${pathname}?${p.toString()}`, { scroll: false });
     setContinueErrMsg(null);
 
-    // ✅ 清掉 payment persist 错误提示（避免残留）
     if (next !== "payment") setPayPersistErrMsg(null);
   };
+
+  // ===============================
+  // ✅ When leaving /checkout route, release reservation immediately
+  // ===============================
+  const prevPathRef = useRef<string>("");
+
+  useEffect(() => {
+    // 第一次进来初始化
+    if (!prevPathRef.current) {
+      prevPathRef.current = pathname;
+      return;
+    }
+
+    const prev = prevPathRef.current;
+    const curr = pathname;
+
+    const wasCheckout = prev.startsWith("/checkout");
+    const isCheckout = curr.startsWith("/checkout");
+
+    // ✅ 从 /checkout 跳到别的页面：立即释放
+    if (wasCheckout && !isCheckout) {
+      void releaseReservationNow("leave_checkout_route");
+    }
+
+    prevPathRef.current = curr;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
+
+
+
+
+
+
+
 
   useEffect(() => {
     const hosts = [
@@ -546,16 +581,84 @@ export default function CheckoutPage() {
     } catch {}
   }
 
+  // ===============================
+// ✅ Release reservation immediately (leave checkout / close tab / refresh)
+// ===============================
+function pickReservationIdForRelease(): string {
+  const ridState = String(reservationId || "").trim();
+  if (ridState) return ridState;
+
+  const cached = readReserveCache();
+  const ridCache = String(cached?.reservation_id || "").trim();
+  return ridCache;
+}
+
+function clearReserveLocalState() {
+  clearReserveCache();
+  setReservationId(null);
+  setReservationExpiresAtSec(null);
+  setReservationCartHash(null);
+  setReserveErr(null);
+  setReserveLoading(false);
+  reservePromiseRef.current = null;
+
+  // 也顺手清一下去重 key（避免后续误判）
+  lastReserveKeyRef.current = "";
+}
+
+async function releaseReservationNow(reason: string) {
+  try {
+    const rid = pickReservationIdForRelease();
+    if (!rid) return;
+
+    console.log("[reserve] releaseReservationNow", { reason, rid });
+
+    // 先 abort 掉可能正在进行的 reserve 请求，避免竞态
+    try {
+      reserveAbortRef.current?.abort();
+    } catch {}
+
+    const payload = { reservation_id: rid, reason };
+    const body = JSON.stringify(payload);
+
+    // ✅ 最可靠：sendBeacon（路由跳转/关闭页面时最稳）
+    try {
+      const blob = new Blob([body], { type: "application/json" });
+      const ok = typeof navigator !== "undefined" && navigator.sendBeacon?.(apiURL("/stock/release"), blob);
+      if (ok) {
+        clearReserveLocalState();
+        return;
+      }
+    } catch {}
+
+    // ✅ fallback：fetch keepalive（有些浏览器 sendBeacon 不可用）
+    try {
+      fetch(apiURL("/stock/release"), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        keepalive: true,
+        body,
+      }).catch(() => {});
+    } catch {}
+
+    // 无论请求是否成功，都先把本地清掉（用户体验：立即恢复显示）
+    clearReserveLocalState();
+  } catch (e) {
+    console.warn("[reserve] releaseReservationNow failed", e);
+  }
+}
+
+
 
   // ===============================
-  // ✅ Reserve prefetch core
-  // ===============================
-
-  async function doPrefetchReserve(reason: string, force = false) {
-  if (!hasItems) return;
+// ✅ Reserve prefetch core (returns ReserveCache or null)
+// ===============================
+async function doPrefetchReserve(reason: string, force = false): Promise<ReserveCache | null> {
+  if (!hasItems) return null;
 
   const items = cartToReserveItems(cart);
-  if (!items.length) return;
+  if (!items.length) return null;
 
   const cart_hash = buildCartHash(items);
 
@@ -566,21 +669,21 @@ export default function CheckoutPage() {
   const nowSec = Math.floor(Date.now() / 1000);
   const cached = readReserveCache();
   if (!force && cached && cached.cart_hash === cart_hash) {
-  const secLeft = cached.expires_at_sec - nowSec;
+    const secLeft = cached.expires_at_sec - nowSec;
 
-  // ✅ 修法2：只要还没过期（留 1 秒余量）就复用，不做“快过期就续租”
-  if (secLeft > 1) {
-    setReservationId(cached.reservation_id);
-    setReservationExpiresAtSec(cached.expires_at_sec);
-    setReservationCartHash(cached.cart_hash);
-    setReserveErr(null);
-    setReserveLoading(false);
-    return;
+    // ✅ 修法2：只要还没过期（留 1 秒余量）就复用
+    if (secLeft > 1) {
+      setReservationId(cached.reservation_id);
+      setReservationExpiresAtSec(cached.expires_at_sec);
+      setReservationCartHash(cached.cart_hash);
+      setReserveErr(null);
+      setReserveLoading(false);
+      return cached;
+    }
   }
-}
 
-  // ✅ 2) avoid duplicating same reserve in flight
-  if (!force && lastReserveKeyRef.current === reserveKey && reserveLoading) return;
+  // ✅ 2) avoid duplicating same reserve in flight by key+loading (soft guard)
+  if (!force && lastReserveKeyRef.current === reserveKey && reserveLoading) return null;
   lastReserveKeyRef.current = reserveKey;
 
   // ✅ 3) abort previous
@@ -623,6 +726,7 @@ export default function CheckoutPage() {
     if (!res.ok || !data || data.ok !== true) {
       const err = String(data?.error || `reserve_http_${res.status}`);
       const msg = String(data?.message || err);
+
       setReserveErr(msg);
       setReserveLoading(false);
 
@@ -630,7 +734,7 @@ export default function CheckoutPage() {
       setReservationId(null);
       setReservationExpiresAtSec(null);
       setReservationCartHash(null);
-      return;
+      return null;
     }
 
     const rid = String(data.reservation_id || "").trim();
@@ -644,7 +748,7 @@ export default function CheckoutPage() {
       setReservationId(null);
       setReservationExpiresAtSec(null);
       setReservationCartHash(null);
-      return;
+      return null;
     }
 
     const nextCache: ReserveCache = {
@@ -662,10 +766,9 @@ export default function CheckoutPage() {
     setReserveErr(null);
     setReserveLoading(false);
 
-    // ✅ auto-renew close to expiry (best-effort)
-   
+    return nextCache;
   } catch (e: any) {
-    if (String(e?.name) === "AbortError") return;
+    if (String(e?.name) === "AbortError") return null;
 
     setReserveErr(String(e?.message || e || "reserve_failed"));
     setReserveLoading(false);
@@ -674,8 +777,70 @@ export default function CheckoutPage() {
     setReservationId(null);
     setReservationExpiresAtSec(null);
     setReservationCartHash(null);
+    return null;
   }
 }
+
+  // ✅ NEW: Ensure reserve exactly once (mutex) for Address -> Delivery transition
+async function ensureReserveBeforeNext(): Promise<ReserveCache> {
+  // 1) 基础校验：必须有商品
+  if (!hasItems) {
+    setReserveErr("Your bag is empty. Please add at least one item before continuing.");
+    throw new Error("no_items");
+  }
+
+  const items = cartToReserveItems(cart);
+  if (!items.length) {
+    setReserveErr("Your bag is empty. Please add at least one item before continuing.");
+    throw new Error("no_items");
+  }
+
+  // 2) 如果已经有有效 reservation 且 cart_hash 没变，直接复用（不发请求）
+  const nowSec = Math.floor(Date.now() / 1000);
+  const rid = String(reservationId || "").trim();
+  const exp = Number(reservationExpiresAtSec || 0);
+  const hash = String(reservationCartHash || "").trim();
+  const currentHash = buildCartHash(items);
+
+  if (rid && exp > 0) {
+    const secLeft = exp - nowSec;
+    const hashOk = !hash || hash === currentHash;
+    if (secLeft > 1 && hashOk) {
+      return {
+        reservation_id: rid,
+        expires_at_sec: exp,
+        cart_hash: currentHash,
+        ts: Date.now(),
+      };
+    }
+  }
+
+  // 3) mutex：如果有 in-flight reserve，等待同一个 promise
+  if (reservePromiseRef.current) {
+    const r = await reservePromiseRef.current;
+    if (!r) throw new Error("reserve_failed");
+    return r;
+  }
+
+  // 4) 创建本次 promise，并写入 ref
+  reservePromiseRef.current = (async () => {
+    // force = true：Address Continue 时强制确保有最新的
+    const r = await doPrefetchReserve("address_continue", true);
+    return r;
+  })();
+
+  try {
+    const r = await reservePromiseRef.current;
+    if (!r) {
+      // reserveErr 已在 doPrefetchReserve 设置
+      throw new Error("reserve_failed");
+    }
+    return r;
+  } finally {
+    reservePromiseRef.current = null;
+  }
+}
+
 
   function schedulePrefetchReserve(reason: string, force = false) {
     try {
@@ -799,76 +964,77 @@ export default function CheckoutPage() {
   }, [quoteReqKey]);
 
 
-  // ✅ 进入 Address step 时：触发一次 reserve（把预留提前到 Address）
+  // ✅ 进入 Address 时自动 prefetch reserve
   useEffect(() => {
-  if (!hasItems) return;
-
-  if (step === "address") {
-    // ✅ 只在第一次进入 address 时触发一次 reserve
-    if (!didEnterAddressReserveRef.current) {
-      didEnterAddressReserveRef.current = true;
-      void doPrefetchReserve("enter_address", false);
+    if (step === "address" && hasItems) {
+      schedulePrefetchReserve("enter_address");
     }
-    return;
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, cartHash]);
 
-  // ✅ 离开 address 后，允许下次再进入 address 时重新触发一次
-  didEnterAddressReserveRef.current = false;
 
-  if (step === "bag") {
-    clearReserveCache();
+  // ✅ 方案 A：cart 变化时只清理旧 reservation（不自动 reserve）
+  // reserve 只在 Address 点击 Continue 时发生
+  useEffect(() => {
+    if (!hasItems) {
+      lastCartHashRef.current = "";
+      setReservationId(null);
+      setReservationExpiresAtSec(null);
+      setReservationCartHash(null);
+      setReserveErr(null);
+      setReserveLoading(false);
+      clearReserveCache();
+
+      reservePromiseRef.current = null;
+      return;
+    }
+
+    const nextHash = cartHash || "";
+    const prevHash = lastCartHashRef.current;
+
+    if (!nextHash || nextHash === prevHash) return;
+
+    lastCartHashRef.current = nextHash;
+
+    // cart hash 变了：旧 reservation 不可信（清理）
     setReservationId(null);
     setReservationExpiresAtSec(null);
     setReservationCartHash(null);
     setReserveErr(null);
     setReserveLoading(false);
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [step, hasItems]);
-
-
-  // ✅ cart 变化时：
-  // - 清理旧 reservation（hash 已变化）
-  // - 如果用户正处于 Address step，则去抖触发一次 reserve
-  useEffect(() => {
-  if (!hasItems) {
-    lastCartHashRef.current = "";
-    setReservationId(null);
-    setReservationExpiresAtSec(null);
-    setReservationCartHash(null);
-    setReserveErr(null);
-    setReserveLoading(false);
     clearReserveCache();
-    return;
-  }
 
-  // ✅ 只有 cart_hash 真变化才认为“cart 变了”
-  const nextHash = cartHash || "";
-  const prevHash = lastCartHashRef.current;
+    reservePromiseRef.current = null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cartHash, hasItems]);
 
-  if (!nextHash || nextHash === prevHash) {
-    return;
-  }
-
-  lastCartHashRef.current = nextHash;
-
-  // cart hash 变了：旧 reservation 不可信（先清理）
-  setReservationId(null);
-  setReservationExpiresAtSec(null);
-  setReservationCartHash(null);
-  setReserveErr(null);
-  setReserveLoading(false);
-  clearReserveCache();
-
-  if (step === "address") {
-    schedulePrefetchReserve("cart_changed", false);
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [cartHash, hasItems, step]);
-
-  // ✅ 卸载清理：abort + clear timers
+  // ✅ 卸载清理：abort + clear timers + release reservation
   useEffect(() => {
+    const onPageHide = () => {
+      // pagehide 比 beforeunload 更适合 bfcache
+      void releaseReservationNow("pagehide");
+    };
+
+    const onBeforeUnload = () => {
+      void releaseReservationNow("beforeunload");
+    };
+
+    try {
+      window.addEventListener("pagehide", onPageHide);
+      window.addEventListener("beforeunload", onBeforeUnload);
+    } catch {}
+
     return () => {
+      // 1) 先释放 reservation（组件卸载）
+      void releaseReservationNow("checkout_unmount");
+
+      // 2) 清理监听
+      try {
+        window.removeEventListener("pagehide", onPageHide);
+        window.removeEventListener("beforeunload", onBeforeUnload);
+      } catch {}
+
+      // 3) abort reserve & clear timer
       try {
         reserveAbortRef.current?.abort();
       } catch {}
@@ -876,9 +1042,8 @@ export default function CheckoutPage() {
       try {
         if (reserveTimerRef.current) clearTimeout(reserveTimerRef.current);
       } catch {}
-
-
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ===============================
@@ -974,44 +1139,61 @@ export default function CheckoutPage() {
     } catch {}
   }
 
-  const handleContinue = () => {
-    if (step === "bag") {
-      if (!hasItems || (cart?.length || 0) === 0) {
-        setContinueErrMsg("Your bag is empty. Please add at least one item before continuing.");
-        return;
-      }
-      setContinueErrMsg(null);
+  const handleContinue = async () => {
+  if (step === "bag") {
+    if (!hasItems || (cart?.length || 0) === 0) {
+      setContinueErrMsg("Your bag is empty. Please add at least one item before continuing.");
+      return;
+    }
+    setContinueErrMsg(null);
+    nextStepCore();
+    return;
+  }
+
+  if (step === "address") {
+    const ignoreEmail = isLoggedIn || !!(address.email && address.email.trim());
+    const deliveryRes = validateAddress(address, "", ignoreEmail);
+    const billingRes = sameAsDelivery
+      ? { valid: true, errs: emptyErr }
+      : validateAddress(billingAddress, "", true);
+
+    setAddressErrs(deliveryRes.errs);
+    setBillingErrs(billingRes.errs);
+
+    if (!deliveryRes.valid || !billingRes.valid) {
+      setAddressShowErrors(true);
+      setContinueErrMsg("Please complete all required delivery address fields before saving.");
+
+      const el = document.getElementById("address-section");
+      el?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
     }
 
-    if (step === "address") {
-      const ignoreEmail = isLoggedIn || !!(address.email && address.email.trim());
-      const deliveryRes = validateAddress(address, "", ignoreEmail);
-      const billingRes = sameAsDelivery
-        ? { valid: true, errs: emptyErr }
-        : validateAddress(billingAddress, "", true);
+    setContinueErrMsg(null);
+    setAddressShowErrors(false);
+    setAddressErrs(emptyErr);
+    setBillingErrs(emptyErr);
 
-      setAddressErrs(deliveryRes.errs);
-      setBillingErrs(billingRes.errs);
+    if (!isLoggedIn) void sendSubscriptionIfNeeded();
 
-      if (!deliveryRes.valid || !billingRes.valid) {
-        setAddressShowErrors(true);
-        setContinueErrMsg("Please complete all required delivery address fields before saving.");
+    // Address 校验通过后，直接进入 Delivery
+    nextStepCore();
+    return;
+  }
 
-        const el = document.getElementById("address-section");
-        el?.scrollIntoView({ behavior: "smooth", block: "start" });
-        return;
-      }
-
-      setContinueErrMsg(null);
-      setAddressShowErrors(false);
-      setAddressErrs(emptyErr);
-      setBillingErrs(emptyErr);
-
-      if (!isLoggedIn) void sendSubscriptionIfNeeded();
+  // delivery -> payment
+  if (step === "delivery") {
+    try {
+      await ensureReserveBeforeNext();
+    } catch (e) {
+      // reserveErr 已在 ensure 内部设置
+      return;
     }
 
     nextStepCore();
-  };
+    return;
+  }
+};
 
   const handlePaySucceeded = async (payload?: any) => {
   console.log("[checkout] handlePaySucceeded() payload =", payload);
@@ -1274,37 +1456,51 @@ export default function CheckoutPage() {
 
         {step !== "payment" && (
           <>
-            <div className="mt-6 flex justify-end">
-              {step === "bag" ? (
-                <div
-                  className={
-                    isLoggedIn
-                      ? "w-[320px] max-w-full"
-                      : "w-[660px] max-w-full flex gap-3 justify-end"
-                  }
-                >
-                  {!isLoggedIn && (
-                    <div className="w-[320px]">
-                      <LargeGhostButton onClick={handleLoginAndContinue}>
-                        Login / Sign up and Continue
-                      </LargeGhostButton>
+            {/* ✅ Step 7: Continue 按钮在 reserveLoading 时禁用（防止 reserve 未完成就跳到 payment） */}
+            {(() => {
+              const blockContinue =
+                step === "delivery" && reserveLoading;
+              const continueText = blockContinue ? "Reserving..." : "Continue";
+
+              return (
+                <div className="mt-6 flex justify-end">
+                  {step === "bag" ? (
+                    <div
+                      className={
+                        isLoggedIn
+                          ? "w-[320px] max-w-full"
+                          : "w-[660px] max-w-full flex gap-3 justify-end"
+                      }
+                    >
+                      {!isLoggedIn && (
+                        <div className="w-[320px]">
+                          <LargeGhostButton onClick={handleLoginAndContinue}>
+                            Login / Sign up and Continue
+                          </LargeGhostButton>
+                        </div>
+                      )}
+
+                      <div className="w-[320px]">
+                        <LargePrimaryButton onClick={handleContinue}>
+                          Continue
+                        </LargePrimaryButton>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="w-[660px] max-w-full flex gap-3 justify-end">
+                      <LargeBackButton onClick={prevStep} />
+
+                      <LargePrimaryButton
+                        onClick={handleContinue}
+                        disabled={blockContinue}
+                      >
+                        {continueText}
+                      </LargePrimaryButton>
                     </div>
                   )}
-                  <div className="w-[320px]">
-                    <LargePrimaryButton onClick={handleContinue}>
-                      Continue
-                    </LargePrimaryButton>
-                  </div>
                 </div>
-              ) : (
-                <div className="w-[660px] max-w-full flex gap-3 justify-end">
-                  <LargeBackButton onClick={prevStep} />
-                  <LargePrimaryButton onClick={handleContinue}>
-                    Continue
-                  </LargePrimaryButton>
-                </div>
-              )}
-            </div>
+              );
+            })()}
 
             {(step === "bag" || step === "address") &&
             formAlert.hasAlert &&
