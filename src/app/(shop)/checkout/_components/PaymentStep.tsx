@@ -13,25 +13,6 @@ import { Alert } from "@/components/ui/alert";
 /* ========== Phase 2: reserve/release types ========== */
 type StockCheckItem = { sku: string; qty: number };
 
-type ReserveOkResp = {
-  ok: true;
-  reservation_id: string;
-  expires_at?: number; // ms
-};
-
-type ReserveErrResp = {
-  ok: false;
-  error: string;
-  message?: string;
-  detail?: any;
-};
-
-type ReserveApiResp = ReserveOkResp | ReserveErrResp;
-
-type ReleaseApiResp =
-  | { ok: true }
-  | { ok: false; error: string; detail?: any };
-
 function getCartSku(it: any): string {
   return String(it?.product_sku ?? it?.sku ?? it?.variantSku ?? it?.variant_sku ?? "").trim();
 }
@@ -57,58 +38,8 @@ function buildCartHash(items: StockCheckItem[]): string {
   return pairs.join("|");
 }
 
-async function reserveStock(
-  items: StockCheckItem[],
-  args?: { request_id?: string; cart_hash?: string }
-): Promise<{ httpStatus: number; data: ReserveApiResp | null }> {
-  const res = await fetch("/api/stock/reserve", {
-    method: "POST",
-    credentials: "include",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      items,
-      ...(args?.request_id ? { request_id: args.request_id } : {}),
-      ...(args?.cart_hash ? { cart_hash: args.cart_hash } : {}),
-    }),
-  });
 
-  const data: any = await res.json().catch(() => null);
-  return { httpStatus: res.status, data };
-}
 
-async function releaseStock(
-  reservation_id: string
-): Promise<{ httpStatus: number; data: ReleaseApiResp | null }> {
-  const res = await fetch("/api/stock/release", {
-    method: "POST",
-    credentials: "include",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ reservation_id }),
-  });
-
-  const data: any = await res.json().catch(() => null);
-  return { httpStatus: res.status, data };
-}
-
-async function fetchAvailableBulk(skus: string[]): Promise<Record<string, number>> {
-  const uniq = Array.from(new Set((skus || []).map((s) => String(s || "").trim()).filter(Boolean)));
-  if (!uniq.length) return {};
-
-  const qs = encodeURIComponent(uniq.join(","));
-  const res = await fetch(`/api/inventory/bulk?skus=${qs}`, {
-    method: "GET",
-    credentials: "include",
-  });
-
-  const data: any = await res.json().catch(() => null);
-
-  // 约定：你的 /inventory/bulk 现在返回的是 “available” map（字段名仍叫 stocks）
-  if (!res.ok || !data || data.ok !== true || typeof data.stocks !== "object") {
-    throw { status: res.status || 500, error: "inventory_bulk_failed", detail: data ?? null };
-  }
-
-  return data.stocks as Record<string, number>;
-}
 
 /* ========== 类型 ========== */
 type Address = {
@@ -290,20 +221,35 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   // ✅ NEW: countdown UI (seconds left)
   const [reservationSecondsLeft, setReservationSecondsLeft] = useState<number | null>(null);
 
-  // ✅ NEW: auto-preflight reserve (avoid "click twice" for PayPal)
-  const [isReserving, setIsReserving] = useState(false);
-  const reserveInFlightRef = useRef<Promise<void> | null>(null);
 
-  // ✅ NEW: checkout session id（用于 reserve 幂等 request_id）
+
+  // ✅ NEW: make checkout session id stable across React StrictMode remounts (dev)
+  // key should be stable per checkout tab/session
+  const CHECKOUT_SESSION_KEY = "sp.checkout.session_id";
+
   const checkoutSessionIdRef = useRef<string>("");
 
   if (!checkoutSessionIdRef.current) {
     try {
-      // @ts-ignore
-      checkoutSessionIdRef.current =
-        typeof crypto !== "undefined" && crypto.randomUUID
-          ? crypto.randomUUID()
-          : `cs_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      // 1) try restore
+      const existing =
+        typeof window !== "undefined" ? sessionStorage.getItem(CHECKOUT_SESSION_KEY) : null;
+
+      if (existing && existing.trim()) {
+        checkoutSessionIdRef.current = existing.trim();
+      } else {
+        // 2) create once
+        const fresh =
+          typeof crypto !== "undefined" && (crypto as any).randomUUID
+            ? (crypto as any).randomUUID()
+            : `cs_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+
+        checkoutSessionIdRef.current = fresh;
+
+        try {
+          sessionStorage.setItem(CHECKOUT_SESSION_KEY, fresh);
+        } catch {}
+      }
     } catch {
       checkoutSessionIdRef.current = `cs_${Date.now()}_${Math.random().toString(16).slice(2)}`;
     }
@@ -312,6 +258,12 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   const safeCurrency = useMemo(() => {
     return (currency || cart?.[0]?.currency || "AUD").toUpperCase();
   }, [currency, cart]);
+
+  // ✅ Phase 2: stock items from cart（必须放在 payBlockedReason 之前）
+  const stockItems = useMemo(() => buildStockItems(cart as any[]), [cart]);
+
+  // ✅ cart_hash（与 page.tsx / worker 对齐）（必须放在 payBlockedReason 之前）
+  const cartHash = useMemo(() => buildCartHash(stockItems), [stockItems]);
 
   const derivedItemsCount = useMemo(() => {
     const list = Array.isArray(cart) ? cart : [];
@@ -346,15 +298,40 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     address?.postcode;
 
   const payBlockedReason = useMemo(() => {
-    if (!visible) return null;
-    if (isPayProcessing) return null;
-    if (suppressBlockedHint) return null;
+  if (!visible) return null;
+  if (isPayProcessing) return null;
+  if (suppressBlockedHint) return null;
 
-    if (derivedItemsCount <= 0) return "Your bag is empty. Please add at least one item before paying.";
-    if (!hasAddress) return "No delivery address found. Please complete the Address step before paying.";
-    if (derivedTotalMinor <= 0) return "Invalid total amount. Please review your order.";
-    return null;
-  }, [visible, isPayProcessing, suppressBlockedHint, derivedItemsCount, hasAddress, derivedTotalMinor]);
+  if (derivedItemsCount <= 0) return "Your bag is empty. Please add at least one item before paying.";
+  if (!hasAddress) return "No delivery address found. Please complete the Address step before paying.";
+
+  // ✅ PaymentStep 不再 reserve，所以必须依赖 Address step 的 preReservation
+  const rid = String(preReservationId || "").trim();
+  const preHash = String(preReservationCartHash || "").trim();
+  const expSec = Number(preReservationExpiresAtSec || 0);
+  const expMs = Number.isFinite(expSec) && expSec > 0 ? expSec * 1000 : 0;
+
+  if (!rid) return "No stock reservation found. Please go back to the Address step and reserve again.";
+  if (preHash && preHash !== cartHash) return "Your bag changed. Please go back to the Address step and reserve again.";
+  if (!expMs) return "Invalid reservation. Please go back to the Address step and reserve again.";
+  if (Date.now() >= expMs - 1000) return "Your stock reservation has expired. Please go back to the Address step and reserve again.";
+
+  if (derivedTotalMinor <= 0) return "Invalid total amount. Please review your order.";
+  return null;
+}, [
+  visible,
+  isPayProcessing,
+  suppressBlockedHint,
+  derivedItemsCount,
+  hasAddress,
+  derivedTotalMinor,
+  preReservationId,
+  preReservationCartHash,
+  preReservationExpiresAtSec,
+  cartHash,
+]);
+
+
 
   const countryDisplay = useMemo(() => {
     const raw = (address?.country || "").trim();
@@ -422,12 +399,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     };
   }, [payError, cart]);
 
-  // ✅ Phase 2: stock items from cart
-  const stockItems = useMemo(() => buildStockItems(cart as any[]), [cart]);
-
-  // ✅ cart_hash（与 page.tsx / worker 对齐）
-  const cartHash = useMemo(() => buildCartHash(stockItems), [stockItems]);
-
   // ✅ 同步 page.tsx 预加载的 reservation → PaymentStep 内部状态
   useEffect(() => {
     const rid = String(preReservationId || "").trim();
@@ -457,58 +428,11 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preReservationId, preReservationExpiresAtSec, preReservationCartHash, cartHash]);
 
-  const releaseReservationIfAny = useCallback(
-    async (reason: string) => {
-      if (paidOrSucceededRef.current) return;
 
-      const rid = String(reservationIdRef.current || "").trim();
-      if (!rid) return;
 
-      // 防止重复 release
-      setReservationId(null);
-      setReservationExpiresAt(null);
-      setReservationSecondsLeft(null);
 
-      reservationIdRef.current = null;
 
-      try {
-        const { httpStatus, data } = await releaseStock(rid);
-        if (httpStatus !== 200 || !data || (data as any).ok !== true) {
-          console.warn("[checkout] release reservation failed", { reason, rid, httpStatus, data });
-        } else {
-          console.log("[checkout] reservation released", { reason, rid });
-        }
-      } catch (e) {
-        console.warn("[checkout] release reservation exception", { reason, rid, e });
-      }
-    },
-    []
-  );
 
-  // ✅ 离开 PaymentStep（卸载/切 step）自动释放（如果还没成功付款）
-  useEffect(() => {
-    return () => {
-      void releaseReservationIfAny("unmount");
-    };
-  }, [releaseReservationIfAny]);
-
-  // ✅ 如果购物袋内容变化，旧 reservation 也应该释放（避免占着错误 sku）
-  const cartSignature = useMemo(() => {
-    const pairs = (stockItems || []).map((x) => `${x.sku}:${x.qty}`).sort();
-    return pairs.join(",");
-  }, [stockItems]);
-
-  const prevCartSigRef = useRef<string>("");
-  useEffect(() => {
-    if (!prevCartSigRef.current) {
-      prevCartSigRef.current = cartSignature;
-      return;
-    }
-    if (prevCartSigRef.current !== cartSignature) {
-      prevCartSigRef.current = cartSignature;
-      void releaseReservationIfAny("cart_changed");
-    }
-  }, [cartSignature, releaseReservationIfAny]);
 
   const handlePaySucceeded = useCallback(
     (payload: any) => {
@@ -535,132 +459,123 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
    * - 仍然复用你 out_of_stock 的 rich display
    */
   const handlePayFailed = useCallback(
-    async (err: any) => {
-      setIsReserving(false);
-      reserveInFlightRef.current = null;
+  async (err: any) => {
+    const status = Number(err?.status ?? err?.httpStatus ?? 0) || undefined;
 
-      const status = Number(err?.status ?? err?.httpStatus ?? 0) || undefined;
+    // ✅ PayPalBigButton 现在用 code
+    const code = String(err?.code ?? err?.error ?? "").trim();
+    const messageFromServer = String(err?.message || "").trim();
+    const detail = err?.detail ?? null;
 
-      // ✅ PayPalBigButton 现在用 code
-      const code = String(err?.code ?? err?.error ?? "").trim();
-      const messageFromServer = String(err?.message || "").trim();
-      const detail = err?.detail ?? null;
+    // ---------- 1) Out of stock ----------
+    if (
+      status === 409 &&
+      (code === "out_of_stock" || code === "consume_out_of_stock" || code === "sku_not_found")
+    ) {
+      const d = detail ?? {};
+      const firstItem = Array.isArray(d?.items) ? d.items[0] : null;
 
-      // ✅ 支付失败/建单失败：释放预留（你现在每次失败都 release，是OK的）
-      await releaseReservationIfAny("pay_failed");
+      const sku = d?.sku ?? err?.sku ?? firstItem?.sku ?? null;
+      const requested = d?.requested ?? err?.requested ?? firstItem?.qty ?? null;
+      const current = d?.current ?? err?.current ?? null;
 
-      // ---------- 1) Out of stock ----------
-      // 后端可能给：consume_out_of_stock / out_of_stock / sku_not_found
-      if (status === 409 && (code === "out_of_stock" || code === "consume_out_of_stock" || code === "sku_not_found")) {
-        const d = detail ?? {};
-        const firstItem = Array.isArray(d?.items) ? d.items[0] : null;
+      const product_title = d?.product_title ?? d?.productTitle ?? null;
+      const variant_title = d?.variant_title ?? d?.variantTitle ?? null;
+      const options = d?.options ?? null;
 
-        const sku = d?.sku ?? err?.sku ?? firstItem?.sku ?? null;
-        const requested = d?.requested ?? err?.requested ?? firstItem?.qty ?? null;
-        const current = d?.current ?? err?.current ?? null;
+      setPayError({
+        type: "out_of_stock",
+        message:
+          code === "sku_not_found"
+            ? "Sorry — one of the items in your bag is no longer available."
+            : "Sorry — the item you’re trying to purchase is out of stock (sold out or not enough quantity).",
+        detail: { sku, current, requested, product_title, variant_title, options },
+      });
+      return;
+    }
 
-        const product_title = d?.product_title ?? d?.productTitle ?? null;
-        const variant_title = d?.variant_title ?? d?.variantTitle ?? null;
-        const options = d?.options ?? null;
+    // ---------- 2) Reservation lifecycle ----------
+    if (status === 409 && code === "reservation_expired") {
+      setPayError({
+        type: "reservation_expired",
+        status,
+        message: "Your stock reservation has expired. Please go back to Address and reserve again.",
+        detail: detail ?? err ?? null,
+      });
+      return;
+    }
 
-        setPayError({
-          type: "out_of_stock",
-          message:
-            code === "sku_not_found"
-              ? "Sorry — one of the items in your bag is no longer available."
-              : "Sorry — the item you’re trying to purchase is out of stock (sold out or not enough quantity).",
-          detail: { sku, current, requested, product_title, variant_title, options },
-        });
-        return;
-      }
-
-      // ---------- 2) Reservation lifecycle ----------
-      // 你后端现在会返回更细的 reservation error
-      if (status === 409 && (code === "reservation_expired")) {
-        setPayError({
-          type: "reservation_expired",
-          status,
-          message: "Your stock reservation has expired. Please try paying again.",
-          detail: detail ?? err ?? null,
-        });
-        return;
-      }
-
-      // mismatch / invalid / released / not_found / already_consumed
-      if (
-        (status === 409 || status === 404) &&
-        (code.startsWith("reservation_") || code === "reservation_mismatch")
-      ) {
-        // already_consumed：多半是用户双击/回退重试；通常可以提示“我们正在确认订单”
-        if (code === "reservation_already_consumed") {
-          setPayError({
-            type: "reservation_failed",
-            status: status ?? 409,
-            message:
-              "We’re confirming your order. If you don’t see a confirmation page, please refresh and check your orders.",
-            detail: detail ?? err ?? null,
-          });
-          return;
-        }
-
-        // not_found：预留被释放/清理了，提示重新支付
-        if (code === "reservation_not_found") {
-          setPayError({
-            type: "reservation_failed",
-            status: status ?? 404,
-            message: "We couldn’t find your stock reservation. Please try paying again.",
-            detail: detail ?? err ?? null,
-          });
-          return;
-        }
-
-        // mismatch/invalid/released
+    if (
+      (status === 409 || status === 404) &&
+      (code.startsWith("reservation_") || code === "reservation_mismatch")
+    ) {
+      if (code === "reservation_already_consumed") {
         setPayError({
           type: "reservation_failed",
           status: status ?? 409,
           message:
-            code === "reservation_mismatch"
-              ? "Your bag changed during checkout. Please try paying again."
-              : code === "reservation_already_released"
-              ? "Your reservation was released. Please try paying again."
-              : "We couldn’t confirm your stock reservation. Please try again.",
+            "We’re confirming your order. If you don’t see a confirmation page, please refresh and check your orders.",
           detail: detail ?? err ?? null,
         });
         return;
       }
 
-      // ---------- 3) Amount mismatch ----------
-      if (status === 400 && code === "amount_mismatch") {
+      if (code === "reservation_not_found") {
         setPayError({
-          type: "amount_mismatch",
-          status,
-          message: "Your order total has changed. Please refresh the page and check out again.",
-          detail: detail ?? null,
-        });
-        return;
-      }
-
-      // ---------- 4) Server side / internal ----------
-      if (status && status >= 500) {
-        setPayError({
-          type: "server_error",
-          status,
-          message: "We couldn’t complete your checkout due to a server issue. Please try again.",
+          type: "reservation_failed",
+          status: status ?? 404,
+          message: "We couldn’t find your stock reservation. Please go back to Address and reserve again.",
           detail: detail ?? err ?? null,
         });
         return;
       }
 
-      // ---------- 5) Fallback ----------
       setPayError({
-        type: "unknown",
-        status,
-        message: messageFromServer || "Payment failed. Please try again.",
+        type: "reservation_failed",
+        status: status ?? 409,
+        message:
+          code === "reservation_mismatch"
+            ? "Your bag changed during checkout. Please go back to Address and reserve again."
+            : code === "reservation_already_released"
+            ? "Your reservation was released. Please go back to Address and reserve again."
+            : "We couldn’t confirm your stock reservation. Please go back to Address and reserve again.",
         detail: detail ?? err ?? null,
       });
-    },
-    [releaseReservationIfAny]
-  );
+      return;
+    }
+
+    // ---------- 3) Amount mismatch ----------
+    if (status === 400 && code === "amount_mismatch") {
+      setPayError({
+        type: "amount_mismatch",
+        status,
+        message: "Your order total has changed. Please refresh the page and check out again.",
+        detail: detail ?? null,
+      });
+      return;
+    }
+
+    // ---------- 4) Server side / internal ----------
+    if (status && status >= 500) {
+      setPayError({
+        type: "server_error",
+        status,
+        message: "We couldn’t complete your checkout due to a server issue. Please try again.",
+        detail: detail ?? err ?? null,
+      });
+      return;
+    }
+
+    // ---------- 5) Fallback ----------
+    setPayError({
+      type: "unknown",
+      status,
+      message: messageFromServer || "Payment failed. Please try again.",
+      detail: detail ?? err ?? null,
+    });
+  },
+  [] // ✅ 现在不依赖任何外部函数（releaseReservationIfAny 已删除）
+);
 
   // ✅ 给后端 /orders 的权威 totals + items snapshot（保留你原来的逻辑）
   const checkoutTotalsMeta = useMemo(() => {
@@ -724,206 +639,155 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   /**
    * ✅ Phase 2 preflight：reserve
    */
-  const runStockReservePreflight = useCallback(
-    async (): Promise<string> => {
-      if (!stockItems.length) {
-        throw { status: 400, error: "no_items", message: "No items to reserve." };
-      }
+  const runStockReservePreflight = useCallback(async (): Promise<string> => {
+  /**
+   * ✅ PaymentStep 不再创建 reserve
+   * ✅ 这里只做校验：必须依赖 Address step 传入的 preReservation
+   */
 
-      // ✅ 1) 如果已有 reservation 且未过期，则复用
-      if (reservationId && reservationExpiresAt && Date.now() < reservationExpiresAt - 1000) {
-        reservationIdRef.current = reservationId;
-        return reservationId;
-      }
+  // 1) 必须有 items（否则 PayPal 点击没意义）
+  if (!stockItems.length) {
+    throw {
+      status: 400,
+      code: "no_items",
+      error: "no_items",
+      message: "No items to pay for.",
+      detail: { items: [] },
+    };
+  }
 
-      // ✅ 2) 如果 page.tsx 预加载的 reservation 可用，并且 cart_hash 一致，也复用
-      {
-        const rid = String(preReservationId || "").trim();
-        const expSec = Number(preReservationExpiresAtSec || 0);
-        const preHash = String(preReservationCartHash || "").trim();
+  // 2) 必须有 preReservationId（PaymentStep 不负责 reserve）
+  const rid = String(preReservationId || "").trim();
+  if (!rid) {
+    throw {
+      status: 404,
+      code: "reservation_not_found",
+      error: "reservation_not_found",
+      message: "No stock reservation found. Please go back to Address and reserve again.",
+      detail: { preReservationId: preReservationId ?? null },
+    };
+  }
 
-        if (rid && Number.isFinite(expSec) && expSec > 0) {
-          if (!preHash || preHash === cartHash) {
-            const expMs = expSec * 1000;
-            if (Date.now() < expMs - 1000) {
-              setReservationId(rid);
-              setReservationExpiresAt(expMs);
-              reservationIdRef.current = rid;
-              return rid;
-            }
-          }
-        }
-      }
+  // 3) 必须 cart_hash 一致（防止 bag 改了）
+  const preHash = String(preReservationCartHash || "").trim();
+  if (preHash && preHash !== cartHash) {
+    throw {
+      status: 409,
+      code: "reservation_mismatch",
+      error: "reservation_mismatch",
+      message: "Your bag changed during checkout. Please go back to Address and reserve again.",
+      detail: { preHash, cartHash, reservation_id: rid },
+    };
+  }
 
-      // ✅ PayPal 点击前：用 available 做一次前置校验（best-effort）
-      try {
-        const skus = stockItems.map((x) => x.sku);
-        const availMap = await fetchAvailableBulk(skus);
+  // 4) 必须没过期（Address step 传入 expiresAtSec）
+  const expSec = Number(preReservationExpiresAtSec || 0);
+  const expMs = Number.isFinite(expSec) && expSec > 0 ? expSec * 1000 : 0;
 
-        for (const it of stockItems) {
-          const current = Number(availMap[it.sku] ?? 0) | 0;
-          const requested = Math.max(1, Number(it.qty) || 1);
+  // 如果没传 expires（不建议），就当作失败
+  if (!expMs) {
+    throw {
+      status: 409,
+      code: "reservation_invalid",
+      error: "reservation_invalid",
+      message: "Invalid reservation expiry. Please go back to Address and reserve again.",
+      detail: { preReservationExpiresAtSec: preReservationExpiresAtSec ?? null, reservation_id: rid },
+    };
+  }
 
-          if (current < requested) {
-            throw {
-              status: 409,
-              error: "out_of_stock",
-              detail: { sku: it.sku, current, requested },
-            };
-          }
-        }
-      } catch (e: any) {
-        if (e?.error === "out_of_stock") throw e;
-        console.warn("[payment] inventory bulk precheck failed (ignored)", e);
-      }
+  if (Date.now() >= expMs - 1000) {
+    throw {
+      status: 409,
+      code: "reservation_expired",
+      error: "reservation_expired",
+      message: "Your stock reservation has expired. Please go back to Address and reserve again.",
+      detail: { reservation_id: rid, expires_at_ms: expMs },
+    };
+  }
 
-      const request_id = `${checkoutSessionIdRef.current}:${cartSignature || "empty"}`;
-      const { httpStatus, data } = await reserveStock(stockItems, {
-        request_id,
-        cart_hash: cartHash,
+  // ✅ 同步到本地 state/ref，供 UI 倒计时 & successMeta 使用
+  if (reservationId !== rid) setReservationId(rid);
+  if (reservationExpiresAt !== expMs) setReservationExpiresAt(expMs);
+  reservationIdRef.current = rid;
+
+  // ✅ 通过校验：返回 reservation id（PayPalBigButton 会把它带到 /orders）
+  return rid;
+}, [
+  stockItems,
+  cartHash,
+  preReservationId,
+  preReservationCartHash,
+  preReservationExpiresAtSec,
+  reservationId,
+  reservationExpiresAt,
+]);
+
+
+
+  // ✅ NEW: countdown ticker for reservation (source of truth: preReservationExpiresAtSec)
+useEffect(() => {
+  if (!visible) {
+    setReservationSecondsLeft(null);
+    return;
+  }
+
+  const rid = String(preReservationId || "").trim();
+  const expSec = Number(preReservationExpiresAtSec || 0);
+  const expMs = Number.isFinite(expSec) && expSec > 0 ? expSec * 1000 : 0;
+
+  if (!rid || !expMs) {
+    setReservationSecondsLeft(null);
+    return;
+  }
+
+  let timer: any = null;
+
+  const tick = () => {
+    const msLeft = expMs - Date.now();
+    const secLeft = Math.max(0, Math.ceil(msLeft / 1000));
+
+    setReservationSecondsLeft(secLeft);
+
+    if (secLeft <= 0) {
+      // 过期：清理本地展示状态 + 弹出 expired 错误
+      setReservationId(null);
+      setReservationExpiresAt(null);
+      reservationIdRef.current = null;
+
+      setPayError({
+        type: "reservation_expired",
+        status: 409,
+        message: "Your stock reservation has expired. Please go back to Address and reserve again.",
+        detail: { reservation_id: rid },
       });
-
-      if (httpStatus === 200 && data && (data as any).ok === true) {
-        const rid = String((data as any).reservation_id || "").trim();
-        const expSec = Number((data as any).expires_at ?? 0);
-        const expMs = Number.isFinite(expSec) && expSec > 0 ? expSec * 1000 : 0;
-
-        if (!rid) {
-          throw { status: 500, error: "reserve_failed", message: "Reserve succeeded but missing reservation_id." };
-        }
-
-        setReservationId(rid);
-        setReservationExpiresAt(expMs > 0 ? expMs : null);
-
-        // ✅ CRITICAL: keep ref in sync (PayPalBigButton + successMeta uses this)
-        reservationIdRef.current = rid;
-
-        return rid;
-      }
-
-      const errCode = String((data as any)?.error || `http_${httpStatus}`);
-      const detail = (data as any)?.detail ?? null;
-
-      if (httpStatus === 409 && errCode === "out_of_stock") {
-        throw { status: 409, error: "out_of_stock", detail: detail ?? null };
-      }
-      if (httpStatus === 409 && errCode === "reservation_expired") {
-        throw { status: 409, error: "reservation_expired", detail: detail ?? null };
-      }
-
-      throw {
-        status: httpStatus || 500,
-        error: errCode || "reserve_failed",
-        message: (data as any)?.message || "Reserve failed",
-        detail: { httpStatus, data },
-      };
-    },
-    [
-      stockItems,
-      reservationId,
-      reservationExpiresAt,
-      cartSignature,
-      cartHash,
-      preReservationId,
-      preReservationExpiresAtSec,
-      preReservationCartHash,
-    ]
-  );
-
-  // ✅ Auto reserve when entering Payment step so PayPal opens with ONE click
-  useEffect(() => {
-    if (!visible) return;
-    if (isPayProcessing) return;
-    if (payBlockedReason) return;
-    if (!stockItems.length) return;
-    if (payError) return;
-
-    if (reservationId && reservationExpiresAt && Date.now() < reservationExpiresAt - 1000) return;
-    if (reserveInFlightRef.current) return;
-
-    setIsReserving(true);
-
-    const p = (async () => {
-      try {
-        await runStockReservePreflight();
-      } catch (e) {
-        await handlePayFailed(e);
-      } finally {
-        reserveInFlightRef.current = null;
-        setIsReserving(false);
-      }
-    })();
-
-    reserveInFlightRef.current = p;
-  }, [
-    visible,
-    isPayProcessing,
-    payBlockedReason,
-    stockItems,
-    reservationId,
-    reservationExpiresAt,
-    runStockReservePreflight,
-    handlePayFailed,
-    payError,
-  ]);
-
-  // ✅ NEW: countdown ticker for reservation
-  useEffect(() => {
-    if (!visible) {
-      setReservationSecondsLeft(null);
-      return;
     }
+  };
 
-    if (!reservationId || !reservationExpiresAt) {
-      setReservationSecondsLeft(null);
-      return;
-    }
+  tick();
+  timer = setInterval(tick, 1000);
 
-    let timer: any = null;
-
-    const tick = () => {
-      const msLeft = reservationExpiresAt - Date.now();
-      const secLeft = Math.max(0, Math.ceil(msLeft / 1000));
-
-      setReservationSecondsLeft(secLeft);
-
-      if (secLeft <= 0) {
-        setReservationId(null);
-        setReservationExpiresAt(null);
-        reservationIdRef.current = null;
-
-        setPayError({
-          type: "reservation_expired",
-          status: 409,
-          message: "Your stock reservation has expired. Please try paying again.",
-          detail: { reservation_id: reservationId },
-        });
-      }
-    };
-
-    tick();
-    timer = setInterval(tick, 1000);
-
-    return () => {
-      if (timer) clearInterval(timer);
-    };
-  }, [visible, reservationId, reservationExpiresAt]);
+  return () => {
+    if (timer) clearInterval(timer);
+  };
+}, [visible, preReservationId, preReservationExpiresAtSec]);
 
   // ✅ successMeta: always include the freshest reservation id
   const successMetaWithReservation = useMemo(() => {
-    const rid = reservationIdRef.current || reservationId || null;
-    return {
-      checkoutTotals: checkoutTotalsMeta,
-      address,
-      deliveryOption: deliveryMethod,
-      meta: {
-        pricing_source: "paymentstep-derived",
-      },
-      reservation_id: rid,
-      reservationId: rid,
-      inventory_reservation_id: rid,
-    };
-  }, [checkoutTotalsMeta, address, deliveryMethod, reservationId]);
+  const rid = String(preReservationId || "").trim() || null;
+
+  return {
+    checkoutTotals: checkoutTotalsMeta,
+    address,
+    deliveryOption: deliveryMethod,
+    meta: {
+      pricing_source: "paymentstep-derived",
+    },
+    reservation_id: rid,
+    reservationId: rid,
+    inventory_reservation_id: rid,
+  };
+}, [checkoutTotalsMeta, address, deliveryMethod, preReservationId]);
+
 
   return (
     <section
@@ -946,7 +810,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     >
       <div className="px-4 py-3 border-b flex items-center justify-between">
         <div>
-          <div className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">Step 4</div>
           <div className="text-base font-semibold text-neutral-900">Payment Options</div>
         </div>
         <div className="flex items-center gap-1 text-xs text-emerald-600">
@@ -1183,7 +1046,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                       >
                         PayPal unavailable
                       </button>
-                    ) : (isReserving || preReserveLoading) ? (
+                    ) : preReserveLoading ? (
                       <button
                         type="button"
                         disabled

@@ -70,13 +70,13 @@ type ReserveCache = {
 };
 
 // 预加载触发 step：进入这些 step 就开始 reserve
-const SHOULD_PREFETCH_RESERVE_STEPS: StepKey[] = ["address", "delivery", "payment"];
+const SHOULD_PREFETCH_RESERVE_STEPS: StepKey[] = ["address"];
 
 // 去抖：购物车连续变动时，最后一次变动才触发 reserve
 const RESERVE_DEBOUNCE_MS = 700;
 
-// 续租阈值：如果离过期 <= 15 秒，就当作需要重新 reserve
-const RESERVE_RENEW_WINDOW_SEC = 15;
+// ✅ 修法2：不做续租窗口；只要没过期就复用
+const RESERVE_RENEW_WINDOW_SEC = 0;
 
 /* ---------------- Stepper ---------------- */
 type StepKey = "bag" | "address" | "delivery" | "payment";
@@ -320,9 +320,10 @@ export default function CheckoutPage() {
 
   // 避免重复打同一个 reserve
   const lastReserveKeyRef = useRef<string>("");
+  const lastCartHashRef = useRef<string>("");
 
-  // 快过期自动续租
-  const reserveRenewTimerRef = useRef<any>(null);
+  // ✅ 修法2：防止在 address step 里重复触发 enter_address reserve
+  const didEnterAddressReserveRef = useRef(false);
 
   const initialStepFromURL = (() => {
     const s = searchParams.get("step");
@@ -506,6 +507,13 @@ export default function CheckoutPage() {
       .join("|");
   }
 
+  const cartHash = useMemo(() => {
+    if (!hasItems) return "";
+    const items = cartToReserveItems(cart);
+    if (!items.length) return "";
+    return buildCartHash(items);
+  }, [cart, hasItems]);
+
   function readReserveCache(): ReserveCache | null {
     try {
       const raw = sessionStorage.getItem(SS_RESERVE_KEY);
@@ -544,107 +552,130 @@ export default function CheckoutPage() {
   // ===============================
 
   async function doPrefetchReserve(reason: string, force = false) {
-    if (!hasItems) return;
+  if (!hasItems) return;
 
-    const items = cartToReserveItems(cart as any[]);
-    if (!items.length) return;
+  const items = cartToReserveItems(cart);
+  if (!items.length) return;
 
-    const cartHash = buildCartHash(items);
-    const nowSec = Math.floor(Date.now() / 1000);
+  const cart_hash = buildCartHash(items);
 
-    // ✅ 已有 reservation 且 cart_hash 一致，并且离过期还很久：复用
-    if (!force && reservationId && reservationCartHash === cartHash && reservationExpiresAtSec) {
-      const left = reservationExpiresAtSec - nowSec;
-      if (left > RESERVE_RENEW_WINDOW_SEC) return;
-    }
+  // key to dedupe requests
+  const reserveKey = `${cart_hash}`;
 
-    // ✅ sessionStorage 里也尝试复用（刷新页面也能复用）
-    if (!force) {
-      const cached = readReserveCache();
-      if (cached && cached.cart_hash === cartHash) {
-        const left = cached.expires_at_sec - nowSec;
-        if (left > RESERVE_RENEW_WINDOW_SEC) {
-          setReservationId(cached.reservation_id);
-          setReservationExpiresAtSec(cached.expires_at_sec);
-          setReservationCartHash(cached.cart_hash);
-          setReserveErr(null);
-          return;
-        }
-      }
-    }
+  // ✅ 1) try reuse cache (sessionStorage)
+  const nowSec = Math.floor(Date.now() / 1000);
+  const cached = readReserveCache();
+  if (!force && cached && cached.cart_hash === cart_hash) {
+  const secLeft = cached.expires_at_sec - nowSec;
 
-    // ✅ 避免重复触发同一个 reserve
-    const reserveKey = `${cartHash}::${force ? "force" : "soft"}`;
-    if (!force && lastReserveKeyRef.current === reserveKey && reserveLoading) return;
-    lastReserveKeyRef.current = reserveKey;
-
-    // ✅ 取消在途请求
-    try {
-      reserveAbortRef.current?.abort();
-    } catch {}
-    const ac = new AbortController();
-    reserveAbortRef.current = ac;
-
-    setReserveLoading(true);
+  // ✅ 修法2：只要还没过期（留 1 秒余量）就复用，不做“快过期就续租”
+  if (secLeft > 1) {
+    setReservationId(cached.reservation_id);
+    setReservationExpiresAtSec(cached.expires_at_sec);
+    setReservationCartHash(cached.cart_hash);
     setReserveErr(null);
-
-    try {
-      const res = await fetch(apiURL("/stock/reserve"), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        credentials: "include",
-        signal: ac.signal,
-        body: JSON.stringify({
-          items,
-          cart_hash: cartHash,
-          // request_id 可选：你后端支持
-          request_id: `${reason}:${cartHash}`,
-        }),
-      });
-
-      const data = (await res.json().catch(() => null)) as ReserveAPIResp | null;
-
-      if (!res.ok || !data?.ok || !data?.reservation_id || !data?.expires_at) {
-        const msg = data?.error || data?.message || `reserve_failed_status_${res.status}`;
-        setReserveErr(msg);
-        setReserveLoading(false);
-        return;
-      }
-
-      const rid = String(data.reservation_id).trim();
-      const expSec = Math.floor(Number(data.expires_at));
-
-      setReservationId(rid);
-      setReservationExpiresAtSec(expSec);
-      setReservationCartHash(cartHash);
-      setReserveErr(null);
-
-      writeReserveCache({
-        reservation_id: rid,
-        expires_at_sec: expSec,
-        cart_hash: cartHash,
-        ts: Date.now(),
-      });
-
-      setReserveLoading(false);
-
-      // ✅ 设“续租”定时器：快过期时自动 reserve（用户停留在 checkout 时）
-      try {
-        if (reserveRenewTimerRef.current) clearTimeout(reserveRenewTimerRef.current);
-      } catch {}
-
-      const leftSec = expSec - Math.floor(Date.now() / 1000);
-      const renewInMs = Math.max(0, (leftSec - RESERVE_RENEW_WINDOW_SEC) * 1000);
-
-      reserveRenewTimerRef.current = setTimeout(() => {
-        void doPrefetchReserve("auto_renew", true);
-      }, renewInMs);
-    } catch (e: any) {
-      if (String(e?.name) === "AbortError") return;
-      setReserveErr(String(e?.message || e || "reserve_failed"));
-      setReserveLoading(false);
-    }
+    setReserveLoading(false);
+    return;
   }
+}
+
+  // ✅ 2) avoid duplicating same reserve in flight
+  if (!force && lastReserveKeyRef.current === reserveKey && reserveLoading) return;
+  lastReserveKeyRef.current = reserveKey;
+
+  // ✅ 3) abort previous
+  try {
+    reserveAbortRef.current?.abort();
+  } catch {}
+  const ac = new AbortController();
+  reserveAbortRef.current = ac;
+
+  // ✅ 4) call reserve API
+  setReserveLoading(true);
+  setReserveErr(null);
+
+  // stable request_id: keep within this browser tab/session
+  const reqIdKey = "sp.checkout.reserve.reqid.v1";
+  let request_id = "";
+  try {
+    request_id = sessionStorage.getItem(reqIdKey) || "";
+    if (!request_id) {
+      request_id = `rid_${Math.random().toString(36).slice(2)}_${Date.now()}`;
+      sessionStorage.setItem(reqIdKey, request_id);
+    }
+  } catch {}
+
+  try {
+    const res = await fetch(apiURL("/stock/reserve"), {
+      method: "POST",
+      credentials: "include",
+      signal: ac.signal,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        items,
+        request_id: `${request_id}:${cart_hash}`,
+        cart_hash,
+      }),
+    });
+
+    const data = (await res.json().catch(() => null)) as ReserveAPIResp | null;
+
+    if (!res.ok || !data || data.ok !== true) {
+      const err = String(data?.error || `reserve_http_${res.status}`);
+      const msg = String(data?.message || err);
+      setReserveErr(msg);
+      setReserveLoading(false);
+
+      clearReserveCache();
+      setReservationId(null);
+      setReservationExpiresAtSec(null);
+      setReservationCartHash(null);
+      return;
+    }
+
+    const rid = String(data.reservation_id || "").trim();
+    const expSec = Number(data.expires_at ?? 0);
+
+    if (!rid || !Number.isFinite(expSec) || expSec <= 0) {
+      setReserveErr("reserve_invalid_response");
+      setReserveLoading(false);
+
+      clearReserveCache();
+      setReservationId(null);
+      setReservationExpiresAtSec(null);
+      setReservationCartHash(null);
+      return;
+    }
+
+    const nextCache: ReserveCache = {
+      reservation_id: rid,
+      expires_at_sec: Math.floor(expSec),
+      cart_hash,
+      ts: Date.now(),
+    };
+
+    writeReserveCache(nextCache);
+
+    setReservationId(rid);
+    setReservationExpiresAtSec(nextCache.expires_at_sec);
+    setReservationCartHash(cart_hash);
+    setReserveErr(null);
+    setReserveLoading(false);
+
+    // ✅ auto-renew close to expiry (best-effort)
+   
+  } catch (e: any) {
+    if (String(e?.name) === "AbortError") return;
+
+    setReserveErr(String(e?.message || e || "reserve_failed"));
+    setReserveLoading(false);
+
+    clearReserveCache();
+    setReservationId(null);
+    setReservationExpiresAtSec(null);
+    setReservationCartHash(null);
+  }
+}
 
   function schedulePrefetchReserve(reason: string, force = false) {
     try {
@@ -768,32 +799,72 @@ export default function CheckoutPage() {
   }, [quoteReqKey]);
 
 
-  // ✅ 进入 address/delivery/payment 时：立刻预加载 reserve（让 payment 体感更快）
+  // ✅ 进入 Address step 时：触发一次 reserve（把预留提前到 Address）
   useEffect(() => {
-    if (!hasItems) return;
-    if (SHOULD_PREFETCH_RESERVE_STEPS.includes(step)) {
-      void doPrefetchReserve(`enter_step:${step}`, false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, hasItems]);
+  if (!hasItems) return;
 
-  // ✅ cart 变化时：如果用户已在 address/delivery/payment，则去抖预加载（避免狂打接口）
+  if (step === "address") {
+    // ✅ 只在第一次进入 address 时触发一次 reserve
+    if (!didEnterAddressReserveRef.current) {
+      didEnterAddressReserveRef.current = true;
+      void doPrefetchReserve("enter_address", false);
+    }
+    return;
+  }
+
+  // ✅ 离开 address 后，允许下次再进入 address 时重新触发一次
+  didEnterAddressReserveRef.current = false;
+
+  if (step === "bag") {
+    clearReserveCache();
+    setReservationId(null);
+    setReservationExpiresAtSec(null);
+    setReservationCartHash(null);
+    setReserveErr(null);
+    setReserveLoading(false);
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [step, hasItems]);
+
+
+  // ✅ cart 变化时：
+  // - 清理旧 reservation（hash 已变化）
+  // - 如果用户正处于 Address step，则去抖触发一次 reserve
   useEffect(() => {
-    if (!hasItems) {
-      setReservationId(null);
-      setReservationExpiresAtSec(null);
-      setReservationCartHash(null);
-      setReserveErr(null);
-      setReserveLoading(false);
-      clearReserveCache();
-      return;
-    }
+  if (!hasItems) {
+    lastCartHashRef.current = "";
+    setReservationId(null);
+    setReservationExpiresAtSec(null);
+    setReservationCartHash(null);
+    setReserveErr(null);
+    setReserveLoading(false);
+    clearReserveCache();
+    return;
+  }
 
-    if (!SHOULD_PREFETCH_RESERVE_STEPS.includes(step)) return;
+  // ✅ 只有 cart_hash 真变化才认为“cart 变了”
+  const nextHash = cartHash || "";
+  const prevHash = lastCartHashRef.current;
 
+  if (!nextHash || nextHash === prevHash) {
+    return;
+  }
+
+  lastCartHashRef.current = nextHash;
+
+  // cart hash 变了：旧 reservation 不可信（先清理）
+  setReservationId(null);
+  setReservationExpiresAtSec(null);
+  setReservationCartHash(null);
+  setReserveErr(null);
+  setReserveLoading(false);
+  clearReserveCache();
+
+  if (step === "address") {
     schedulePrefetchReserve("cart_changed", false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cart, hasItems, step]);
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [cartHash, hasItems, step]);
 
   // ✅ 卸载清理：abort + clear timers
   useEffect(() => {
@@ -806,9 +877,7 @@ export default function CheckoutPage() {
         if (reserveTimerRef.current) clearTimeout(reserveTimerRef.current);
       } catch {}
 
-      try {
-        if (reserveRenewTimerRef.current) clearTimeout(reserveRenewTimerRef.current);
-      } catch {}
+
     };
   }, []);
 
@@ -1183,14 +1252,15 @@ export default function CheckoutPage() {
             currency={currency}
             onPayInitiated={handlePayInitiated}
             onPaySucceeded={handlePaySucceeded}
-            cart={cart}
-            onBackToBag={() => setStepAndURL("bag")}
 
+            // ✅ pre-reserve result from Address step
             preReservationId={reservationId}
             preReservationExpiresAtSec={reservationExpiresAtSec}
             preReservationCartHash={reservationCartHash}
             preReserveLoading={reserveLoading}
             preReserveError={reserveErr}
+            cart={cart}
+            onBackToBag={() => setStepAndURL("bag")}
           />
 
           {step === "payment" && (

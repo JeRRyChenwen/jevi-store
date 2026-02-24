@@ -1211,3 +1211,7 @@ WHERE reservations.status IN ('active','committing') AND reservations.expires_at
 ============================
 
 reserve 过期后重新点击paypal按钮
+
+reserve 过期后 重复触发
+
+点击太快，会导致出现奇怪的提示在payment step里，没有reservationd 的话不能点击paypal 按钮
