@@ -1413,8 +1413,6 @@ async function ensureReserveBeforeNext(): Promise<ReserveCache> {
                     ? Number(quoteByMethod.express.delivery_fee_minor ?? 0)
                     : null,
                 }}
-
-                // ✅ NEW：把后端 quote 的 ETA 透传给 DeliveryStep（优先展示动态 ETA）
                 etaByMethod={{
                   standard: quoteByMethod?.standard?.ok
                     ? {
@@ -1442,33 +1440,16 @@ async function ensureReserveBeforeNext(): Promise<ReserveCache> {
                       }
                     : undefined,
                 }}
-                loading={quoteLoading}
+                quoteLoading={quoteLoading}
+                quoteError={quoteError}
+                quoteMatchedText={
+                  !quoteLoading && !quoteError && quoteByMethod?.[deliveryMethod]?.ok
+                    ? `Shipping matched: ${countryLabelOf(address?.country || "AU")} · option ${deliveryMethod} · fee ${(
+                        (Number(quoteByMethod?.[deliveryMethod]?.delivery_fee_minor ?? 0) || 0) / 100
+                      ).toFixed(2)} ${currency || "AUD"}`
+                    : null
+                }
               />
-
-              {quoteLoading ? (
-                <div className="text-sm text-neutral-500">Calculating shipping…</div>
-              ) : quoteError ? (
-                <div className="text-sm text-amber-600">
-                  Shipping quote unavailable (fallback applied). ({quoteError})
-                </div>
-              ) : quoteByMethod?.[deliveryMethod]?.ok ? (
-                <div className="text-sm text-neutral-500">
-                  {(() => {
-                    const q = quoteByMethod?.[deliveryMethod];
-                    const zoneCode = q?.zone_code ?? "";
-                    const zoneLabel = zoneCode ? countryLabelOf(zoneCode) : "?";
-
-                    const feeMinor = Number(q?.delivery_fee_minor ?? 0) || 0;
-                    const feeText = (feeMinor / 100).toFixed(2);
-
-                    return (
-                      <>
-                        Shipping matched: {zoneLabel} · option {deliveryMethod} · fee {feeText} {currency}
-                      </>
-                    );
-                  })()}
-                </div>
-              ) : null}
             </div>
           )}
 
