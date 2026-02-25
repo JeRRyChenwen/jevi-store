@@ -474,17 +474,32 @@ export default function CheckoutPage() {
   // ✅ NEW: server-side shipping quote state (fetch BOTH standard + express)
   // ===============================
   type ShippingQuoteAPIResult = {
-    ok: boolean;
-    zone_code?: string;
-    currency?: string;
-    delivery_fee_minor?: number;
+  ok: boolean;
 
-    // ✅ 你后端 quote.ts 下一步要返回的字段（用于横幅显示）
-    standard_free_unlocked?: boolean;
-    standard_free_threshold_minor?: number;
+  zone_code?: string;
+  zone_id?: number;
+  rule_id?: number;
+  tier_id?: number;
 
-    error?: string;
-  };
+  currency?: string;
+  delivery_fee_minor?: number;
+
+  // ✅ ETA（后端返回）
+  min_days?: number;
+  max_days?: number;
+  handling_days?: number;
+  eta_min_total?: number;
+  eta_max_total?: number;
+  warehouse_code?: string | null;
+  carrier_service?: string | null;
+  eta_note?: string | null;
+
+  // ✅ 用于前端显示“免运费达标”（以 standard 的 free 规则为准）
+  standard_free_unlocked?: boolean;
+  standard_free_threshold_minor?: number;
+
+  error?: string;
+};
 
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
@@ -1395,6 +1410,35 @@ async function ensureReserveBeforeNext(): Promise<ReserveCache> {
                   express: quoteByMethod?.express?.ok
                     ? Number(quoteByMethod.express.delivery_fee_minor ?? 0)
                     : null,
+                }}
+
+                // ✅ NEW：把后端 quote 的 ETA 透传给 DeliveryStep（优先展示动态 ETA）
+                etaByMethod={{
+                  standard: quoteByMethod?.standard?.ok
+                    ? {
+                        eta_min_total: Number(quoteByMethod.standard.eta_min_total ?? 0) || null,
+                        eta_max_total: Number(quoteByMethod.standard.eta_max_total ?? 0) || null,
+                        min_days: Number(quoteByMethod.standard.min_days ?? 0) || null,
+                        max_days: Number(quoteByMethod.standard.max_days ?? 0) || null,
+                        handling_days: Number(quoteByMethod.standard.handling_days ?? 0) || null,
+                        warehouse_code: (quoteByMethod.standard.warehouse_code ?? null) as any,
+                        carrier_service: (quoteByMethod.standard.carrier_service ?? null) as any,
+                        eta_note: (quoteByMethod.standard.eta_note ?? null) as any,
+                      }
+                    : undefined,
+
+                  express: quoteByMethod?.express?.ok
+                    ? {
+                        eta_min_total: Number(quoteByMethod.express.eta_min_total ?? 0) || null,
+                        eta_max_total: Number(quoteByMethod.express.eta_max_total ?? 0) || null,
+                        min_days: Number(quoteByMethod.express.min_days ?? 0) || null,
+                        max_days: Number(quoteByMethod.express.max_days ?? 0) || null,
+                        handling_days: Number(quoteByMethod.express.handling_days ?? 0) || null,
+                        warehouse_code: (quoteByMethod.express.warehouse_code ?? null) as any,
+                        carrier_service: (quoteByMethod.express.carrier_service ?? null) as any,
+                        eta_note: (quoteByMethod.express.eta_note ?? null) as any,
+                      }
+                    : undefined,
                 }}
               />
 

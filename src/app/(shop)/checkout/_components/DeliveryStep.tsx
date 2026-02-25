@@ -22,6 +22,27 @@ const METHOD_META: Record<
   },
 };
 
+type EtaByMethod = Partial<
+  Record<
+    DeliveryMethod,
+    {
+      /** 后端返回：total ETA（含 handling） */
+      eta_min_total?: number | null;
+      eta_max_total?: number | null;
+
+      /** 可选：如果你未来想展示拆分，也可以传 */
+      min_days?: number | null;
+      max_days?: number | null;
+      handling_days?: number | null;
+
+      /** 可选：仓库、物流服务、备注 */
+      warehouse_code?: string | null;
+      carrier_service?: string | null;
+      eta_note?: string | null;
+    }
+  >
+>;
+
 type DeliveryStepProps = {
   deliveryMethod: DeliveryMethod;
   setDeliveryMethod: (v: DeliveryMethod) => void;
@@ -44,11 +65,16 @@ type DeliveryStepProps = {
    * “Express 仍需支付 X”
    */
   deliveryFeeMinorByMethod?: Partial<Record<DeliveryMethod, number | null>>;
+
+  /**
+   * ✅ NEW：后端 ETA（建议来自 /shipping/quote 的返回）
+   * - 优先展示 eta_min_total/eta_max_total
+   * - 不传则回退 METHOD_META 里的写死文案（保证兼容）
+   */
+  etaByMethod?: EtaByMethod;
 };
 
 function formatMoney(minor: number, currency: string) {
-  // 你项目里如果已有 formatMoney/formatPrice，请优先替换成你自己的函数
-  // 这里做一个通用的兜底：minor -> dollars
   const amount = (Number(minor) || 0) / 100;
   try {
     return new Intl.NumberFormat(undefined, {
@@ -56,9 +82,40 @@ function formatMoney(minor: number, currency: string) {
       currency,
     }).format(amount);
   } catch {
-    // Intl 失败兜底
     return `${currency} ${amount.toFixed(2)}`;
   }
+}
+
+function formatEtaText(
+  method: DeliveryMethod,
+  etaByMethod?: EtaByMethod
+): { etaLine: string; noteLine: string | null } {
+  const eta = etaByMethod?.[method];
+  const a = eta?.eta_min_total;
+  const b = eta?.eta_max_total;
+
+  const hasA = a != null && Number.isFinite(Number(a)) && Number(a) > 0;
+  const hasB = b != null && Number.isFinite(Number(b)) && Number(b) > 0;
+
+  // ✅ 优先：展示 total ETA（handling + shipping）
+  if (hasA && hasB) {
+    const min = Math.floor(Number(a));
+    const max = Math.floor(Number(b));
+    const etaLine =
+      min === max
+        ? `Arrives in ${min} business days`
+        : `Arrives in ${min}–${max} business days`;
+
+    const noteLine =
+      eta?.eta_note != null && String(eta.eta_note).trim()
+        ? String(eta.eta_note).trim()
+        : null;
+
+    return { etaLine, noteLine };
+  }
+
+  // ✅ 兼容：没传 ETA 就用你原来的写死文案
+  return { etaLine: METHOD_META[method].eta, noteLine: null };
 }
 
 const DeliveryStep: React.FC<DeliveryStepProps> = ({
@@ -68,6 +125,7 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
   standardFreeThresholdMinor = null,
   currency = "AUD",
   deliveryFeeMinorByMethod = {},
+  etaByMethod,
 }) => {
   const cur = String(currency || "AUD");
 
@@ -101,7 +159,6 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
             <div className="flex-1">
               <div className="font-medium">Free shipping unlocked</div>
 
-              {/* ✅ 新文案：强调只对 standard 免运费，express 可能仍需付费/仅减免 */}
               <div className="text-neutral-600">
                 {thresholdText ? (
                   <>
@@ -109,7 +166,10 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
                     <span className="font-medium text-neutral-900">
                       ({thresholdText})
                     </span>{" "}
-                    for <span className="font-medium text-neutral-900">Standard</span>{" "}
+                    for{" "}
+                    <span className="font-medium text-neutral-900">
+                      Standard
+                    </span>{" "}
                     delivery.{" "}
                     {expressFeeText ? (
                       <>
@@ -120,15 +180,15 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
                         ).
                       </>
                     ) : (
-                      <>
-                        Express delivery may still have an additional fee.
-                      </>
+                      <>Express delivery may still have an additional fee.</>
                     )}
                   </>
                 ) : (
                   <>
                     You&apos;ve reached the free shipping threshold for{" "}
-                    <span className="font-medium text-neutral-900">Standard</span>{" "}
+                    <span className="font-medium text-neutral-900">
+                      Standard
+                    </span>{" "}
                     delivery. Express delivery may still have an additional fee.
                   </>
                 )}
@@ -149,6 +209,7 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
         <div className="p-4 space-y-3">
           {(["standard", "express"] as DeliveryMethod[]).map((m) => {
             const selected = deliveryMethod === m;
+            const { etaLine, noteLine } = formatEtaText(m, etaByMethod);
 
             return (
               <label
@@ -187,9 +248,14 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
                     ) : null}
                   </div>
 
-                  <div className="text-sm text-neutral-600">
-                    {METHOD_META[m].eta}
-                  </div>
+                  <div className="text-sm text-neutral-600">{etaLine}</div>
+
+                  {/* ✅ 可选：如果后端未来写了 eta_note，就显示在 ETA 下方 */}
+                  {noteLine ? (
+                    <div className="mt-1 text-xs text-neutral-500">
+                      {noteLine}
+                    </div>
+                  ) : null}
                 </div>
               </label>
             );
