@@ -6,10 +6,7 @@ import { Check } from "lucide-react";
 
 type DeliveryMethod = "standard" | "express";
 
-const METHOD_META: Record<
-  DeliveryMethod,
-  { label: string; eta: string; note?: string }
-> = {
+const METHOD_META: Record<DeliveryMethod, { label: string; eta: string; note?: string }> = {
   standard: {
     label: "Standard delivery",
     eta: "Arrives in 3–5 business days",
@@ -26,16 +23,13 @@ type EtaByMethod = Partial<
   Record<
     DeliveryMethod,
     {
-      /** 后端返回：total ETA（含 handling） */
       eta_min_total?: number | null;
       eta_max_total?: number | null;
 
-      /** 可选：如果你未来想展示拆分，也可以传 */
       min_days?: number | null;
       max_days?: number | null;
       handling_days?: number | null;
 
-      /** 可选：仓库、物流服务、备注 */
       warehouse_code?: string | null;
       carrier_service?: string | null;
       eta_note?: string | null;
@@ -47,74 +41,79 @@ type DeliveryStepProps = {
   deliveryMethod: DeliveryMethod;
   setDeliveryMethod: (v: DeliveryMethod) => void;
 
-  /**
-   * ✅ 是否显示免运费达标提示：建议由父组件用后端返回的
-   * standard_free_unlocked 来决定。
-   */
   showFreeShipping: boolean;
 
-  /**
-   * ✅ 新增：免运费门槛（minor），以及货币
-   * 用于文案更准确（不再“只有 fee=0 才显示”）
-   */
   standardFreeThresholdMinor?: number | null;
   currency?: string | null;
 
-  /**
-   * ✅ 新增：当前 standard/express 运费（minor），用于文案告诉用户
-   * “Express 仍需支付 X”
-   */
   deliveryFeeMinorByMethod?: Partial<Record<DeliveryMethod, number | null>>;
 
-  /**
-   * ✅ NEW：后端 ETA（建议来自 /shipping/quote 的返回）
-   * - 优先展示 eta_min_total/eta_max_total
-   * - 不传则回退 METHOD_META 里的写死文案（保证兼容）
-   */
   etaByMethod?: EtaByMethod;
+
+  /** ✅ NEW：是否正在计算shipping */
+  loading?: boolean;
 };
 
 function formatMoney(minor: number, currency: string) {
   const amount = (Number(minor) || 0) / 100;
   try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency,
-    }).format(amount);
+    return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(amount);
   } catch {
     return `${currency} ${amount.toFixed(2)}`;
   }
 }
 
+function asPosIntOrNull(v: any): number | null {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.floor(n);
+}
+
+function formatEtaLine(min: number | null, max: number | null): string | null {
+  if (min == null && max == null) return null;
+  if (min != null && max != null) {
+    if (min === max) return `Arrives in ${min} business days`;
+    return `Arrives in ${min}–${max} business days`;
+  }
+  const only = min ?? max!;
+  return `Arrives in ${only} business days`;
+}
+
 function formatEtaText(
   method: DeliveryMethod,
-  etaByMethod?: EtaByMethod
+  etaByMethod?: EtaByMethod,
+  loading?: boolean
 ): { etaLine: string; noteLine: string | null } {
   const eta = etaByMethod?.[method];
-  const a = eta?.eta_min_total;
-  const b = eta?.eta_max_total;
 
-  const hasA = a != null && Number.isFinite(Number(a)) && Number(a) > 0;
-  const hasB = b != null && Number.isFinite(Number(b)) && Number(b) > 0;
-
-  // ✅ 优先：展示 total ETA（handling + shipping）
-  if (hasA && hasB) {
-    const min = Math.floor(Number(a));
-    const max = Math.floor(Number(b));
-    const etaLine =
-      min === max
-        ? `Arrives in ${min} business days`
-        : `Arrives in ${min}–${max} business days`;
-
-    const noteLine =
-      eta?.eta_note != null && String(eta.eta_note).trim()
-        ? String(eta.eta_note).trim()
-        : null;
-
-    return { etaLine, noteLine };
+  // 🚨 关键：loading 时不要显示默认 ETA
+  if (loading) {
+    return { etaLine: "Calculating shipping…", noteLine: null };
   }
 
-  // ✅ 兼容：没传 ETA 就用你原来的写死文案
+  // 1️⃣ 优先：数据库 min/max（不含handling）
+  const minShip = asPosIntOrNull(eta?.min_days);
+  const maxShip = asPosIntOrNull(eta?.max_days);
+  const shipLine = formatEtaLine(minShip, maxShip);
+
+  const noteLine =
+    eta?.eta_note != null && String(eta.eta_note).trim()
+      ? String(eta.eta_note).trim()
+      : null;
+
+  if (shipLine) {
+    return { etaLine: shipLine, noteLine };
+  }
+
+  // 2️⃣ fallback：total ETA
+  const minTotal = asPosIntOrNull(eta?.eta_min_total);
+  const maxTotal = asPosIntOrNull(eta?.eta_max_total);
+  const totalLine = formatEtaLine(minTotal, maxTotal);
+  if (totalLine) {
+    return { etaLine: totalLine, noteLine };
+  }
+
+  // 3️⃣ 最后兜底（只有非loading才会走到这里）
   return { etaLine: METHOD_META[method].eta, noteLine: null };
 }
 
@@ -126,31 +125,22 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
   currency = "AUD",
   deliveryFeeMinorByMethod = {},
   etaByMethod,
+  loading = false, // ✅ new
 }) => {
   const cur = String(currency || "AUD");
 
   const thresholdText =
-    standardFreeThresholdMinor != null
-      ? formatMoney(standardFreeThresholdMinor, cur)
-      : null;
+    standardFreeThresholdMinor != null ? formatMoney(standardFreeThresholdMinor, cur) : null;
 
   const expressFeeMinor =
-    deliveryFeeMinorByMethod.express != null
-      ? Number(deliveryFeeMinorByMethod.express)
-      : null;
+    deliveryFeeMinorByMethod.express != null ? Number(deliveryFeeMinorByMethod.express) : null;
 
-  const expressFeeText =
-    expressFeeMinor != null ? formatMoney(expressFeeMinor, cur) : null;
+  const expressFeeText = expressFeeMinor != null ? formatMoney(expressFeeMinor, cur) : null;
 
   return (
     <>
-      {/* 顶部：达到免邮门槛提示 */}
       {showFreeShipping && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="rounded-xl border px-4 py-3 text-sm"
-        >
+        <div role="status" aria-live="polite" className="rounded-xl border px-4 py-3 text-sm">
           <div className="flex items-start gap-2">
             <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-white">
               <Check className="h-3.5 w-3.5" />
@@ -163,21 +153,12 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
                 {thresholdText ? (
                   <>
                     You&apos;ve reached the free shipping threshold{" "}
-                    <span className="font-medium text-neutral-900">
-                      ({thresholdText})
-                    </span>{" "}
-                    for{" "}
-                    <span className="font-medium text-neutral-900">
-                      Standard
-                    </span>{" "}
-                    delivery.{" "}
+                    <span className="font-medium text-neutral-900">({thresholdText})</span> for{" "}
+                    <span className="font-medium text-neutral-900">Standard</span> delivery.{" "}
                     {expressFeeText ? (
                       <>
                         Express delivery may still have a fee (currently{" "}
-                        <span className="font-medium text-neutral-900">
-                          {expressFeeText}
-                        </span>
-                        ).
+                        <span className="font-medium text-neutral-900">{expressFeeText}</span>).
                       </>
                     ) : (
                       <>Express delivery may still have an additional fee.</>
@@ -186,10 +167,7 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
                 ) : (
                   <>
                     You&apos;ve reached the free shipping threshold for{" "}
-                    <span className="font-medium text-neutral-900">
-                      Standard
-                    </span>{" "}
-                    delivery. Express delivery may still have an additional fee.
+                    <span className="font-medium text-neutral-900">Standard</span> delivery.
                   </>
                 )}
               </div>
@@ -202,25 +180,23 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
         </div>
       )}
 
-      {/* 下面是 Delivery 选项本体 */}
       <section className="rounded-xl border">
         <div className="border-b px-4 py-3 font-semibold">Delivery</div>
 
-        <div className="p-4 space-y-3">
+        <div className="space-y-3 p-4">
           {(["standard", "express"] as DeliveryMethod[]).map((m) => {
             const selected = deliveryMethod === m;
-            const { etaLine, noteLine } = formatEtaText(m, etaByMethod);
+            const { etaLine, noteLine } = formatEtaText(m, etaByMethod, loading);
 
             return (
               <label
                 key={m}
                 className={[
-                  "flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors",
+                  "flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors",
                   selected
                     ? "border-neutral-900 bg-neutral-50"
                     : "border-neutral-200 hover:border-neutral-300",
                 ].join(" ")}
-                aria-checked={selected}
               >
                 <input
                   type="radio"
@@ -237,7 +213,7 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
                     {METHOD_META[m].note ? (
                       <span
                         className={[
-                          "text-xs rounded-full px-2 py-0.5 border",
+                          "rounded-full border px-2 py-0.5 text-xs",
                           selected
                             ? "border-neutral-900 text-neutral-900"
                             : "border-neutral-200 text-neutral-600",
@@ -250,11 +226,8 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
 
                   <div className="text-sm text-neutral-600">{etaLine}</div>
 
-                  {/* ✅ 可选：如果后端未来写了 eta_note，就显示在 ETA 下方 */}
                   {noteLine ? (
-                    <div className="mt-1 text-xs text-neutral-500">
-                      {noteLine}
-                    </div>
+                    <div className="mt-1 text-xs text-neutral-500">{noteLine}</div>
                   ) : null}
                 </div>
               </label>

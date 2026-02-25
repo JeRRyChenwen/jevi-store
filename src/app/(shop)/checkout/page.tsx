@@ -24,7 +24,7 @@ import {
 // ✅ 统一提示体系
 import { Alert } from "@/components/ui/alert";
 import { useFormAlert } from "@/hooks/useFormAlert";
-import { coerceCountryCode } from "@/lib/country";
+import { coerceCountryCode, countryLabelOf } from "@/lib/country";
 import { mediaUrl } from "@/lib/strapi";
 
 /* ---------------- 常量 ---------------- */
@@ -868,39 +868,41 @@ async function ensureReserveBeforeNext(): Promise<ReserveCache> {
   }
 
   async function fetchOneQuote(args: {
-    delivery_option: DeliveryMethod;
-    country: string;
-    state: string | null;
-    postcode: string | null;
-    items_total_minor: number;
-    signal: AbortSignal;
-  }): Promise<ShippingQuoteAPIResult> {
-    const target = apiURL("/shipping/quote");
-    const res = await fetch(target, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      credentials: "include",
-      signal: args.signal,
-      body: JSON.stringify({
-        country: args.country,
-        state: args.state,
-        postcode: args.postcode,
-        delivery_option: args.delivery_option,
-        items_total_minor: args.items_total_minor,
-      }),
-    });
+  delivery_option: DeliveryMethod;
+  country: string;
+  state: string | null;
+  postcode: string | null;
+  items_total_minor: number;
+  signal: AbortSignal;
+}): Promise<ShippingQuoteAPIResult> {
+  // ✅ 本地开发：优先走 d1-worker（NEXT_PUBLIC_API_BASE），避免 /api/shipping/quote 400
+  const target = REMOTE_BASE ? `${REMOTE_BASE}/shipping/quote` : apiURL("/shipping/quote");
 
-    const data = (await res.json().catch(() => null)) as any;
+  const res = await fetch(target, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    credentials: "include",
+    signal: args.signal,
+    body: JSON.stringify({
+      country: args.country,
+      state: args.state,
+      postcode: args.postcode,
+      delivery_option: args.delivery_option,
+      items_total_minor: args.items_total_minor,
+    }),
+  });
 
-    if (!res.ok || !data?.ok) {
-      return {
-        ok: false,
-        error: data?.error || `quote_failed_status_${res.status}`,
-      };
-    }
+  const data = (await res.json().catch(() => null)) as any;
 
-    return data as ShippingQuoteAPIResult;
+  if (!res.ok || !data?.ok) {
+    return {
+      ok: false,
+      error: data?.error || `quote_failed_status_${res.status}`,
+    };
   }
+
+  return data as ShippingQuoteAPIResult;
+}
 
   async function fetchShippingQuotesBoth() {
     if (!hasItems) {
@@ -1440,6 +1442,7 @@ async function ensureReserveBeforeNext(): Promise<ReserveCache> {
                       }
                     : undefined,
                 }}
+                loading={quoteLoading}
               />
 
               {quoteLoading ? (
@@ -1450,10 +1453,20 @@ async function ensureReserveBeforeNext(): Promise<ReserveCache> {
                 </div>
               ) : quoteByMethod?.[deliveryMethod]?.ok ? (
                 <div className="text-sm text-neutral-500">
-                  Shipping matched: {quoteByMethod?.[deliveryMethod]?.zone_code ?? "?"} · option{" "}
-                  {deliveryMethod} · fee{" "}
-                  {((Number(quoteByMethod?.[deliveryMethod]?.delivery_fee_minor ?? 0) || 0) / 100).toFixed(2)}{" "}
-                  {currency}
+                  {(() => {
+                    const q = quoteByMethod?.[deliveryMethod];
+                    const zoneCode = q?.zone_code ?? "";
+                    const zoneLabel = zoneCode ? countryLabelOf(zoneCode) : "?";
+
+                    const feeMinor = Number(q?.delivery_fee_minor ?? 0) || 0;
+                    const feeText = (feeMinor / 100).toFixed(2);
+
+                    return (
+                      <>
+                        Shipping matched: {zoneLabel} · option {deliveryMethod} · fee {feeText} {currency}
+                      </>
+                    );
+                  })()}
                 </div>
               ) : null}
             </div>
