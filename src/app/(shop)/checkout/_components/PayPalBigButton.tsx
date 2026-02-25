@@ -396,17 +396,25 @@ export default function PayPalBigButton({
                 }
 
                 // ✅ 兼容：后端可能返回 ok:true duplicate:true
+                const createdOrderId =
+                  Number(orderResp?.order?.id ?? orderResp?.id ?? 0) > 0
+                    ? Number(orderResp?.order?.id ?? orderResp?.id)
+                    : null;
+
                 const merged = successMeta
-                  ? { ...paypalPayload, successMeta, order: orderResp }
-                  : { ...paypalPayload, order: orderResp };
+                  ? { ...paypalPayload, successMeta, order: orderResp, createdOrderId }
+                  : { ...paypalPayload, order: orderResp, createdOrderId };
 
-                await onSucceeded?.(merged);
+                void Promise.resolve(onSucceeded?.(merged));
 
-                try {
-                  if (typeof window !== "undefined") {
-                    window.location.replace(confirmPath);
-                  }
-                } catch {}
+                // ✅ 只调用一次 onSucceeded
+                // ✅ 且不要 await：让 PayPal 的 overlay 更快结束（否则会卡在黑屏/PayPal 遮罩）
+                // 上层（PaymentStep / checkout page）自己处理跳转。
+                void Promise.resolve(onSucceeded?.(merged));
+
+                // ✅ 关键：这里不再跳转！！！
+                // ✅ 只通知上层成功，由 PaymentStep 统一负责 router.replace("/order/confirmation")
+                return;
               } catch (e: any) {
                 console.error("[paypal] onApprove/capture failed:", e);
 

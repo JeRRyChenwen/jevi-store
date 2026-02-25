@@ -1,69 +1,62 @@
 // src/app/(shop)/order/confirmation/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { countryLabelOf } from "@/lib/country";
 import { CheckCircle2 } from "lucide-react";
-
-// ✅ 关键：复用 Checkout 的“同一套价格解析”
-import { itemToPriceRecs } from "@/app/(shop)/checkout/(hooks)/usePricing";
-
-type Preview = {
-  ts: number;
-  currency: string;
-
-  // ⚠️ 旧字段：不再当真相，只做兜底
-  totalMinor: number;
-
-  items: any[];
-  address: any;
-  deliveryMethod: "standard" | "express";
-
-  payload?: any;
-  orderId?: number | null;
-  orderNumber?: string | null;
-
-  // 你现在的 preview 里其实还有 quote（用于 delivery fee）
-  quote?: any;
-};
+import { countryLabelOf } from "@/lib/country";
 
 type ServerOrder = {
   id: number;
-  order_number: string | null;
-  currency: string | null;
+  order_number?: string | null;
+  currency?: string | null;
 
+  // 你后端可能返回这些不同字段名（都做兼容）
   items_total_minor?: number | null;
   delivery_fee_minor?: number | null;
-  tax_minor?: number | null;
-  discount_minor?: number | null;
   grand_total_minor?: number | null;
 
+  // 你截图里看到的是 total_minor
+  total_minor?: number | null;
+
+  // 地址（两种结构）
+  shipping_address_json?: any;
+
+  // 扁平字段（你 Worker /orders 很常见是这种）
+  email?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  phone?: string | null;
+  addr_line1?: string | null;
+  addr_line2?: string | null;
+  addr_city?: string | null;
+  addr_state?: string | null;
+  addr_postcode?: string | null;
+  addr_country?: string | null;
+
+  // 你订单里可能有 delivery_option
   delivery_option?: string | null;
+
+  // 有些实现会把 items 放到 order.items
+  items?: any[] | null;
 };
 
 type ServerItem = {
   id?: number;
+
   product_title?: string | null;
   variant_title?: string | null;
 
   qty?: number;
-  item_qty?: number;
-
-  currency?: string | null;
 
   unit_price_minor?: number;
-  item_unit_price_minor?: number;
-
   line_total_minor?: number;
-  item_line_total_minor?: number;
 
   product_sku?: string | null;
-  variant_options_json?: string | null;
 
   snapshot?: any;
 
-  // ✅ 兼容：有些后端会把 image_url 放顶层
   image_url?: string | null;
 };
 
@@ -71,10 +64,13 @@ type ServerResp = {
   ok: boolean;
   order?: ServerOrder;
   items?: ServerItem[];
+
+  // 其他字段无所谓
+  [k: string]: any;
 };
 
-function fmtMoneyMinor(minor: number, currency: string, locale?: string) {
-  return new Intl.NumberFormat(locale, {
+function fmtMoneyMinor(minor: number, currency: string) {
+  return new Intl.NumberFormat(undefined, {
     style: "currency",
     currency,
     currencyDisplay: "code",
@@ -82,319 +78,174 @@ function fmtMoneyMinor(minor: number, currency: string, locale?: string) {
   }).format((Number(minor || 0) || 0) / 100);
 }
 
-function isFiniteInt(v: any) {
-  const n = Number(v);
-  return Number.isFinite(n) && Math.floor(n) === n;
-}
-
 function clampMinor(v: any): number {
   const n = Number(v);
   return Number.isFinite(n) ? (n | 0) : 0;
 }
 
-function isPositiveInt(v: any) {
+function isFiniteInt(v: any) {
   const n = Number(v);
-  return Number.isFinite(n) && n > 0 && Math.floor(n) === n;
-}
-
-function pickOrderIdFromPreview(p: Preview | null): number | null {
-  if (!p) return null;
-
-  const cands = [
-    p?.payload?.order?.id,
-    p?.orderId,
-    (p as any)?.order?.id,
-    (p as any)?.payload?.serverOrderId,
-    (p as any)?.payload?.dbOrderId,
-  ];
-
-  for (const x of cands) {
-    if (isPositiveInt(x)) return Number(x);
-  }
-  return null;
+  return Number.isFinite(n) && Math.floor(n) === n;
 }
 
 function getQty(it: any): number {
-  const q = Number(it?.qty ?? it?.item_qty ?? 1);
+  const q = Number(it?.qty ?? 1);
   return Number.isFinite(q) && q > 0 ? Math.floor(q) : 1;
 }
 
-function pickNameFromItem(it: any): string {
+function pickName(it: any) {
+  return String(it?.snapshot?.title ?? it?.product_title ?? "Item");
+}
+
+function pickVariant(it: any) {
+  const v = it?.snapshot?.variant_title ?? it?.variant_title ?? null;
+  const s = typeof v === "string" ? v.trim() : "";
+  return s ? s : null;
+}
+
+function pickImage(it: any) {
   const s =
-    it?.product_title ??
-    it?.title ??
-    it?.name ??
-    it?.snapshot?.title ??
-    it?.snapshot?.attrs?.title ??
-    "Item";
-  return String(s);
-}
-
-function pickVariantFromItem(it: any): string | null {
-  const v =
-    it?.variant_title ??
-    it?.variant ??
-    it?.snapshot?.variant_title ??
-    it?.snapshot?.attrs?.variant_title ??
-    null;
-
-  const str = typeof v === "string" ? v.trim() : "";
-  return str ? str : null;
-}
-
-function pickSkuFromItem(it: any): string | null {
-  const s = it?.product_sku ?? it?.sku ?? it?.variantSku ?? null;
-  const str = typeof s === "string" ? s.trim() : "";
-  return str ? str : null;
-}
-
-function prettyDeliveryOption(v: any): "Standard" | "Express" {
-  const s = String(v ?? "").toLowerCase();
-  return s.includes("express") ? "Express" : "Standard";
-}
-
-function pickPaymentInfo(payload: any) {
-  const payment = payload?.payment ?? payload ?? null;
-
-  const paypalOrderId =
-    payment?.orderId ??
-    payment?.paypalOrderId ??
-    payment?.raw?.id ??
-    payload?.orderId ??
-    null;
-
-  const transactionId =
-    payment?.transactionId ??
-    payment?.provider_txn_id ??
-    payment?.paypalCaptureId ??
-    payment?.raw?.purchase_units?.[0]?.payments?.captures?.[0]?.id ??
-    null;
-
-  const provider =
-    payment?.provider ??
-    (payment?.transactionId || payment?.cardLast4 ? "braintree" : "paypal");
-
-  return {
-    provider: String(provider || ""),
-    paypalOrderId: paypalOrderId ? String(paypalOrderId) : null,
-    transactionId: transactionId ? String(transactionId) : null,
-    cardBrand: payment?.cardBrand ?? payment?.card_brand ?? null,
-    cardLast4: payment?.cardLast4 ?? payment?.card_last4 ?? null,
-  };
-}
-
-/**
- * ✅ 关键：用 Checkout 同一套逻辑从 item 里拿 unit_minor
- * 优先级：
- * 1) serverItems 字段：unit_price_minor / item_unit_price_minor
- * 2) 兼容：item.amount_minor / item.price_minor / item.real_price_minor
- * 3) 兼容：item.real_price / item.price（major -> minor）
- * 4) 兼容：itemToPriceRecs(item) 找 currency 对应 rec.amount_minor
- * 5) snapshot/options 再兜底
- */
-function getUnitMinorSmart(it: any, currency: string): number {
-  // (1) server 的字段
-  const direct =
-    it?.unit_price_minor ??
-    it?.item_unit_price_minor ??
-    it?.snapshot?.unit_price_minor ??
-    it?.snapshot?.item_unit_price_minor ??
-    null;
-  if (isFiniteInt(direct)) return clampMinor(direct);
-
-  // (2) 常见 minor 字段
-  const minorCand =
-    it?.amount_minor ??
-    it?.price_minor ??
-    it?.real_price_minor ??
-    it?.snapshot?.amount_minor ??
-    it?.snapshot?.price_minor ??
-    it?.snapshot?.real_price_minor ??
-    null;
-  if (isFiniteInt(minorCand)) return clampMinor(minorCand);
-
-  // (3) 常见 major 字段（real_price / price）
-  const majorCand =
-    it?.real_price ??
-    it?.price ??
-    it?.snapshot?.real_price ??
-    it?.snapshot?.price ??
-    null;
-  const majorN = Number(majorCand);
-  if (Number.isFinite(majorN) && majorN > 0) return Math.round(majorN * 100);
-
-  // (4) ✅ Checkout 的价格 rec 逻辑
-  try {
-    const recs = itemToPriceRecs(it) as any[];
-    const hit =
-      recs?.find((r) => String(r?.currency || "").toUpperCase() === currency) ??
-      recs?.[0];
-    const v = hit?.amount_minor ?? hit?.price ?? null;
-    if (isFiniteInt(v)) return clampMinor(v);
-  } catch {}
-
-  // (5) options 再兜底
-  const optMinor =
-    it?.options?.amount_minor ??
-    it?.options?.price_minor ??
-    it?.options?.real_price_minor ??
-    it?.snapshot?.options?.amount_minor ??
-    it?.snapshot?.options?.price_minor ??
-    it?.snapshot?.options?.real_price_minor ??
-    null;
-  if (isFiniteInt(optMinor)) return clampMinor(optMinor);
-
-  return 0;
-}
-
-function getLineMinorSmart(it: any, currency: string): number {
-  const direct =
-    it?.line_total_minor ??
-    it?.item_line_total_minor ??
-    it?.snapshot?.line_total_minor ??
-    it?.snapshot?.item_line_total_minor ??
-    null;
-  if (isFiniteInt(direct)) return clampMinor(direct);
-
-  // fallback: unit * qty
-  return (getUnitMinorSmart(it, currency) * getQty(it)) | 0;
-}
-
-/**
- * ✅ 关键修复 #1：图片字段获取要支持 image_url / snapshot.image_url
- * 同时兼容 Strapi 图片对象：{ url: "/uploads/xxx.png" } / { data: { attributes: { url } } }
- * 注意：这里返回什么就直接喂给 <img src="...">
- * - 如果是 http(s)://... -> OK
- * - 如果是 /uploads/...（相对）-> 也能在同域 Strapi 时工作，但跨域/邮件不行（邮件另说）
- */
-function pickImageFromItem(it: any): string | null {
-  const cand =
     it?.image_url ??
     it?.snapshot?.image_url ??
     it?.snapshot?.attrs?.image_url ??
-    it?.imageUrl ??
-    it?.snapshot?.imageUrl ??
-    it?.snapshot?.attrs?.imageUrl ??
     it?.snapshot?.image ??
-    it?.snapshot?.attrs?.image ??
-    it?.image ??
-    it?.img ??
-    it?.attrs?.image ??
     null;
+  return typeof s === "string" && s.trim() ? s.trim() : null;
+}
 
-  // string url
-  if (typeof cand === "string" && cand.trim()) return cand.trim();
+function FinalizingView({ orderId }: { orderId: number }) {
+  return (
+    <main className="bg-neutral-50/60 px-4 sm:px-6 lg:px-8 py-12">
+      <div className="mx-auto max-w-2xl">
+        <div className="rounded-2xl border bg-white p-6 shadow-sm text-center">
+          <div className="mx-auto mb-4 h-10 w-10 rounded-full border bg-neutral-50 flex items-center justify-center">
+            <div className="h-2 w-2 rounded-full bg-neutral-400 animate-pulse" />
+          </div>
+          <h1 className="text-xl sm:text-2xl font-semibold">Finalizing your order…</h1>
+          <p className="mt-2 text-sm text-neutral-600">
+            Please wait a moment while we sync your order details.
+          </p>
+          <div className="mt-4 inline-flex items-center rounded-full border bg-white px-3 py-1 text-xs text-neutral-700">
+            Order ID:
+            <span className="ml-1 font-mono text-neutral-900">{orderId}</span>
+          </div>
+        </div>
+      </div>
+    </main>
+  );
+}
 
-  // Strapi media object: { url }
-  if (cand && typeof cand === "object") {
-    const url1 = cand?.url;
-    if (typeof url1 === "string" && url1.trim()) return url1.trim();
+function normalizeItems(resp: ServerResp | null): ServerItem[] | null {
+  if (!resp || !resp.ok) return null;
 
-    // Strapi v4 style: { data: { attributes: { url } } }
-    const url2 = cand?.data?.attributes?.url;
-    if (typeof url2 === "string" && url2.trim()) return url2.trim();
+  // 优先用 top-level items
+  if (Array.isArray(resp.items) && resp.items.length > 0) return resp.items;
 
-    // Sometimes: { attributes: { url } }
-    const url3 = cand?.attributes?.url;
-    if (typeof url3 === "string" && url3.trim()) return url3.trim();
-  }
+  // 兼容 order.items
+  const oi = (resp.order as any)?.items;
+  if (Array.isArray(oi) && oi.length > 0) return oi as any;
 
   return null;
 }
 
-/**
- * ✅ 关键修复 #2：serverItems 拉回来后，用 preview.items 把 image_url 合并回去
- * 目的：避免 serverItems 没图把 preview 的图覆盖掉
- */
-function mergeImagesFromPreviewItems(serverItems: any[], previewItems: any[]) {
-  const sItems = Array.isArray(serverItems) ? serverItems : [];
-  const pItems = Array.isArray(previewItems) ? previewItems : [];
+function normalizeAddress(order: ServerOrder | null): any | null {
+  if (!order) return null;
 
-  const mapBySku = new Map<string, any>();
-  for (const it of pItems) {
-    const sku = String(it?.product_sku ?? it?.sku ?? it?.variantSku ?? "").trim();
-    if (sku) mapBySku.set(sku, it);
+  // 1) 优先 shipping_address_json
+  const sj = order.shipping_address_json;
+  if (sj && typeof sj === "object") {
+    const hasAny =
+      sj.firstName || sj.lastName || sj.line1 || sj.city || sj.state || sj.postcode || sj.country;
+    if (hasAny) return sj;
   }
 
-  return sItems.map((it: any) => {
-    const sku = String(it?.product_sku ?? it?.sku ?? it?.variantSku ?? "").trim();
-    const pv = sku ? mapBySku.get(sku) : null;
+  // 2) 扁平字段拼出来
+  const flat = {
+    firstName: (order as any).first_name ?? null,
+    lastName: (order as any).last_name ?? null,
+    phone: (order as any).phone ?? null,
+    email: (order as any).email ?? null,
 
-    const serverImg =
-      it?.image_url ??
-      it?.snapshot?.image_url ??
-      it?.snapshot?.attrs?.image_url ??
-      null;
+    line1: (order as any).addr_line1 ?? null,
+    line2: (order as any).addr_line2 ?? null,
+    city: (order as any).addr_city ?? null,
+    state: (order as any).addr_state ?? null,
+    postcode: (order as any).addr_postcode ?? null,
+    country: (order as any).addr_country ?? null,
+  };
 
-    if (serverImg) return it;
-    if (!pv) return it;
+  const hasAny =
+    flat.firstName ||
+    flat.lastName ||
+    flat.line1 ||
+    flat.city ||
+    flat.state ||
+    flat.postcode ||
+    flat.country;
 
-    const previewImg =
-      pv?.image_url ??
-      pv?.snapshot?.image_url ??
-      pv?.snapshot?.attrs?.image_url ??
-      pv?.imageUrl ??
-      pv?.snapshot?.imageUrl ??
-      pv?.snapshot?.attrs?.imageUrl ??
-      null;
+  return hasAny ? flat : null;
+}
 
-    if (typeof previewImg !== "string" || !previewImg.trim()) return it;
+function deriveMoney(order: ServerOrder, items: ServerItem[]) {
+  const currency = String(order.currency || "AUD").toUpperCase();
 
-    const nextSnapshot = {
-      ...(it?.snapshot ?? {}),
-      ...(pv?.snapshot ?? {}),
-      image_url: previewImg.trim(),
-      attrs: {
-        ...(it?.snapshot?.attrs ?? {}),
-        ...(pv?.snapshot?.attrs ?? {}),
-        image_url: previewImg.trim(),
-      },
-    };
+  // items_total_minor：优先用 order.items_total_minor；否则从 items 计算
+  const itemsTotal =
+    isFiniteInt(order.items_total_minor)
+      ? clampMinor(order.items_total_minor)
+      : items.reduce((sum, it) => sum + clampMinor(it.line_total_minor), 0);
 
-    return {
-      ...it,
-      image_url: it?.image_url ?? previewImg.trim(),
-      snapshot: nextSnapshot,
-    };
-  });
+  // total/grand_total：优先 grand_total_minor，其次 total_minor
+  const totalMinor =
+    isFiniteInt(order.grand_total_minor)
+      ? clampMinor(order.grand_total_minor)
+      : isFiniteInt(order.total_minor)
+      ? clampMinor(order.total_minor)
+      : itemsTotal; // 最差兜底
+
+  // delivery_fee_minor：优先 order.delivery_fee_minor；否则用 total - items_total 反推（>=0）
+  const shippingMinor =
+    isFiniteInt(order.delivery_fee_minor)
+      ? clampMinor(order.delivery_fee_minor)
+      : Math.max(0, totalMinor - itemsTotal);
+
+  return { currency, itemsTotal, totalMinor, shippingMinor };
 }
 
 export default function OrderConfirmationPage() {
-  const [preview, setPreview] = useState<Preview | null>(null);
+  const sp = useSearchParams();
 
-  const [serverOrder, setServerOrder] = useState<ServerOrder | null>(null);
-  const [serverItems, setServerItems] = useState<ServerItem[] | null>(null);
-  const [loadingServer, setLoadingServer] = useState(false);
+  const orderId = useMemo(() => {
+    const raw = sp.get("orderId");
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+  }, [sp]);
 
-  // ① 读取上一步保存的订单预览（用于 address / deliveryMethod / 兜底展示）
+  const [loading, setLoading] = useState(true);
+  const [order, setOrder] = useState<ServerOrder | null>(null);
+  const [items, setItems] = useState<ServerItem[] | null>(null);
+
+  // ✅ 进入 confirmation 立刻清空购物袋
   useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem("last-order-preview");
-      if (raw) setPreview(JSON.parse(raw));
-    } catch {}
-  }, []);
-
-  // ② 清空购物袋（当且仅当拿到 preview 时执行）
-  useEffect(() => {
-    if (!preview) return;
     try {
       localStorage.setItem("bag:v1", "[]");
       window.dispatchEvent(new CustomEvent("bag:count", { detail: { count: 0 } }));
       window.dispatchEvent(new CustomEvent("bag:updated", { detail: {} }));
     } catch {}
-  }, [preview]);
+  }, []);
 
-  // ③ 拿到 server order id 后，去后端拉真正 totals + items
   useEffect(() => {
-    const id = pickOrderIdFromPreview(preview);
-    if (!id) return;
+    if (!orderId) return;
 
     let cancelled = false;
+    let timer: any = null;
 
-    (async () => {
-      setLoadingServer(true);
+    const poll = async () => {
+      if (cancelled) return;
+      setLoading(true);
+
       try {
-        const res = await fetch(`/api/orders/${id}`, {
+        const res = await fetch(`/api/orders/${orderId}`, {
           method: "GET",
           credentials: "include",
           headers: { "content-type": "application/json" },
@@ -404,159 +255,62 @@ export default function OrderConfirmationPage() {
         const data: ServerResp | null = await res.json().catch(() => null);
         if (cancelled) return;
 
-        if (res.ok && data?.ok && data.order) {
-          setServerOrder(data.order);
+        const gotOrder = !!(res.ok && data?.ok && data.order);
+        const gotItems = !!normalizeItems(data);
 
-          if (Array.isArray(data.items)) {
-            // ✅ 关键：把 preview 的 image_url 合并进来，避免“几秒后图片消失”
-            const merged = mergeImagesFromPreviewItems(data.items as any[], preview?.items ?? []);
-            setServerItems(merged as any[]);
-          }
-        } else {
-          console.warn("[order/confirmation] failed to fetch server order", {
-            id,
-            status: res.status,
-            data,
-          });
+        if (gotOrder && gotItems) {
+          setOrder(data!.order!);
+          setItems(normalizeItems(data)!);
+          setLoading(false);
+          return; // stop polling
         }
-      } catch (e) {
-        console.warn("[order/confirmation] fetch server order error", e);
-      } finally {
-        if (!cancelled) setLoadingServer(false);
+      } catch {
+        // ignore and keep polling
       }
-    })();
+
+      if (!cancelled) {
+        setLoading(true);
+        timer = setTimeout(poll, 500);
+      }
+    };
+
+    poll();
 
     return () => {
       cancelled = true;
+      if (timer) clearTimeout(timer);
     };
-  }, [preview]);
+  }, [orderId]);
 
-  // ========= ✅ 下面这些 “计算” 不使用 useMemo（避免 hooks 顺序坑） =========
-
-  const payload = preview?.payload ?? null;
-  const payloadOrder = payload?.order ?? null;
-
-  const currency = String(
-    serverOrder?.currency || payloadOrder?.currency || preview?.currency || "AUD"
-  ).toUpperCase();
-
-  // items 数据源：serverItems -> preview.items
-  const itemsToRender: any[] =
-    Array.isArray(serverItems) && serverItems.length
-      ? serverItems
-      : Array.isArray(preview?.items)
-      ? preview!.items
-      : [];
-
-  const itemCount = itemsToRender.reduce((n, it) => n + getQty(it), 0);
-
-  // totals：serverOrder -> payload.order -> preview.totalMinor -> fallback 计算（你现在 summary 主要用 preview）
-  const subtotalMinorRaw =
-    serverOrder?.items_total_minor ??
-    payloadOrder?.items_total_minor ??
-    payloadOrder?.itemsTotalMinor ??
-    null;
-
-  const shippingMinorRaw =
-    serverOrder?.delivery_fee_minor ??
-    payloadOrder?.delivery_fee_minor ??
-    payloadOrder?.deliveryFeeMinor ??
-    payloadOrder?.shipping_minor ??
-    payloadOrder?.shippingMinor ??
-    null;
-
-  const taxMinorRaw =
-    serverOrder?.tax_minor ??
-    payloadOrder?.tax_minor ??
-    payloadOrder?.taxMinor ??
-    0;
-
-  const discountMinorRaw =
-    serverOrder?.discount_minor ??
-    payloadOrder?.discount_minor ??
-    payloadOrder?.discountMinor ??
-    0;
-
-  // computed subtotal fallback from items
-  const computedSubtotalFallback = itemsToRender.reduce(
-    (sum, it) => (sum + getLineMinorSmart(it, currency)) | 0,
-    0
-  );
-
-  const subtotalMinor = isFiniteInt(subtotalMinorRaw)
-    ? clampMinor(subtotalMinorRaw)
-    : computedSubtotalFallback;
-
-  const shippingMinor = isFiniteInt(shippingMinorRaw)
-    ? clampMinor(shippingMinorRaw)
-    : 0;
-
-  const taxMinor = isFiniteInt(taxMinorRaw) ? clampMinor(taxMinorRaw) : 0;
-  const discountMinor = isFiniteInt(discountMinorRaw)
-    ? clampMinor(discountMinorRaw)
-    : 0;
-
-  const totalMinor =
-    (Number(serverOrder?.grand_total_minor) > 0 &&
-      clampMinor(serverOrder?.grand_total_minor)) ||
-    (Number(payloadOrder?.grand_total_minor) > 0 &&
-      clampMinor(payloadOrder?.grand_total_minor)) ||
-    (Number(payloadOrder?.grandTotalMinor) > 0 &&
-      clampMinor(payloadOrder?.grandTotalMinor)) ||
-    (preview ? clampMinor(preview.totalMinor) : 0) ||
-    Math.max(0, (subtotalMinor + shippingMinor + taxMinor - discountMinor) | 0);
-
-  const address = preview?.address ?? null;
-
-  const serverOrderId = pickOrderIdFromPreview(preview);
-  // ✅ 这里保留计算，但 UI 不再展示 payment details（你要求去掉）
-  const paymentInfo = pickPaymentInfo(payload);
-
-  const deliveryLabel = serverOrder?.delivery_option
-    ? prettyDeliveryOption(serverOrder.delivery_option)
-    : preview?.deliveryMethod === "express"
-    ? "Express"
-    : "Standard";
-
-  // ✅ 你现在的 “右侧 summary” 以 preview.quote 为准（最稳）
-  const shippingMinorFromPreview = isFiniteInt((preview as any)?.quote?.delivery_fee_minor)
-    ? clampMinor((preview as any)?.quote?.delivery_fee_minor)
-    : 0;
-
-  const totalMinorFromPreview = preview ? clampMinor(preview.totalMinor) : totalMinor;
-
-  // ========= ✅ 早退视图 =========
-  if (!preview) {
+  if (!orderId) {
     return (
       <main className="bg-neutral-50/60 px-4 sm:px-6 lg:px-8 py-12">
         <div className="mx-auto max-w-2xl text-center">
-          <h1 className="text-2xl font-semibold mb-2">No order to show</h1>
-          <p className="text-neutral-600 mb-6">
-            We couldn’t find your latest order details. If you just paid, try refreshing this page.
-          </p>
-          <div className="flex gap-3 justify-center">
-            <Link
-              href="/"
-              className="rounded-md bg-black text-white px-4 py-2 text-sm font-medium"
-            >
-              Back to Home
-            </Link>
-            <Link
-              href="/checkout"
-              className="rounded-md border bg-white px-4 py-2 text-sm font-medium"
-            >
-              Back to Checkout
-            </Link>
-          </div>
+          <h1 className="text-2xl font-semibold mb-2">Missing order id</h1>
+          <p className="text-neutral-600 mb-6">We couldn’t find an orderId in the URL.</p>
+          <Link href="/" className="rounded-md bg-black text-white px-4 py-2 text-sm font-medium">
+            Back to Home
+          </Link>
         </div>
       </main>
     );
   }
 
+  if (loading || !order || !items) {
+    return <FinalizingView orderId={orderId} />;
+  }
+
+  const { currency, totalMinor, shippingMinor } = deriveMoney(order, items);
+
+  const address = normalizeAddress(order);
+  const deliveryOption =
+    (order.delivery_option ? String(order.delivery_option) : "").trim() || "standard";
+
+  const emailLine = String((order as any)?.email || "").trim();
+
   return (
     <main className="bg-neutral-50/60 px-4 sm:px-6 lg:px-8 py-10">
       <div className="mx-auto max-w-5xl space-y-6">
-        {/* ✅ 成功提示 Header 卡片 */}
         <div className="rounded-2xl border bg-white p-5 sm:p-6 shadow-sm">
           <div className="flex items-start gap-3">
             <div className="mt-0.5 rounded-full border bg-neutral-50 p-2">
@@ -567,144 +321,117 @@ export default function OrderConfirmationPage() {
               <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">
                 Thanks for your order!
               </h1>
-              <p className="mt-1 text-sm sm:text-base text-neutral-600">
-                We’ve emailed your receipt and order details{address?.email ? ` to ${address.email}` : ""}.
-              </p>
 
-              {/* ✅ 顶部：去掉 Delivery badge（按你要求） */}
+              {emailLine ? (
+                <p className="mt-1 text-sm text-neutral-600">
+                  We’ve emailed your receipt and order details to{" "}
+                  <span className="font-medium text-neutral-800">{emailLine}</span>.
+                </p>
+              ) : null}
+
               <div className="mt-3 flex flex-wrap gap-2">
-                {serverOrder?.order_number ? (
+                {order.order_number ? (
                   <span className="inline-flex items-center rounded-full border bg-white px-3 py-1 text-xs text-neutral-700">
                     Order No:
-                    <span className="ml-1 font-mono text-neutral-900">
-                      {serverOrder.order_number}
-                    </span>
+                    <span className="ml-1 font-mono text-neutral-900">{order.order_number}</span>
                   </span>
                 ) : null}
 
-                {serverOrderId ? (
-                  <span className="inline-flex items-center rounded-full border bg-white px-3 py-1 text-xs text-neutral-700">
-                    Order ID:
-                    <span className="ml-1 font-mono text-neutral-900">
-                      {serverOrderId}
-                    </span>
-                  </span>
-                ) : null}
-
-                {loadingServer ? (
-                  <span className="inline-flex items-center rounded-full border bg-white px-3 py-1 text-xs text-neutral-700">
-                    Syncing…
-                  </span>
-                ) : null}
+                <span className="inline-flex items-center rounded-full border bg-white px-3 py-1 text-xs text-neutral-700">
+                  Order ID:
+                  <span className="ml-1 font-mono text-neutral-900">{order.id}</span>
+                </span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* ✅ 主体布局 */}
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px] items-start">
-          {/* 左侧：Items */}
           <section className="rounded-2xl border bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between">
               <h2 className="text-base font-semibold">Items</h2>
               <div className="text-sm text-neutral-600">
-                {itemCount} item{itemCount === 1 ? "" : "s"}
+                {items.reduce((n, it) => n + getQty(it), 0)} item
+                {items.reduce((n, it) => n + getQty(it), 0) > 1 ? "s" : ""}
               </div>
             </div>
 
             <div className="mt-4 divide-y">
-              {itemsToRender.length === 0 ? (
-                <div className="py-8 text-sm text-neutral-500">No items to show.</div>
-              ) : (
-                itemsToRender.map((it: any, idx: number) => {
-                  const name = pickNameFromItem(it);
-                  const variant = pickVariantFromItem(it);
-                  const sku = pickSkuFromItem(it);
-                  const qty = getQty(it);
-                  const unit = getUnitMinorSmart(it, currency);
-                  const line = getLineMinorSmart(it, currency);
-                  const img = pickImageFromItem(it);
+              {items.map((it, idx) => {
+                const name = pickName(it);
+                const variant = pickVariant(it);
+                const qty = getQty(it);
+                const unit = clampMinor(it.unit_price_minor);
+                const line = clampMinor(it.line_total_minor);
+                const img = pickImage(it);
 
-                  return (
-                    <div key={String(it?.id ?? idx)} className="py-4 flex gap-4">
-                      <div className="h-20 w-20 rounded-xl border bg-neutral-50 overflow-hidden flex items-center justify-center shadow-sm">
-                        {img ? (
-                          <img
-                            src={img}
-                            alt={name}
-                            className="h-full w-full object-cover"
-                            referrerPolicy="no-referrer"
-                          />
-                        ) : (
-                          <div className="text-xs text-neutral-400">No image</div>
-                        )}
-                      </div>
+                const sku =
+                  String(it.product_sku || it.snapshot?.product_sku || "").trim() || null;
 
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="min-w-0">
-                            <div className="font-medium truncate">{name}</div>
-                            {variant ? (
-                              <div className="text-sm text-neutral-600 mt-0.5">{variant}</div>
-                            ) : null}
-                            {sku ? (
-                              <div className="text-[11px] text-neutral-400 mt-1">
-                                SKU: <span className="font-mono">{sku}</span>
-                              </div>
-                            ) : null}
+                return (
+                  <div key={String(it.id ?? idx)} className="py-4 flex gap-4">
+                    <div className="h-20 w-20 rounded-xl border bg-neutral-50 overflow-hidden flex items-center justify-center shadow-sm">
+                      {img ? (
+                        <img
+                          src={img}
+                          alt={name}
+                          className="h-full w-full object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <div className="text-xs text-neutral-400">No image</div>
+                      )}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <div className="font-medium truncate">{name}</div>
+                          {variant ? (
+                            <div className="text-sm text-neutral-600 mt-0.5">{variant}</div>
+                          ) : null}
+                          {sku ? (
+                            <div className="text-[11px] text-neutral-400 mt-1 break-all">
+                              SKU: {sku}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <div className="text-sm text-neutral-600">
+                            {qty} × {fmtMoneyMinor(unit, currency)}
                           </div>
-
-                          <div className="text-right shrink-0">
-                            <div className="text-sm text-neutral-600">
-                              {qty} × {fmtMoneyMinor(unit, currency)}
-                            </div>
-                            <div className="text-base font-semibold">
-                              {fmtMoneyMinor(line, currency)}
-                            </div>
+                          <div className="text-base font-semibold">
+                            {fmtMoneyMinor(line, currency)}
                           </div>
                         </div>
                       </div>
                     </div>
-                  );
-                })
-              )}
+                  </div>
+                );
+              })}
             </div>
           </section>
 
-          {/* 右侧：Summary + Delivery */}
           <aside className="space-y-6 lg:sticky lg:top-6">
-            {/* Summary */}
             <section className="rounded-2xl border bg-white p-5 shadow-sm">
-              <div className="flex items-center justify-between">
-                <h2 className="text-base font-semibold">Order Summary</h2>
-                <span className="text-xs text-neutral-500">
-                  {itemCount} item{itemCount === 1 ? "" : "s"}
-                </span>
-              </div>
+              <h2 className="text-base font-semibold">Order Summary</h2>
 
               <div className="mt-4 space-y-3 text-sm">
                 <div className="flex items-center justify-between">
                   <span className="text-neutral-600">Delivery fee</span>
                   <span className="font-medium text-neutral-900">
-                    {shippingMinorFromPreview === 0
-                      ? "FREE"
-                      : fmtMoneyMinor(shippingMinorFromPreview, currency)}
+                    {shippingMinor === 0 ? "FREE" : fmtMoneyMinor(shippingMinor, currency)}
                   </span>
                 </div>
 
                 <div className="border-t pt-3 flex items-center justify-between">
                   <span className="font-semibold">Total</span>
-                  <span className="text-lg font-bold">
-                    {fmtMoneyMinor(totalMinorFromPreview, currency)}
-                  </span>
+                  <span className="text-lg font-bold">{fmtMoneyMinor(totalMinor, currency)}</span>
                 </div>
               </div>
-
-              {/* ✅ 按你要求：移除 Payment / PayPal Order ID / Transaction ID 区块 */}
-              {/* paymentInfo 仍保留在代码里（将来你需要时再加回 UI 很方便） */}
             </section>
 
-            {/* Delivery Details */}
             <section className="rounded-2xl border bg-white p-5 shadow-sm">
               <h2 className="text-base font-semibold">Delivery Details</h2>
 
@@ -713,27 +440,39 @@ export default function OrderConfirmationPage() {
                   <div className="font-medium text-neutral-900">
                     {[address.firstName, address.lastName].filter(Boolean).join(" ")}
                   </div>
-                  <div>
-                    {address.line1}
-                    {address.line2 ? ` ${address.line2}` : ""}
-                  </div>
-                  <div>
-                    {address.city} {address.state} {address.postcode}
-                  </div>
-                  <div>{countryLabelOf(address.country)}</div>
-                  {address.phone ? <div>{address.phone}</div> : null}
+
+                  {address.line1 ? (
+                    <div>
+                      {address.line1}
+                      {address.line2 ? ` ${address.line2}` : ""}
+                    </div>
+                  ) : null}
+
+                  {(address.city || address.state || address.postcode) ? (
+                    <div>
+                      {[address.city, address.state, address.postcode].filter(Boolean).join(" ")}
+                    </div>
+                  ) : null}
+
+                  {address.country ? (
+                    <div>{countryLabelOf(String(address.country)) || String(address.country)}</div>
+                  ) : null}
+
+                  {address.phone ? <div className="mt-2">{address.phone}</div> : null}
+                  {address.email ? <div>{address.email}</div> : null}
                 </div>
               ) : (
                 <div className="mt-3 text-sm text-neutral-500">No address provided.</div>
               )}
 
-              <div className="mt-4 flex items-center justify-between rounded-xl border bg-neutral-50/60 px-3 py-2 text-sm">
+              <div className="mt-4 rounded-xl border bg-neutral-50 px-4 py-3 text-sm flex items-center justify-between">
                 <span className="text-neutral-600">Delivery method</span>
-                <span className="font-semibold text-neutral-900">{deliveryLabel}</span>
+                <span className="font-medium text-neutral-900">
+                  {deliveryOption.toLowerCase() === "express" ? "Express" : "Standard"}
+                </span>
               </div>
             </section>
 
-            {/* CTA */}
             <div className="flex justify-end">
               <Link
                 href="/"

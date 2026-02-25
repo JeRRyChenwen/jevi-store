@@ -3,7 +3,7 @@
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Check, AlertCircle } from "lucide-react";
 import PayPalBigButton from "./PayPalBigButton";
 import { countryLabelOf } from "@/lib/country";
@@ -173,6 +173,23 @@ type PayError =
       detail?: any;
       status?: number;
     };
+
+
+    function pickCreatedOrderIdFromPayPalPayload(payload: any): number | null {
+      const cands = [
+        payload?.createdOrderId,        // ✅ 你需要在 PayPalBigButton 里塞出来
+        payload?.order?.order?.id,      // 常见：orderResp 包了一层
+        payload?.order?.id,             // 常见：orderResp 直接是 {id,...}
+        payload?.orderId,
+        payload?.id,
+      ];
+
+      for (const x of cands) {
+        const n = Number(x);
+        if (Number.isFinite(n) && n > 0) return Math.floor(n);
+      }
+      return null;
+    }
 
 
 
@@ -496,23 +513,32 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
 
 
   const handlePaySucceeded = useCallback(
-    (payload: any) => {
-      setPayError(null);
-      setSuppressBlockedHint(true);
+  (payload: any) => {
+    setPayError(null);
+    setSuppressBlockedHint(true);
 
-      // ✅ 已成功：不要再 release
-      paidOrSucceededRef.current = true;
+    // ✅ 已成功：不要再 release
+    paidOrSucceededRef.current = true;
 
-      // 成功后把 reservation 状态清掉（后端 /orders 会 consume）
-      setReservationId(null);
-      setReservationExpiresAt(null);
-      setReservationSecondsLeft(null);
-      reservationIdRef.current = null;
+    // 成功后把 reservation 状态清掉（后端 /orders 会 consume）
+    setReservationId(null);
+    setReservationExpiresAt(null);
+    setReservationSecondsLeft(null);
+    reservationIdRef.current = null;
 
-      onPaySucceeded(payload);
-    },
-    [onPaySucceeded]
-  );
+    // ✅ 关键：支付成功后，直接跳转到 confirmation（只出现 Finalizing）
+    const orderId = pickCreatedOrderIdFromPayPalPayload(payload);
+
+    if (orderId) {
+      router.replace(`/order/confirmation?orderId=${orderId}`);
+      return;
+    }
+
+    // 拿不到 orderId 也至少跳过去（会停在 Finalizing）
+    router.replace(`/order/confirmation`);
+  },
+  [router]
+);
 
   /**
    * ✅ 把后端 /orders + 前端 preflight 错误码，映射成更电商的文案

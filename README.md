@@ -1053,9 +1053,13 @@ logo
 
 ================================================
 
-注册账号成功页要发email
+比较麻烦的：
 
-delivery发送到不同的地区所需要的时间也不一样，要把不同的时间写到数据库中
+order-item 表的variant 字段，material也要存进去
+
+优化admin平台里同步strapi里的数据的功能
+
+================================================
 
 return功能需要再做检查，一个item一个item的检查
 
@@ -1066,9 +1070,3 @@ return功能需要再做检查，一个item一个item的检查
 stock 小于50的时候才显示stock的数量
 
 order confirmation 页面貌似会刷新2次
-
-order-item 表的variant 字段，material也要存进去
-
-优化admin平台里同步strapi里的数据的功能
-
-未登录状态下的reserve
