@@ -1069,4 +1069,4 @@ return功能需要再做检查，一个item一个item的检查
 
 stock 小于50的时候才显示stock的数量
 
-order confirmation 页面貌似会刷新2次
+finalizing order information 添加loading动画

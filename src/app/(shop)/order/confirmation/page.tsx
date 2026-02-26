@@ -16,6 +16,8 @@ type ServerOrder = {
   items_total_minor?: number | null;
   delivery_fee_minor?: number | null;
   grand_total_minor?: number | null;
+  discount_minor?: number | null;
+  tax_minor?: number | null;
 
   // 你截图里看到的是 total_minor
   total_minor?: number | null;
@@ -113,21 +115,23 @@ function pickImage(it: any) {
   return typeof s === "string" && s.trim() ? s.trim() : null;
 }
 
-function FinalizingView({ orderId }: { orderId: number }) {
+function FinalizingView() {
   return (
     <main className="bg-neutral-50/60 px-4 sm:px-6 lg:px-8 py-12">
       <div className="mx-auto max-w-2xl">
         <div className="rounded-2xl border bg-white p-6 shadow-sm text-center">
-          <div className="mx-auto mb-4 h-10 w-10 rounded-full border bg-neutral-50 flex items-center justify-center">
-            <div className="h-2 w-2 rounded-full bg-neutral-400 animate-pulse" />
+          {/* loading animation */}
+          <div className="mx-auto mb-5 flex items-center justify-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-neutral-400 animate-bounce [animation-delay:-0.3s]" />
+            <span className="h-2 w-2 rounded-full bg-neutral-500 animate-bounce [animation-delay:-0.15s]" />
+            <span className="h-2 w-2 rounded-full bg-neutral-700 animate-bounce" />
           </div>
           <h1 className="text-xl sm:text-2xl font-semibold">Finalizing your order…</h1>
           <p className="mt-2 text-sm text-neutral-600">
             Please wait a moment while we sync your order details.
           </p>
-          <div className="mt-4 inline-flex items-center rounded-full border bg-white px-3 py-1 text-xs text-neutral-700">
-            Order ID:
-            <span className="ml-1 font-mono text-neutral-900">{orderId}</span>
+          <div className="mt-4 text-xs text-neutral-500">
+            This usually takes a few seconds.
           </div>
         </div>
       </div>
@@ -297,7 +301,7 @@ export default function OrderConfirmationPage() {
   }
 
   if (loading || !order || !items) {
-    return <FinalizingView orderId={orderId} />;
+    return <FinalizingView />;
   }
 
   const { currency, totalMinor, shippingMinor } = deriveMoney(order, items);
@@ -330,16 +334,11 @@ export default function OrderConfirmationPage() {
               ) : null}
 
               <div className="mt-3 flex flex-wrap gap-2">
-                {order.order_number ? (
-                  <span className="inline-flex items-center rounded-full border bg-white px-3 py-1 text-xs text-neutral-700">
-                    Order No:
-                    <span className="ml-1 font-mono text-neutral-900">{order.order_number}</span>
-                  </span>
-                ) : null}
-
                 <span className="inline-flex items-center rounded-full border bg-white px-3 py-1 text-xs text-neutral-700">
-                  Order ID:
-                  <span className="ml-1 font-mono text-neutral-900">{order.id}</span>
+                  Order:
+                  <span className="ml-1 font-mono text-neutral-900">
+                    {order.order_number || "Processing"}
+                  </span>
                 </span>
               </div>
             </div>
@@ -417,19 +416,65 @@ export default function OrderConfirmationPage() {
             <section className="rounded-2xl border bg-white p-5 shadow-sm">
               <h2 className="text-base font-semibold">Order Summary</h2>
 
-              <div className="mt-4 space-y-3 text-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-neutral-600">Delivery fee</span>
-                  <span className="font-medium text-neutral-900">
-                    {shippingMinor === 0 ? "FREE" : fmtMoneyMinor(shippingMinor, currency)}
-                  </span>
-                </div>
+              {(() => {
+                const itemsSubtotalMinor =
+                  typeof order.items_total_minor === "number"
+                    ? clampMinor(order.items_total_minor)
+                    : items.reduce((sum, it) => sum + clampMinor(it.line_total_minor), 0);
 
-                <div className="border-t pt-3 flex items-center justify-between">
-                  <span className="font-semibold">Total</span>
-                  <span className="text-lg font-bold">{fmtMoneyMinor(totalMinor, currency)}</span>
-                </div>
-              </div>
+                const discountMinor =
+                  typeof order.discount_minor === "number" ? clampMinor(order.discount_minor) : 0;
+
+                const taxMinor =
+                  typeof order.tax_minor === "number" ? clampMinor(order.tax_minor) : 0;
+
+                return (
+                  <div className="mt-4 space-y-3 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-neutral-600">
+                        Items subtotal{" "}
+                        <span className="text-neutral-400">
+                          ({items.reduce((n, it) => n + getQty(it), 0)} item
+                          {items.reduce((n, it) => n + getQty(it), 0) > 1 ? "s" : ""})
+                        </span>
+                      </span>
+                      <span className="font-medium text-neutral-900">
+                        {fmtMoneyMinor(itemsSubtotalMinor, currency)}
+                      </span>
+                    </div>
+
+                    {discountMinor > 0 ? (
+                      <div className="flex items-center justify-between">
+                        <span className="text-neutral-600">Discount</span>
+                        <span className="font-medium text-neutral-900">
+                          − {fmtMoneyMinor(discountMinor, currency)}
+                        </span>
+                      </div>
+                    ) : null}
+
+                    {taxMinor > 0 ? (
+                      <div className="flex items-center justify-between">
+                        <span className="text-neutral-600">Tax</span>
+                        <span className="font-medium text-neutral-900">
+                          {fmtMoneyMinor(taxMinor, currency)}
+                        </span>
+                      </div>
+                    ) : null}
+
+                    <div className="flex items-center justify-between">
+                      <span className="text-neutral-600">Delivery fee</span>
+                      <span className="font-medium text-neutral-900">
+                        {shippingMinor === 0 ? "FREE" : fmtMoneyMinor(shippingMinor, currency)}
+                      </span>
+                    </div>
+
+                    <div className="border-t pt-3 flex items-center justify-between">
+                      <span className="font-semibold">Total</span>
+                      <span className="text-lg font-bold">{fmtMoneyMinor(totalMinor, currency)}</span>
+                    </div>
+                  </div>
+                );
+              })()}
             </section>
 
             <section className="rounded-2xl border bg-white p-5 shadow-sm">
