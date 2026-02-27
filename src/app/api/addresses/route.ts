@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 const API_BASE =
   (process.env.NEXT_PUBLIC_API_BASE || "").replace(/\/+$/, "") ||
-  "http://localhost:8787";
+  "http://127.0.0.1:8787";
 
 // 强制不要缓存（避免地址更新后页面仍读到旧数据）
 export const dynamic = "force-dynamic";

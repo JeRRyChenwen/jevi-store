@@ -144,6 +144,25 @@ function SortIcon({ dir }: { dir: SortDir | null }) {
   return <span className="ml-1 text-slate-500">{dir === "asc" ? "↑" : "↓"}</span>;
 }
 
+/* ===================== Upload helpers ===================== */
+
+type SelectedImg = {
+  id: string;
+  file: File;
+  previewUrl: string;
+};
+
+function isAllowedImage(file: File) {
+  const t = (file.type || "").toLowerCase();
+  return (
+    t === "image/png" ||
+    t === "image/jpeg" ||
+    t === "image/jpg" ||
+    t === "image/webp" ||
+    t === "image/gif"
+  );
+}
+
 export default function ReturnsPage() {
   const search = useSearchParams();
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -185,6 +204,11 @@ export default function ReturnsPage() {
   // ✅ 用 code 表示“不可重复提交类”的错误（逻辑保持你原来那套）
   const [errorCode, setErrorCode] = useState<string | null>(null);
 
+  // ✅ 上传图片 state
+  const [images, setImages] = useState<SelectedImg[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState<any>(null);
+
   // ✅ 统一提示：替代原来的 error + displayError useMemo
   const { alert, hasAlert, clear: clearAlert, error: showError, fromError } =
     useFormAlert({
@@ -220,14 +244,6 @@ export default function ReturnsPage() {
         });
         const data = (await res.json().catch(() => ({}))) as ReturnsBootstrapResp;
 
-        console.log("[returns] bootstrap status:", res.status);
-        console.log("[returns] bootstrap data:", data);
-        console.log(
-          "[returns] orders length:",
-          Array.isArray(data?.orders) ? data.orders.length : "not-array"
-        );
-
-        // 即使 ok=false，也要允许前端降级为游客模式
         if (!data?.ok) {
           if (!dead) {
             setAuthed(false);
@@ -240,7 +256,6 @@ export default function ReturnsPage() {
         if (!dead) {
           setAuthed(!!data.authed);
           setMyOrders(Array.isArray(data.orders) ? data.orders : []);
-          // ✅ 不再把登录邮箱写入 email 输入框 state
         }
       } catch (e: any) {
         if (!dead) {
@@ -301,6 +316,73 @@ export default function ReturnsPage() {
     return arr;
   }, [myOrders, sortKey, sortDir]);
 
+  // ✅ 上传：选择图片
+  function onPickImages(e: ChangeEvent<HTMLInputElement>) {
+    clearAlert();
+
+    const files = Array.from(e.target.files || []);
+    // 允许重复选择同一张图：重置 input
+    e.target.value = "";
+
+    if (!files.length) return;
+
+    const MAX_FILES = 6;
+    const MAX_EACH_BYTES = 5 * 1024 * 1024; // 5MB
+    const current = images.length;
+
+    const accepted: SelectedImg[] = [];
+    for (const f of files) {
+      if (!isAllowedImage(f)) {
+        showError("Only image files are allowed: png/jpg/webp/gif.");
+        continue;
+      }
+      if ((f.size || 0) <= 0) {
+        showError("Empty file is not allowed.");
+        continue;
+      }
+      if ((f.size || 0) > MAX_EACH_BYTES) {
+        showError("Each image must be <= 5MB.");
+        continue;
+      }
+      if (current + accepted.length >= MAX_FILES) {
+        showError(`You can upload up to ${MAX_FILES} images.`);
+        break;
+      }
+
+      const previewUrl = URL.createObjectURL(f);
+      accepted.push({
+        id: crypto.randomUUID(),
+        file: f,
+        previewUrl,
+      });
+    }
+
+    if (accepted.length) {
+      setImages((prev) => [...prev, ...accepted]);
+    }
+  }
+
+  // ✅ 上传：移除图片
+  function removeImage(id: string) {
+    setImages((prev) => {
+      const hit = prev.find((x) => x.id === id);
+      if (hit?.previewUrl) URL.revokeObjectURL(hit.previewUrl);
+      return prev.filter((x) => x.id !== id);
+    });
+  }
+
+  // ✅ step 切换/重置时：回收 objectURL，避免内存泄漏
+  useEffect(() => {
+    return () => {
+      for (const img of images) {
+        try {
+          URL.revokeObjectURL(img.previewUrl);
+        } catch {}
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Step 1: 根据 orderNumber + email 查询订单
   async function handleFindOrder(nextOrderNumber?: string, nextEmail?: string) {
     setErrorCode(null);
@@ -334,34 +416,37 @@ export default function ReturnsPage() {
         return;
       }
 
-      // 简要信息
       setOrder(data.order);
 
-      // 明细信息（带 items）给 ReturnItemsSelector 使用
       const nextFoundOrder: ReturnOrderDetail = {
         ...(data.order || {}),
         items: data.items || [],
       };
       setFoundOrder(nextFoundOrder);
 
-      // ✅ DEBUG
-      console.log(
-        "[returns] first item keys:",
-        Object.keys((nextFoundOrder.items?.[0] ?? {}) as any)
-      );
-      console.log("[returns] sample item:", nextFoundOrder.items?.[0]);
-
-      // 重置已选商品
       setSelectedLines([]);
 
-      // ✅ 先清空缩略图映射，再批量从 Strapi 补图
       setThumbByItemId({});
+
+      // ✅ 每次进入 Step 2：清空原因 & 图片
+      setReasonType("");
+      setReasonDetail("");
+      setUploadResult(null);
+      setUploading(false);
+      // 回收旧预览
+      setImages((prev) => {
+        prev.forEach((x) => {
+          try {
+            URL.revokeObjectURL(x.previewUrl);
+          } catch {}
+        });
+        return [];
+      });
 
       // ✅ 批量拉图（方案B）：用 product_title 去 Strapi 查 Product.title
       try {
         const items = Array.isArray(nextFoundOrder.items) ? nextFoundOrder.items : [];
 
-        // 1) 收集 title（订单返回的是 product_title）
         const titles = Array.from(
           new Set(
             items
@@ -371,13 +456,11 @@ export default function ReturnsPage() {
         );
 
         if (titles.length > 0) {
-          // 2) Strapi v5：filters[$or][i][title][$eqi]=xxx
           const p = new URLSearchParams();
           titles.forEach((t, i) => {
             p.append(`filters[$or][${i}][title][$eqi]`, t);
           });
 
-          // 只取最小字段 + 正确的嵌套 populate
           p.append("fields[0]", "title");
           p.append("fields[1]", "slug");
           p.append("publicationState", "live");
@@ -385,26 +468,19 @@ export default function ReturnsPage() {
 
           const qs = `/api/products?${p.toString()}`;
 
-          console.log("[returns] products query:", qs);
-
           const strapiRes: any = await api(qs, { noCache: true });
           const products: any[] = strapiRes?.data ?? [];
 
-          console.log("[returns] products matched:", products.length);
-          console.log("[returns] first product row:", products?.[0]);
-
-          // 3) title -> { def, colors }
           const productIndex: Record<
             string,
             { def: string | null; colors: Record<string, string> }
           > = {};
 
           for (const row of products) {
-            const attrs = row?.attributes ?? row; // 兼容
+            const attrs = row?.attributes ?? row;
             const title = String(attrs?.title ?? "").trim();
             if (!title) continue;
 
-            // 兼容：字段名不小心写成 color_gallery / color_galleries 的情况
             const galleries = Array.isArray(attrs?.color_galleries)
               ? attrs.color_galleries
               : Array.isArray(attrs?.color_gallery)
@@ -435,7 +511,6 @@ export default function ReturnsPage() {
             productIndex[title.toLowerCase()] = { def, colors };
           }
 
-          // 4) itemId -> thumbUrl
           const nextThumb: Record<number, string | null> = {};
           for (const it of items as any[]) {
             const itemId = Number(it?.id);
@@ -444,7 +519,6 @@ export default function ReturnsPage() {
             const t = String(it?.product_title || "").trim().toLowerCase();
             const idx = t ? productIndex[t] : null;
 
-            // 你的 variant_title 是 "color / size"，颜色取 "/" 前
             const rawVariant = String(it?.variant_title ?? "");
             const color = rawVariant.split("/")[0]?.trim().toLowerCase();
 
@@ -452,16 +526,11 @@ export default function ReturnsPage() {
               color && idx?.colors?.[color] ? idx.colors[color] : idx?.def ?? null;
           }
 
-          console.log("[returns] nextThumb:", nextThumb);
           setThumbByItemId(nextThumb);
         }
       } catch (e) {
         console.error("[returns] fetch strapi thumbs failed:", e);
       }
-
-      // ✅ 每次进入 Step 2 之前，把原因表单清空
-      setReasonType("");
-      setReasonDetail("");
 
       setStep(2);
     } catch (e: any) {
@@ -471,10 +540,42 @@ export default function ReturnsPage() {
     }
   }
 
-  // Step 2: 提交退货
+  async function uploadAttachments(returnId: number) {
+    if (!images.length) return null;
+
+    const fd = new FormData();
+    // ✅ 关键：字段名必须是 files（对应 worker: form.getAll("files")）
+    for (const img of images) {
+      fd.append("files", img.file);
+    }
+
+    setUploading(true);
+    setUploadResult(null);
+
+    try {
+      const res = await fetch(`/api/returns/${returnId}/attachments`, {
+        method: "POST",
+        credentials: "include",
+        body: fd,
+      });
+
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || !data?.ok) {
+        throw new Error(String(data?.error || "upload_failed"));
+      }
+
+      setUploadResult(data);
+      return data;
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  // Step 2: 提交退货（成功后：再上传图片）
   async function handleSubmitReturn() {
     setErrorCode(null);
     clearAlert();
+    setUploadResult(null);
 
     if (!order) {
       showError("No order loaded.");
@@ -498,6 +599,7 @@ export default function ReturnsPage() {
 
     try {
       setSubmitting(true);
+
       const res = await fetch("/api/returns", {
         method: "POST",
         credentials: "include",
@@ -510,31 +612,41 @@ export default function ReturnsPage() {
           email: email.trim().toLowerCase(),
         }),
       });
+
       const data = await res.json().catch(() => ({} as any));
 
       if (!res.ok || !data.ok) {
         const errCode = String(data?.error || "");
 
-        // ✅ 409：区分 approved(永久禁止) vs pending(审核中)
         if (res.status === 409) {
           if (errCode === "item_already_returned") {
             setErrorCode("item_already_returned");
           } else {
-            // 默认按 pending 冲突处理
             setErrorCode("duplicate_return_request");
           }
-          // ✅ 这里用 alert 的 message 统一走 mapReturnError，供 inline block 展示
           showError(errCode || "duplicate_return_request");
           return;
         }
 
-        // ✅ 其它错误（仍然走统一 alert）
         if (errCode) showError(errCode);
         else showError("Failed to submit return.");
         return;
       }
 
+      // ✅ 先进入成功态
       setSubmitResult(data);
+
+      // ✅ 拿 returnId（你后端返回通常是 data.return.id）
+      const returnId = Number(data?.return?.id);
+      if (images.length && Number.isFinite(returnId) && returnId > 0) {
+        try {
+          await uploadAttachments(returnId);
+        } catch (e: any) {
+          // 图片上传失败：不阻止 return 成功，但要提示
+          showError(`Return submitted, but image upload failed: ${String(e?.message || e)}`);
+        }
+      }
+
       setStep(3);
     } catch (e: any) {
       fromError(e);
@@ -551,23 +663,17 @@ export default function ReturnsPage() {
 
   const inlineVariant = isAlreadyReturnedError ? "error" : "warning";
 
-  // inline 文案：优先用 alert.message（已走 mapReturnError），兜底再 map
   const inlineMessage = alert?.message ? alert.message : mapReturnError(errorCode || "");
 
   return (
     <div className="max-w-3xl mx-auto py-8 px-4">
-        <div className="text-sm text-slate-500">
-            <BackButton
-            variant="link"
-            fallbackHref="/"
-            fallbackLabel="Shopping"
-            />
-        </div>      
-
+      <div className="text-sm text-slate-500">
+        <BackButton variant="link" fallbackHref="/" fallbackLabel="Shopping" />
+      </div>
 
       <h1 className="text-2xl font-semibold mb-4">Returns &amp; Exchanges</h1>
 
-      {/* ✅ 顶部统一提示：只在非“inline block”场景显示（保持你原来的交互意图） */}
+      {/* ✅ 顶部统一提示：只在非“inline block”场景显示 */}
       {hasAlert && !showInlineBlock && alert?.message && (
         <div className="mb-4">
           <Alert variant={alert.type}>{alert.message}</Alert>
@@ -598,7 +704,6 @@ export default function ReturnsPage() {
                 ) : (
                   <div className="overflow-x-auto rounded-lg border bg-white">
                     <table className="w-full text-left text-sm">
-                      {/* ✅ 表头样式也对齐 admin：bg-slate-50 / text-xs / text-slate-600 */}
                       <thead className="border-b bg-slate-50 text-xs text-slate-600">
                         <tr>
                           <th className="py-2 pl-3 pr-4">
@@ -674,7 +779,7 @@ export default function ReturnsPage() {
                 )}
               </div>
 
-              {/* ===== 新增：把“订单号 + 邮箱查单”直接放在下方（不再跳转） ===== */}
+              {/* ===== 查单输入 ===== */}
               <div className="border-t pt-6 space-y-4">
                 <div>
                   <div className="text-sm font-medium">Find an order by order number and email</div>
@@ -713,7 +818,6 @@ export default function ReturnsPage() {
               </div>
             </Card>
           ) : (
-            // ✅ 游客：保留原输入框
             <Card className="p-4 space-y-4">
               <p className="text-sm text-muted-foreground">
                 Please enter your order number and email to start a return.
@@ -764,6 +868,75 @@ export default function ReturnsPage() {
             />
           )}
 
+          {/* ✅ NEW: 上传图片（可选） */}
+          <Card className="p-4 space-y-3">
+            <div>
+              <div className="text-sm font-semibold">Upload images (optional)</div>
+              <div className="text-xs text-muted-foreground">
+                Add up to 6 photos (png/jpg/webp/gif). Each image up to 5MB.
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                className="px-4"
+                onClick={() => document.getElementById("return-upload-input")?.click()}
+                disabled={submitting || uploading}
+              >
+                Add photos
+              </Button>
+
+              <input
+                id="return-upload-input"
+                type="file"
+                accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
+                multiple
+                className="hidden"
+                onChange={onPickImages}
+              />
+
+              {images.length > 0 && (
+                <div className="text-xs text-muted-foreground">
+                  Selected: {images.length} / 6
+                </div>
+              )}
+            </div>
+
+            {images.length > 0 && (
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 pt-2">
+                {images.map((img) => (
+                  <div
+                    key={img.id}
+                    className="relative rounded-xl border border-neutral-200 overflow-hidden bg-neutral-50"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={img.previewUrl}
+                      alt={img.file.name}
+                      className="w-full h-24 object-cover"
+                    />
+
+                    <button
+                      type="button"
+                      className="absolute top-1 right-1 rounded-full bg-white/90 border border-neutral-200 px-2 py-1 text-xs"
+                      onClick={() => removeImage(img.id)}
+                      disabled={submitting || uploading}
+                      title="Remove"
+                    >
+                      ✕
+                    </button>
+
+                    <div className="px-2 py-1 text-[10px] text-neutral-600 truncate">
+                      {img.file.name}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
           <Card className="p-4 space-y-3">
             <h2 className="text-sm font-semibold">Return reason</h2>
             <div className="space-y-2">
@@ -771,6 +944,7 @@ export default function ReturnsPage() {
                 className="w-full border rounded px-2 py-1 text-sm"
                 value={reasonType}
                 onChange={(e) => setReasonType(e.target.value)}
+                disabled={submitting || uploading}
               >
                 <option value="">Select a reason</option>
                 <option value="changed_mind">Changed my mind</option>
@@ -788,16 +962,25 @@ export default function ReturnsPage() {
                 placeholder="Tell us more..."
                 value={reasonDetail}
                 onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setReasonDetail(e.target.value)}
+                disabled={submitting || uploading}
               />
             </div>
 
             <div className="flex justify-end pt-2">
-              <Button variant="outline" className="px-6" onClick={handleSubmitReturn} disabled={submitting}>
-                {submitting ? "Submitting..." : "Submit return request"}
+              <Button
+                variant="outline"
+                className="px-6"
+                onClick={handleSubmitReturn}
+                disabled={submitting || uploading}
+              >
+                {submitting
+                  ? "Submitting..."
+                  : uploading
+                  ? "Uploading images..."
+                  : "Submit return request"}
               </Button>
             </div>
 
-            {/* ✅ 仍然在按钮下方展示；但改成统一 Alert 组件 */}
             {showInlineBlock && (
               <div className="mt-6">
                 <Alert variant={inlineVariant}>
@@ -816,6 +999,7 @@ export default function ReturnsPage() {
           <p className="text-sm text-muted-foreground">
             We&apos;ve received your return request. You&apos;ll receive an email once it&apos;s reviewed.
           </p>
+
           <div className="text-sm">
             <div>
               Return ID:{" "}
@@ -828,6 +1012,13 @@ export default function ReturnsPage() {
             </div>
             <div>Created at: {submitResult.return?.created_at_cn || "N/A"}</div>
           </div>
+
+          {/* ✅ 图片上传结果（可选展示） */}
+          {uploadResult?.ok && (
+            <div className="text-xs text-muted-foreground">
+              Uploaded images: {uploadResult.count || 0}
+            </div>
+          )}
 
           <Button
             variant="outline"
@@ -843,6 +1034,18 @@ export default function ReturnsPage() {
               setReasonDetail("");
               setErrorCode(null);
               clearAlert();
+
+              // reset images
+              setImages((prev) => {
+                prev.forEach((x) => {
+                  try {
+                    URL.revokeObjectURL(x.previewUrl);
+                  } catch {}
+                });
+                return [];
+              });
+              setUploadResult(null);
+              setUploading(false);
             }}
           >
             Start another return

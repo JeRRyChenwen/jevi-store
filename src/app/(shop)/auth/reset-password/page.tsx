@@ -17,7 +17,7 @@ import { Alert } from "@/components/ui/alert";
 import { useFormAlert } from "@/hooks/useFormAlert";
 import { FieldMessage } from "@/components/ui/field-message";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE!; // e.g. http://localhost:8787
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE!; // e.g. http://127.0.0.1:8787
 
 const schema = z
   .object({

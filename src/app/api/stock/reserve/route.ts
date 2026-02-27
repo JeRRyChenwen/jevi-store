@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
-const WORKER_BASE = process.env.API_PROXY || "http://127.0.0.1:8787";
+const WORKER_BASE = process.env.API_PROXY || "http://localhost:8787";
 
 function newCheckoutSessionId() {
   // Node/Next 运行时一般有 crypto.randomUUID()

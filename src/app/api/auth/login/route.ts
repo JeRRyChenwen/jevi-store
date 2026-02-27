@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 export const runtime = "edge"; // 你可以保留；如果你不需要 edge，也可以删掉
 
 const WORKER_BASE =
-  (process.env.API_PROXY || "").replace(/\/+$/, "") || "http://127.0.0.1:8787";
+  (process.env.API_PROXY || "").replace(/\/+$/, "") || "http://localhost:8787";
 
 // 安全拆分多条 Set-Cookie（不会被 Expires 的逗号误伤）
 function splitSetCookie(header: string): string[] {

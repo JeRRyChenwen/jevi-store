@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 const API_BASE =
   (process.env.NEXT_PUBLIC_API_BASE || "").replace(/\/+$/, "") ||
-  "http://localhost:8787";
+  "http://127.0.0.1:8787";
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);

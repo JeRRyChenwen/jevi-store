@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const API_BASE =
-  (process.env.NEXT_PUBLIC_API_BASE || "").replace(/\/+$/, "") || "http://localhost:8787";
+  (process.env.NEXT_PUBLIC_API_BASE || "").replace(/\/+$/, "") || "http://127.0.0.1:8787";
 
 function parseSpUserCookie(raw?: string | null): { id?: number | null; email?: string | null } {
   if (!raw) return {};

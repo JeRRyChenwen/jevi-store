@@ -60,6 +60,38 @@ type ApiPayload = {
   worker_version?: string;
 };
 
+type ReturnAttachmentRow = {
+  id: number;
+  return_id: number;
+  r2_key: string;
+  original_name: string | null;
+  content_type: string | null;
+  size_bytes: number | null;
+  created_at_ts: number | null;
+};
+
+type AttachmentRow = {
+  id: number;
+  return_id: number;
+  r2_key: string;
+  original_name?: string | null;
+  content_type?: string | null;
+  size_bytes?: number | null;
+  created_at_ts?: number | null;
+  raw_url: string; // ✅ 关键：走 Next proxy，避免跨域/cookie 问题
+};
+
+type AttachmentsApiCompat = {
+  ok: boolean;
+  return_id?: number;
+  // worker 可能返回 attachments
+  attachments?: ReturnAttachmentRow[];
+  // 你之前的预期结构可能是 files
+  count?: number;
+  files?: AttachmentRow[];
+  error?: string;
+};
+
 function StatusPill({ value }: { value: string }) {
   return (
     <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs capitalize text-slate-700">
@@ -98,11 +130,9 @@ type UiNotice = {
   message: string;
 };
 
-/** 把偏“技术”的错误信息转成更可读的提示 */
 function prettifyErrorMessage(raw: string) {
   const s = (raw || "").trim();
   const lower = s.toLowerCase();
-
   if (!s) return "";
 
   if (lower === "unauthorized" || lower === "http_401") {
@@ -115,17 +145,11 @@ function prettifyErrorMessage(raw: string) {
     return "Server returned an unexpected response. Please try again.";
   }
 
-  // "Failed (500)" 这种
   const m1 = s.match(/^failed\s*\((\d{3})\)$/i);
-  if (m1?.[1]) {
-    return `Request failed (${m1[1]}). Please try again.`;
-  }
+  if (m1?.[1]) return `Request failed (${m1[1]}). Please try again.`;
 
-  // "HTTP_500" 这种
   const m2 = s.match(/^http_(\d{3})$/i);
-  if (m2?.[1]) {
-    return `Request failed (${m2[1]}). Please try again.`;
-  }
+  if (m2?.[1]) return `Request failed (${m2[1]}). Please try again.`;
 
   return s;
 }
@@ -140,41 +164,103 @@ export default function ReturnDetailClient({ id }: { id: string }) {
   const [rejectReason, setRejectReason] = useState<string>("");
   const [saving, setSaving] = useState<null | "approve" | "reject">(null);
 
-  // ✅ 统一提示：用 Alert 承载
+  const [attachments, setAttachments] = useState<AttachmentRow[]>([]);
+  const [attachmentsErr, setAttachmentsErr] = useState<string>("");
+  const [attachmentsLoading, setAttachmentsLoading] = useState<boolean>(false);
+
   const [notice, setNotice] = useState<UiNotice | null>(null);
 
   async function loadDetail(signal?: AbortSignal) {
-  const r = await fetch(`/api/admin/returns/${encodeURIComponent(id)}`, {
-    method: "GET",
-    cache: "no-store",
-    credentials: "include",
-    signal,
-  });
+    const r = await fetch(`/api/admin/returns/${encodeURIComponent(id)}`, {
+      method: "GET",
+      cache: "no-store",
+      credentials: "include",
+      signal,
+    });
 
-  if (r.status === 401) {
-    throw new Error("UNAUTHORIZED");
+    if (r.status === 401) throw new Error("UNAUTHORIZED");
+
+    const j = (await r.json().catch(() => null)) as ApiPayload | null;
+
+    if (r.status === 404 || j?.error === "NOT_FOUND" || j?.error === "not_found") {
+      setData({ ok: true, return: undefined, items: [] });
+      return { ok: true, return: undefined, items: [] } as ApiPayload;
+    }
+
+    if (!r.ok) {
+      const code = j?.error || `HTTP_${r.status}`;
+      throw new Error(code);
+    }
+
+    if (!j || !j.ok || !j.return) {
+      throw new Error(j?.error || "BAD_PAYLOAD");
+    }
+
+    setData(j);
+    return j;
   }
 
-  const j = (await r.json().catch(() => null)) as ApiPayload | null;
+  // ✅ 改：走 Next API proxy
+  async function loadAttachments(returnId: number, signal?: AbortSignal) {
+    setAttachmentsLoading(true);
+    setAttachmentsErr("");
 
-  // ✅ 关键：404 / NOT_FOUND 视为“正常但为空”，不 throw
-  if (r.status === 404 || j?.error === "NOT_FOUND" || j?.error === "not_found") {
-    setData({ ok: true, return: undefined, items: [] }); // record 会是 null
-    return { ok: true, return: undefined, items: [] } as ApiPayload;
+    try {
+      const r = await fetch(`/api/admin/returns/${returnId}/attachments`, {
+        method: "GET",
+        cache: "no-store",
+        credentials: "include",
+        signal,
+      });
+
+      if (r.status === 401) throw new Error("UNAUTHORIZED");
+
+      const j = (await r.json().catch(() => null)) as AttachmentsApiCompat | null;
+
+      if (!r.ok || !j?.ok) {
+        throw new Error(j?.error || `HTTP_${r.status}`);
+      }
+
+      // 兼容两种返回结构：
+      // - worker 现在返回 { attachments: [...] }
+      // - 你旧预期返回 { files: [...] }
+      const listA = Array.isArray(j.files) ? j.files : [];
+      const listB = Array.isArray(j.attachments) ? j.attachments : [];
+
+      const files: AttachmentRow[] =
+        listA.length > 0
+          ? listA.map((x) => ({
+              ...x,
+              raw_url:
+                x.raw_url ||
+                `/api/admin/returns/${returnId}/attachments/${encodeURIComponent(
+                  String(x.id)
+                )}`,
+            }))
+          : listB.map((x) => ({
+              id: Number(x.id),
+              return_id: Number(x.return_id),
+              r2_key: String(x.r2_key || ""),
+              original_name: x.original_name ?? null,
+              content_type: x.content_type ?? null,
+              size_bytes: x.size_bytes ?? null,
+              created_at_ts: x.created_at_ts ?? null,
+              raw_url: `/api/admin/returns/${returnId}/attachments/${encodeURIComponent(
+                String(x.id)
+              )}`,
+            }));
+
+      setAttachments(files);
+      return files;
+    } catch (e: any) {
+      const msg = String(e?.message || e);
+      setAttachments([]);
+      setAttachmentsErr(msg);
+      return [];
+    } finally {
+      setAttachmentsLoading(false);
+    }
   }
-
-  if (!r.ok) {
-    const code = j?.error || `HTTP_${r.status}`;
-    throw new Error(code);
-  }
-
-  if (!j || !j.ok || !j.return) {
-    throw new Error(j?.error || "BAD_PAYLOAD");
-  }
-
-  setData(j);
-  return j;
-}
 
   useEffect(() => {
     let cancelled = false;
@@ -184,6 +270,9 @@ export default function ReturnDetailClient({ id }: { id: string }) {
       setLoading(true);
       setErr("");
       setData(null);
+      setAttachments([]);
+      setAttachmentsErr("");
+      setAttachmentsLoading(false);
       setNotice(null);
 
       if (!Number.isFinite(numericId)) {
@@ -194,25 +283,32 @@ export default function ReturnDetailClient({ id }: { id: string }) {
       }
 
       try {
-        await loadDetail(ctrl.signal);
+        const detail = await loadDetail(ctrl.signal);
+
+        const rid = Number(detail?.return?.id);
+        if (Number.isFinite(rid) && rid > 0) {
+          await loadAttachments(rid, ctrl.signal);
+        } else {
+          setAttachments([]);
+        }
       } catch (e: any) {
         const msg = String(e?.message || e);
         if (!cancelled) {
           setErr(msg);
           const pretty = prettifyErrorMessage(msg);
-          const isNotFound = msg === "NOT_FOUND" || msg === "not_found" || msg === "HTTP_404";
-            setNotice({
-              variant:
-                msg === "UNAUTHORIZED" || msg === "HTTP_401"
-                  ? "warning"
-                  : isNotFound
-                    ? "info"
-                    : "error",
-              message:
-                isNotFound
-                  ? "No return data found for this id."
-                  : pretty || "Failed to load return detail.",
-            });
+          const isNotFound =
+            msg === "NOT_FOUND" || msg === "not_found" || msg === "HTTP_404";
+          setNotice({
+            variant:
+              msg === "UNAUTHORIZED" || msg === "HTTP_401"
+                ? "warning"
+                : isNotFound
+                  ? "info"
+                  : "error",
+            message: isNotFound
+              ? "No return data found for this id."
+              : pretty || "Failed to load return detail.",
+          });
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -238,14 +334,12 @@ export default function ReturnDetailClient({ id }: { id: string }) {
   if (loading) {
     return (
       <div className="space-y-3">
-
         <h2 className="text-xl font-semibold">Loading...</h2>
         <p className="text-sm text-slate-600">Fetching return #{id}</p>
       </div>
     );
   }
 
-  // ✅ 明确区分：id 不合法 / 真实 404 / 未授权 / 其他错误
   if (!record) {
     const pretty =
       err === "not_found" || err === "HTTP_404"
@@ -262,32 +356,21 @@ export default function ReturnDetailClient({ id }: { id: string }) {
 
     return (
       <div className="space-y-3">
-
         <h2 className="text-xl font-semibold">{title}</h2>
-
         <p className="text-sm text-slate-600">{desc}</p>
 
-        {(() => {
-          const alertVariant =
-            pretty === "UNAUTHORIZED"
-              ? "warning"
-              : pretty === "NOT_FOUND"
-                ? "info"
-                : "error";
-
-          const alertText =
-            pretty === "UNAUTHORIZED"
-              ? "Admin session expired. Please sign in again."
-              : pretty === "NOT_FOUND"
-                ? "No data for this return id."
-                : `Error: ${pretty}`;
-
-          return (
-            <Alert variant={alertVariant as any} className="border p-3 text-sm">
-              {alertText}
-            </Alert>
-          );
-        })()}
+        <Alert
+          variant={
+            pretty === "UNAUTHORIZED" ? "warning" : pretty === "NOT_FOUND" ? "info" : "error"
+          }
+          className="border p-3 text-sm"
+        >
+          {pretty === "UNAUTHORIZED"
+            ? "Admin session expired. Please sign in again."
+            : pretty === "NOT_FOUND"
+              ? "No data for this return id."
+              : `Error: ${pretty}`}
+        </Alert>
 
         {pretty === "UNAUTHORIZED" ? (
           <div className="pt-2">
@@ -304,53 +387,57 @@ export default function ReturnDetailClient({ id }: { id: string }) {
   }
 
   async function onApprove() {
-    if (!record) return;
-
-    setNotice(null);
-    setSaving("approve");
-
-    try {
-      const r = await fetch(`/api/admin/returns/${encodeURIComponent(id)}/approve`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        cache: "no-store",
-        credentials: "include",
-        body: JSON.stringify({
-          // ✅ 你后端目前是 minimal version，不需要也不会坏
-          approved_amount_minor: record.requested_amount_minor ?? null,
-          currency: record.currency ?? null,
-        }),
-      });
-
-      const j = (await r.json().catch(() => null)) as any;
-
-      if (r.status === 401) throw new Error("UNAUTHORIZED");
-      if (!r.ok) {
-        const code = j?.error || `HTTP_${r.status}`;
-        throw new Error(code);
-      }
-
-      setRejectReason("");
-      setNotice({ variant: "success", message: "Approved." });
-      await loadDetail();
-    } catch (e: any) {
-      const msg = String(e?.message || e);
-      const pretty = prettifyErrorMessage(msg);
-      setNotice({
-        variant: msg === "UNAUTHORIZED" || msg === "HTTP_401" ? "warning" : "error",
-        message:
-          msg === "UNAUTHORIZED" || msg === "HTTP_401"
-            ? "Admin session expired. Please sign in again."
-            : `Approve failed: ${pretty || msg}`,
-      });
-    } finally {
-      setSaving(null);
-    }
+  const rec = record; // ✅ 关键：用局部变量帮助 TS 缩小类型
+  if (!rec) {
+    setNotice({ variant: "error", message: "Return record not loaded." });
+    return;
   }
 
-  async function onReject() {
-    if (!record) return;
+  setNotice(null);
+  setSaving("approve");
 
+  try {
+    const r = await fetch(`/api/admin/returns/${encodeURIComponent(id)}/approve`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      cache: "no-store",
+      credentials: "include",
+      body: JSON.stringify({
+        approved_amount_minor: rec.requested_amount_minor ?? null,
+        currency: rec.currency ?? null,
+      }),
+    });
+
+    const j = (await r.json().catch(() => null)) as any;
+
+    if (r.status === 401) throw new Error("UNAUTHORIZED");
+    if (!r.ok) throw new Error(j?.error || `HTTP_${r.status}`);
+
+    setRejectReason("");
+    setNotice({ variant: "success", message: "Approved." });
+    await loadDetail();
+  } catch (e: any) {
+    const msg = String(e?.message || e);
+    const pretty = prettifyErrorMessage(msg);
+    setNotice({
+      variant: msg === "UNAUTHORIZED" || msg === "HTTP_401" ? "warning" : "error",
+      message:
+        msg === "UNAUTHORIZED" || msg === "HTTP_401"
+          ? "Admin session expired. Please sign in again."
+          : `Approve failed: ${pretty || msg}`,
+    });
+  } finally {
+    setSaving(null);
+  }
+}
+
+  async function onReject() {
+    const rec = record;
+    if (!rec) {
+      setNotice({ variant: "error", message: "Return record not loaded." });
+      return;
+    }
+    
     const rr = rejectReason.trim();
     if (!rr) {
       setNotice({ variant: "warning", message: "Reject reason is required." });
@@ -372,10 +459,7 @@ export default function ReturnDetailClient({ id }: { id: string }) {
       const j = (await r.json().catch(() => null)) as any;
 
       if (r.status === 401) throw new Error("UNAUTHORIZED");
-      if (!r.ok) {
-        const code = j?.error || `HTTP_${r.status}`;
-        throw new Error(code);
-      }
+      if (!r.ok) throw new Error(j?.error || `HTTP_${r.status}`);
 
       setRejectReason("");
       setNotice({ variant: "success", message: "Rejected." });
@@ -397,20 +481,18 @@ export default function ReturnDetailClient({ id }: { id: string }) {
 
   const requestedAmountText =
     typeof record.requested_amount_minor === "number"
-      ? `${(record.requested_amount_minor / 100).toFixed(2)}${record.currency ? ` ${record.currency}` : ""}`
+      ? `${(record.requested_amount_minor / 100).toFixed(2)}${
+          record.currency ? ` ${record.currency}` : ""
+        }`
       : "N/A";
 
   return (
     <div className="space-y-6">
-
-      {/* Unified notice */}
       {notice ? (
         <div>
           <Alert variant={notice.variant} className="border p-3 text-sm">
             <div className="flex items-center justify-between gap-3">
               <span>{notice.message}</span>
-
-              {/* 对 UNAUTHORIZED 提供快速入口 */}
               {notice.variant === "warning" &&
               notice.message.toLowerCase().includes("sign in") ? (
                 <Link
@@ -426,17 +508,14 @@ export default function ReturnDetailClient({ id }: { id: string }) {
       ) : null}
 
       <div className="space-y-2">
-        {/* Back sits above the title, aligned with content */}
         <div className="text-sm text-slate-500">
           <BackButton
             fallbackHref="/admin/returns"
             fallbackLabel="Returns"
-            // 可选：让它更像“辅助动作”，不要太抢
             className="text-slate-500 hover:text-slate-900"
           />
         </div>
 
-        {/* Title row */}
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <h2 className="text-xl font-semibold leading-tight">
@@ -529,6 +608,57 @@ export default function ReturnDetailClient({ id }: { id: string }) {
       </div>
 
       <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-sm font-medium text-slate-900">Attachments</div>
+          {attachmentsLoading ? (
+            <div className="text-xs text-slate-500">Loading images...</div>
+          ) : (
+            <div className="text-xs text-slate-500">
+              {attachments.length ? `${attachments.length} file(s)` : "No files"}
+            </div>
+          )}
+        </div>
+
+        {attachmentsErr ? (
+          <div className="mt-2">
+            <Alert variant="error" className="border p-3 text-sm">
+              Failed to load attachments: {prettifyErrorMessage(attachmentsErr)}
+            </Alert>
+          </div>
+        ) : null}
+
+        {!attachmentsLoading && attachments.length === 0 && !attachmentsErr ? (
+          <div className="mt-2 text-sm text-slate-600">No images uploaded.</div>
+        ) : null}
+
+        {attachments.length > 0 ? (
+          <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-3">
+            {attachments.map((f) => (
+              <a
+                key={f.id}
+                href={f.raw_url}
+                target="_blank"
+                rel="noreferrer"
+                className="group block overflow-hidden rounded-md border bg-slate-50"
+                title={f.original_name || ""}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={f.raw_url}
+                  alt={f.original_name || "attachment"}
+                  className="h-28 w-full object-cover transition group-hover:scale-[1.02]"
+                  loading="lazy"
+                />
+                <div className="truncate px-2 py-1 text-xs text-slate-600">
+                  {f.original_name || f.r2_key}
+                </div>
+              </a>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="rounded-lg border border-slate-200 bg-white p-4">
         <div className="text-sm font-medium text-slate-900">Items</div>
         {items.length === 0 ? (
           <div className="mt-2 text-sm text-slate-600">No items.</div>
@@ -558,7 +688,8 @@ export default function ReturnDetailClient({ id }: { id: string }) {
                       <div className="mt-0.5 text-xs text-slate-500">{meta}</div>
                     ) : (
                       <div className="mt-0.5 text-xs text-slate-500">
-                        order_item_id: <span className="font-mono">{it.order_item_id}</span>
+                        order_item_id:{" "}
+                        <span className="font-mono">{it.order_item_id}</span>
                       </div>
                     )}
                   </div>

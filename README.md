@@ -884,9 +884,9 @@ Created your new D1 database.
 
 清库
 
-wrangler d1 execute socialplatform --remote --file=reset.sql
+wrangler d1 execute jevi --remote --file=reset.sql
 
-wrangler d1 execute socialplatform --remote --file migrations/0001_base.sql
+wrangler d1 execute jevi --remote --file migrations/0001_base.sql
 
 ==================================================================
 
@@ -1068,5 +1068,3 @@ return功能需要再做检查，一个item一个item的检查
 我想问下，Phase 2做好了之后，是在什么情况下才会需要“极低概率需要人工退款/联系用户”
 
 stock 小于50的时候才显示stock的数量
-
-finalizing order information 添加loading动画

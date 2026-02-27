@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-const WORKER_BASE = process.env.API_PROXY || "http://127.0.0.1:8787";
+const WORKER_BASE = process.env.API_PROXY || "http://localhost:8787";
 
 export async function POST(req: Request) {
   try {
