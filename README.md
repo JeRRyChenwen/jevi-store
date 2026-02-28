@@ -859,6 +859,10 @@ wrangler d1 list
 让所有stock都为44的命令：
 UPDATE inventory SET stock = 44;
 
+检查交易信息：
+https://www.sandbox.paypal.com
+记得登录商家账号
+
 ====================================================================
 
 我的staging database 的内容：
