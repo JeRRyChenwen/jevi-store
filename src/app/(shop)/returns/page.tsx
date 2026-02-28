@@ -124,7 +124,7 @@ function mapReturnError(raw: string) {
 
   if (e === "duplicate_return_request") {
     return (
-      "A return request for this item is already in progress (pending). " +
+      "A return request that includes this item has already been submitted and is currently pending or under review. " +
       "Please wait for our team to review the existing request. If the request is rejected, you may submit again."
     );
   }

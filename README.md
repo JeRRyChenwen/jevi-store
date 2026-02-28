@@ -1043,8 +1043,6 @@ ios
 
 邮件+物流track
 
-3大区域做成strapi的内容
-
 delivery tracking email
 
 order confirmation 对应的图片
@@ -1059,11 +1057,13 @@ order-item 表的variant 字段，material也要存进去
 
 优化admin平台里同步strapi里的数据的功能
 
+退款成功之后是否自动把货物加回inventory 表
+
+你生产准备使用的域名/部署方式（Pages / workers.dev / 自己域名）
+你前端 admin 是从哪个 origin 访问（例如 https://xxx.pages.dev）
+发我一下，我就能把 SameSite / Secure / Domain 的最终策略给你定死，避免上线后“登录偶发掉线/跨域不带 cookie”。
+
 ================================================
-
-return功能需要再做检查，一个item一个item的检查
-
-退货的时候可以让顾客提交图片
 
 我想问下，Phase 2做好了之后，是在什么情况下才会需要“极低概率需要人工退款/联系用户”
 
