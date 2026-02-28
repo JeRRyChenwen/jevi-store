@@ -32,14 +32,22 @@ type Props = {
 
 function getApiBase() {
   const fromEnv =
-    (process.env.NEXT_PUBLIC_WORKER_BASE_URL || process.env.NEXT_PUBLIC_API_BASE || "") as string;
+    (process.env.NEXT_PUBLIC_WORKER_BASE_URL ||
+      process.env.NEXT_PUBLIC_API_BASE ||
+      "") as string;
 
-  const base = String(fromEnv || "")
-    .trim()
-    .replace(/\/+$/, "");
+  const base = String(fromEnv || "").trim().replace(/\/+$/, "");
   if (base) return base;
 
-  return "http://127.0.0.1:8787";
+  // ✅ 关键：默认跟你的前端 host 保持一致，避免 localhost/127.0.0.1 cookie 不互通
+  // 你的页面是 localhost:3000，就默认走 localhost:8787
+  if (typeof window !== "undefined") {
+    const h = window.location.hostname;
+    if (h === "localhost") return "http://localhost:8787";
+    if (h === "127.0.0.1") return "http://127.0.0.1:8787";
+  }
+
+  return "http://localhost:8787";
 }
 
 async function postJson(url: string, body: any) {
@@ -314,6 +322,20 @@ export default function PayPalBigButton({
                   return;
                 }
 
+                // ✅ NEW: email 多来源兜底（address 里没有 email 也能下单）
+                // 你 PaymentStep 很可能把 email 存在别的字段里，所以这里做 fallback
+                const email =
+                  String(
+                    successMeta?.address?.email ??
+                      successMeta?.checkoutEmail ??
+                      successMeta?.email ??
+                      ""
+                  )
+                    .trim()
+                    .toLowerCase();
+
+
+
                 const orderBody = {
                   currency: (checkoutTotals?.currency || currency || "AUD").toUpperCase(),
                   items: itemsFromMeta,
@@ -328,11 +350,11 @@ export default function PayPalBigButton({
                     raw: paypalPayload.raw,
                   },
 
+                  // ✅ NEW: 永远带上 email（不依赖 address 一定有 email）
+                  ...(email ? { email } : {}),
+
                   ...(successMeta?.address
                     ? {
-                        email: String(successMeta.address?.email || "")
-                          .trim()
-                          .toLowerCase(),
                         first_name: successMeta.address?.firstName ?? null,
                         last_name: successMeta.address?.lastName ?? null,
                         phone: successMeta.address?.phone ?? null,
@@ -405,11 +427,7 @@ export default function PayPalBigButton({
                   ? { ...paypalPayload, successMeta, order: orderResp, createdOrderId }
                   : { ...paypalPayload, order: orderResp, createdOrderId };
 
-                void Promise.resolve(onSucceeded?.(merged));
-
-                // ✅ 只调用一次 onSucceeded
-                // ✅ 且不要 await：让 PayPal 的 overlay 更快结束（否则会卡在黑屏/PayPal 遮罩）
-                // 上层（PaymentStep / checkout page）自己处理跳转。
+                // ✅ 只调用一次 onSucceeded（避免重复跳转/重复 setState）
                 void Promise.resolve(onSucceeded?.(merged));
 
                 // ✅ 关键：这里不再跳转！！！
