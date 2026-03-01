@@ -828,6 +828,12 @@ wrangler dev --port 8789
 
 npm run develop
 
+cloudflared tunnel --url http://localhost:1337
+
+start-dev.bat
+
+==============================================================================
+
 脚本运行命令：
 
 npm run gen:variants:dry
@@ -891,6 +897,14 @@ Created your new D1 database.
 wrangler d1 execute jevi --remote --file=reset.sql
 
 wrangler d1 execute jevi --remote --file migrations/0001_base.sql
+
+===================================
+
+d1 worker 注入token
+
+wrangler secret put STRAPI_TOKEN
+
+wrangler secret put resend_API_TOKEN
 
 ==================================================================
 
@@ -1043,6 +1057,8 @@ privacy，注册条款，网站footer条款
 
 ios
 
+email 图片
+
 客户真的下单之后，要怎么通知供货商
 
 邮件+物流track
@@ -1054,6 +1070,12 @@ order confirmation 对应的图片
 logo
 
 refund email
+
+加顶部品牌条（强烈推荐）
+
+加 “Track order” 按钮（电商标配
+
+3. 加 “Need help?” 客服区
 
 ================================================
 
