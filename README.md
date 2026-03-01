@@ -1091,6 +1091,8 @@ order-item 表的variant 字段，material也要存进去
 你前端 admin 是从哪个 origin 访问（例如 https://xxx.pages.dev）
 发我一下，我就能把 SameSite / Secure / Domain 的最终策略给你定死，避免上线后“登录偶发掉线/跨域不带 cookie”。
 
+如何获取tracking number 等货物发货信息
+
 ================================================
 
 我想问下，Phase 2做好了之后，是在什么情况下才会需要“极低概率需要人工退款/联系用户”
