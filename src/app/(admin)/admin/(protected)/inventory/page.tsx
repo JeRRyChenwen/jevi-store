@@ -1,6 +1,7 @@
+// src/app/(admin)/admin/(protected)/inventory/page.tsx
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Alert } from "@/components/ui/alert";
 
 type StatsResp =
@@ -24,6 +25,38 @@ type SyncResp =
     }
   | { ok: false; error: string; [k: string]: any };
 
+function prettifyErrorMessage(msg: string) {
+  const s = (msg || "").trim();
+  const lower = s.toLowerCase();
+  if (!s) return "";
+
+  if (lower.startsWith("request_failed_")) {
+    const code = lower.replace("request_failed_", "");
+    return `Request failed (${code}). Please try again.`;
+  }
+
+  if (lower === "forbidden") return "Forbidden. Please sign in again.";
+  if (lower === "unauthorized") return "Unauthorized. Please sign in again.";
+  if (lower === "internal_error") return "Server error. Please try again later.";
+
+  return s;
+}
+
+/**
+ * ✅ NEW: 安全解析 JSON，避免 400/500 返回 HTML 导致 Unexpected token '<'
+ */
+async function safeReadJson<T = any>(r: Response): Promise<T> {
+  const text = await r.text();
+  if (!text) return {} as any;
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    const head = text.slice(0, 200).replace(/\s+/g, " ").trim();
+    throw new Error(`Non-JSON response (status=${r.status}). Body starts with: ${head}`);
+  }
+}
+
 export default function InventoryPage() {
   const [stats, setStats] = useState<StatsResp | null>(null);
   const [syncResult, setSyncResult] = useState<SyncResp | null>(null);
@@ -42,11 +75,29 @@ export default function InventoryPage() {
     setError("");
 
     try {
-      const r = await fetch("/api/admin/inventory/stats", { cache: "no-store" });
-      const j = await r.json();
+      const r = await fetch("/api/admin/inventory/stats", {
+        method: "GET",
+        cache: "no-store",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+      });
+
+      if (r.status === 401) {
+        const next = `/admin/inventory`;
+        window.location.href = `/admin/login?next=${encodeURIComponent(next)}`;
+        return;
+      }
+
+      const j = await safeReadJson<StatsResp>(r);
+      if (!r.ok || !(j as any)?.ok) {
+        const err = (j as any)?.error || `request_failed_${r.status}`;
+        throw new Error(err);
+      }
+
       setStats(j);
     } catch (e: any) {
-      setError(e?.message || "Failed to load stats");
+      setError(String(e?.message || e || "Failed to load stats"));
+      setStats(null);
     } finally {
       setLoading(false);
     }
@@ -64,19 +115,26 @@ export default function InventoryPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ pageSize }),
         cache: "no-store",
+        credentials: "include",
       });
 
-      const j = await r.json();
+      if (r.status === 401) {
+        const next = `/admin/inventory`;
+        window.location.href = `/admin/login?next=${encodeURIComponent(next)}`;
+        return;
+      }
+
+      const j = await safeReadJson<SyncResp>(r);
       setSyncResult(j);
 
-      if (!j?.ok) {
-        setError(j?.error ? `Sync failed: ${j.error}` : "Sync failed");
-        return;
+      if (!r.ok || !(j as any)?.ok) {
+        const err = (j as any)?.error || `request_failed_${r.status}`;
+        throw new Error(err);
       }
 
       await fetchStats();
     } catch (e: any) {
-      setError(e?.message || "Sync error");
+      setError(String(e?.message || e || "Sync error"));
     } finally {
       setSyncing(false);
     }
@@ -84,15 +142,18 @@ export default function InventoryPage() {
 
   useEffect(() => {
     fetchStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const rows = (stats as any)?.rows ?? 0;
   const inStockRows = (stats as any)?.in_stock_rows ?? 0;
   const totalStock = (stats as any)?.total_stock ?? 0;
 
+  const prettyError = useMemo(() => prettifyErrorMessage(error), [error]);
+
   return (
     <div className="space-y-4">
-      {/* Header (对齐 Returns 的 header 布局) */}
+      {/* Header (对齐 Returns / Orders 的 header 布局) */}
       <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
         <div>
           <h2 className="text-xl font-semibold">Inventory</h2>
@@ -101,7 +162,7 @@ export default function InventoryPage() {
           </p>
         </div>
 
-        {/* Actions (风格对齐 Returns 的 select / 控件) */}
+        {/* Actions */}
         <div className="flex items-center gap-2">
           <button
             onClick={fetchStats}
@@ -125,14 +186,14 @@ export default function InventoryPage() {
         </div>
       </div>
 
-      {/* Error (统一 Alert 用法) */}
-      {error ? (
+      {/* Error */}
+      {prettyError ? (
         <Alert variant="error" className="border p-3 text-sm">
-          {error}
+          {prettyError}
         </Alert>
       ) : null}
 
-      {/* Confirm (替代浏览器弹窗，统一 Alert 用法) */}
+      {/* Confirm */}
       {showConfirm ? (
         <Alert variant="warning" className="border p-3 text-sm">
           <div className="font-medium">Confirm inventory sync</div>
@@ -163,7 +224,7 @@ export default function InventoryPage() {
         </Alert>
       ) : null}
 
-      {/* Stats cards (完全对齐 Dashboard 样式) */}
+      {/* Stats cards (对齐 Dashboard 样式) */}
       <div className="grid gap-4 md:grid-cols-3">
         <div className="rounded-lg border bg-white p-4">
           <div className="text-xs text-slate-500">Total SKUs</div>

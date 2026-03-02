@@ -3,7 +3,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import AdminAuthGate from "../AdminAuthGate";
 
 export default function AdminProtectedLayout({
@@ -12,6 +12,7 @@ export default function AdminProtectedLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
 
   const handleLogout = async () => {
     try {
@@ -21,44 +22,62 @@ export default function AdminProtectedLayout({
         cache: "no-store",
       });
     } finally {
-      // ✅ 关键：硬跳转，彻底离开 (protected) layout，停止 Gate 循环
       window.location.replace("/admin/login");
     }
   };
 
+  // ⭐ 高亮判断函数
+  const isActive = (path: string) => {
+    if (path === "/admin") {
+      return pathname === "/admin";
+    }
+    return pathname.startsWith(path);
+  };
+
+  const linkClass = (path: string) =>
+    [
+      "block px-3 py-2 rounded-md text-sm transition",
+      isActive(path)
+        ? "bg-black text-white"
+        : "text-slate-700 hover:bg-slate-100",
+    ].join(" ");
+
   return (
     <AdminAuthGate>
       <div className="min-h-screen flex bg-slate-50">
+        {/* sidebar */}
         <aside className="w-64 border-r bg-white flex flex-col">
           <div className="px-4 py-6 border-b">
             <h1 className="text-lg font-semibold">Admin Console</h1>
-            <p className="text-xs text-slate-500 mt-1">Operations & Support</p>
+            <p className="text-xs text-slate-500 mt-1">
+              Operations & Support
+            </p>
           </div>
 
+          {/* menu */}
           <nav className="mt-4 px-2 space-y-1 flex-1">
-            <Link
-              href="/admin"
-              className="block px-3 py-2 rounded-md text-sm hover:bg-slate-100"
-            >
+            <Link href="/admin" className={linkClass("/admin")}>
               Dashboard
             </Link>
 
-            <Link
-              href="/admin/returns"
-              className="block px-3 py-2 rounded-md text-sm hover:bg-slate-100"
-            >
+            {/* ⭐ NEW Orders */}
+            <Link href="/admin/orders" className={linkClass("/admin/orders")}>
+              Orders
+            </Link>
+
+            <Link href="/admin/returns" className={linkClass("/admin/returns")}>
               Returns
             </Link>
 
-            {/* ✅ NEW: Inventory */}
             <Link
               href="/admin/inventory"
-              className="block px-3 py-2 rounded-md text-sm hover:bg-slate-100"
+              className={linkClass("/admin/inventory")}
             >
               Inventory
             </Link>
           </nav>
 
+          {/* logout */}
           <div className="px-2 pb-4 pt-3 border-t">
             <button
               onClick={handleLogout}
@@ -69,6 +88,7 @@ export default function AdminProtectedLayout({
           </div>
         </aside>
 
+        {/* main */}
         <main className="flex-1 p-6">{children}</main>
       </div>
     </AdminAuthGate>

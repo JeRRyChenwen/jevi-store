@@ -1,27 +1,34 @@
-// src/app/admin/page.tsx
-export default function AdminDashboardPage() {
-  return (
-    <div className="space-y-4">
-      <h2 className="text-xl font-semibold">Dashboard</h2>
-      <p className="text-sm text-slate-600">
-        这里先作为占位页面。后续可以放：
-        今日订单数、待处理退货数量、销售额等指标。
-      </p>
+"use client";
 
+import AdminPage from "@/components/admin/AdminPage";
+import AdminStatCard from "@/components/admin/AdminStatCard";
+import { useEffect, useState } from "react";
+
+export default function AdminDashboardPage() {
+  const [pendingReturns, setPendingReturns] = useState("-");
+  const [todayOrders, setTodayOrders] = useState("-");
+  const [shippedToday, setShippedToday] = useState("-");
+
+  // 后面可以接真实API
+  useEffect(() => {
+    // TODO: future metrics API
+  }, []);
+
+  return (
+    <AdminPage
+      title="Dashboard"
+      subtitle="Store overview & operations"
+    >
       <div className="grid gap-4 md:grid-cols-3">
-        <div className="rounded-lg border bg-white p-4">
-          <div className="text-xs text-slate-500">Pending returns</div>
-          <div className="mt-2 text-2xl font-bold">-</div>
-        </div>
-        <div className="rounded-lg border bg-white p-4">
-          <div className="text-xs text-slate-500">Today&apos;s orders</div>
-          <div className="mt-2 text-2xl font-bold">-</div>
-        </div>
-        <div className="rounded-lg border bg-white p-4">
-          <div className="text-xs text-slate-500">Refund volume</div>
-          <div className="mt-2 text-2xl font-bold">-</div>
-        </div>
+        <AdminStatCard label="Pending returns" value={pendingReturns} />
+        <AdminStatCard label="Today's orders" value={todayOrders} />
+        <AdminStatCard label="Shipped today" value={shippedToday} />
       </div>
-    </div>
+
+      <div className="rounded-lg border bg-white p-4 text-sm text-slate-600">
+        Welcome to your admin console.  
+        Use the left navigation to manage orders, returns and inventory.
+      </div>
+    </AdminPage>
   );
 }
