@@ -23,8 +23,13 @@ function upstreamHeaders(req: NextRequest) {
   };
 }
 
-export async function PATCH(req: NextRequest, ctx: { params: { id: string } }) {
-  const id = String(ctx?.params?.id || "").trim();
+type Ctx = { params: { id: string } } | { params: Promise<{ id: string }> };
+
+export async function PATCH(req: NextRequest, ctx: Ctx) {
+  // ✅ Next.js 某些版本会把 params 变成异步动态 API（Promise），这里统一兼容
+  const params = await Promise.resolve((ctx as any).params);
+  const id = String(params?.id || "").trim();
+
   if (!id) {
     return NextResponse.json({ ok: false, error: "missing_id" }, { status: 400 });
   }

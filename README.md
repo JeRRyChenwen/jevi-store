@@ -832,6 +832,10 @@ cloudflared tunnel --url http://localhost:1337
 
 start-dev.bat
 
+修改自动发邮件功能项目之后要重新部署一次：
+cd /d D:\前端练习\mailer-api
+wrangler deploy --env=""
+
 ==============================================================================
 
 脚本运行命令：
@@ -1098,3 +1102,5 @@ order-item 表的variant 字段，material也要存进去
 我想问下，Phase 2做好了之后，是在什么情况下才会需要“极低概率需要人工退款/联系用户”
 
 stock 小于50的时候才显示stock的数量
+
+退货页面再议
