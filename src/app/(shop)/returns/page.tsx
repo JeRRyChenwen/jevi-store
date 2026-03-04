@@ -2,10 +2,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 // ✅ 复用你现有的 Strapi 工具
 import { api, mediaUrl } from "@/lib/strapi";
@@ -51,6 +52,13 @@ type ReturnsBootstrapResp = {
   authed: boolean;
   email: string | null;
   orders: MyOrderRow[];
+
+  // ✅ NEW: pagination metadata (from worker /my/orders)
+  page?: number;
+  page_size?: number;
+  total?: number;
+  total_pages?: number;
+
   error?: string;
   worker_version?: string;
 };
@@ -208,10 +216,22 @@ function isAllowedImage(file: File) {
 
 export default function ReturnsPage() {
   const search = useSearchParams();
+  const router = useRouter();
+
   const [step, setStep] = useState<1 | 2 | 3>(1);
 
   const [orderNumber, setOrderNumber] = useState(search.get("order") || "");
   const [email, setEmail] = useState(search.get("email") || "");
+
+  // ✅ NEW: 前端分页（因为 /api/returns/bootstrap 目前返回的是全量 orders，
+  // 且 worker 并没有真的根据 page/page_size 做分页）
+  const PAGE_SIZE = 10;
+  const [ordersPage, setOrdersPage] = useState(1);
+
+  function goPage(nextPage: number) {
+    // ✅ 纯前端分页：不改 URL，不走 router.push
+    setOrdersPage((p) => Math.max(1, Math.floor(nextPage || p)));
+  }
 
   // ✅ 登录态引导（bootstrap）
   const [authed, setAuthed] = useState<boolean>(false);
@@ -307,7 +327,7 @@ export default function ReturnsPage() {
     console.log("[returns] cleared alert because order/email changed");
   }, [orderNumber, email]);
 
-  // ✅ 页面加载时：调用 bootstrap，决定“登录用户/游客”模式
+  // ✅ NEW: bootstrap 只需要拉一次（当前 /api/returns/bootstrap 实际返回全量 orders）
   useEffect(() => {
     let dead = false;
 
@@ -316,10 +336,11 @@ export default function ReturnsPage() {
         setBootLoading(true);
         setBootError("");
 
-        const res = await fetch("/api/returns/bootstrap?limit=50&offset=0", {
+        const res = await fetch(`/api/returns/bootstrap`, {
           credentials: "include",
           cache: "no-store",
         });
+
         const data = (await res.json().catch(() => ({}))) as ReturnsBootstrapResp;
 
         if (!data?.ok) {
@@ -350,6 +371,14 @@ export default function ReturnsPage() {
       dead = true;
     };
   }, []);
+
+  // ✅ NEW: 当订单数量变化时，修正当前页（避免越界）
+  // 注意：这里用 myOrders.length 即可，因为 sortedMyOrders 是由 myOrders 派生
+  useEffect(() => {
+    const total = Array.isArray(myOrders) ? myOrders.length : 0;
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    setOrdersPage((p) => Math.min(Math.max(1, p), totalPages));
+  }, [myOrders, PAGE_SIZE]);
 
   // ✅ NEW：点击表头切换排序（与 admin 一致：切列默认 desc）
   function toggleSort(nextKey: SortKey) {
@@ -393,6 +422,20 @@ export default function ReturnsPage() {
 
     return arr;
   }, [myOrders, sortKey, sortDir]);
+
+
+  // ✅ NEW: 前端分页切片（基于排序后的数组）
+  const ordersTotal = sortedMyOrders.length;
+  const ordersTotalPages = Math.max(1, Math.ceil(ordersTotal / PAGE_SIZE));
+
+  const pagedOrders = useMemo(() => {
+    const start = (ordersPage - 1) * PAGE_SIZE;
+    const end = start + PAGE_SIZE;
+    return sortedMyOrders.slice(start, end);
+  }, [sortedMyOrders, ordersPage, PAGE_SIZE]);
+
+  const showingFrom = ordersTotal === 0 ? 0 : (ordersPage - 1) * PAGE_SIZE + 1;
+  const showingTo = Math.min(ordersPage * PAGE_SIZE, ordersTotal);
 
   // ✅ 上传：选择图片
   function onPickImages(e: ChangeEvent<HTMLInputElement>) {
@@ -854,79 +897,186 @@ export default function ReturnsPage() {
                 {sortedMyOrders.length === 0 ? (
                   <div className="text-sm text-muted-foreground">No orders found.</div>
                 ) : (
-                  <div className="overflow-x-auto rounded-lg border bg-white">
-                    <table className="w-full text-left text-sm">
-                      <thead className="border-b bg-slate-50 text-xs text-slate-600">
-                        <tr>
-                          <th className="py-2 pl-3 pr-4">
-                            <button
-                              type="button"
-                              className={headerBtn}
-                              onClick={() => toggleSort("order")}
-                              title="Sort by Order"
-                            >
-                              Order
-                              <SortIcon dir={sortKey === "order" ? sortDir : null} />
-                            </button>
-                          </th>
+                  <div className="h-[535px] min-h-[520px] flex flex-col gap-3">
+                    {/* ✅ 固定高度：table 区域 flex-1；分页永远贴底 */}
 
-                          <th className="py-2 pr-4">
-                            <button
-                              type="button"
-                              className={headerBtn}
-                              onClick={() => toggleSort("paidAt")}
-                              title="Sort by Paid at"
-                            >
-                              Paid at
-                              <SortIcon dir={sortKey === "paidAt" ? sortDir : null} />
-                            </button>
-                          </th>
+                    {/* 表格容器：占满剩余高度，必要时滚动 */}
+                    <div className="flex-1 overflow-hidden rounded-lg border bg-white">
+                      <div className="h-full">
+                        <table className="w-full text-left text-sm">
+                          <thead className="sticky top-0 z-10 border-b bg-slate-50 text-xs text-slate-600">
+                            <tr>
+                              <th className="py-2 pl-3 pr-4">
+                                <button
+                                  type="button"
+                                  className={headerBtn}
+                                  onClick={() => toggleSort("order")}
+                                  title="Sort by Order"
+                                >
+                                  Order
+                                  <SortIcon dir={sortKey === "order" ? sortDir : null} />
+                                </button>
+                              </th>
 
-                          <th className="py-2 pr-4">
-                            <button
-                              type="button"
-                              className={headerBtn}
-                              onClick={() => toggleSort("amount")}
-                              title="Sort by Amount"
-                            >
-                              Amount
-                              <SortIcon dir={sortKey === "amount" ? sortDir : null} />
-                            </button>
-                          </th>
+                              <th className="py-2 pr-4">
+                                <button
+                                  type="button"
+                                  className={headerBtn}
+                                  onClick={() => toggleSort("paidAt")}
+                                  title="Sort by Paid at"
+                                >
+                                  Paid at
+                                  <SortIcon dir={sortKey === "paidAt" ? sortDir : null} />
+                                </button>
+                              </th>
 
-                          <th className="py-2 pr-4">Status</th>
-                          <th className="py-2 pr-3"></th>
-                        </tr>
-                      </thead>
+                              <th className="py-2 pr-4">
+                                <button
+                                  type="button"
+                                  className={headerBtn}
+                                  onClick={() => toggleSort("amount")}
+                                  title="Sort by Amount"
+                                >
+                                  Amount
+                                  <SortIcon dir={sortKey === "amount" ? sortDir : null} />
+                                </button>
+                              </th>
 
-                      <tbody>
-                        {sortedMyOrders.map((o) => (
-                          <tr key={o.id} className="border-t">
-                            <td className="py-2 pl-3 pr-4 font-medium">
-                              {o.order_number || `#${o.id}`}
-                              <div className="text-xs text-muted-foreground">
-                                Items: {o.item_count}
-                              </div>
-                            </td>
-                            <td className="py-2 pr-4">{o.paid_at_cn || o.created_at_cn || "-"}</td>
-                            <td className="py-2 pr-4">{fmtMoney(o.total_minor, o.currency)}</td>
-                            <td className="py-2 pr-4 text-muted-foreground">{o.status || "-"}</td>
-                            <td className="py-2 pr-3 text-right">
-                              <Button
-                                variant="outline"
-                                className="px-4"
-                                disabled={loading || isLookupCoolingDown || !o.order_number || !o.email}
-                                onClick={() =>
-                                  handleFindOrder(String(o.order_number || ""), String(o.email || ""))
-                                }
-                              >
-                                {loading ? "Loading…" : "Start Return"}
-                              </Button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                              <th className="py-2 pr-4">Status</th>
+                              <th className="py-2 pr-3"></th>
+                            </tr>
+                          </thead>
+
+                          <tbody>
+                            {pagedOrders.map((o) => (
+                              <tr key={o.id} className="border-t">
+                                <td className="py-2 pl-3 pr-4 font-medium">
+                                  {o.order_number || `#${o.id}`}
+                                  <div className="text-xs text-muted-foreground">Items: {o.item_count}</div>
+                                </td>
+                                <td className="py-2 pr-4">{o.paid_at_cn || o.created_at_cn || "-"}</td>
+                                <td className="py-2 pr-4">{fmtMoney(o.total_minor, o.currency)}</td>
+                                <td className="py-2 pr-4 text-muted-foreground">{o.status || "-"}</td>
+                                <td className="py-2 pr-3 text-right">
+                                  <Button
+                                    variant="outline"
+                                    className="px-4"
+                                    disabled={loading || isLookupCoolingDown || !o.order_number || !o.email}
+                                    onClick={() =>
+                                      handleFindOrder(String(o.order_number || ""), String(o.email || ""))
+                                    }
+                                  >
+                                    {loading ? "Loading…" : "Start Return"}
+                                  </Button>
+                                </td>
+                              </tr>
+                            ))}
+
+                            
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* ✅ 分页：永远贴底 */}
+                    <div className="mt-auto flex items-center justify-between gap-3">
+                      <div className="text-xs text-muted-foreground">
+                        {ordersTotal > 0 ? (
+                          <>
+                            Showing <span className="font-medium">{showingFrom}</span>
+                            {"–"}
+                            <span className="font-medium">{showingTo}</span> of{" "}
+                            <span className="font-medium">{ordersTotal}</span>
+                          </>
+                        ) : (
+                          <>Showing 0</>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-9 w-9 px-0 rounded-lg"
+                          disabled={bootLoading || ordersPage <= 1}
+                          onClick={() => goPage(ordersPage - 1)}
+                          aria-label="Previous page"
+                          title="Previous"
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                        </Button>
+
+                        <div className="flex items-center gap-2">
+                          {(() => {
+                            const totalPages = Math.max(1, Number(ordersTotalPages || 1));
+                            const cur = Math.max(1, Math.min(ordersPage, totalPages));
+
+                            const pages: Array<number | "ellipsis"> = [];
+                            if (totalPages <= 5) {
+                              for (let i = 1; i <= totalPages; i++) pages.push(i);
+                            } else {
+                              pages.push(1);
+                              const start = Math.max(2, cur - 1);
+                              const end = Math.min(totalPages - 1, cur + 1);
+
+                              if (start > 2) pages.push("ellipsis");
+                              for (let i = start; i <= end; i++) pages.push(i);
+                              if (end < totalPages - 1) pages.push("ellipsis");
+
+                              pages.push(totalPages);
+                            }
+
+                            return pages.map((p, idx) => {
+                              if (p === "ellipsis") {
+                                return (
+                                  <span
+                                    key={`e-${idx}`}
+                                    className="px-1 text-sm text-muted-foreground select-none"
+                                  >
+                                    …
+                                  </span>
+                                );
+                              }
+
+                              const isActive = p === cur;
+
+                              // ✅ 所有页码都有边框；当前页边框更深 + 灰底
+                              const base = "h-9 w-9 px-0 rounded-lg border";
+                              const active =
+                                "bg-slate-100 border-slate-400 text-slate-900 pointer-events-none";
+                              const idle = "bg-white border-slate-200 text-slate-900 hover:bg-slate-50";
+
+                              return (
+                                <button
+                                  key={p}
+                                  type="button"
+                                  className={[base, isActive ? active : idle].join(" ")}
+                                  onClick={() => goPage(p)}
+                                  aria-current={isActive ? "page" : undefined}
+                                  aria-label={`Page ${p}`}
+                                  title={`Page ${p}`}
+                                  disabled={bootLoading}
+                                >
+                                  {p}
+                                </button>
+                              );
+                            });
+                          })()}
+                        </div>
+
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-9 w-9 px-0 rounded-lg"
+                          disabled={bootLoading || ordersPage >= (ordersTotalPages || 1)}
+                          onClick={() => goPage(ordersPage + 1)}
+                          aria-label="Next page"
+                          title="Next"
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
