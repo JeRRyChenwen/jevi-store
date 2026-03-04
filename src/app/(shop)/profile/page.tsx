@@ -131,7 +131,7 @@ export default async function ProfilePage() {
 
   // === UI ===
   return (
-    <main className="px-4 md:px-8 py-8 max-w-3xl mx-auto">
+    <main className="mx-auto max-w-6xl px-4 py-8 md:px-8">
       {/* ✅ 面包屑：Home › Profile */}
       <nav className="mb-4 text-sm text-neutral-600" aria-label="Breadcrumb">
         <Link href="/" className="hover:underline">
