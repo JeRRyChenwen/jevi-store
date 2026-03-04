@@ -1097,6 +1097,13 @@ order-item 表的variant 字段，material也要存进去
 
 如何获取tracking number 等货物发货信息
 
+专业建议（未来结构升级方案）
+等你上线时，建议这样分层：
+0001_base.sql -> 核心业务表（orders, inventory 等）
+0002_rate_limit.sql -> rate limit 相关表
+0003_indexes.sql -> 后期补索引
+这样你以后就不会因为改 rate limit 而重建所有表。
+
 ================================================
 
 我想问下，Phase 2做好了之后，是在什么情况下才会需要“极低概率需要人工退款/联系用户”
@@ -1104,3 +1111,15 @@ order-item 表的variant 字段，material也要存进去
 stock 小于50的时候才显示stock的数量
 
 退货页面再议
+
+用户如果创建账号之前就下了order，之后再创建账号，订单是否应该记录
+
+order添加一个delivered的状态
+
+更复杂的订单号码
+
+上线之后immigration文件要从 DROP TABLE IF EXISTS rate_limit_failures; 改成 CREATE TABLE IF NOT EXISTS rate_limit_failures 并且索引也改成 IF NOT EXISTS
+
+order history的时间
+
+return 列表 分页，order history 列表 分页

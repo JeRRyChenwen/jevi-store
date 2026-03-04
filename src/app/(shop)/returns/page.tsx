@@ -1,7 +1,7 @@
-// src/app/returns/page.tsx
+// src/app/(shop)/returns/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -111,9 +111,13 @@ function toTsFromCn(s?: string | null) {
   return Number.isFinite(t) ? t : 0;
 }
 
-/** ✅ 后端 error code -> 用户可读文案（保持你原来 wording，不改业务含义） */
+/** ✅ 后端 error code -> 用户可读文案（保持你原来 wording，不改业务含义）
+ *  重要：如果传进来的已经是“人话”，就原样返回，不要被兜底吞掉
+ */
 function mapReturnError(raw: string) {
   const e = String(raw || "").trim();
+
+  if (!e) return "Something went wrong. Please try again.";
 
   if (e === "item_already_returned") {
     return (
@@ -129,7 +133,46 @@ function mapReturnError(raw: string) {
     );
   }
 
+  // ✅ NEW: 如果 e 不是我们认识的 error code，大概率它已经是“用户可读文案”
+  // 比如 lookup 场景里：showError(mapLookupError(...)) 传进来的就是一句完整的英文提示
   return e;
+}
+
+/** ✅ NEW：Lookup（order_number + email）错误码 -> 用户友好提示（安全：不泄露哪项错） */
+function mapLookupError(raw: string, retryAfterSec?: number) {
+  const e = String(raw || "").trim().toLowerCase();
+
+  // ✅ 安全：统一“查不到匹配订单”，不要暴露是 email 不对还是 order 不对
+  if (
+    e === "not_found" ||
+    e === "order_not_found" ||
+    e === "email_mismatch" ||
+    e === "no_match"
+  ) {
+    return (
+      "We couldn’t find an order that matches those details. " +
+      "Please double-check your order number and the email used at checkout, then try again."
+    );
+  }
+
+  if (e === "missing_order_number" || e === "missing_email" || e === "missing_input") {
+    return "Please enter both your order number and the email used for this order.";
+  }
+
+  if (e === "invalid_email") {
+    return "Please enter a valid email address.";
+  }
+
+  if (e === "rate_limited" || e === "too_many_requests" || e === "429") {
+    const s = Number(retryAfterSec || 0);
+    if (Number.isFinite(s) && s > 0) {
+      return `Too many attempts. Please wait ${s} seconds and try again.`;
+    }
+    return "Too many attempts. Please wait a moment and try again111.";
+  }
+
+  // fallback：不要把原始 error code 直接展示给用户
+  return "Unable to find your order right now. Please try again in a moment.";
 }
 
 /** ✅ NEW：用于排序 Order 号（order_number 可能是 SP20260121-000003 这种） */
@@ -183,6 +226,32 @@ export default function ReturnsPage() {
   const [sortDir, setSortDir] = useState<SortDir>("desc"); // 默认：Paid at 新到旧（desc）
 
   const [loading, setLoading] = useState(false);
+  const lookupCooldownUntilRef = useRef<number>(0);
+
+  // ✅ NEW: 用一个“当前时间”tick 驱动倒计时 UI 重新渲染
+  const [cooldownNow, setCooldownNow] = useState<number>(Date.now());
+
+  // ✅ NEW: 只要处于 cooldown，就每 250ms 刷新一次 UI（让秒数实时跳动）
+  useEffect(() => {
+    const id = setInterval(() => {
+      // 仅在冷却期内才更新，避免无意义刷新
+      if (Date.now() < lookupCooldownUntilRef.current) {
+        setCooldownNow(Date.now());
+      }
+    }, 250);
+
+    return () => clearInterval(id);
+  }, []);
+
+  // ✅ NEW: 计算还剩几秒
+  // - 用 floor：能正常显示 0（不会卡在 1）
+  // - 再用 isLookupCoolingDown 控制 banner：>0 才显示，到 0 自动消失
+  const lookupCooldownLeftSec = Math.max(
+    0,
+    Math.floor((lookupCooldownUntilRef.current - cooldownNow) / 1000)
+  );
+  const isLookupCoolingDown = lookupCooldownLeftSec > 0;
+  
   const [order, setOrder] = useState<OrderSummary | null>(null);
 
   // 查到的订单明细（带 items），用于 ReturnItemsSelector
@@ -228,6 +297,15 @@ export default function ReturnsPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLines, reasonType, reasonDetail]);
+
+  // ✅ NEW：当用户修改 orderNumber / email 时，清掉上一次 lookup 产生的提示（比如 rate_limited）
+  // 否则你会看到旧的 “Too many attempts...” 一直残留，看起来像“没变化”
+  useEffect(() => {
+    clearAlert();
+    setErrorCode(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    console.log("[returns] cleared alert because order/email changed");
+  }, [orderNumber, email]);
 
   // ✅ 页面加载时：调用 bootstrap，决定“登录用户/游客”模式
   useEffect(() => {
@@ -396,6 +474,17 @@ export default function ReturnsPage() {
       return;
     }
 
+    // ✅ NEW: 正在请求中就忽略（避免重复触发）
+    if (loading) return;
+
+    // ✅ NEW: 冷却期内禁止重复 lookup（避免打到 worker rate limit）
+    const now = Date.now();
+    if (now < lookupCooldownUntilRef.current) {
+      // 触发 UI 刷新（让顶部倒计时立刻显示）
+      setCooldownNow(Date.now());
+      return;
+    }
+
     // 同步回 state（确保后续 submit 用到一致的 email/orderNumber）
     setOrderNumber(on);
     setEmail(em);
@@ -407,12 +496,64 @@ export default function ReturnsPage() {
         `/api/returns/lookup?order_number=${encodeURIComponent(on)}&email=${encodeURIComponent(
           em
         )}`,
-        { credentials: "include" }
+        { credentials: "include", cache: "no-store" }
       );
 
       const data = await res.json().catch(() => ({} as any));
+
       if (!res.ok || !data.ok) {
-        showError(data?.error || "Failed to find order.");
+        const code = String(data?.error || "").trim();
+        const serverMsg = typeof data?.message === "string" ? data.message.trim() : "";
+
+        // ✅ NEW: retry-after 优先从 body，其次从 header（有些实现只写 header）
+        const retryAfterFromBody = Number(data?.retry_after_sec ?? 0);
+        const retryAfterHeader = res.headers.get("retry-after");
+        const retryAfterFromHeader = retryAfterHeader ? Number(retryAfterHeader) : 0;
+
+        const retryAfterSec =
+          (Number.isFinite(retryAfterFromBody) && retryAfterFromBody > 0
+            ? retryAfterFromBody
+            : 0) ||
+          (Number.isFinite(retryAfterFromHeader) && retryAfterFromHeader > 0
+            ? retryAfterFromHeader
+            : 0);
+
+        console.warn("[returns][lookup] failed", {
+          status: res.status,
+          code,
+          serverMsg,
+          retryAfterSec,
+          upstream_status: data?.upstream_status,
+          upstream_error: data?.upstream_error,
+        });
+
+        // ✅ NEW: 设置前端冷却
+        // - 429 / rate_limited：用 retryAfterSec（没有就默认 10s）
+        // - 404 not_found：也给一个短冷却 2s，防止用户疯狂连点
+        const lc = code.toLowerCase();
+        const isRateLimited =
+          res.status === 429 || lc === "rate_limited" || lc === "too_many_requests";
+
+        if (isRateLimited) {
+          const cool = retryAfterSec > 0 ? retryAfterSec : 60; // ✅ 你后端是 60s，这里默认也对齐
+          lookupCooldownUntilRef.current = Date.now() + cool * 1000;
+          setCooldownNow(Date.now());
+
+          // ✅ 进入冷却期：保证界面只显示黄条（不残留任何红条）
+          clearAlert();
+          setErrorCode(null);
+
+          return;
+        }
+
+        // ✅ 关键：优先展示后端已经拼好的 message（最准确）
+        if (serverMsg) {
+          showError(serverMsg);
+          return;
+        }
+
+        // ✅ 其次：前端映射（会安全地把 not_found 映射成人话）
+        showError(code ? mapLookupError(code, retryAfterSec || undefined) : mapLookupError("no_match"));
         return;
       }
 
@@ -673,8 +814,19 @@ export default function ReturnsPage() {
 
       <h1 className="text-2xl font-semibold mb-4">Returns &amp; Exchanges</h1>
 
-      {/* ✅ 顶部统一提示：只在非“inline block”场景显示 */}
-      {hasAlert && !showInlineBlock && alert?.message && (
+      {/* ✅ NEW: Lookup 冷却倒计时（不依赖 hasAlert） */}
+      {step === 1 && isLookupCoolingDown && !showInlineBlock && (
+        <div className="mb-4">
+          <Alert variant="error">
+            {`Too many attempts. Please wait ${lookupCooldownLeftSec} ${
+              lookupCooldownLeftSec === 1 ? "second" : "seconds"
+            } and try again.`}
+          </Alert>
+        </div>
+      )}
+
+      {/* ✅ 顶部统一提示：冷却期由上面的 cooldown banner 接管，避免红黄叠加 */}
+      {hasAlert && !showInlineBlock && !isLookupCoolingDown && alert?.message && (
         <div className="mb-4">
           <Alert variant={alert.type}>{alert.message}</Alert>
         </div>
@@ -763,7 +915,7 @@ export default function ReturnsPage() {
                               <Button
                                 variant="outline"
                                 className="px-4"
-                                disabled={loading || !o.order_number || !o.email}
+                                disabled={loading || isLookupCoolingDown || !o.order_number || !o.email}
                                 onClick={() =>
                                   handleFindOrder(String(o.order_number || ""), String(o.email || ""))
                                 }
@@ -811,7 +963,7 @@ export default function ReturnsPage() {
                   variant="outline"
                   className="px-6"
                   onClick={() => handleFindOrder()}
-                  disabled={loading}
+                  disabled={loading || isLookupCoolingDown}
                 >
                   {loading ? "Finding your order..." : "Find my order"}
                 </Button>
@@ -839,10 +991,11 @@ export default function ReturnsPage() {
                 variant="outline"
                 className="px-6"
                 onClick={() => handleFindOrder()}
-                disabled={loading}
+                disabled={loading || isLookupCoolingDown}
               >
                 {loading ? "Finding your order..." : "Find my order"}
               </Button>
+
             </Card>
           )}
         </div>

@@ -52,21 +52,45 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  // ✅ 透传上游限流信息（如果有）
+  const retryAfterHeader = upstream.headers.get("retry-after"); // 可能为 null
+  const retryAfterSec =
+    typeof data?.retry_after_sec === "number"
+      ? data.retry_after_sec
+      : retryAfterHeader
+      ? Number(retryAfterHeader)
+      : null;
+
   // Worker 约定：
   // - 找不到时返回 { ok:false, error:"not_found" } + 404
   // - 找到时返回 { ok:true, order, items, worker_version }
   if (!upstream.ok || !data?.ok || !data.order) {
     const status = upstream.status || 502;
-    return NextResponse.json(
-      {
-        ok: false,
-        error: data?.error || "lookup_failed",
-        // ✅ 增强调试：你本地看 Network 就能知道上游到底回了什么
-        upstream_status: upstream.status,
-        upstream_error: data?.error,
-      },
-      { status }
-    );
+
+    // ✅ 透传给前端的 payload：让前端能展示“冷却倒计时 + 更清晰提示”
+    const payload = {
+      ok: false,
+      error: data?.error || "lookup_failed",
+      message:
+        data?.message ||
+        (status === 429
+          ? "Too many attempts. For security, please wait a moment and try again."
+          : status === 404
+          ? "We couldn’t find an order that matches those details. Please double-check your order number and the email used at checkout, then try again."
+          : null),
+      retry_after_sec: retryAfterSec,
+      retry_after_header: retryAfterHeader,
+
+      // ✅ 增强调试：你本地看 Network 就能知道上游到底回了什么
+      upstream_status: upstream.status,
+      upstream_error: data?.error,
+    };
+
+    // ✅ 同时把 Retry-After header 透传给浏览器（让前端更准）
+    const headers: Record<string, string> = {};
+    if (retryAfterHeader) headers["Retry-After"] = String(retryAfterHeader);
+
+    return NextResponse.json(payload, { status, headers });
   }
 
   return NextResponse.json(
