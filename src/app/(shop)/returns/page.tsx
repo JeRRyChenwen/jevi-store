@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { UserTime } from "@/components/datetime/Time";
 
 // ✅ 复用你现有的 Strapi 工具
 import { api, mediaUrl } from "@/lib/strapi";
@@ -42,9 +43,16 @@ type MyOrderRow = {
   total_minor: number;
   status: string | null;
   item_count: number;
+
+  // ✅ legacy（后端格式化字符串，未来可逐步不用）
   created_at_cn?: string | null;
   updated_at_cn?: string | null;
   paid_at_cn?: string | null;
+
+  // ✅ NEW: epoch 秒（UTC）——用户侧展示统一走它
+  created_at_ts?: number | null;
+  updated_at_ts?: number | null;
+  paid_at_ts?: number | null;
 };
 
 type ReturnsBootstrapResp = {
@@ -406,11 +414,24 @@ export default function ReturnsPage() {
       }
 
       if (sortKey === "paidAt") {
-        const at = toTsFromCn(a.paid_at_cn || a.created_at_cn);
-        const bt = toTsFromCn(b.paid_at_cn || b.created_at_cn);
-        if (at === bt) return 0;
-        return at > bt ? dir : -dir;
-      }
+      // ✅ 优先 epoch 秒（更准、更快、更统一）
+      const atSec =
+        (typeof a.paid_at_ts === "number" ? a.paid_at_ts : null) ??
+        (typeof a.created_at_ts === "number" ? a.created_at_ts : null);
+
+      const btSec =
+        (typeof b.paid_at_ts === "number" ? b.paid_at_ts : null) ??
+        (typeof b.created_at_ts === "number" ? b.created_at_ts : null);
+
+      // 转成毫秒用于比较；没有 ts 就用旧 cn 兜底
+      const at =
+        typeof atSec === "number" ? atSec * 1000 : toTsFromCn(a.paid_at_cn || a.created_at_cn);
+      const bt =
+        typeof btSec === "number" ? btSec * 1000 : toTsFromCn(b.paid_at_cn || b.created_at_cn);
+
+      if (at === bt) return 0;
+      return at > bt ? dir : -dir;
+    }
 
       // sortKey === "order"
       const ao = String(a.order_number || `#${a.id}`);
@@ -954,7 +975,15 @@ export default function ReturnsPage() {
                                   {o.order_number || `#${o.id}`}
                                   <div className="text-xs text-muted-foreground">Items: {o.item_count}</div>
                                 </td>
-                                <td className="py-2 pr-4">{o.paid_at_cn || o.created_at_cn || "-"}</td>
+                                <td className="py-2 pr-4">
+                                  {/* ✅ 用户侧：优先 epoch 秒 → 浏览器本地时间 */}
+                                  {typeof o.paid_at_ts === "number" || typeof o.created_at_ts === "number" ? (
+                                    <UserTime ts={(o.paid_at_ts ?? o.created_at_ts) ?? null} fallback="-" />
+                                  ) : (
+                                    // ✅ 兜底：如果后端暂时没给 *_ts，就先显示旧的 cn 字符串（以后可以删）
+                                    (o.paid_at_cn || o.created_at_cn || "-")
+                                  )}
+                                </td>
                                 <td className="py-2 pr-4">{fmtMoney(o.total_minor, o.currency)}</td>
                                 <td className="py-2 pr-4 text-muted-foreground">{o.status || "-"}</td>
                                 <td className="py-2 pr-3 text-right">
@@ -1157,7 +1186,14 @@ export default function ReturnsPage() {
             <div className="flex justify-between text-sm">
               <div>
                 <div className="font-medium">Order {order.order_number ?? order.id}</div>
-                <div className="text-muted-foreground">Placed at: {order.created_at_cn || "N/A"}</div>
+                <div className="text-muted-foreground">
+                  Placed at:{" "}
+                  {"created_at_ts" in (order as any) && typeof (order as any).created_at_ts === "number" ? (
+                    <UserTime ts={(order as any).created_at_ts} fallback="N/A" />
+                  ) : (
+                    (order.created_at_cn || "N/A")
+                  )}
+                </div>
               </div>
               <div className="text-right text-sm text-muted-foreground">Status: {order.status}</div>
             </div>

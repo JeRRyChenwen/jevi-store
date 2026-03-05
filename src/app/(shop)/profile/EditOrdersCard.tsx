@@ -7,6 +7,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useFormAlert } from "@/hooks/useFormAlert";
+import { UserTime } from "@/components/datetime/Time";
 
 type OrderRow = {
   id: number;
@@ -38,19 +39,6 @@ function fmtCurrency(minor: number, ccy: string | null) {
     maximumFractionDigits: 2,
   }).format(major);
   return `${code} ${num}`;
-}
-
-function fmtDate(v: string | number | null | undefined) {
-  if (v == null) return "";
-  if (typeof v === "number") {
-    const d = new Date(v * 1000);
-    return d.toLocaleString();
-  }
-  if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}$/.test(v)) {
-    return v;
-  }
-  const d = new Date(v);
-  return isNaN(+d) ? String(v) : d.toLocaleString();
 }
 
 function alertVariantOf(type?: string): "error" | "success" | "warning" | "info" {
@@ -219,7 +207,7 @@ export default function EditOrdersCard() {
                         </td>
 
                         <td className="py-2 pr-4">
-                          {fmtDate(o.created_at_cn ?? o.created_at_ts ?? o.created_at)}
+                          <UserTime ts={o.created_at_ts ?? null} fallback="-" />
                         </td>
                         <td className="py-2 pr-4">
                           {fmtCurrency(o.total_minor, o.currency)}

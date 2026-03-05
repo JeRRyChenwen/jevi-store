@@ -1,6 +1,7 @@
 // src/app/profile/orders/[id]/page.tsx
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { UserTime } from "@/components/datetime/Time";
 
 // 可以改成你自己的正式域名，比如 https://social-platform.pages.dev
 const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
@@ -40,7 +41,7 @@ type OrderDetail = {
   // 有些实现会把 meta 带回来（如果你后端加了就会有）
   meta?: any;
 
-  created_at_cn?: string | null; // 已格式化好的字符串（若后端有）
+  created_at_cn?: string | null; // legacy: user-side no longer uses this
   created_at_ts?: number | null; // Unix 秒
 };
 
@@ -62,19 +63,6 @@ function fmtCurrency(minor: number | null | undefined, ccy: string | null) {
   return `${code} ${num}`;
 }
 
-/** ✅ 稳定日期：优先用后端给的 created_at_cn，否则把时间戳格式化为 UTC 字符串 */
-function fmtDateStable(ts?: number | null, cn?: string | null): string {
-  if (typeof cn === "string" && cn.trim()) return cn.trim();
-  if (typeof ts === "number") {
-    const d = new Date(ts * 1000);
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return (
-      `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ` +
-      `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())} UTC`
-    );
-  }
-  return "";
-}
 
 async function fetchOrderDetail(idOrNo: string): Promise<OrderDetailResp> {
   const url = `${BASE_URL}/api/orders/${encodeURIComponent(idOrNo)}`;
@@ -159,12 +147,13 @@ export default async function OrderDetailPage({ params }: PageProps) {
     totalMinorFromOrder ||
     Math.max(0, itemsTotalMinor + deliveryFeeMinor + taxMinor - discountMinor);
 
-  // ✅ 稳定的“下单时间”字符串（避免 Hydration mismatch）
-  const createdAt = fmtDateStable(order.created_at_ts, order.created_at_cn);
+  // ✅ 用户侧：只保留 epoch 秒（UTC），由 <UserTime/> 在客户端按用户本地时区渲染
+  const createdAtTs =
+    typeof order.created_at_ts === "number" ? order.created_at_ts : null;
 
   // 面包屑显示用的编号
   const displayNo = order.order_number || idOrNo;
-
+ 
   return (
     <main className="px-4 md:px-8 py-8 max-w-3xl mx-auto">
       {/* ✅ 面包屑：Home › Profile › My Orders - [订单号] */}
@@ -198,7 +187,9 @@ export default async function OrderDetailPage({ params }: PageProps) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
           <div>
             <div className="text-xs text-neutral-500">Placed at</div>
-            <div suppressHydrationWarning>{createdAt || "-"}</div>
+            <div>
+              <UserTime ts={createdAtTs} fallback="-" />
+            </div>
           </div>
           <div>
             <div className="text-xs text-neutral-500">Contact email</div>

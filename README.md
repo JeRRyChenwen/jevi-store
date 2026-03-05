@@ -1122,4 +1122,4 @@ order添加一个delivered的状态
 
 order history的时间
 
-3个 + admin平台
+3个 + admin平台 + order confirmation
