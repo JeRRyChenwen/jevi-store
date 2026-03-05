@@ -386,12 +386,12 @@ export default function AdminOrdersPage() {
             <thead className="border-b bg-slate-50 text-xs text-slate-600">
               <tr>
                 <th className="px-4 py-3">ID</th>
-                <th className="px-4 py-3">Order No</th>
-                <th className="px-4 py-3">Customer</th>
+                <th className="px-4 py-3">Order number</th>
+                <th className="px-4 py-3">Customer name</th>
                 <th className="px-4 py-3">Email</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Total</th>
-                <th className="px-4 py-3">Created</th>
+                <th className="px-4 py-3">Created at</th>
                 <th className="px-4 py-3">Shipped</th>
                 <th className="px-4 py-3">Tracking</th>
                 <th className="px-4 py-3 text-right">Actions</th>

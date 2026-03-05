@@ -176,7 +176,7 @@ export default function EditOrdersCard() {
                 <table className="w-full text-sm">
               <thead className="text-left text-neutral-500">
                 <tr>
-                  <th className="py-2 pl-3 pr-4">Order / ID</th>
+                  <th className="py-2 pl-3 pr-4">Order number</th>
                   <th className="py-2 pr-4">Created at</th>
                   <th className="py-2 pr-4">Amount</th>
                   <th className="py-2 pr-4">Status</th>

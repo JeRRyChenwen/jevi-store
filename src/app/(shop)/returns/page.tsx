@@ -934,7 +934,7 @@ export default function ReturnsPage() {
                                   onClick={() => toggleSort("order")}
                                   title="Sort by Order"
                                 >
-                                  Order
+                                  Order number
                                   <SortIcon dir={sortKey === "order" ? sortDir : null} />
                                 </button>
                               </th>
@@ -946,7 +946,7 @@ export default function ReturnsPage() {
                                   onClick={() => toggleSort("paidAt")}
                                   title="Sort by Paid at"
                                 >
-                                  Paid at
+                                  Created at
                                   <SortIcon dir={sortKey === "paidAt" ? sortDir : null} />
                                 </button>
                               </th>

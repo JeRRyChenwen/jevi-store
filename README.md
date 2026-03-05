@@ -835,6 +835,7 @@ start-dev.bat
 修改自动发邮件功能项目之后要重新部署一次：
 cd /d D:\前端练习\mailer-api
 wrangler deploy --env=""
+wrangler deploy
 
 ==============================================================================
 
@@ -1119,7 +1120,3 @@ order添加一个delivered的状态
 更复杂的订单号码
 
 上线之后immigration文件要从 DROP TABLE IF EXISTS rate_limit_failures; 改成 CREATE TABLE IF NOT EXISTS rate_limit_failures 并且索引也改成 IF NOT EXISTS
-
-order history的时间
-
-3个 + admin平台 + order confirmation

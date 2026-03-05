@@ -309,7 +309,7 @@ export default function AdminReturnsPage() {
                     onClick={() => toggleSort("return_id")}
                     title="Sort by Return ID"
                   >
-                    Return #
+                    Return number
                     <SortIcon dir={sortBy === "return_id" ? sortDir : null} />
                   </button>
                 </th>
@@ -321,7 +321,7 @@ export default function AdminReturnsPage() {
                     onClick={() => toggleSort("order_id")}
                     title="Sort by Order ID"
                   >
-                    Order #
+                    Order number
                     <SortIcon dir={sortBy === "order_id" ? sortDir : null} />
                   </button>
                 </th>
@@ -336,7 +336,7 @@ export default function AdminReturnsPage() {
                     onClick={() => toggleSort("created_at")}
                     title="Sort by Created At"
                   >
-                    Created At
+                    Created at
                     <SortIcon dir={sortBy === "created_at" ? sortDir : null} />
                   </button>
                 </th>
