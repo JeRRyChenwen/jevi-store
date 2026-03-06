@@ -51,7 +51,11 @@ export default function ForgotPasswordPage() {
       const body = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        throw new Error(body?.error || "Request failed.");
+        throw new Error(
+          body?.message ||
+          body?.error ||
+          "Request failed."
+        );
       }
 
       /**

@@ -1120,3 +1120,7 @@ order添加一个delivered的状态
 更复杂的订单号码
 
 上线之后immigration文件要从 DROP TABLE IF EXISTS rate_limit_failures; 改成 CREATE TABLE IF NOT EXISTS rate_limit_failures 并且索引也改成 IF NOT EXISTS
+
+reset email 文案优化
+
+在没有orders的情况下，修改profile ui
