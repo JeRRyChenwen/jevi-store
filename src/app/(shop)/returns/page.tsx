@@ -455,6 +455,12 @@ export default function ReturnsPage() {
     return sortedMyOrders.slice(start, end);
   }, [sortedMyOrders, ordersPage, PAGE_SIZE]);
 
+  // ✅ 最终规则：
+  // - 总订单数 <= 10（只有 1 页）时：自适应高度
+  // - 总订单数 > 10（已经进入“满页 + 后续页”场景）时：
+  //   从第一页开始把整个列表高度锁定，后续所有页保持一致
+  const shouldLockListHeight = ordersTotal > PAGE_SIZE;
+
   const showingFrom = ordersTotal === 0 ? 0 : (ordersPage - 1) * PAGE_SIZE + 1;
   const showingTo = Math.min(ordersPage * PAGE_SIZE, ordersTotal);
 
@@ -918,12 +924,27 @@ export default function ReturnsPage() {
                 {sortedMyOrders.length === 0 ? (
                   <div className="text-sm text-muted-foreground">No orders found.</div>
                 ) : (
-                  <div className="h-[535px] min-h-[520px] flex flex-col gap-3">
-                    {/* ✅ 固定高度：table 区域 flex-1；分页永远贴底 */}
+                  <div
+                    className={[
+                      "flex flex-col gap-3 transition-[min-height,height] duration-200",
+                      shouldLockListHeight
+                        ? "h-[535px] min-h-[520px]"
+                        : "h-auto min-h-[220px]",
+                    ].join(" ")}
+                  >
+                    {/* ✅ 最终规则：
+                        - 总订单数 <= 10（只有 1 页）时：自适应高度
+                        - 总订单数 > 10（进入“满页 + 后续页”场景）时：
+                          从第一页开始把整个列表高度锁定，后续所有页保持一致 */}
 
-                    {/* 表格容器：占满剩余高度，必要时滚动 */}
-                    <div className="flex-1 overflow-hidden rounded-lg border bg-white">
-                      <div className="h-full">
+                    {/* 表格容器：锁定高度时占满剩余空间；否则自然收缩 */}
+                    <div
+                      className={[
+                        "overflow-hidden rounded-lg border bg-white",
+                        shouldLockListHeight ? "flex-1" : "h-auto",
+                      ].join(" ")}
+                    >
+                      <div className={shouldLockListHeight ? "h-full" : "h-auto"}>
                         <table className="w-full text-left text-sm">
                           <thead className="sticky top-0 z-10 border-b bg-slate-50 text-xs text-slate-600">
                             <tr>
@@ -946,7 +967,7 @@ export default function ReturnsPage() {
                                   onClick={() => toggleSort("paidAt")}
                                   title="Sort by Paid at"
                                 >
-                                  Created at
+                                  Paid at
                                   <SortIcon dir={sortKey === "paidAt" ? sortDir : null} />
                                 </button>
                               </th>
@@ -973,26 +994,44 @@ export default function ReturnsPage() {
                               <tr key={o.id} className="border-t">
                                 <td className="py-2 pl-3 pr-4 font-medium">
                                   {o.order_number || `#${o.id}`}
-                                  <div className="text-xs text-muted-foreground">Items: {o.item_count}</div>
+                                  <div className="text-xs text-muted-foreground">
+                                    Items: {o.item_count}
+                                  </div>
                                 </td>
                                 <td className="py-2 pr-4">
                                   {/* ✅ 用户侧：优先 epoch 秒 → 浏览器本地时间 */}
-                                  {typeof o.paid_at_ts === "number" || typeof o.created_at_ts === "number" ? (
-                                    <UserTime ts={(o.paid_at_ts ?? o.created_at_ts) ?? null} fallback="-" />
+                                  {typeof o.paid_at_ts === "number" ||
+                                  typeof o.created_at_ts === "number" ? (
+                                    <UserTime
+                                      ts={(o.paid_at_ts ?? o.created_at_ts) ?? null}
+                                      fallback="-"
+                                    />
                                   ) : (
                                     // ✅ 兜底：如果后端暂时没给 *_ts，就先显示旧的 cn 字符串（以后可以删）
-                                    (o.paid_at_cn || o.created_at_cn || "-")
+                                    o.paid_at_cn || o.created_at_cn || "-"
                                   )}
                                 </td>
-                                <td className="py-2 pr-4">{fmtMoney(o.total_minor, o.currency)}</td>
-                                <td className="py-2 pr-4 text-muted-foreground">{o.status || "-"}</td>
+                                <td className="py-2 pr-4">
+                                  {fmtMoney(o.total_minor, o.currency)}
+                                </td>
+                                <td className="py-2 pr-4 text-muted-foreground">
+                                  {o.status || "-"}
+                                </td>
                                 <td className="py-2 pr-3 text-right">
                                   <Button
                                     variant="outline"
                                     className="px-4"
-                                    disabled={loading || isLookupCoolingDown || !o.order_number || !o.email}
+                                    disabled={
+                                      loading ||
+                                      isLookupCoolingDown ||
+                                      !o.order_number ||
+                                      !o.email
+                                    }
                                     onClick={() =>
-                                      handleFindOrder(String(o.order_number || ""), String(o.email || ""))
+                                      handleFindOrder(
+                                        String(o.order_number || ""),
+                                        String(o.email || "")
+                                      )
                                     }
                                   >
                                     {loading ? "Loading…" : "Start Return"}
@@ -1000,8 +1039,6 @@ export default function ReturnsPage() {
                                 </td>
                               </tr>
                             ))}
-
-                            
                           </tbody>
                         </table>
                       </div>
@@ -1069,11 +1106,11 @@ export default function ReturnsPage() {
 
                               const isActive = p === cur;
 
-                              // ✅ 所有页码都有边框；当前页边框更深 + 灰底
                               const base = "h-9 w-9 px-0 rounded-lg border";
                               const active =
                                 "bg-slate-100 border-slate-400 text-slate-900 pointer-events-none";
-                              const idle = "bg-white border-slate-200 text-slate-900 hover:bg-slate-50";
+                              const idle =
+                                "bg-white border-slate-200 text-slate-900 hover:bg-slate-50";
 
                               return (
                                 <button
