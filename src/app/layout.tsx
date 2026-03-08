@@ -3,10 +3,21 @@ import "./globals.css";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { BRAND } from "@/lib/brand";
 
 export const metadata: Metadata = {
-  title: "SocialPlatform",
-  description: "社交平台 - 由 Next.js + shadcn 构建",
+  title: {
+    default: `${BRAND.displayName} | Official Store`,
+    template: `%s | ${BRAND.displayName}`,
+  },
+  description: BRAND.siteDescription,
+  metadataBase: new URL(BRAND.siteUrl),
+
+  icons: {
+    icon: [
+      { url: "/favicon-32-32.png", sizes: "32x32", type: "image/png" },
+    ],
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

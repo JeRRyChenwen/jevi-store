@@ -1106,3 +1106,24 @@ stock 小于50的时候才显示stock的数量
 order添加一个delivered的状态
 
 上线之后immigration文件要从 DROP TABLE IF EXISTS rate_limit_failures; 改成 CREATE TABLE IF NOT EXISTS rate_limit_failures 并且索引也改成 IF NOT EXISTS
+
+======================
+
+域名弄好了之后
+
+商业邮箱
+
+链接供货商的shippment api
+
+email里的图片显示
+
+浏览器 favicon右边的名字 浏览器标题优化
+
+检查checkout payment页面的AUD 文案
+
+footer 可以加上social link：
+Instagram
+TikTok
+YouTube
+
+Open Graph (OG Image)，让别人分享你的网站

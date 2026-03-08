@@ -1,6 +1,7 @@
-// src/components/auth/AuthShell.tsx
 import * as React from "react";
 import Link from "next/link";
+import { BRAND } from "@/lib/brand";
+import AuthLogo from "@/components/brand/AuthLogo";
 
 type Props = {
   title: string;
@@ -30,15 +31,15 @@ export default function AuthShell({ title, subtitle, children, footer, className
 
       <div className="container mx-auto px-4 py-12">
         <div className="mx-auto w-full max-w-md">
-          {/* 顶部品牌（可替换为 Logo） */}
-          <div className="mb-6 flex items-center justify-center">
-            <Link href="/" className="text-xl font-semibold tracking-tight hover:opacity-90">
-              SocialPlatform
-            </Link>
+          {/* ✅ 顶部品牌位：现在先用品牌名，后面你可以很容易替换成图片 Logo */}
+          <div className="mb-8 flex items-center justify-center">
+            <AuthLogo />
           </div>
 
           {/* 卡片 */}
-          <div className={`rounded-2xl border bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/60 shadow-sm ${className}`}>
+          <div
+            className={`rounded-2xl border bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/60 shadow-sm ${className}`}
+          >
             <div className="p-6">
               <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
               {subtitle && <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>}

@@ -1,11 +1,11 @@
 // src/app/cookies/page.tsx
 import type { Metadata } from "next";
 import LegalShell from "@/components/legal/LegalShell";
+import { BRAND } from "@/lib/brand";
 
 export const metadata: Metadata = {
-  title: "Cookie Policy | SocialPlatform",
-  description:
-    "Learn how SocialPlatform uses cookies and similar technologies to enhance your browsing experience.",
+  title: `Privacy Policy | ${BRAND.displayName}`,
+  description: `Learn how ${BRAND.displayName} collects, uses, and protects your personal information.`,
 };
 
 export default function CookiesPage() {
@@ -16,7 +16,7 @@ export default function CookiesPage() {
       intro={
         <>
           <p>
-            At <strong>SocialPlatform</strong>, we take your privacy seriously and are committed to
+            At <strong>{BRAND.displayName}</strong>, we take your privacy seriously and are committed to
             providing a transparent experience regarding how we use cookies and similar technologies.
           </p>
           <p>
@@ -168,8 +168,8 @@ export default function CookiesPage() {
         </p>
         <p className="mt-2">
           <strong>Email:</strong>{" "}
-          <a href="mailto:lancechen1998@gmail.com" className="underline">
-            lancechen1998@gmail.com
+          <a href="mailto:{BRAND.supportEmail}" className="underline">
+            {BRAND.supportEmail}
           </a>
         </p>
       </section>

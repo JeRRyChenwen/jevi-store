@@ -1,11 +1,11 @@
 // src/app/terms/page.tsx
 import type { Metadata } from "next";
 import LegalShell from "@/components/legal/LegalShell";
+import { BRAND } from "@/lib/brand";
 
 export const metadata: Metadata = {
-  title: "Terms & Conditions | SocialPlatform",
-  description:
-    "Read the terms and conditions for using SocialPlatform, including site usage, purchases, intellectual property, and user responsibilities.",
+  title: `Privacy Policy | ${BRAND.displayName}`,
+  description: `Learn how ${BRAND.displayName} collects, uses, and protects your personal information.`,
 };
 
 export default function TermsPage() {
@@ -17,7 +17,7 @@ export default function TermsPage() {
         <>
           <p>
             These Terms and Conditions (“Terms”) govern your access to and use of the{" "}
-            <strong>SocialPlatform</strong> website (the “Website”) and related services. By
+            <strong>{BRAND.displayName}</strong> website (the “Website”) and related services. By
             accessing or using this Website, you agree to be bound by these Terms. If you do not
             agree, you must stop using the Website immediately.
           </p>
@@ -92,7 +92,7 @@ export default function TermsPage() {
         <h2 className="text-base font-semibold text-foreground">5. Intellectual Property</h2>
         <p>
           All Website content, including text, images, graphics, logos, and code, is the property of{" "}
-          <strong>SocialPlatform</strong> or its content providers and is protected by international
+          <strong>{BRAND.displayName}</strong> or its content providers and is protected by international
           copyright and trademark laws.
         </p>
         <p>
@@ -118,7 +118,7 @@ export default function TermsPage() {
         <h2 className="text-base font-semibold text-foreground">7. Limitation of Liability</h2>
         <p>
           While we take reasonable steps to ensure the accuracy of Website information,{" "}
-          <strong>SocialPlatform</strong> makes no warranties regarding the completeness or accuracy
+          <strong>{BRAND.displayName}</strong> makes no warranties regarding the completeness or accuracy
           of any content. To the fullest extent permitted by law, we disclaim all liability for any
           loss or damage arising out of or in connection with your use of the Website or any linked
           third-party websites.
@@ -142,7 +142,7 @@ export default function TermsPage() {
         <h2 className="text-base font-semibold text-foreground">9. User Content and Reviews</h2>
         <p>
           If you submit reviews, comments, or other content to the Website, you grant{" "}
-          <strong>SocialPlatform</strong> a non-exclusive, royalty-free, perpetual, and worldwide
+          <strong>{BRAND.displayName}</strong> a non-exclusive, royalty-free, perpetual, and worldwide
           license to use, reproduce, modify, or publish that content in any form or media. You are
           solely responsible for the legality and accuracy of your submitted content.
         </p>
@@ -186,8 +186,8 @@ export default function TermsPage() {
         </p>
         <p className="mt-2">
           <strong>Email:</strong>{" "}
-          <a href="mailto:lancechen1998@gmail.com" className="underline">
-            lancechen1998@gmail.com
+          <a href="mailto:{BRAND.supportEmail}" className="underline">
+            {BRAND.supportEmail}
           </a>
         </p>
       </section>

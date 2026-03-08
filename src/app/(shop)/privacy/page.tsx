@@ -1,11 +1,11 @@
 // src/app/privacy/page.tsx
 import type { Metadata } from "next";
 import LegalShell from "@/components/legal/LegalShell";
+import { BRAND } from "@/lib/brand";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy | SocialPlatform",
-  description:
-    "Learn how SocialPlatform collects, uses, and protects your personal information in compliance with global privacy standards.",
+  title: `Privacy Policy | ${BRAND.displayName}`,
+  description: `Learn how ${BRAND.displayName} collects, uses, and protects your personal information.`,
 };
 
 export default function PrivacyPage() {
@@ -16,7 +16,7 @@ export default function PrivacyPage() {
       intro={
         <>
           <p>
-            This Privacy Policy explains how <strong>SocialPlatform</strong> (“we”, “us”, or “our”)
+            This Privacy Policy explains how <strong>{BRAND.displayName}</strong> (“we”, “us”, or “our”)
             collects, uses, stores, and protects your personal information when you use our website
             and related services (collectively, the “Service”).
           </p>
@@ -45,7 +45,7 @@ export default function PrivacyPage() {
         <h2 className="text-base font-semibold text-foreground">2. How We Collect Information</h2>
         <p>We collect information from you in several ways, including:</p>
         <ul className="list-disc pl-5 space-y-1">
-          <li>When you register or create an account on SocialPlatform</li>
+          <li>When you register or create an account on {BRAND.displayName}</li>
           <li>When you make a purchase, submit a form, or contact us</li>
           <li>When you interact with our marketing emails or ads</li>
           <li>Automatically through cookies and analytics tools</li>
@@ -70,8 +70,8 @@ export default function PrivacyPage() {
           With your consent, we may send you promotional materials about our products, services, or
           offers. You can opt out at any time by clicking the “unsubscribe” link in our emails or
           contacting us at{" "}
-          <a href="mailto:lancechen1998@gmail.com" className="underline">
-            lancechen1998@gmail.com
+          <a href="mailto:{BRAND.supportEmail}" className="underline">
+            {BRAND.supportEmail}
           </a>
           .
         </p>
@@ -125,8 +125,8 @@ export default function PrivacyPage() {
         </ul>
         <p>
           To exercise these rights, please contact us at{" "}
-          <a href="mailto:lancechen1998@gmail.com" className="underline">
-            lancechen1998@gmail.com
+          <a href="mailto:{BRAND.supportEmail}" className="underline">
+            {BRAND.supportEmail}
           </a>
           .
         </p>
@@ -171,8 +171,8 @@ export default function PrivacyPage() {
         </p>
         <p className="mt-2">
           <strong>Email:</strong>{" "}
-          <a href="mailto:lancechen1998@gmail.com" className="underline">
-            lancechen1998@gmail.com
+          <a href="mailto:{BRAND.supportEmail}" className="underline">
+            {BRAND.supportEmail}
           </a>
         </p>
       </section>
