@@ -23,6 +23,29 @@ type PageProps = {
 
 export const revalidate = 0;
 
+/**
+ * PDP inventory display thresholds
+ *
+ * CRITICAL_STOCK_THRESHOLD:
+ * - When stock is at or below this number, show exact quantity:
+ *   "Only X left"
+ *
+ * LOW_STOCK_THRESHOLD:
+ * - When stock is above CRITICAL threshold but at or below this number,
+ *   show:
+ *   "Low stock"
+ *
+ * Above LOW_STOCK_THRESHOLD:
+ * - Show:
+ *   "In stock"
+ *
+ * How to change later:
+ * - Want "Only X left" for 3 or fewer? change CRITICAL_STOCK_THRESHOLD to 3
+ * - Want "Low stock" up to 15? change LOW_STOCK_THRESHOLD to 15
+ */
+const CRITICAL_STOCK_THRESHOLD = 10;
+const LOW_STOCK_THRESHOLD = 20;
+
 /** ----------------------------
  * ProductMeta 小块（统一字体/间距/顺序）
  * ---------------------------- */
@@ -792,18 +815,68 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
             <div className="mt-6 space-y-3">
               <div className="rounded-lg border bg-neutral-50 px-3 py-2">
                 {currentSize ? (
-                  stockForCurrent > 0 ? (
+                  /*
+                    ============================================================
+                    Inventory display rules (PDP stock indicator)
+
+                    Only show exact numbers when inventory is very low.
+                    This avoids exposing full inventory while still giving
+                    urgency signals when stock is limited.
+
+                    Rules:
+
+                    stock <= 0                              → Out of stock
+                    stock 1 ~ CRITICAL_STOCK_THRESHOLD      → Only X left
+                    stock above CRITICAL and <= LOW_STOCK   → Low stock
+                    stock > LOW_STOCK_THRESHOLD             → In stock
+
+                    If user hasn't selected a size yet:
+                    → "Please select a size"
+
+                    NOTE:
+                    To change thresholds later, edit ONLY these constants
+                    near the top of this file:
+
+                    - CRITICAL_STOCK_THRESHOLD
+                    - LOW_STOCK_THRESHOLD
+                    ============================================================
+                  */
+
+                  stockForCurrent <= 0 ? (
+                    /* No inventory available */
+                    <FieldMessage variant="error">Out of stock</FieldMessage>
+
+                  ) : stockForCurrent <= CRITICAL_STOCK_THRESHOLD ? (
+                    /* Extremely low stock → show exact remaining quantity */
                     <div className="flex items-center justify-between gap-3">
                       <FieldMessage variant="muted">Availability</FieldMessage>
-                      <div className="text-sm text-neutral-700">
-                        In stock:{" "}
-                        <span className="font-semibold text-neutral-900">{stockForCurrent}</span>
+                      <div className="text-sm text-amber-700">
+                        Only{" "}
+                        <span className="font-semibold text-amber-800">
+                          {stockForCurrent}
+                        </span>{" "}
+                        left
                       </div>
                     </div>
+
+                  ) : stockForCurrent <= LOW_STOCK_THRESHOLD ? (
+                    /* Low inventory but not critical → no exact number */
+                    <div className="flex items-center justify-between gap-3">
+                      <FieldMessage variant="muted">Availability</FieldMessage>
+                      <div className="text-sm text-amber-700 font-medium">
+                        Low stock
+                      </div>
+                    </div>
+
                   ) : (
-                    <FieldMessage variant="error">Out of stock</FieldMessage>
+                    /* Inventory is healthy */
+                    <div className="flex items-center justify-between gap-3">
+                      <FieldMessage variant="muted">Availability</FieldMessage>
+                      <div className="text-sm text-neutral-700">In stock</div>
+                    </div>
                   )
                 ) : (
+                  /* User has not selected a size yet */
                   <FieldMessage variant="muted">Please select a size</FieldMessage>
                 )}
               </div>

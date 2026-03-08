@@ -1062,23 +1062,11 @@ privacy，注册条款，网站footer条款
 
 ios
 
-email 图片
-
 客户真的下单之后，要怎么通知供货商
-
-邮件+物流track
-
-delivery tracking email
-
-order confirmation 对应的图片
 
 logo
 
-refund email
-
 加顶部品牌条（强烈推荐）
-
-加 “Track order” 按钮（电商标配
 
 3. 加 “Need help?” 客服区
 
@@ -1117,12 +1105,4 @@ stock 小于50的时候才显示stock的数量
 
 order添加一个delivered的状态
 
-更复杂的订单号码
-
 上线之后immigration文件要从 DROP TABLE IF EXISTS rate_limit_failures; 改成 CREATE TABLE IF NOT EXISTS rate_limit_failures 并且索引也改成 IF NOT EXISTS
-
-reset email 文案优化
-
-在没有orders的情况下，修改profile ui
-
-收件人名字
