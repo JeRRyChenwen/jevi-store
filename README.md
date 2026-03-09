@@ -1127,3 +1127,7 @@ TikTok
 YouTube
 
 Open Graph (OG Image)，让别人分享你的网站
+
+主页logo在打开f12的时候不会自动收缩
+
+admin 平台要写退款了多少钱

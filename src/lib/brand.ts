@@ -36,13 +36,13 @@ export const BRAND = {
    * 建议未来换成 support@你的域名
    * 目前主要是使用这个变量
    */
-  supportEmail: "support@yourdomain.com",
+  supportEmail: "support@jevi.com",
 
   /**
    * ✅ 联系邮箱
    * 如果你暂时只有一个邮箱，也可以先和 supportEmail 一样
    */
-  contactEmail: "support@yourdomain.com",
+  contactEmail: "support@jevi.com",
 
   /**
    * ✅ 法务页 / footer 用的版权名
