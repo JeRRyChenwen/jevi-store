@@ -194,9 +194,7 @@ export default function PaymentStepModern() {
             {selected === "paypal" ? "Pay Now (use PayPal button above)" : "Pay Now"}
           </button>
 
-          <p className="text-xs text-gray-500">
-            * Pay in 4 availability is determined by PayPal and may vary by account and region.
-          </p>
+
         </div>
 
         {/* RIGHT: Delivery Details + Summary */}

@@ -1064,10 +1064,6 @@ ios
 
 客户真的下单之后，要怎么通知供货商
 
-logo
-
-加顶部品牌条（强烈推荐）
-
 3. 加 “Need help?” 客服区
 
 ================================================
@@ -1097,10 +1093,6 @@ order-item 表的variant 字段，material也要存进去
 
 我想问下，Phase 2做好了之后，是在什么情况下才会需要“极低概率需要人工退款/联系用户”
 
-stock 小于50的时候才显示stock的数量
-
-退货页面再议
-
 用户如果创建账号之前就下了order，之后再创建账号，订单是否应该记录
 
 order添加一个delivered的状态
@@ -1119,15 +1111,9 @@ email里的图片显示
 
 浏览器 favicon右边的名字 浏览器标题优化
 
-检查checkout payment页面的AUD 文案
-
 footer 可以加上social link：
 Instagram
 TikTok
 YouTube
 
 Open Graph (OG Image)，让别人分享你的网站
-
-主页logo在打开f12的时候不会自动收缩
-
-admin 平台要写退款了多少钱

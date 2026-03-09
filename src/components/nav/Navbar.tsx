@@ -220,16 +220,16 @@ export default function Navbar() {
     <>
       {/* 顶部固定且全宽：背景用纯白，避免与页面叠加出现色差 */}
       <div className="fixed top-0 inset-x-0 z-50 bg-white border-b border-neutral-200">
-        {/* 内容容器：居中排版，如需内容也全宽，去掉 max-w-[1400px] + mx-auto */}
-        <nav className="mx-auto w-full max-w-[1400px] pl-2 pr-4 md:pl-2 md:pr-8 h-16 md:h-20 flex items-center">
-        {/* 左：Logo */}
-        <div className="flex items-center shrink-0 md:-ml-24">
-          <NavbarLogo />
-        </div>
+        {/* 内容容器：居中排版 */}
+        <nav className="flex h-16 w-full items-center gap-3 pl-1 pr-3 md:h-20 md:pl-2 md:pr-6">
+          {/* 左：Logo */}
+          <div className="flex items-center shrink-0">
+            <NavbarLogo />
+          </div>
 
-        {/* 右：搜索 + 图标 */}
-        <div className="ml-auto flex items-center gap-1 md:gap-2">
-          <CompactSearch className="w-[420px] lg:w-[560px] mr-10 md:mr-12" />
+          {/* 右：搜索 + 图标 */}
+          <div className="ml-auto min-w-0 flex items-center gap-1 md:gap-2">
+            <CompactSearch className="w-[560px] lg:w-[680px] xl:w-[760px] mr-14 md:mr-16" />
 
           <Button
             variant="ghost"

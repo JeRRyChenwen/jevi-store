@@ -1177,7 +1177,6 @@ useEffect(() => {
           <p>
             All charges are processed in <b>{safeCurrency}</b>. Your bank or PayPal may apply currency conversion and fees.
           </p>
-          <p>* Pay in 4 availability is determined by PayPal and may vary by account and region.</p>
         </div>
       </div>
     </section>

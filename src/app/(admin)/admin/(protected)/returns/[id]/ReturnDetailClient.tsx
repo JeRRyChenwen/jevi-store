@@ -23,10 +23,17 @@ type ReturnRow = {
   created_at_ts?: number | null;
   updated_at_ts?: number | null;
 
+  // ✅ 金额拆分
+  items_amount_minor?: number | null;
+  delivery_fee_minor?: number | null;
   requested_amount_minor?: number | null;
   currency?: string | null;
 
   approved_amount_minor?: number | null;
+  refunded_amount_minor?: number | null;
+  refund_status?: string | null;
+  refund_error?: string | null;
+
   reject_reason?: string | null;
 
   approved_at_ts?: number | null;
@@ -34,6 +41,9 @@ type ReturnRow = {
 
   rejected_at_ts?: number | null;
   rejected_by?: string | null;
+
+  refunded_at_ts?: number | null;
+  refunded_by?: string | null;
 };
 
 type ReturnItemRow = {
@@ -330,6 +340,7 @@ export default function ReturnDetailClient({ id }: { id: string }) {
   const isPending = statusLower === "pending";
   const isApproved = statusLower === "approved";
   const isRejected = statusLower === "rejected";
+  const isRefunded = statusLower === "refunded";
 
   if (loading) {
     return (
@@ -387,49 +398,49 @@ export default function ReturnDetailClient({ id }: { id: string }) {
   }
 
   async function onApprove() {
-  const rec = record; // ✅ 关键：用局部变量帮助 TS 缩小类型
-  if (!rec) {
-    setNotice({ variant: "error", message: "Return record not loaded." });
-    return;
+    const rec = record;
+    if (!rec) {
+      setNotice({ variant: "error", message: "Return record not loaded." });
+      return;
+    }
+
+    setNotice(null);
+    setSaving("approve");
+
+    try {
+      const r = await fetch(`/api/admin/returns/${encodeURIComponent(id)}/approve`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        cache: "no-store",
+        credentials: "include",
+        body: JSON.stringify({
+          approved_amount_minor: rec.requested_amount_minor ?? null,
+          currency: rec.currency ?? null,
+        }),
+      });
+
+      const j = (await r.json().catch(() => null)) as any;
+
+      if (r.status === 401) throw new Error("UNAUTHORIZED");
+      if (!r.ok) throw new Error(j?.error || `HTTP_${r.status}`);
+
+      setRejectReason("");
+      setNotice({ variant: "success", message: "Approved." });
+      await loadDetail();
+    } catch (e: any) {
+      const msg = String(e?.message || e);
+      const pretty = prettifyErrorMessage(msg);
+      setNotice({
+        variant: msg === "UNAUTHORIZED" || msg === "HTTP_401" ? "warning" : "error",
+        message:
+          msg === "UNAUTHORIZED" || msg === "HTTP_401"
+            ? "Admin session expired. Please sign in again."
+            : `Approve failed: ${pretty || msg}`,
+      });
+    } finally {
+      setSaving(null);
+    }
   }
-
-  setNotice(null);
-  setSaving("approve");
-
-  try {
-    const r = await fetch(`/api/admin/returns/${encodeURIComponent(id)}/approve`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      cache: "no-store",
-      credentials: "include",
-      body: JSON.stringify({
-        approved_amount_minor: rec.requested_amount_minor ?? null,
-        currency: rec.currency ?? null,
-      }),
-    });
-
-    const j = (await r.json().catch(() => null)) as any;
-
-    if (r.status === 401) throw new Error("UNAUTHORIZED");
-    if (!r.ok) throw new Error(j?.error || `HTTP_${r.status}`);
-
-    setRejectReason("");
-    setNotice({ variant: "success", message: "Approved." });
-    await loadDetail();
-  } catch (e: any) {
-    const msg = String(e?.message || e);
-    const pretty = prettifyErrorMessage(msg);
-    setNotice({
-      variant: msg === "UNAUTHORIZED" || msg === "HTTP_401" ? "warning" : "error",
-      message:
-        msg === "UNAUTHORIZED" || msg === "HTTP_401"
-          ? "Admin session expired. Please sign in again."
-          : `Approve failed: ${pretty || msg}`,
-    });
-  } finally {
-    setSaving(null);
-  }
-}
 
   async function onReject() {
     const rec = record;
@@ -437,7 +448,7 @@ export default function ReturnDetailClient({ id }: { id: string }) {
       setNotice({ variant: "error", message: "Return record not loaded." });
       return;
     }
-    
+
     const rr = rejectReason.trim();
     if (!rr) {
       setNotice({ variant: "warning", message: "Reject reason is required." });
@@ -479,12 +490,42 @@ export default function ReturnDetailClient({ id }: { id: string }) {
     }
   }
 
-  const requestedAmountText =
-    typeof record.requested_amount_minor === "number"
-      ? `${(record.requested_amount_minor / 100).toFixed(2)}${
-          record.currency ? ` ${record.currency}` : ""
-        }`
-      : "N/A";
+  function formatMoney(minor?: number | null, currency?: string | null) {
+    if (typeof minor !== "number") return "N/A";
+    return `${(minor / 100).toFixed(2)}${currency ? ` ${currency}` : ""}`;
+  }
+
+  const requestedAmountText = formatMoney(
+    record?.requested_amount_minor,
+    record?.currency
+  );
+
+  const itemsAmountText = formatMoney(
+    record?.items_amount_minor,
+    record?.currency
+  );
+
+  const deliveryFeeText = formatMoney(
+    record?.delivery_fee_minor,
+    record?.currency
+  );
+
+  const approvedAmountText = formatMoney(
+    record?.approved_amount_minor,
+    record?.currency
+  );
+
+  const refundedAmountText = formatMoney(
+    record?.refunded_amount_minor,
+    record?.currency
+  );
+
+  const hasApprovedAmount = typeof record?.approved_amount_minor === "number";
+  const hasRefundedAmount = typeof record?.refunded_amount_minor === "number";
+  const hasRequestedAmount = typeof record?.requested_amount_minor === "number";
+  const hasDeliveryFee = typeof record?.delivery_fee_minor === "number";
+  const hasItemsAmount = typeof record?.items_amount_minor === "number";
+  const hasRefundError = Boolean(record?.refund_error);
 
   return (
     <div className="space-y-6">
@@ -565,6 +606,59 @@ export default function ReturnDetailClient({ id }: { id: string }) {
                   {record.approved_at_ts ? toLocalTime(record.approved_at_ts) : "-"}
                 </span>
               </div>
+              <div>
+                <span className="text-slate-500">Approved amount:</span>{" "}
+                <span className="font-mono">{approvedAmountText}</span>
+              </div>
+            </div>
+          ) : null}
+
+          {isRefunded ? (
+            <div className="mt-2 space-y-1 text-sm text-slate-700">
+              <div>
+                <span className="text-slate-500">Status:</span>{" "}
+                <span className="font-medium text-green-700">Refunded</span>
+              </div>
+              <div>
+                <span className="text-slate-500">Approved by:</span>{" "}
+                <span className="font-mono">{record.approved_by || "-"}</span>
+              </div>
+              <div>
+                <span className="text-slate-500">Approved at:</span>{" "}
+                <span className="font-mono">
+                  {record.approved_at_ts ? toLocalTime(record.approved_at_ts) : "-"}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-500">Refunded by:</span>{" "}
+                <span className="font-mono">{record.refunded_by || "-"}</span>
+              </div>
+              <div>
+                <span className="text-slate-500">Refunded at:</span>{" "}
+                <span className="font-mono">
+                  {record.refunded_at_ts ? toLocalTime(record.refunded_at_ts) : "-"}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-500">Refunded amount:</span>{" "}
+                <span className="font-mono">{refundedAmountText}</span>
+              </div>
+
+              {record.refund_status ? (
+                <div>
+                  <span className="text-slate-500">Refund status:</span>{" "}
+                  <span className="font-mono">{record.refund_status}</span>
+                </div>
+              ) : null}
+
+              {hasRefundError ? (
+                <div>
+                  <span className="text-slate-500">Refund error:</span>{" "}
+                  <span className="font-mono break-all text-red-600">
+                    {record.refund_error}
+                  </span>
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -592,6 +686,69 @@ export default function ReturnDetailClient({ id }: { id: string }) {
           ) : null}
         </div>
       ) : null}
+
+      <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="text-sm font-medium text-slate-900">Refund amount</div>
+
+        {/* 第一层：申请退款组成 */}
+        <div className="mt-3">
+          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            Requested refund breakdown
+          </div>
+
+          <div className="mt-2 grid gap-2 md:grid-cols-3">
+            <div className="rounded-md bg-slate-50 px-3 py-3">
+              <div className="text-xs text-slate-500">Items subtotal</div>
+              <div className="mt-1 font-mono text-sm text-slate-900">
+                {hasItemsAmount ? itemsAmountText : "N/A"}
+              </div>
+            </div>
+
+            <div className="rounded-md bg-slate-50 px-3 py-3">
+              <div className="text-xs text-slate-500">Delivery fee</div>
+              <div className="mt-1 font-mono text-sm text-slate-900">
+                {hasDeliveryFee ? deliveryFeeText : "N/A"}
+              </div>
+            </div>
+
+            <div className="rounded-md bg-slate-50 px-3 py-3">
+              <div className="text-xs text-slate-500">Requested refund</div>
+              <div className="mt-1 font-mono text-sm font-semibold text-slate-900">
+                {hasRequestedAmount ? requestedAmountText : "N/A"}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 第二层：审批 / 实际退款 */}
+        <div className="mt-4 border-t border-slate-100 pt-4">
+          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            Decision and payout
+          </div>
+
+          <div className="mt-2 grid gap-2 md:grid-cols-2">
+            <div className="rounded-md bg-slate-50 px-3 py-3">
+              <div className="text-xs text-slate-500">Approved refund</div>
+              <div className="mt-1 font-mono text-sm text-slate-900">
+                {hasApprovedAmount ? approvedAmountText : "N/A"}
+              </div>
+            </div>
+
+            <div className="rounded-md bg-slate-50 px-3 py-3">
+              <div className="text-xs text-slate-500">Refunded amount</div>
+              <div className="mt-1 font-mono text-sm text-slate-900">
+                {hasRefundedAmount ? refundedAmountText : "N/A"}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {!hasRequestedAmount && !hasApprovedAmount && !hasRefundedAmount ? (
+          <div className="mt-3 text-xs text-slate-500">
+            No refund amount has been recorded yet.
+          </div>
+        ) : null}
+      </div>
 
       <div className="rounded-lg border border-slate-200 bg-white p-4">
         <div className="text-sm font-medium text-slate-900">Reason</div>
@@ -709,39 +866,35 @@ export default function ReturnDetailClient({ id }: { id: string }) {
           <div className="text-sm font-medium text-slate-900">Actions</div>
 
           <div className="mt-3 grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <div className="text-sm text-slate-600">
-                Approve amount {record.currency ? `(${record.currency})` : ""}
-              </div>
-
-              <div className="text-sm font-semibold text-slate-900">
-                {requestedAmountText}
-              </div>
-
+            {/* 左：Approve */}
+            <div className="space-y-3">
               <button
                 onClick={onApprove}
                 disabled={saving !== null || typeof record.requested_amount_minor !== "number"}
-                className="rounded-md bg-black px-3 py-2 text-sm text-white disabled:opacity-60"
+                className="inline-flex min-h-[40px] min-w-[110px] items-center justify-center rounded-md bg-black px-4 py-2 text-sm text-white disabled:opacity-60"
               >
                 {saving === "approve" ? "Approving..." : "Approve"}
               </button>
             </div>
 
-            <div className="space-y-2">
-              <div className="text-sm text-slate-600">Reject reason</div>
-              <input
-                value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
-                className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
-                placeholder="Reason..."
-              />
+            {/* 右：Reject */}
+            <div className="space-y-3">
               <button
                 onClick={onReject}
                 disabled={saving !== null}
-                className="rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-900 disabled:opacity-60"
+                className="inline-flex min-h-[40px] min-w-[110px] items-center justify-center rounded-md border border-slate-200 bg-white px-4 py-2 text-sm text-slate-900 disabled:opacity-60"
               >
                 {saving === "reject" ? "Rejecting..." : "Reject"}
               </button>
+
+              <div className="text-sm text-slate-600">Reason for rejection</div>
+
+              <textarea
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                className="min-h-[120px] w-full resize-y rounded-md border border-slate-200 px-3 py-2 text-sm"
+                placeholder="Enter the rejection reason..."
+              />
             </div>
           </div>
         </div>
