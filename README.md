@@ -984,10 +984,6 @@ quote 与订单落库都用同一套 “cart -> itemsMinorEffective” 计算 �
 
 不同产品，有些产品我只是作为零售商，但是有些产品，我是作为全供应链者去售卖的
 
-profile 页面修改 email，可能需要进一步改进
-
-感觉还是在前端中得保留多币种，但结账的时候统一使用aud
-
 主页海报
 
 ==============================================================================
@@ -998,11 +994,7 @@ profile 页面修改 email，可能需要进一步改进
 
 social media 微信小红书链接 icon
 
-发邮件里的邮件 html，添加自动发邮件的位置，结账的时候自动发 order confirmation email
-
 弹出错误提示的时候，统一一下，红色错误提示的 style，还有就是成功提示也要统一一下，把错误提示 UI 改成和你第二张截图一样的 红色提示块（border + bg + padding）
-
-checkout 之后需要自动发邮件，内容包含 order confirmation 以及 package tracking
 
 similar product , produtc you may also interest
 
@@ -1010,15 +1002,11 @@ similar product , produtc you may also interest
 
 网页下面的邮箱，privacy 条款需要再上线的时候替换成真实的privacy，邮箱
 
-delivery option
-
 手机端
 
 群发邮件记得，要筛选，同意email的用户
 
 远端数据库只储存 1 年，可以储存在本地，定期删掉过期数据，但保留在本地
-
-delivery fee的计算，以及运输费用不同地区免费的标准也不一样，delivery 需要多少天才能抵达
 
 ==============================================================================
 千万不要修改我原本的代码里的任何逻辑和语法，和原本的代码内容，千万不要做修改
@@ -1093,8 +1081,6 @@ order-item 表的variant 字段，material也要存进去
 
 我想问下，Phase 2做好了之后，是在什么情况下才会需要“极低概率需要人工退款/联系用户”
 
-用户如果创建账号之前就下了order，之后再创建账号，订单是否应该记录
-
 order添加一个delivered的状态
 
 上线之后immigration文件要从 DROP TABLE IF EXISTS rate_limit_failures; 改成 CREATE TABLE IF NOT EXISTS rate_limit_failures 并且索引也改成 IF NOT EXISTS
@@ -1117,3 +1103,5 @@ TikTok
 YouTube
 
 Open Graph (OG Image)，让别人分享你的网站
+
+网站主域名 和 发邮件专用子域名，把域名加到 Resend
