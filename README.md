@@ -1178,3 +1178,13 @@ Open Graph (OG Image)，让别人分享你的网站
                                       ▲
                                       │
                          Worker / Pages 按需读取商品内容
+
+To change your email, please update it in your account settings.
+
+Email me updates on New Arrivals, Sale and Offers
+
+- We treat your personal data with care, view our Privacy Policy.
+
+admin平台的页数
+
+return 页面页数
