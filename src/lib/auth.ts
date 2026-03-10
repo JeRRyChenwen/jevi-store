@@ -2,7 +2,7 @@
 
 /** 会话中的用户信息（前端用的轻量结构） */
 export type SessionUser = {
-  id: number;
+  id: string | number;
   email: string | null;
   name: string | null;
 };
@@ -18,13 +18,24 @@ export function loadRememberedUser(): SessionUser | null {
   try {
     const raw = localStorage.getItem(LS_USER_KEY);
     if (!raw) return null;
+
     const obj = JSON.parse(raw);
     if (!obj || typeof obj !== "object") return null;
-    // 兼容：后端可能返回 email 为 null（极端情况）
-    const idOk = typeof obj.id === "number";
+
+    // ✅ 兼容 id 既可能是 number，也可能是 string
+    const idOk =
+      typeof obj.id === "number" ||
+      (typeof obj.id === "string" && obj.id.trim().length > 0);
+
     const emailOk = obj.email === null || typeof obj.email === "string";
+
     if (!idOk || !emailOk) return null;
-    return { id: obj.id, email: obj.email, name: obj.name ?? null };
+
+    return {
+      id: obj.id,
+      email: obj.email,
+      name: obj.name ?? null,
+    };
   } catch {
     return null;
   }
@@ -42,11 +53,15 @@ export function rememberUser(u: SessionUser | null) {
   } catch {}
 }
 
-/** 通过 Cookie 粗略判断是否可能已登录（前端可读） */
+/**
+ * ⚠️ 旧兼容函数：仅用于“粗略判断是否可能已登录”
+ * 不能作为业务权威来源。
+ *
+ * 权威登录态请统一使用 getSessionUser() / /api/auth/me
+ */
 export function isLoggedInViaCookie(): boolean {
   if (!isBrowser) return false;
   const c = document.cookie || "";
-  // presence cookie 或真正的 session cookie 任一存在即可
   return /(?:^|;\s*)sp_has_session=1/.test(c) || /(?:^|;\s*)sp_session=/.test(c);
 }
 
@@ -105,36 +120,48 @@ export async function getSessionUser(force = false): Promise<SessionUser | null>
     const cached = loadRememberedUser();
     if (cached) return cached;
   }
+
   try {
-    // 这里可以在调试阶段顺便带 debug=1 观察服务端诊断（可按需移除）
+    // ✅ 调试阶段保留 debug=1，后续稳定后可移除
     const data: any = await apiGet("/api/auth/me", { debug: 1 });
 
     // 兼容两种返回结构：
     // 1) { ok: true, user: { id, email, name } }
     // 2) { ok: true, id, email, name }
     const u = (data?.user && typeof data.user === "object" ? data.user : data) ?? null;
-    if (u && typeof u.id === "number") {
-      const usr: SessionUser = {
-        id: u.id,
-        email: u.email ?? null,
-        name: u.name ?? null,
-      };
-      rememberUser(usr);
-      return usr;
+
+    const rawId = u?.id;
+    const idOk =
+      typeof rawId === "number" ||
+      (typeof rawId === "string" && rawId.trim().length > 0);
+
+    if (!u || !idOk) {
+      rememberUser(null);
+      return null;
     }
-    return null;
+
+    const usr: SessionUser = {
+      id: rawId,
+      email: typeof u.email === "string" ? u.email : (u.email ?? null),
+      name: typeof u.name === "string" ? u.name : (u.name ?? null),
+    };
+
+    rememberUser(usr);
+    return usr;
   } catch {
+    rememberUser(null);
     return null;
   }
 }
 
-/** 只要邮箱（checkout 用） */
+/**
+ * ⚠️ 旧兼容函数：仅保留给尚未迁移的旧代码使用
+ * 新代码应直接使用 getSessionUser()，不要只单独取 email。
+ */
 export async function fetchAuthedEmail(): Promise<string | null> {
-  // 先看本地缓存
   const cached = loadRememberedUser();
   if (cached?.email) return cached.email;
 
-  // 再查后端
   const user = await getSessionUser(true);
   return user?.email ?? null;
 }

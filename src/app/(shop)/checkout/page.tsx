@@ -6,7 +6,7 @@ import { Check } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import PageBack from "@/components/PageBack";
 import { effectiveMinor, type Currency } from "@/lib/pricing";
-import { fetchAuthedEmail, isLoggedInViaCookie } from "@/lib/auth";
+import { getSessionUser } from "@/lib/auth";
 import BagStep from "./_components/BagStep";
 import AddressStep from "./_components/AddressStep";
 import DeliveryStep from "./_components/DeliveryStep";
@@ -250,16 +250,45 @@ export default function CheckoutPage() {
   // ✅ 统一表单级提示（用于 Continue 下方提示：Bag / Address）
   const formAlert = useFormAlert();
 
-  // 勾选 & 邮箱本地状态
+  // 勾选状态
   const [marketingOptIn, setMarketingOptIn] = useState(false);
-  const [emailInput, setEmailInput] = useState<string>("");
 
   // 登录态
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const readLoginFromCookie = () => {
-    const has = isLoggedInViaCookie();
-    setIsLoggedIn(has);
-  };
+
+  // ✅ 登录用户专用邮箱（账户邮箱）
+  // - 登录用户下单时优先使用这个
+  // - 不再强依赖 address.email
+  const [accountEmail, setAccountEmail] = useState<string>("");
+
+  /**
+   * ✅ 单一权威来源：
+   * 不再通过 cookie 单独判断登录态，也不再单独 fetch 邮箱。
+   * 统一只认 /api/auth/me -> getSessionUser(true)
+   */
+  const syncAuthState = async () => {
+  try {
+    const user = await getSessionUser(true);
+
+    // ✅ 调试：看看 /api/auth/me 实际返回的 user
+    console.log("[checkout] session user =", user);
+
+    const email = String(user?.email || "").trim().toLowerCase();
+    const loggedIn = !!user?.id && !!email;
+
+    console.log("[checkout] computed login state =", {
+      loggedIn,
+      email,
+    });
+
+    setIsLoggedIn(loggedIn);
+    setAccountEmail(loggedIn ? email : "");
+  } catch (err) {
+    console.warn("[checkout] syncAuthState failed:", err);
+    setIsLoggedIn(false);
+    setAccountEmail("");
+  }
+};
 
   // 地址相关全部交给 useAddress
   const {
@@ -416,8 +445,11 @@ export default function CheckoutPage() {
       if (rawAddr) {
         const a = JSON.parse(rawAddr) as any;
 
-        // ✅ Step 3-B: country 统一清洗成 ISO2（AU/NZ/...）
+        // ✅ country 统一清洗成 ISO2（AU/NZ/...）
         const countryCode = coerceCountryCode(a?.country, "AU");
+
+        // ✅ localStorage 里的 address 仅用于“游客邮箱 + 地址信息”恢复
+        // 不把登录账户邮箱强塞进 address.email
         const cleaned = { ...a, country: countryCode };
 
         try {
@@ -425,35 +457,28 @@ export default function CheckoutPage() {
         } catch {}
 
         setAddress((prev) => (Object.keys(prev || {}).length ? prev : cleaned));
-        setEmailInput(cleaned?.email || "");
       }
-    } catch {}
+    } catch (err) {
+      console.warn("[checkout] restore local address failed:", err);
+    }
 
-    readLoginFromCookie();
+    void syncAuthState();
 
-    (async () => {
-      if (isLoggedInViaCookie()) {
-        const authedEmail = await fetchAuthedEmail();
-        if (authedEmail) {
-          setEmailInput((prev) => prev || authedEmail);
-          setAddress((a) => {
-            const ensuredCountry = coerceCountryCode((a as any)?.country, "AU");
-            const base = { ...(a as any), country: ensuredCountry };
+    const handleFocus = () => {
+      void syncAuthState();
+    };
 
-            if (base.email) return base;
-            const next = { ...base, email: authedEmail };
+    const handleAuthChanged = () => {
+      void syncAuthState();
+    };
 
-            try {
-              localStorage.setItem(LS_ADDRESS_KEY, JSON.stringify(next));
-            } catch {}
-            return next;
-          });
-        }
-      }
-    })();
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener("sp-auth-changed", handleAuthChanged as EventListener);
 
-    window.addEventListener("focus", readLoginFromCookie);
-    return () => window.removeEventListener("focus", readLoginFromCookie);
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("sp-auth-changed", handleAuthChanged as EventListener);
+    };
   }, [setAddress]);
 
   // 旧 hook 仍然用于 itemsMinor / itemsMajor（delivery fee 下面会用 server quote 覆盖）
@@ -1112,7 +1137,11 @@ async function ensureReserveBeforeNext(): Promise<ReserveCache> {
 
   async function sendSubscriptionIfNeeded(emailRaw?: string) {
     try {
-      const email = (emailRaw || address?.email || "").trim().toLowerCase();
+      // ✅ 邮箱来源优先级：
+      // 1. 显式传入的 emailRaw（例如游客在 AddressStep blur 时）
+      // 2. 登录用户账户邮箱 accountEmail
+      // 3. 游客地址里的 address.email
+      const email = (emailRaw || accountEmail || address?.email || "").trim().toLowerCase();
       if (!email) return;
 
       const payload = {
@@ -1367,6 +1396,7 @@ async function ensureReserveBeforeNext(): Promise<ReserveCache> {
           {step === "address" && (
             <AddressStep
               isLoggedIn={isLoggedIn}
+              accountEmail={accountEmail}
               address={address}
               setAddress={setAddress}
               billingAddress={billingAddress}
@@ -1391,8 +1421,6 @@ async function ensureReserveBeforeNext(): Promise<ReserveCache> {
               onSaveDefault={handleSaveDefaultAddress}
               marketingOptIn={marketingOptIn}
               setMarketingOptIn={setMarketingOptIn}
-              emailInput={emailInput}
-              setEmailInput={setEmailInput}
               sendSubscriptionIfNeeded={sendSubscriptionIfNeeded}
             />
           )}
@@ -1463,6 +1491,8 @@ async function ensureReserveBeforeNext(): Promise<ReserveCache> {
             visible={step === "payment"}
             amountInMajorUnit={amountInMajorUnitEffective}
             isPayProcessing={isPayProcessing}
+            isLoggedIn={isLoggedIn}
+            accountEmail={accountEmail}
             address={address}
             deliveryMethod={deliveryMethod}
             itemsCount={itemsCount}

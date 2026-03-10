@@ -322,19 +322,37 @@ export default function PayPalBigButton({
                   return;
                 }
 
-                // ✅ NEW: email 多来源兜底（address 里没有 email 也能下单）
-                // 你 PaymentStep 很可能把 email 存在别的字段里，所以这里做 fallback
-                const email =
-                  String(
+                // ✅ NEW: 统一订单邮箱来源
+                // 优先级：
+                // 1) PaymentStep 传下来的 checkoutEmail（推荐）
+                // 2) accountEmail（备用命名）
+                // 3) successMeta.email（更老的备用字段）
+                // 4) address.email（游客 checkout）
+                const finalOrderEmail = String(
+                  successMeta?.checkoutEmail ??
+                    successMeta?.accountEmail ??
+                    successMeta?.email ??
                     successMeta?.address?.email ??
-                      successMeta?.checkoutEmail ??
-                      successMeta?.email ??
-                      ""
-                  )
-                    .trim()
-                    .toLowerCase();
+                    ""
+                )
+                  .trim()
+                  .toLowerCase();
 
-
+                // ✅ 没有 email 时，前端直接拦住，不再让 /orders 报 400
+                if (!finalOrderEmail) {
+                  const err = {
+                    status: 400,
+                    code: "missing_email",
+                    message: "Email required for order. Please go back to the Address step and complete your email information.",
+                    detail: { successMeta },
+                  };
+                  onFailed?.(err);
+                  try {
+                    await (actions as any)?.order?.void?.();
+                  } catch {}
+                  approvingRef.current = false;
+                  return;
+                }
 
                 const orderBody = {
                   currency: (checkoutTotals?.currency || currency || "AUD").toUpperCase(),
@@ -350,8 +368,8 @@ export default function PayPalBigButton({
                     raw: paypalPayload.raw,
                   },
 
-                  // ✅ NEW: 永远带上 email（不依赖 address 一定有 email）
-                  ...(email ? { email } : {}),
+                  // ✅ 始终带上最终订单邮箱
+                  email: finalOrderEmail,
 
                   ...(successMeta?.address
                     ? {

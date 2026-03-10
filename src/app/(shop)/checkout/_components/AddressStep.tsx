@@ -38,6 +38,9 @@ type SaveMsg = { kind: "error" | "success"; text: string } | null;
 type AddressStepProps = {
   isLoggedIn: boolean;
 
+  // ✅ NEW: 登录用户的账户邮箱（只读显示，不在 checkout 内修改）
+  accountEmail: string;
+
   address: Address;
   setAddress: (a: Address) => void;
 
@@ -70,8 +73,6 @@ type AddressStepProps = {
 
   marketingOptIn: boolean;
   setMarketingOptIn: (v: boolean) => void;
-  emailInput: string;
-  setEmailInput: (v: string) => void;
   sendSubscriptionIfNeeded: (emailRaw?: string) => void | Promise<void>;
 };
 
@@ -132,8 +133,6 @@ function RequiredStar() {
 function AddressForm({
   address,
   setAddress,
-  emailInput,
-  setEmailInput,
   marketingOptIn,
   setMarketingOptIn,
   showErrors,
@@ -141,13 +140,12 @@ function AddressForm({
   onEmailCommit,
   onOptInChanged,
   hideYourDetails = false,
+  accountEmail = "",
   variant = "section",
   title = "Address",
 }: {
   address: Address;
   setAddress: (a: Address) => void;
-  emailInput: string;
-  setEmailInput: (v: string) => void;
   marketingOptIn: boolean;
   setMarketingOptIn: (v: boolean) => void;
   showErrors: boolean;
@@ -155,6 +153,10 @@ function AddressForm({
   onEmailCommit?: (email: string) => void;
   onOptInChanged?: (opt: boolean) => void;
   hideYourDetails?: boolean;
+
+  // ✅ NEW: 登录用户显示的只读账户邮箱
+  accountEmail?: string;
+
   variant?: "section" | "bare";
   title?: string;
 }) {
@@ -358,62 +360,7 @@ function AddressForm({
         </div>
       </div>
 
-      {!hideYourDetails && (
-        <div className="border rounded-lg p-4">
-          <h3 className="text-base font-medium mb-2">Your Details</h3>
-          <p className="text-sm text-neutral-600 mb-3">
-            Please enter your email address, we&apos;ll send your order confirmation here.
-          </p>
-
-          <label htmlFor="addr-email" className="block text-sm font-medium mb-1">
-            Email Address <RequiredStar />
-          </label>
-          <input
-            id="addr-email"
-            type="email"
-            className={clsInput(showErrors, errs.email)}
-            autoComplete="email"
-            value={emailInput}
-            onChange={(e) => {
-              const v = e.currentTarget.value;
-              setEmailInput(v);
-              setAddress({ ...address, email: v });
-            }}
-            onBlur={(e) => onEmailCommit?.(e.currentTarget.value)}
-            aria-invalid={showErrors && errs.email ? true : undefined}
-            aria-describedby="err-addr-email"
-          />
-          <InlineError
-            show={showErrors && errs.email}
-            id="err-addr-email"
-            text={fieldErrorText("email")}
-          />
-
-          <p className="mt-1 text-xs text-neutral-500">You can create an account after checkout.</p>
-
-          <label className="mt-3 flex items-start gap-2 text-sm">
-            <input
-              type="checkbox"
-              className="mt-1"
-              checked={marketingOptIn}
-              onChange={(e) => {
-                const v = e.currentTarget.checked;
-                setMarketingOptIn(v);
-                onOptInChanged?.(v);
-              }}
-            />
-            <span>Email me updates on New Arrivals, Sale and Offers</span>
-          </label>
-
-          <p className="mt-3 text-xs text-neutral-500">
-            * We treat your personal data with care, view our{" "}
-            <a className="underline" href="/privacy">
-              Privacy Policy
-            </a>
-            .
-          </p>
-        </div>
-      )}
+      
     </div>
   );
 
@@ -641,6 +588,7 @@ function BillingForm({
 /* ---------------- AddressStep 主组件 ---------------- */
 const AddressStep: React.FC<AddressStepProps> = ({
   isLoggedIn,
+  accountEmail,
 
   address,
   setAddress,
@@ -673,8 +621,6 @@ const AddressStep: React.FC<AddressStepProps> = ({
 
   marketingOptIn,
   setMarketingOptIn,
-  emailInput,
-  setEmailInput,
   sendSubscriptionIfNeeded,
 }) => {
   const effectiveHasSavedDelivery = hasSavedDelivery || !!savedDeliveryAddr;
@@ -764,6 +710,101 @@ const AddressStep: React.FC<AddressStepProps> = ({
 
       <div className="h-4" />
 
+      {/* ✅ 独立的 Your Details 区域
+          - 放在 Use Saved Addresses 下方
+          - 放在 Address & Billing 上方
+          - 即使勾选 Use saved Delivery Address 也始终显示
+      */}
+      <section className="rounded-xl border" id="your-details-section">
+        <div className="border-b px-4 py-3 font-semibold">Your Details</div>
+
+        <div className="p-4">
+          {isLoggedIn ? (
+            <>
+              <p className="text-sm text-neutral-600 mb-3">
+                Your order confirmation will be sent to your account email.
+              </p>
+
+              <div className="rounded-md border bg-neutral-50 px-3 py-2">
+                <div className="text-xs text-neutral-500 mb-1">Account Email</div>
+                <div className="text-sm font-medium text-neutral-900 break-all">
+                  {accountEmail || "No account email found"}
+                </div>
+              </div>
+
+              <p className="mt-2 text-xs text-neutral-500">
+                To change your email, please update it in your account settings.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-neutral-600 mb-3">
+                Please enter your email address, we&apos;ll send your order confirmation here.
+              </p>
+
+              <label htmlFor="checkout-account-email" className="block text-sm font-medium mb-1">
+                Email Address <RequiredStar />
+              </label>
+              <input
+                id="checkout-account-email"
+                type="email"
+                className={clsInput(addressShowErrors, addressErrs.email)}
+                autoComplete="email"
+                value={address.email || ""}
+                onChange={(e) => {
+                  const v = e.currentTarget.value;
+                  setAddress({ ...address, email: v });
+                }}
+                onBlur={(e) => {
+                  const v = e.currentTarget.value.trim();
+
+                  if (v !== String(address.email || "").trim()) {
+                    setAddress({ ...address, email: v });
+                  }
+
+                  void sendSubscriptionIfNeeded(v);
+                }}
+                aria-invalid={addressShowErrors && addressErrs.email ? true : undefined}
+                aria-describedby="err-checkout-account-email"
+              />
+              <InlineError
+                show={addressShowErrors && addressErrs.email}
+                id="err-checkout-account-email"
+                text={fieldErrorText("email")}
+              />
+
+              <p className="mt-1 text-xs text-neutral-500">
+                You can create an account after checkout.
+              </p>
+            </>
+          )}
+
+          <label className="mt-3 flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={marketingOptIn}
+              onChange={(e) => {
+                const v = e.currentTarget.checked;
+                setMarketingOptIn(v);
+                void sendSubscriptionIfNeeded();
+              }}
+            />
+            <span>Email me updates on New Arrivals, Sale and Offers</span>
+          </label>
+
+          <p className="mt-3 text-xs text-neutral-500">
+            * We treat your personal data with care, view our{" "}
+            <a className="underline" href="/privacy">
+              Privacy Policy
+            </a>
+            .
+          </p>
+        </div>
+      </section>
+
+      <div className="h-4" />
+
       {!(useSavedDelivery && useSavedBilling) && (
         <section className="rounded-xl border pb-8" id="address-section">
           <div className="border-b px-4 py-3 font-semibold">Address & Billing</div>
@@ -781,8 +822,6 @@ const AddressStep: React.FC<AddressStepProps> = ({
                 <AddressForm
                   address={address}
                   setAddress={setAddress}
-                  emailInput={emailInput}
-                  setEmailInput={setEmailInput}
                   marketingOptIn={marketingOptIn}
                   setMarketingOptIn={setMarketingOptIn}
                   showErrors={addressShowErrors}
@@ -790,6 +829,7 @@ const AddressStep: React.FC<AddressStepProps> = ({
                   onEmailCommit={(email) => sendSubscriptionIfNeeded(email)}
                   onOptInChanged={() => sendSubscriptionIfNeeded()}
                   hideYourDetails={isLoggedIn}
+                  accountEmail={accountEmail}
                   variant="bare"
                 />
               </div>

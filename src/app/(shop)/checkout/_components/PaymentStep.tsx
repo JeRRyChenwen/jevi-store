@@ -3,7 +3,7 @@
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import Image from "next/image";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Check, AlertCircle } from "lucide-react";
 import PayPalBigButton from "./PayPalBigButton";
 import { countryLabelOf } from "@/lib/country";
@@ -63,6 +63,11 @@ type PaymentStepProps = {
   amountInMajorUnit: number; // legacy, 不当权威
 
   isPayProcessing: boolean;
+  isLoggedIn: boolean;
+
+  // ✅ NEW: 登录用户的账户邮箱
+  accountEmail?: string;
+
   address: Address;
 
   deliveryMethod: DeliveryMethod;
@@ -197,6 +202,8 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   visible,
   amountInMajorUnit, // legacy
   isPayProcessing,
+  isLoggedIn,
+  accountEmail,
   address,
   deliveryMethod,
   itemsCount,
@@ -314,71 +321,90 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     address?.state ||
     address?.postcode;
 
+  // ✅ 当前订单实际使用的邮箱
+  // - 登录用户：优先账户邮箱
+  // - 游客：使用地址表单里的 email
+  const effectiveOrderEmail = useMemo(() => {
+    return isLoggedIn
+      ? String(accountEmail || "").trim()
+      : String(address?.email || "").trim();
+  }, [isLoggedIn, accountEmail, address?.email]);
+
   const payBlockedReason = useMemo(() => {
-  if (!visible) return null;
-  if (isPayProcessing) return null;
-  if (suppressBlockedHint) return null;
-  if (payError) return null;
+    if (!visible) return null;
+    if (isPayProcessing) return null;
+    if (suppressBlockedHint) return null;
+    if (payError) return null;
 
-  if (derivedItemsCount <= 0) {
-    return "Your bag is empty. Please add at least one item before paying.";
-  }
-  if (!hasAddress) {
-    return "No delivery address found. Please complete the Address step before paying.";
-  }
+    if (derivedItemsCount <= 0) {
+      return "Your bag is empty. Please add at least one item before paying.";
+    }
+    if (!hasAddress) {
+      return "No delivery address found. Please complete the Address step before paying.";
+    }
 
-  // ✅ 关键：reserve 还在进行中时，不要报 “No reservation found”
-  if (preReserveLoading) {
-    // 你可以返回一个“友好提示”，也可以 return null（不显示红条）
-    return "Reserving stock… Please wait a moment.";
-  }
+    // ✅ 只有“最终订单邮箱”为空时才阻止支付
+    // - 登录用户：看 accountEmail
+    // - 游客：看 address.email
+    if (!String(effectiveOrderEmail || "").trim()) {
+      return isLoggedIn
+        ? "No account email found. Please check your account settings before paying."
+        : "Email required for order. Please go back to the Address step and enter your email.";
+    }
 
-  // ✅ reserve 已结束，但如果有错误，优先显示错误
-  if (preReserveError && String(preReserveError).trim()) {
-    return String(preReserveError).trim();
-  }
+    // ✅ 关键：reserve 还在进行中时，不要报 “No reservation found”
+    if (preReserveLoading) {
+      return "Reserving stock… Please wait a moment.";
+    }
 
-  // ✅ PaymentStep 不再 reserve，所以必须依赖 Address step 的 preReservation
-  const rid = String(preReservationId || "").trim();
-  const preHash = String(preReservationCartHash || "").trim();
-  const expSec = Number(preReservationExpiresAtSec || 0);
-  const expMs = Number.isFinite(expSec) && expSec > 0 ? expSec * 1000 : 0;
+    // ✅ reserve 已结束，但如果有错误，优先显示错误
+    if (preReserveError && String(preReserveError).trim()) {
+      return String(preReserveError).trim();
+    }
 
-  if (!rid) {
-    return "No stock reservation found. Please go back to the Address step and reserve again.";
-  }
-  if (preHash && preHash !== cartHash) {
-    return "Your bag changed. Please go back to the Address step and reserve again.";
-  }
-  if (!expMs) {
-    return "Invalid reservation. Please go back to the Address step and reserve again.";
-  }
-  if (Date.now() >= expMs - 1000) {
-    return "Your stock reservation has expired. Please go back to the Address step and reserve again.";
-  }
+    // ✅ PaymentStep 不再 reserve，所以必须依赖 Address step 的 preReservation
+    const rid = String(preReservationId || "").trim();
+    const preHash = String(preReservationCartHash || "").trim();
+    const expSec = Number(preReservationExpiresAtSec || 0);
+    const expMs = Number.isFinite(expSec) && expSec > 0 ? expSec * 1000 : 0;
 
-  if (derivedTotalMinor <= 0) {
-    return "Invalid total amount. Please review your order.";
-  }
+    if (!rid) {
+      return "No stock reservation found. Please go back to the Address step and reserve again.";
+    }
+    if (preHash && preHash !== cartHash) {
+      return "Your bag changed. Please go back to the Address step and reserve again.";
+    }
+    if (!expMs) {
+      return "Invalid reservation. Please go back to the Address step and reserve again.";
+    }
+    if (Date.now() >= expMs - 1000) {
+      return "Your stock reservation has expired. Please go back to the Address step and reserve again.";
+    }
 
-  return null;
-}, [
-  visible,
-  isPayProcessing,
-  suppressBlockedHint,
-  payError,
-  derivedItemsCount,
-  hasAddress,
-  derivedTotalMinor,
-  preReserveLoading,
-  preReserveError,
-  preReservationId,
-  preReservationCartHash,
-  preReservationExpiresAtSec,
-  cartHash,
-]);
+    if (derivedTotalMinor <= 0) {
+      return "Invalid total amount. Please review your order.";
+    }
 
-// ✅ NEW: PayPal 按钮是否应变成 unavailable（灰掉）
+    return null;
+  }, [
+    visible,
+    isPayProcessing,
+    suppressBlockedHint,
+    payError,
+    derivedItemsCount,
+    hasAddress,
+    derivedTotalMinor,
+    effectiveOrderEmail,
+    isLoggedIn,
+    preReserveLoading,
+    preReserveError,
+    preReservationId,
+    preReservationCartHash,
+    preReservationExpiresAtSec,
+    cartHash,
+  ]);
+
+  // ✅ NEW: PayPal 按钮是否应变成 unavailable（灰掉）
   const paypalUnavailable = useMemo(() => {
     if (!visible) return true;
 
@@ -408,8 +434,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     payBlockedReason,
     payError,
   ]);
-
-
 
   const countryDisplay = useMemo(() => {
     const raw = (address?.country || "").trim();
@@ -859,21 +883,38 @@ useEffect(() => {
 }, [visible, preReservationId, preReservationExpiresAtSec]);
 
   // ✅ successMeta: always include the freshest reservation id
+  // ✅ 并把“最终订单邮箱”一并传给 PayPalBigButton
   const successMetaWithReservation = useMemo(() => {
-  const rid = String(preReservationId || "").trim() || null;
+    const rid = String(preReservationId || "").trim() || null;
 
-  return {
-    checkoutTotals: checkoutTotalsMeta,
+    return {
+      checkoutTotals: checkoutTotalsMeta,
+
+      // ✅ NEW: 给 PayPalBigButton /orders 使用的最终订单邮箱
+      // 登录用户：通常是 accountEmail
+      // 游客：通常是 address.email
+      checkoutEmail: effectiveOrderEmail || null,
+
+      // ✅ NEW: 额外保留账户邮箱，作为备用字段
+      accountEmail: accountEmail || null,
+
+      address,
+      deliveryOption: deliveryMethod,
+      meta: {
+        pricing_source: "paymentstep-derived",
+      },
+      reservation_id: rid,
+      reservationId: rid,
+      inventory_reservation_id: rid,
+    };
+  }, [
+    checkoutTotalsMeta,
+    effectiveOrderEmail,
+    accountEmail,
     address,
-    deliveryOption: deliveryMethod,
-    meta: {
-      pricing_source: "paymentstep-derived",
-    },
-    reservation_id: rid,
-    reservationId: rid,
-    inventory_reservation_id: rid,
-  };
-}, [checkoutTotalsMeta, address, deliveryMethod, preReservationId]);
+    deliveryMethod,
+    preReservationId,
+  ]);
 
 
   return (
@@ -1061,7 +1102,7 @@ useEffect(() => {
                     )}
 
                     {countryDisplay && <div>{countryDisplay}</div>}
-                    {address.email && <div className="mt-2">{address.email}</div>}
+                    {effectiveOrderEmail && <div className="mt-2">{effectiveOrderEmail}</div>}
                     {address.phone && <div>{address.phone}</div>}
                   </div>
                 ) : (
