@@ -242,19 +242,14 @@ export default function EditOrdersCard() {
                 从第一页开始把整个列表高度锁定，后续所有页保持一致 */}
           <div
             className={[
-              "flex flex-col gap-3 transition-[min-height,height] duration-200",
+              "flex flex-col gap-3 transition-[min-height] duration-200",
               shouldLockListHeight
-                ? "min-h-[560px]"
+                ? "min-h-[590px]"
                 : "min-h-[220px]",
             ].join(" ")}
           >
             {/* ✅ 表格盒子：锁定高度时占满剩余空间；否则自然收缩 */}
-            <div
-              className={[
-                "rounded-lg border bg-white overflow-hidden",
-                shouldLockListHeight ? "flex flex-col flex-1" : "block",
-              ].join(" ")}
-            >
+            <div className="rounded-lg border bg-white overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="text-left border-b bg-slate-50 text-xs text-slate-600">

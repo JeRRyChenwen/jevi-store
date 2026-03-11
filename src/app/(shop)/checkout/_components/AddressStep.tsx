@@ -757,7 +757,6 @@ const AddressStep: React.FC<AddressStepProps> = ({
                 }}
                 onBlur={(e) => {
                   const v = e.currentTarget.value.trim();
-
                   if (v !== String(address.email || "").trim()) {
                     setAddress({ ...address, email: v });
                   }
@@ -776,30 +775,31 @@ const AddressStep: React.FC<AddressStepProps> = ({
               <p className="mt-1 text-xs text-neutral-500">
                 You can create an account after checkout.
               </p>
+
+              {/* ✅ 仅未登录用户显示营销订阅与隐私说明 */}
+              <label className="mt-3 flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={marketingOptIn}
+                  onChange={(e) => {
+                    const v = e.currentTarget.checked;
+                    setMarketingOptIn(v);
+                    void sendSubscriptionIfNeeded();
+                  }}
+                />
+                <span>Email me updates on New Arrivals, Sale and Offers</span>
+              </label>
+
+              <p className="mt-3 text-xs text-neutral-500">
+                * We treat your personal data with care, view our{" "}
+                <a className="underline" href="/privacy">
+                  Privacy Policy
+                </a>
+                .
+              </p>
             </>
           )}
-
-          <label className="mt-3 flex items-start gap-2 text-sm">
-            <input
-              type="checkbox"
-              className="mt-1"
-              checked={marketingOptIn}
-              onChange={(e) => {
-                const v = e.currentTarget.checked;
-                setMarketingOptIn(v);
-                void sendSubscriptionIfNeeded();
-              }}
-            />
-            <span>Email me updates on New Arrivals, Sale and Offers</span>
-          </label>
-
-          <p className="mt-3 text-xs text-neutral-500">
-            * We treat your personal data with care, view our{" "}
-            <a className="underline" href="/privacy">
-              Privacy Policy
-            </a>
-            .
-          </p>
         </div>
       </section>
 

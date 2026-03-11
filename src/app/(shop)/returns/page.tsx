@@ -926,25 +926,21 @@ export default function ReturnsPage() {
                 ) : (
                   <div
                     className={[
-                      "flex flex-col gap-3 transition-[min-height,height] duration-200",
+                      "flex flex-col gap-3 transition-[min-height] duration-200",
                       shouldLockListHeight
-                        ? "h-[535px] min-h-[520px]"
+                        ? "min-h-[590px]"
                         : "h-auto min-h-[220px]",
                     ].join(" ")}
                   >
                     {/* ✅ 最终规则：
                         - 总订单数 <= 10（只有 1 页）时：自适应高度
                         - 总订单数 > 10（进入“满页 + 后续页”场景）时：
-                          从第一页开始把整个列表高度锁定，后续所有页保持一致 */}
+                          只保留一个较稳的最小高度，避免全屏时裁掉第 10 条，
+                          但不要强行把表格容器本身拉伸到占满剩余空间。 */}
 
-                    {/* 表格容器：锁定高度时占满剩余空间；否则自然收缩 */}
-                    <div
-                      className={[
-                        "overflow-hidden rounded-lg border bg-white",
-                        shouldLockListHeight ? "flex-1" : "h-auto",
-                      ].join(" ")}
-                    >
-                      <div className={shouldLockListHeight ? "h-full" : "h-auto"}>
+                    {/* ✅ 表格容器：始终按内容自然高度显示，避免底部出现大块空白 */}
+                    <div className="overflow-hidden rounded-lg border bg-white">
+                      <div className="h-auto">
                         <table className="w-full text-left text-sm">
                           <thead className="sticky top-0 z-10 border-b bg-slate-50 text-xs text-slate-600">
                             <tr>
