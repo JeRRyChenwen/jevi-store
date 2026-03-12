@@ -6,196 +6,24 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Check, AlertCircle } from "lucide-react";
 import PayPalBigButton from "./PayPalBigButton";
+import {
+  buildCartHash,
+  buildStockItems,
+  buildVariantLineFromOptions,
+  fmtMoneyMinor,
+  getCartSku,
+  pickCreatedOrderIdFromPayPalPayload,
+  type PayError,
+  type StockCheckItem,
+} from "./PaymentStep.helpers";
+import type {
+  Address,
+  DeliveryMethod,
+  PaymentStepProps,
+} from "./PaymentStep.types";
 import { countryLabelOf } from "@/lib/country";
 import { mediaUrl } from "@/lib/strapi";
 import { Alert } from "@/components/ui/alert";
-
-/* ========== Phase 2: reserve/release types ========== */
-type StockCheckItem = { sku: string; qty: number };
-
-function getCartSku(it: any): string {
-  return String(it?.product_sku ?? it?.sku ?? it?.variantSku ?? it?.variant_sku ?? "").trim();
-}
-
-function buildStockItems(cart: any[]): StockCheckItem[] {
-  const list = Array.isArray(cart) ? cart : [];
-  const map = new Map<string, number>();
-
-  for (const it of list) {
-    const sku = getCartSku(it);
-    const qty = Math.max(1, Number(it?.qty) || 1);
-    if (!sku) continue;
-    map.set(sku, (map.get(sku) ?? 0) + qty);
-  }
-
-  return Array.from(map.entries()).map(([sku, qty]) => ({ sku, qty }));
-}
-
-function buildCartHash(items: StockCheckItem[]): string {
-  const pairs = (items || [])
-    .map((x) => `${String(x.sku).trim()}:${Math.max(1, Math.floor(Number(x.qty) || 1))}`)
-    .sort();
-  return pairs.join("|");
-}
-
-
-
-
-/* ========== 类型 ========== */
-type Address = {
-  firstName?: string;
-  lastName?: string;
-  email?: string;
-  phone?: string;
-  line1?: string;
-  line2?: string;
-  city?: string;
-  state?: string;
-  postcode?: string;
-  country?: string; // ISO2: "AU"
-};
-
-type DeliveryMethod = "standard" | "express";
-
-type PaymentStepProps = {
-  visible: boolean;
-
-  amountInMajorUnit: number; // legacy, 不当权威
-
-  isPayProcessing: boolean;
-  isLoggedIn: boolean;
-
-  // ✅ NEW: 登录用户的账户邮箱
-  accountEmail?: string;
-
-  address: Address;
-
-  deliveryMethod: DeliveryMethod;
-
-  itemsCount: number;
-  itemsMinor: number;
-  deliveryFeeMinor: number;
-  totalMinor: number;
-  currency: string;
-
-  onPayInitiated: () => void;
-  onPaySucceeded: (payload?: any) => void;
-  onBackToBag?: () => void; // let parent control step switch
-
-  cart: Array<{
-    price?: number; // major（折后价）
-    qty?: number;
-    currency?: string;
-    [k: string]: any;
-  }>;
-
-  preReservationId?: string | null;
-  preReservationExpiresAtSec?: number | null;
-  preReservationCartHash?: string | null;
-  preReserveLoading?: boolean;
-  preReserveError?: string | null;
-};
-
-/* ========== 金额格式化小工具 ========== */
-function fmtPrice(n: number, currency: string, locale?: string) {
-  return new Intl.NumberFormat(locale, {
-    style: "currency",
-    currency,
-    currencyDisplay: "code",
-    maximumFractionDigits: 2,
-  }).format(n);
-}
-
-function fmtMoneyMinor(minor: number, currency: string, locale?: string) {
-  return fmtPrice((minor ?? 0) / 100, currency, locale);
-}
-
-/** 把后端 options 里的 heightIncreaseCm / height_cm / height_increase_cm 统一成人类可读 */
-function buildVariantLineFromOptions(options: any): string {
-  const opt = options ?? {};
-  const color = String(opt?.color ?? "").trim();
-  const size = String(opt?.size ?? "").trim();
-
-  const hRaw = opt?.heightIncreaseCm ?? opt?.height_cm ?? opt?.height_increase_cm ?? null;
-
-  let height_cm: number | null = null;
-  if (hRaw === 0 || hRaw === "0") height_cm = 0;
-  else if (hRaw == null) height_cm = null;
-  else if (typeof hRaw === "string" && hRaw.trim() === "") height_cm = null;
-  else {
-    const n = Number(hRaw);
-    height_cm = Number.isFinite(n) ? n : null;
-  }
-
-  const parts: string[] = [];
-  if (color) parts.push(`Color: ${color}`);
-  if (size) parts.push(`Size: ${size}`);
-  if (height_cm != null) parts.push(`Height: +${height_cm} cm`);
-
-  return parts.join(" | ");
-}
-
-type PayError =
-  | {
-      type: "out_of_stock";
-      message: string;
-      detail?: {
-        sku?: string;
-        current?: number;
-        requested?: number;
-        product_title?: string;
-        variant_title?: string;
-        options?: any;
-      };
-    }
-  | {
-      type: "reservation_failed";
-      message: string;
-      detail?: any;
-      status?: number;
-    }
-  | {
-      type: "reservation_expired";
-      message: string;
-      detail?: any;
-      status?: number;
-    }
-  | {
-      type: "amount_mismatch";
-      message: string;
-      detail?: any;
-      status?: number;
-    }
-  | {
-      type: "server_error";
-      message: string;
-      detail?: any;
-      status?: number;
-    }
-  | {
-      type: "unknown";
-      message: string;
-      detail?: any;
-      status?: number;
-    };
-
-
-    function pickCreatedOrderIdFromPayPalPayload(payload: any): number | null {
-      const cands = [
-        payload?.createdOrderId,        // ✅ 你需要在 PayPalBigButton 里塞出来
-        payload?.order?.order?.id,      // 常见：orderResp 包了一层
-        payload?.order?.id,             // 常见：orderResp 直接是 {id,...}
-        payload?.orderId,
-        payload?.id,
-      ];
-
-      for (const x of cands) {
-        const n = Number(x);
-        if (Number.isFinite(n) && n > 0) return Math.floor(n);
-      }
-      return null;
-    }
-
 
 
 const PaymentStep: React.FC<PaymentStepProps> = ({

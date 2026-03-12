@@ -1178,3 +1178,23 @@ Open Graph (OG Image)，让别人分享你的网站
                                       ▲
                                       │
                          Worker / Pages 按需读取商品内容
+
+============================================================
+
+我看了你上传的 social-platform 代码包，当前最需要拆的几个文件大概是：
+
+src/app/(shop)/checkout/page.tsx：1622 行
+
+src/app/(shop)/returns/page.tsx：1429 行
+
+src/app/(shop)/checkout/\_components/PaymentStep.tsx：1228 行
+
+src/app/(shop)/product/[slug]/page.tsx：906 行
+
+src/app/(admin)/admin/(protected)/returns/[id]/ReturnDetailClient.tsx：904 行
+
+src/app/(shop)/profile/EditAddressCard.tsx：795 行
+
+src/app/(admin)/admin/(protected)/orders/page.tsx：658 行
+
+src/lib/strapi.ts：495 行
