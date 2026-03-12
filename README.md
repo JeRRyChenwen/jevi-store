@@ -1183,18 +1183,25 @@ Open Graph (OG Image)，让别人分享你的网站
 
 我看了你上传的 social-platform 代码包，当前最需要拆的几个文件大概是：
 
-src/app/(shop)/checkout/page.tsx：1622 行
+src/app/(shop)/checkout/page.tsx
 
-src/app/(shop)/returns/page.tsx：1429 行
+src/app/(shop)/returns/page.tsx
 
-src/app/(shop)/checkout/\_components/PaymentStep.tsx：1228 行
+src/app/(shop)/checkout/\_components/PaymentStep.tsx
 
-src/app/(shop)/product/[slug]/page.tsx：906 行
+src/app/(shop)/product/[slug]/page.tsx
 
-src/app/(admin)/admin/(protected)/returns/[id]/ReturnDetailClient.tsx：904 行
+src/app/(admin)/admin/(protected)/returns/[id]/ReturnDetailClient.tsx
 
-src/app/(shop)/profile/EditAddressCard.tsx：795 行
+src/app/(shop)/profile/EditAddressCard.tsx
 
-src/app/(admin)/admin/(protected)/orders/page.tsx：658 行
+src/app/(admin)/admin/(protected)/orders/page.tsx
 
-src/lib/strapi.ts：495 行
+src/lib/strapi.ts
+
+=================================================================
+
+我觉得这样好像不是很好，因为我原本的代码是没问题的，但是你帮我修改之后不行了，接着又修修补补，我怕会埋下什么隐患，我原本写好的代码一直是没问题的，你能不能就按照之前写好的代码帮我看看怎么拆分，不要做多余的动作小心帮我看看要怎么拆分，或者说，有没有可能是 D:\前端练习\social-platform\src\app\(shop)\checkout\(hooks)\useCheckoutBootstrap.ts 文件，D:\前端练习\social-platform\src\app\(shop)\checkout\(hooks)\useCheckoutShippingQuotes.ts 文件，D:\前端练习\social-platform\src\app\(shop)\checkout\(hooks)\useCheckoutReserveFlow.ts 文件的问题
+
+你这次的担心是对的。
+像 checkout / reserve / payment 这种流程页，最怕的不是代码长，而是“看起来只是搬家，实际上 effect 触发时机变了”。
