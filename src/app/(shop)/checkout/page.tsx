@@ -51,7 +51,6 @@ import {
 import {
   getNextCheckoutStep,
   getPrevCheckoutStep,
-  goToCheckoutLogin,
   setCheckoutStepAndURL,
 } from "./checkout-navigation";
 import { type ShippingQuoteAPIResult } from "./shipping-quote";
@@ -70,6 +69,17 @@ import {
   getCheckoutCartHash,
   getCheckoutQuoteReqKey,
 } from "./checkout-derived-state";
+import {
+  getCheckoutAlertVariant,
+  getCheckoutContinueButtonState,
+  handleCheckoutLoginAndContinue,
+} from "./checkout-page-ui";
+import {
+  buildCheckoutAddressStepProps,
+  buildCheckoutBagStepProps,
+  buildCheckoutDeliveryStepProps,
+  buildCheckoutPaymentStepProps,
+} from "./checkout-step-props";
 
 /* ---------------- 工具：本地 /api 优先（需要远端时单独指定） ---------------- */
 const apiURL = (path: string) => `/api${path}`;
@@ -551,20 +561,94 @@ export default function CheckoutPage() {
   };
 
   const handleLoginAndContinue = () => {
-    goToCheckoutLogin({
-      push: router.push,
-      next: "/checkout?step=address",
-    });
+    handleCheckoutLoginAndContinue(router.push);
   };
 
-  const alertVariant =
-    formAlert.alert?.type === "success"
-      ? "success"
-      : formAlert.alert?.type === "warning"
-        ? "warning"
-        : formAlert.alert?.type === "info"
-          ? "info"
-          : "error";
+  const alertVariant = getCheckoutAlertVariant(formAlert.alert?.type);
+
+  const { blockContinue, continueText } = getCheckoutContinueButtonState({
+    step,
+    reserveLoading,
+  });
+
+  const bagStepProps = buildCheckoutBagStepProps({
+    cart,
+    setCart,
+    currency,
+    itemsMajor,
+    savedMajor,
+    hasItems,
+    deliveryThreshold: DELIVERY_FREE_THRESHOLD,
+    deliveryFlat: deliveryFeeMajorEffective,
+    amountInMajorUnit: amountInMajorUnitEffective,
+  });
+
+  const addressStepProps = buildCheckoutAddressStepProps({
+    isLoggedIn,
+    accountEmail,
+    address,
+    setAddress,
+    billingAddress,
+    setBillingAddress,
+    sameAsDelivery,
+    setSameAsDelivery,
+    hasSavedDelivery,
+    hasSavedBilling,
+    savedDeliveryAddr,
+    savedBillingAddr,
+    useSavedDelivery,
+    setUseSavedDelivery,
+    useSavedBilling,
+    setUseSavedBilling,
+    addressShowErrors,
+    addressErrs,
+    billingErrs,
+    handleBillingFieldChange,
+    clearAddressErrors,
+    clearBillingErrors,
+    saveMsg,
+    onSaveDefault: handleSaveDefaultAddress,
+    marketingOptIn,
+    setMarketingOptIn,
+    sendSubscriptionIfNeeded,
+  });
+
+  const deliveryStepProps = buildCheckoutDeliveryStepProps({
+    deliveryMethod,
+    setDeliveryMethod,
+    showFreeShipping,
+    standardFreeThresholdMinor,
+    currency,
+    deliveryFeeMinorByMethod,
+    etaByMethod,
+    quoteLoading,
+    quoteError,
+    quoteMatchedText,
+  });
+
+  const paymentStepProps = buildCheckoutPaymentStepProps({
+    visible: step === "payment",
+    amountInMajorUnit: amountInMajorUnitEffective,
+    isPayProcessing,
+    isLoggedIn,
+    accountEmail,
+    address,
+    deliveryMethod,
+    itemsCount,
+    itemsMinor,
+    deliveryFeeMinor: deliveryFeeMinorEffective,
+    totalMinor: totalMinorEffective,
+    currency,
+    onPayInitiated: handlePayInitiated,
+    onPaySucceeded: handlePaySucceeded,
+    preReservationId: reservationId,
+    preReservationExpiresAtSec: reservationExpiresAtSec,
+    preReservationCartHash: reservationCartHash,
+    preReserveLoading: reserveLoading,
+    preReserveError: reserveErr,
+    cart,
+    onBackToBag: () => setStepAndURL("bag"),
+  });
 
   return (
     <main className="w-full px-4 sm:px-6 lg:px-8 2xl:px-12 py-6 md:py-8">
@@ -576,66 +660,13 @@ export default function CheckoutPage() {
         <CheckoutSteps step={step} onChange={setStepAndURL} />
 
         <div className="space-y-6">
-          {step === "bag" && (
-            <BagStep
-              cart={cart}
-              setCart={setCart}
-              currency={currency}
-              itemsMajor={itemsMajor}
-              savedMajor={savedMajor}
-              hasItems={hasItems}
-              deliveryThreshold={DELIVERY_FREE_THRESHOLD}
-              deliveryFlat={deliveryFeeMajorEffective}
-              amountInMajorUnit={amountInMajorUnitEffective}
-            />
-          )}
+          {step === "bag" && <BagStep {...bagStepProps} />}
 
-          {step === "address" && (
-            <AddressStep
-              isLoggedIn={isLoggedIn}
-              accountEmail={accountEmail}
-              address={address}
-              setAddress={setAddress}
-              billingAddress={billingAddress}
-              setBillingAddress={setBillingAddress}
-              sameAsDelivery={sameAsDelivery}
-              setSameAsDelivery={setSameAsDelivery}
-              hasSavedDelivery={hasSavedDelivery}
-              hasSavedBilling={hasSavedBilling}
-              savedDeliveryAddr={savedDeliveryAddr}
-              savedBillingAddr={savedBillingAddr}
-              useSavedDelivery={useSavedDelivery}
-              setUseSavedDelivery={setUseSavedDelivery}
-              useSavedBilling={useSavedBilling}
-              setUseSavedBilling={setUseSavedBilling}
-              addressShowErrors={addressShowErrors}
-              addressErrs={addressErrs}
-              billingErrs={billingErrs}
-              handleBillingFieldChange={handleBillingFieldChange}
-              clearAddressErrors={clearAddressErrors}
-              clearBillingErrors={clearBillingErrors}
-              saveMsg={saveMsg}
-              onSaveDefault={handleSaveDefaultAddress}
-              marketingOptIn={marketingOptIn}
-              setMarketingOptIn={setMarketingOptIn}
-              sendSubscriptionIfNeeded={sendSubscriptionIfNeeded}
-            />
-          )}
+          {step === "address" && <AddressStep {...addressStepProps} />}
 
           {step === "delivery" && (
             <div className="space-y-3">
-              <DeliveryStep
-                deliveryMethod={deliveryMethod}
-                setDeliveryMethod={setDeliveryMethod}
-                showFreeShipping={showFreeShipping}
-                standardFreeThresholdMinor={standardFreeThresholdMinor}
-                currency={currency}
-                deliveryFeeMinorByMethod={deliveryFeeMinorByMethod}
-                etaByMethod={etaByMethod}
-                quoteLoading={quoteLoading}
-                quoteError={quoteError}
-                quoteMatchedText={quoteMatchedText}
-              />
+              <DeliveryStep {...deliveryStepProps} />
             </div>
           )}
 
@@ -645,31 +676,7 @@ export default function CheckoutPage() {
             </div>
           ) : null}
 
-          <PaymentStep
-            visible={step === "payment"}
-            amountInMajorUnit={amountInMajorUnitEffective}
-            isPayProcessing={isPayProcessing}
-            isLoggedIn={isLoggedIn}
-            accountEmail={accountEmail}
-            address={address}
-            deliveryMethod={deliveryMethod}
-            itemsCount={itemsCount}
-            itemsMinor={itemsMinor}
-            deliveryFeeMinor={deliveryFeeMinorEffective}
-            totalMinor={totalMinorEffective}
-            currency={currency}
-            onPayInitiated={handlePayInitiated}
-            onPaySucceeded={handlePaySucceeded}
-
-            // ✅ pre-reserve result from Address step
-            preReservationId={reservationId}
-            preReservationExpiresAtSec={reservationExpiresAtSec}
-            preReservationCartHash={reservationCartHash}
-            preReserveLoading={reserveLoading}
-            preReserveError={reserveErr}
-            cart={cart}
-            onBackToBag={() => setStepAndURL("bag")}
-          />
+          <PaymentStep {...paymentStepProps} />
 
           {step === "payment" && (
             <div className="px-4 pb-4 pt-2 flex justify-end">
@@ -683,50 +690,42 @@ export default function CheckoutPage() {
         {step !== "payment" && (
           <>
             {/* ✅ Step 7: Continue 按钮在 reserveLoading 时禁用（防止 reserve 未完成就跳到 payment） */}
-            {(() => {
-              const blockContinue =
-                step === "delivery" && reserveLoading;
-              const continueText = blockContinue ? "Reserving..." : "Continue";
-
-              return (
-                <div className="mt-6 flex justify-end">
-                  {step === "bag" ? (
-                    <div
-                      className={
-                        isLoggedIn
-                          ? "w-[320px] max-w-full"
-                          : "w-[660px] max-w-full flex gap-3 justify-end"
-                      }
-                    >
-                      {!isLoggedIn && (
-                        <div className="w-[320px]">
-                          <LargeGhostButton onClick={handleLoginAndContinue}>
-                            Login / Sign up and Continue
-                          </LargeGhostButton>
-                        </div>
-                      )}
-
-                      <div className="w-[320px]">
-                        <LargePrimaryButton onClick={handleContinue}>
-                          Continue
-                        </LargePrimaryButton>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="w-[660px] max-w-full flex gap-3 justify-end">
-                      <LargeBackButton onClick={prevStep} />
-
-                      <LargePrimaryButton
-                        onClick={handleContinue}
-                        disabled={blockContinue}
-                      >
-                        {continueText}
-                      </LargePrimaryButton>
+            <div className="mt-6 flex justify-end">
+              {step === "bag" ? (
+                <div
+                  className={
+                    isLoggedIn
+                      ? "w-[320px] max-w-full"
+                      : "w-[660px] max-w-full flex gap-3 justify-end"
+                  }
+                >
+                  {!isLoggedIn && (
+                    <div className="w-[320px]">
+                      <LargeGhostButton onClick={handleLoginAndContinue}>
+                        Login / Sign up and Continue
+                      </LargeGhostButton>
                     </div>
                   )}
+
+                  <div className="w-[320px]">
+                    <LargePrimaryButton onClick={handleContinue}>
+                      Continue
+                    </LargePrimaryButton>
+                  </div>
                 </div>
-              );
-            })()}
+              ) : (
+                <div className="w-[660px] max-w-full flex gap-3 justify-end">
+                  <LargeBackButton onClick={prevStep} />
+
+                  <LargePrimaryButton
+                    onClick={handleContinue}
+                    disabled={blockContinue}
+                  >
+                    {continueText}
+                  </LargePrimaryButton>
+                </div>
+              )}
+            </div>
 
             {(step === "bag" || step === "address") &&
             formAlert.hasAlert &&
