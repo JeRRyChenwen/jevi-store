@@ -4,14 +4,11 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Check, AlertCircle } from "lucide-react";
-import PayPalBigButton from "./PayPalBigButton";
+import { Check } from "lucide-react";
 import {
   buildCartHash,
   buildStockItems,
-  buildVariantLineFromOptions,
   fmtMoneyMinor,
-  getCartSku,
   pickCreatedOrderIdFromPayPalPayload,
   type PayError,
   type StockCheckItem,
@@ -21,9 +18,16 @@ import type {
   DeliveryMethod,
   PaymentStepProps,
 } from "./PaymentStep.types";
+import {
+  getOutOfStockDisplay,
+  mapPayFailure,
+} from "./PaymentStep.error-utils";
+import PaymentStepStatusAlerts from "./PaymentStepStatusAlerts";
+import PaymentStepSummaryPanel from "./PaymentStepSummaryPanel";
+import PaymentStepPayAction from "./PaymentStepPayAction";
+import { usePaymentReservationState } from "./usePaymentReservationState";
 import { countryLabelOf } from "@/lib/country";
 import { mediaUrl } from "@/lib/strapi";
-import { Alert } from "@/components/ui/alert";
 
 
 const PaymentStep: React.FC<PaymentStepProps> = ({
@@ -69,11 +73,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
 
   // ✅ IMPORTANT: this ref must be kept in sync with state
   const reservationIdRef = useRef<string | null>(null);
-
-  // ✅ NEW: countdown UI (seconds left)
-  const [reservationSecondsLeft, setReservationSecondsLeft] = useState<number | null>(null);
-
-
 
   // ✅ NEW: make checkout session id stable across React StrictMode remounts (dev)
   // key should be stable per checkout tab/session
@@ -158,79 +157,31 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
       : String(address?.email || "").trim();
   }, [isLoggedIn, accountEmail, address?.email]);
 
-  const payBlockedReason = useMemo(() => {
-    if (!visible) return null;
-    if (isPayProcessing) return null;
-    if (suppressBlockedHint) return null;
-    if (payError) return null;
-
-    if (derivedItemsCount <= 0) {
-      return "Your bag is empty. Please add at least one item before paying.";
-    }
-    if (!hasAddress) {
-      return "No delivery address found. Please complete the Address step before paying.";
-    }
-
-    // ✅ 只有“最终订单邮箱”为空时才阻止支付
-    // - 登录用户：看 accountEmail
-    // - 游客：看 address.email
-    if (!String(effectiveOrderEmail || "").trim()) {
-      return isLoggedIn
-        ? "No account email found. Please check your account settings before paying."
-        : "Email required for order. Please go back to the Address step and enter your email.";
-    }
-
-    // ✅ 关键：reserve 还在进行中时，不要报 “No reservation found”
-    if (preReserveLoading) {
-      return "Reserving stock… Please wait a moment.";
-    }
-
-    // ✅ reserve 已结束，但如果有错误，优先显示错误
-    if (preReserveError && String(preReserveError).trim()) {
-      return String(preReserveError).trim();
-    }
-
-    // ✅ PaymentStep 不再 reserve，所以必须依赖 Address step 的 preReservation
-    const rid = String(preReservationId || "").trim();
-    const preHash = String(preReservationCartHash || "").trim();
-    const expSec = Number(preReservationExpiresAtSec || 0);
-    const expMs = Number.isFinite(expSec) && expSec > 0 ? expSec * 1000 : 0;
-
-    if (!rid) {
-      return "No stock reservation found. Please go back to the Address step and reserve again.";
-    }
-    if (preHash && preHash !== cartHash) {
-      return "Your bag changed. Please go back to the Address step and reserve again.";
-    }
-    if (!expMs) {
-      return "Invalid reservation. Please go back to the Address step and reserve again.";
-    }
-    if (Date.now() >= expMs - 1000) {
-      return "Your stock reservation has expired. Please go back to the Address step and reserve again.";
-    }
-
-    if (derivedTotalMinor <= 0) {
-      return "Invalid total amount. Please review your order.";
-    }
-
-    return null;
-  }, [
+  const {
+    reservationSecondsLeft,
+    reservationExpired,
+    payBlockedReason,
+  } = usePaymentReservationState({
     visible,
     isPayProcessing,
     suppressBlockedHint,
     payError,
+
     derivedItemsCount,
-    hasAddress,
-    derivedTotalMinor,
+    hasAddress: !!hasAddress,
     effectiveOrderEmail,
     isLoggedIn,
+
     preReserveLoading,
     preReserveError,
+
     preReservationId,
     preReservationCartHash,
     preReservationExpiresAtSec,
+
     cartHash,
-  ]);
+    derivedTotalMinor,
+  });
 
   // ✅ NEW: PayPal 按钮是否应变成 unavailable（灰掉）
   const paypalUnavailable = useMemo(() => {
@@ -272,61 +223,10 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
 
   /**
    * ✅ 缺货展示信息：优先从 cart snapshot 取；找不到再用后端 detail
+   * 已抽到独立 helper，避免 PaymentStep.tsx 继续膨胀
    */
   const outOfStockDisplay = useMemo(() => {
-    if (!payError || payError.type !== "out_of_stock") return null;
-
-    const sku = String(payError.detail?.sku || "").trim();
-    const list = Array.isArray(cart) ? cart : [];
-
-    const hit =
-      sku
-        ? list.find((it: any) => {
-            const s = getCartSku(it);
-            return s && s === sku;
-          })
-        : null;
-
-    const titleFromCart = String(hit?.title ?? hit?.product_title ?? hit?.name ?? "").trim();
-    const titleFromServer = String(payError.detail?.product_title ?? "").trim();
-    const title = titleFromCart || titleFromServer || "";
-
-    const attrs = hit?.attrs ?? hit?.snapshot?.attrs ?? {};
-    const options = hit?.options ?? hit?.snapshot?.options ?? {};
-
-    const color = String(hit?.color ?? options?.color ?? attrs?.color ?? "").trim();
-    const size = String(hit?.size ?? options?.size ?? attrs?.size ?? "").trim();
-
-    const height =
-      hit?.heightIncreaseCm ??
-      options?.heightIncreaseCm ??
-      attrs?.heightIncreaseCm ??
-      attrs?.height_increase_cm ??
-      null;
-
-    const material = String(hit?.material ?? options?.material ?? attrs?.material ?? "").trim();
-    const heightLabel = typeof height === "number" ? `${height} cm` : String(height || "").trim();
-
-    const variantParts = [
-      color ? `Color: ${color}` : null,
-      size ? `Size: ${size}` : null,
-      heightLabel ? `Height: +${heightLabel}` : null,
-      material ? `Material: ${material}` : null,
-    ].filter(Boolean);
-
-    const variantLineFromCart = variantParts.join(" | ").trim();
-    const variantTitleFromServer = String(payError.detail?.variant_title ?? "").trim();
-    const variantLineFromServerOptions = buildVariantLineFromOptions(payError.detail?.options);
-
-    const variantLine = variantLineFromCart || variantTitleFromServer || variantLineFromServerOptions || "";
-
-    return {
-      title: title || null,
-      variantLine: variantLine || null,
-      sku: sku || null,
-      current: payError.detail?.current,
-      requested: payError.detail?.requested,
-    };
+    return getOutOfStockDisplay(payError, cart);
   }, [payError, cart]);
 
   // ✅ 同步 page.tsx 预加载的 reservation → PaymentStep 内部状态
@@ -365,156 +265,39 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
 
 
   const handlePaySucceeded = useCallback(
-  (payload: any) => {
-    setPayError(null);
-    setSuppressBlockedHint(true);
+    (payload: any) => {
+      setPayError(null);
+      setSuppressBlockedHint(true);
 
-    // ✅ 已成功：不要再 release
-    paidOrSucceededRef.current = true;
+      // ✅ 已成功：不要再 release
+      paidOrSucceededRef.current = true;
 
-    // 成功后把 reservation 状态清掉（后端 /orders 会 consume）
-    setReservationId(null);
-    setReservationExpiresAt(null);
-    setReservationSecondsLeft(null);
-    reservationIdRef.current = null;
+      // 成功后把 reservation 状态清掉（后端 /orders 会 consume）
+      setReservationId(null);
+      setReservationExpiresAt(null);
+      reservationIdRef.current = null;
 
-    // ✅ 关键：支付成功后，直接跳转到 confirmation（只出现 Finalizing）
-    const orderId = pickCreatedOrderIdFromPayPalPayload(payload);
+      // ✅ 关键：支付成功后，直接跳转到 confirmation（只出现 Finalizing）
+      const orderId = pickCreatedOrderIdFromPayPalPayload(payload);
 
-    if (orderId) {
-      router.replace(`/order/confirmation?orderId=${orderId}`);
-      return;
-    }
+      if (orderId) {
+        router.replace(`/order/confirmation?orderId=${orderId}`);
+        return;
+      }
 
-    // 拿不到 orderId 也至少跳过去（会停在 Finalizing）
-    router.replace(`/order/confirmation`);
-  },
-  [router]
-);
+      // 拿不到 orderId 也至少跳过去（会停在 Finalizing）
+      router.replace(`/order/confirmation`);
+    },
+    [router]
+  );
 
   /**
-   * ✅ 把后端 /orders + 前端 preflight 错误码，映射成更电商的文案
-   * - 不加按钮（按你要求）
-   * - 仍然复用你 out_of_stock 的 rich display
+   * ✅ 把错误码 -> UI 文案映射抽到独立 util
+   * 这样 PaymentStep.tsx 只保留“接收错误并写入 state”
    */
-  const handlePayFailed = useCallback(
-  async (err: any) => {
-    const status = Number(err?.status ?? err?.httpStatus ?? 0) || undefined;
-
-    // ✅ PayPalBigButton 现在用 code
-    const code = String(err?.code ?? err?.error ?? "").trim();
-    const messageFromServer = String(err?.message || "").trim();
-    const detail = err?.detail ?? null;
-
-    // ---------- 1) Out of stock ----------
-    if (
-      status === 409 &&
-      (code === "out_of_stock" || code === "consume_out_of_stock" || code === "sku_not_found")
-    ) {
-      const d = detail ?? {};
-      const firstItem = Array.isArray(d?.items) ? d.items[0] : null;
-
-      const sku = d?.sku ?? err?.sku ?? firstItem?.sku ?? null;
-      const requested = d?.requested ?? err?.requested ?? firstItem?.qty ?? null;
-      const current = d?.current ?? err?.current ?? null;
-
-      const product_title = d?.product_title ?? d?.productTitle ?? null;
-      const variant_title = d?.variant_title ?? d?.variantTitle ?? null;
-      const options = d?.options ?? null;
-
-      setPayError({
-        type: "out_of_stock",
-        message:
-          code === "sku_not_found"
-            ? "Sorry — one of the items in your bag is no longer available."
-            : "Sorry — the item you’re trying to purchase is out of stock (sold out or not enough quantity).",
-        detail: { sku, current, requested, product_title, variant_title, options },
-      });
-      return;
-    }
-
-    // ---------- 2) Reservation lifecycle ----------
-    if (status === 409 && code === "reservation_expired") {
-      setPayError({
-        type: "reservation_expired",
-        status,
-        message: "Your stock reservation has expired. Please go back to Address and reserve again.",
-        detail: detail ?? err ?? null,
-      });
-      return;
-    }
-
-    if (
-      (status === 409 || status === 404) &&
-      (code.startsWith("reservation_") || code === "reservation_mismatch")
-    ) {
-      if (code === "reservation_already_consumed") {
-        setPayError({
-          type: "reservation_failed",
-          status: status ?? 409,
-          message:
-            "We’re confirming your order. If you don’t see a confirmation page, please refresh and check your orders.",
-          detail: detail ?? err ?? null,
-        });
-        return;
-      }
-
-      if (code === "reservation_not_found") {
-        setPayError({
-          type: "reservation_failed",
-          status: status ?? 404,
-          message: "We couldn’t find your stock reservation. Please go back to Address and reserve again.",
-          detail: detail ?? err ?? null,
-        });
-        return;
-      }
-
-      setPayError({
-        type: "reservation_failed",
-        status: status ?? 409,
-        message:
-          code === "reservation_mismatch"
-            ? "Your bag changed during checkout. Please go back to Address and reserve again."
-            : code === "reservation_already_released"
-            ? "Your reservation was released. Please go back to Address and reserve again."
-            : "We couldn’t confirm your stock reservation. Please go back to Address and reserve again.",
-        detail: detail ?? err ?? null,
-      });
-      return;
-    }
-
-    // ---------- 3) Amount mismatch ----------
-    if (status === 400 && code === "amount_mismatch") {
-      setPayError({
-        type: "amount_mismatch",
-        status,
-        message: "Your order total has changed. Please refresh the page and check out again.",
-        detail: detail ?? null,
-      });
-      return;
-    }
-
-    // ---------- 4) Server side / internal ----------
-    if (status && status >= 500) {
-      setPayError({
-        type: "server_error",
-        status,
-        message: "We couldn’t complete your checkout due to a server issue. Please try again.",
-        detail: detail ?? err ?? null,
-      });
-      return;
-    }
-
-    // ---------- 5) Fallback ----------
-    setPayError({
-      type: "unknown",
-      status,
-      message: messageFromServer || "Payment failed. Please try again.",
-      detail: detail ?? err ?? null,
-    });
-  },
-  [] // ✅ 现在不依赖任何外部函数（releaseReservationIfAny 已删除）
-);
+  const handlePayFailed = useCallback(async (err: any) => {
+    setPayError(mapPayFailure(err));
+  }, []);
 
   // ✅ 给后端 /orders 的权威 totals + items snapshot（保留你原来的逻辑）
   const checkoutTotalsMeta = useMemo(() => {
@@ -663,52 +446,29 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
 
 
 
-  // ✅ NEW: countdown ticker for reservation (source of truth: preReservationExpiresAtSec)
-useEffect(() => {
-  if (!visible) {
-    setReservationSecondsLeft(null);
-    return;
-  }
+  // ✅ countdown 已抽到 usePaymentReservationState
+  // 这里只负责：一旦确认过期，就清理本地 reservation 状态，并写入统一 payError
+  useEffect(() => {
+    if (!visible) return;
+    if (!reservationExpired) return;
 
-  const rid = String(preReservationId || "").trim();
-  const expSec = Number(preReservationExpiresAtSec || 0);
-  const expMs = Number.isFinite(expSec) && expSec > 0 ? expSec * 1000 : 0;
+    const rid = String(preReservationId || "").trim();
 
-  if (!rid || !expMs) {
-    setReservationSecondsLeft(null);
-    return;
-  }
+    setReservationId(null);
+    setReservationExpiresAt(null);
+    reservationIdRef.current = null;
 
-  let timer: any = null;
+    setPayError((prev) => {
+      if (prev?.type === "reservation_expired") return prev;
 
-  const tick = () => {
-    const msLeft = expMs - Date.now();
-    const secLeft = Math.max(0, Math.ceil(msLeft / 1000));
-
-    setReservationSecondsLeft(secLeft);
-
-    if (secLeft <= 0) {
-      // 过期：清理本地展示状态 + 弹出 expired 错误
-      setReservationId(null);
-      setReservationExpiresAt(null);
-      reservationIdRef.current = null;
-
-      setPayError({
+      return {
         type: "reservation_expired",
         status: 409,
         message: "Your stock reservation has expired. Please go back to Address and reserve again.",
-        detail: { reservation_id: rid },
-      });
-    }
-  };
-
-  tick();
-  timer = setInterval(tick, 1000);
-
-  return () => {
-    if (timer) clearInterval(timer);
-  };
-}, [visible, preReservationId, preReservationExpiresAtSec]);
+        detail: { reservation_id: rid || null },
+      };
+    });
+  }, [visible, reservationExpired, preReservationId]);
 
   // ✅ successMeta: always include the freshest reservation id
   // ✅ 并把“最终订单邮箱”一并传给 PayPalBigButton
@@ -783,105 +543,13 @@ useEffect(() => {
           </div>
         </div>
 
-        {visible && payError && (
-          <Alert variant="error" className="flex gap-2">
-            <AlertCircle className="w-4 h-4 mt-0.5" />
-            <div className="flex-1">
-              <div className="font-medium">{payError.message}</div>
-
-              {payError.type === "out_of_stock" && (
-                <div className="mt-2 text-xs leading-5">
-                  {outOfStockDisplay?.title ? (
-                    <div>
-                      <b>Item:</b> {outOfStockDisplay.title}
-                    </div>
-                  ) : null}
-
-                  {outOfStockDisplay?.variantLine ? (
-                    <div>
-                      <b>Variant:</b> {outOfStockDisplay.variantLine}
-                    </div>
-                  ) : null}
-
-                  <div className="mt-1">
-                    <b>In stock:</b>{" "}
-                    {typeof outOfStockDisplay?.current === "number" ? outOfStockDisplay.current : "0"}
-                    {"  "}
-                    <span className="mx-1">|</span>
-                    <b>You selected:</b>{" "}
-                    {typeof outOfStockDisplay?.requested === "number" ? outOfStockDisplay.requested : "0"}
-                  </div>
-
-                  <div className="mt-2">
-                    Please adjust the quantity or remove the item in your bag, then try paying again.
-                  </div>
-                </div>
-              )}
-
-              {/* ---------- Reservation expired ---------- */}
-              {payError.type === "reservation_expired" && (
-                <div className="mt-2 text-xs leading-5">
-                  <div>Your reserved items are no longer held.</div>
-                  <div className="mt-1">
-                    Please try paying again before the stock is taken by someone else.
-                  </div>
-                </div>
-              )}
-
-              {/* ---------- Reservation failed / conflict ---------- */}
-              {payError.type === "reservation_failed" && (
-                <div className="mt-2 text-xs leading-5">
-                  <div>
-                    We couldn’t confirm your reserved stock.
-                  </div>
-                  <div className="mt-1">
-                    This can happen if your bag changed, the reservation was released,
-                    or the payment was retried.
-                  </div>
-                  <div className="mt-1">
-                    Tip: refresh the page and try again.
-                  </div>
-                </div>
-              )}
-
-              {/* ---------- Amount mismatch ---------- */}
-              {payError.type === "amount_mismatch" && (
-                <div className="mt-2 text-xs leading-5">
-                  <div>The order total changed during checkout.</div>
-                  <div className="mt-1">
-                    Please refresh the page and check out again.
-                  </div>
-                </div>
-              )}
-
-              {/* ---------- Server error ---------- */}
-              {payError.type === "server_error" && (
-                <div className="mt-2 text-xs leading-5">
-                  <div>We encountered a temporary issue.</div>
-                  <div className="mt-1">
-                    Please try again in a moment.
-                  </div>
-                </div>
-              )}
-            </div>
-          </Alert>
-        )}
-
-        {/* ✅ Reserve loading: show INFO banner instead of ERROR */}
-        {visible && !payError && preReserveLoading ? (
-          <Alert variant="info" className="flex gap-2">
-            <span className="mt-0.5 text-base">ℹ️</span>
-            <div>Reserving stock… Please wait a moment.</div>
-          </Alert>
-        ) : null}
-
-        {/* ✅ Reserve done / other blocked reasons */}
-        {visible && !payError && !preReserveLoading && payBlockedReason ? (
-          <Alert variant="error" className="flex gap-2">
-            <AlertCircle className="w-4 h-4 mt-0.5" />
-            <div>{payBlockedReason}</div>
-          </Alert>
-        ) : null}
+        <PaymentStepStatusAlerts
+          visible={visible}
+          payError={payError}
+          outOfStockDisplay={outOfStockDisplay}
+          preReserveLoading={preReserveLoading}
+          payBlockedReason={payBlockedReason}
+        />
 
         <div className="flex-1 flex flex-col">
           <div className="grid gap-4 md:grid-cols-[minmax(0,1.5fr)_minmax(0,2fr)]">
@@ -911,134 +579,40 @@ useEffect(() => {
               </div>
             </div>
 
-            <div className="space-y-4">
-              <div className="border rounded-lg p-4">
-                <h3 className="text-base font-medium mb-3">Delivery Details</h3>
-                {hasAddress ? (
-                  <div className="text-sm leading-6 text-gray-800 space-y-0.5">
-                    <div>{[address.firstName, address.lastName].filter(Boolean).join(" ")}</div>
-
-                    {address.line1 && (
-                      <div>
-                        {address.line1}
-                        {address.line2 ? ` ${address.line2}` : ""}
-                      </div>
-                    )}
-
-                    {(address.city || address.state || address.postcode) && (
-                      <div>{[address.city, address.state, address.postcode].filter(Boolean).join(" ")}</div>
-                    )}
-
-                    {countryDisplay && <div>{countryDisplay}</div>}
-                    {effectiveOrderEmail && <div className="mt-2">{effectiveOrderEmail}</div>}
-                    {address.phone && <div>{address.phone}</div>}
-                  </div>
-                ) : (
-                  <div className="text-sm text-gray-500">
-                    No delivery address found. Please complete the <b>Address</b> step.
-                  </div>
-                )}
-              </div>
-
-              <div className="border rounded-lg p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm text-gray-600">Items</div>
-                  <div className="text-base font-medium">
-                    {derivedItemsCount} item{derivedItemsCount > 1 ? "s" : ""}
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div className="text-sm text-gray-600">Subtotal</div>
-                  <div className="text-base font-medium">{fmtMoneyMinor(derivedItemsMinor, safeCurrency)}</div>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div className="text-sm text-gray-600">Delivery</div>
-                  <div className="text-base font-medium">
-                    {Number(deliveryFeeMinor) === 0 ? "FREE" : fmtMoneyMinor(Number(deliveryFeeMinor) || 0, safeCurrency)}
-                  </div>
-                </div>
-
-                <div className="border-t pt-3 flex items-center justify-between">
-                  <div className="text-lg font-semibold">Total</div>
-                  <div className="text-xl font-bold">{fmtMoneyMinor(derivedTotalMinor, safeCurrency)}</div>
-                </div>
-
-                {visible && reservationId && !(payError && (payError.type === "out_of_stock" || payError.type === "reservation_expired" || payError.type === "reservation_failed")) && (
-                  <Alert variant="info" className="mt-3">
-                    <div className="flex items-start gap-2">
-                      <span className="text-base">🛍️</span>
-                      <div className="leading-5 flex-1">
-                        <div className="font-medium flex items-center justify-between gap-3">
-                          <span>Your items are reserved.</span>
-
-                          {typeof reservationSecondsLeft === "number" ? (
-                            <span className="text-xs font-semibold tabular-nums rounded-md border bg-white px-2 py-0.5">
-                              {String(Math.floor(reservationSecondsLeft / 60)).padStart(2, "0")}:
-                              {String(reservationSecondsLeft % 60).padStart(2, "0")}
-                            </span>
-                          ) : (
-                            <span className="text-xs opacity-70">--:--</span>
-                          )}
-                        </div>
-
-                        <div className="text-xs opacity-90">
-                          Please complete your payment before the reservation expires.
-                        </div>
-                      </div>
-                    </div>
-                  </Alert>
-                )}
-              </div>
-
-              {visible && derivedAmountMajor > 0 && (
-                <div className="pt-0 flex justify-end">
-                  <div className="w-[260px] max-w-full">
-                    {isPayProcessing ? (
-                      <button
-                        type="button"
-                        disabled
-                        className="w-full rounded-full px-6 py-3 text-sm font-semibold bg-[#FFC439] text-[#111827] opacity-70 cursor-not-allowed"
-                      >
-                        Processing payment...
-                      </button>
-                    ) : preReserveLoading ? (
-                      <button
-                        type="button"
-                        disabled
-                        className="w-full rounded-full px-6 py-3 text-sm font-semibold bg-[#FFC439] text-[#111827] opacity-70 cursor-not-allowed"
-                      >
-                        Preparing PayPal...
-                      </button>
-                    ) : (
-                      <PayPalBigButton
-                        // ✅ NEW: 统一禁用逻辑（满足你两张截图：expired / out_of_stock 都会灰）
-                        disabled={paypalUnavailable}
-                        disabledText="PayPal unavailable"
-                        amount={derivedAmountMajor}
-                        currency={safeCurrency}
-                        successMeta={successMetaWithReservation}
-                        preflight={runStockReservePreflight}
-                        preflightItems={stockItems}
-                        onInitiate={() => {
-                          console.log("[payment] initiating paypal with reservationId =", reservationIdRef.current);
-                          setPayError(null);
-                          setSuppressBlockedHint(true);
-                          onPayInitiated();
-                        }}
-                        onSucceeded={(paypalPayload) => {
-                          handlePaySucceeded(paypalPayload);
-                        }}
-                        onFailed={(err: any) => {
-                          void handlePayFailed(err);
-                        }}
-                      />
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
+            <PaymentStepSummaryPanel
+              address={address}
+              hasAddress={!!hasAddress}
+              countryDisplay={countryDisplay}
+              effectiveOrderEmail={effectiveOrderEmail}
+              derivedItemsCount={derivedItemsCount}
+              derivedItemsMinor={derivedItemsMinor}
+              deliveryFeeMinor={Number(deliveryFeeMinor) || 0}
+              derivedTotalMinor={derivedTotalMinor}
+              safeCurrency={safeCurrency}
+              visible={visible}
+              reservationId={reservationId}
+              reservationSecondsLeft={reservationSecondsLeft}
+              payError={payError}
+              actionSlot={
+                <PaymentStepPayAction
+                  visible={visible}
+                  derivedAmountMajor={derivedAmountMajor}
+                  safeCurrency={safeCurrency}
+                  isPayProcessing={isPayProcessing}
+                  preReserveLoading={preReserveLoading}
+                  paypalUnavailable={paypalUnavailable}
+                  successMetaWithReservation={successMetaWithReservation}
+                  stockItems={stockItems}
+                  runStockReservePreflight={runStockReservePreflight}
+                  reservationIdRef={reservationIdRef}
+                  setPayError={setPayError}
+                  setSuppressBlockedHint={setSuppressBlockedHint}
+                  onPayInitiated={onPayInitiated}
+                  handlePaySucceeded={handlePaySucceeded}
+                  handlePayFailed={handlePayFailed}
+                />
+              }
+            />
           </div>
         </div>
 
