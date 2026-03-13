@@ -35,6 +35,8 @@ type ReturnRow = {
   refund_error?: string | null;
 
   reject_reason?: string | null;
+  reject_reason_code?: string | null;
+  reject_reason_text?: string | null;
 
   approved_at_ts?: number | null;
   approved_by?: string | null;
@@ -117,6 +119,107 @@ const RETURN_REASON_LABELS: Record<string, string> = {
   other: "Other",
 };
 
+const REJECT_REASON_OPTIONS = [
+  { value: "", label: "请选择主原因 / Select a main reason" },
+
+  // 时效类
+  {
+    value: "return_window_expired",
+    label: "超过退货时限 / Return window expired",
+  },
+
+  // 商品状态类
+  {
+    value: "does_not_meet_return_conditions",
+    label: "商品不符合退货条件 / Item does not meet return conditions",
+  },
+  {
+    value: "visible_signs_of_use",
+    label: "商品存在明显使用痕迹 / Item shows visible signs of use",
+  },
+  {
+    value: "damage_not_caused_by_shipping",
+    label: "商品损坏并非运输导致 / Damage not caused by shipping",
+  },
+  {
+    value: "missing_original_packaging_or_tags",
+    label: "缺少原包装或吊牌 / Missing original packaging or tags",
+  },
+  {
+    value: "missing_accessories_or_included_parts",
+    label: "缺少配件、赠品或附件 / Missing accessories, gifts, or included parts",
+  },
+
+  // 商品政策类
+  {
+    value: "non_returnable_item",
+    label: "属于不可退商品 / Non-returnable item",
+  },
+  {
+    value: "final_sale_not_returnable",
+    label: "折扣商品不可退 / Final sale item is not returnable",
+  },
+  {
+    value: "customised_item_not_returnable",
+    label: "定制商品不可退 / Customised item is not returnable",
+  },
+  {
+    value: "hygiene_sensitive_item_not_returnable",
+    label: "贴身/卫生类商品不可退 / Hygiene-sensitive item is not returnable",
+  },
+
+  // 信息/证据类
+  {
+    value: "insufficient_photos_or_evidence",
+    label: "图片或证据不足 / Insufficient photos or evidence",
+  },
+  {
+    value: "incomplete_submission_information",
+    label: "提交信息不完整 / Incomplete submission information",
+  },
+  {
+    value: "order_information_mismatch",
+    label: "订单信息不匹配 / Order information does not match",
+  },
+  {
+    value: "returned_item_mismatch",
+    label: "退回商品与申请商品不一致 / Returned item does not match the request",
+  },
+
+  // 流程/系统类
+  {
+    value: "already_refunded_or_processed",
+    label: "已退款或已处理过 / Already refunded or already processed",
+  },
+  {
+    value: "request_no_longer_processable",
+    label: "已超过可处理时效 / Request can no longer be processed",
+  },
+  {
+    value: "duplicate_return_request",
+    label: "重复提交申请 / Duplicate return request",
+  },
+  {
+    value: "does_not_meet_policy_requirements",
+    label: "不符合退货政策 / Does not meet return policy requirements",
+  },
+
+  // 兜底
+  {
+    value: "other",
+    label: "其他 / Other",
+  },
+] as const;
+
+function getRejectReasonLabel(reasonCode: string | null | undefined) {
+  const code = String(reasonCode || "").trim();
+  if (!code) return "-";
+  return (
+    REJECT_REASON_OPTIONS.find((x) => x.value === code)?.label ??
+    titleCaseFromSnake(code)
+  );
+}
+
 function titleCaseFromSnake(s: string) {
   return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -171,7 +274,8 @@ export default function ReturnDetailClient({ id }: { id: string }) {
   const [err, setErr] = useState<string>("");
   const [data, setData] = useState<ApiPayload | null>(null);
 
-  const [rejectReason, setRejectReason] = useState<string>("");
+  const [rejectReasonCode, setRejectReasonCode] = useState<string>("");
+  const [rejectReasonText, setRejectReasonText] = useState<string>("");
   const [saving, setSaving] = useState<null | "approve" | "reject">(null);
 
   const [attachments, setAttachments] = useState<AttachmentRow[]>([]);
@@ -424,7 +528,8 @@ export default function ReturnDetailClient({ id }: { id: string }) {
       if (r.status === 401) throw new Error("UNAUTHORIZED");
       if (!r.ok) throw new Error(j?.error || `HTTP_${r.status}`);
 
-      setRejectReason("");
+      setRejectReasonCode("");
+      setRejectReasonText("");
       setNotice({ variant: "success", message: "Approved." });
       await loadDetail();
     } catch (e: any) {
@@ -449,9 +554,24 @@ export default function ReturnDetailClient({ id }: { id: string }) {
       return;
     }
 
-    const rr = rejectReason.trim();
-    if (!rr) {
-      setNotice({ variant: "warning", message: "Reject reason is required." });
+    const code = rejectReasonCode.trim();
+    const text = rejectReasonText.trim();
+
+    if (!code) {
+      setNotice({ variant: "warning", message: "Main reject reason is required." });
+      return;
+    }
+
+    if (!text) {
+      setNotice({ variant: "warning", message: "Reject reason detail is required." });
+      return;
+    }
+
+    if (code === "other" && text.length < 8) {
+      setNotice({
+        variant: "warning",
+        message: "Please provide a more detailed explanation for 'Other'.",
+      });
       return;
     }
 
@@ -464,7 +584,14 @@ export default function ReturnDetailClient({ id }: { id: string }) {
         headers: { "content-type": "application/json" },
         cache: "no-store",
         credentials: "include",
-        body: JSON.stringify({ reject_reason: rr }),
+        body: JSON.stringify({
+          reject_reason_code: code,
+          reject_reason_text: text,
+
+          // ✅ 兼容旧后端：如果 reject 接口暂时还只认 reject_reason，
+          // 先继续把详细说明塞进旧字段，避免第一阶段前后端不同步。
+          reject_reason: text,
+        }),
       });
 
       const j = (await r.json().catch(() => null)) as any;
@@ -472,7 +599,8 @@ export default function ReturnDetailClient({ id }: { id: string }) {
       if (r.status === 401) throw new Error("UNAUTHORIZED");
       if (!r.ok) throw new Error(j?.error || `HTTP_${r.status}`);
 
-      setRejectReason("");
+      setRejectReasonCode("");
+      setRejectReasonText("");
       setNotice({ variant: "success", message: "Rejected." });
       await loadDetail();
     } catch (e: any) {
@@ -679,8 +807,16 @@ export default function ReturnDetailClient({ id }: { id: string }) {
                 </span>
               </div>
               <div>
-                <span className="text-slate-500">Reason:</span>{" "}
-                <span className="font-mono">{record.reject_reason || "-"}</span>
+                <span className="text-slate-500">Main reason:</span>{" "}
+                <span className="font-mono">
+                  {getRejectReasonLabel(record.reject_reason_code)}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-500">Reason details:</span>{" "}
+                <span className="font-mono">
+                  {record.reject_reason_text || record.reject_reason || "-"}
+                </span>
               </div>
             </div>
           ) : null}
@@ -868,33 +1004,101 @@ export default function ReturnDetailClient({ id }: { id: string }) {
           <div className="mt-3 grid gap-4 md:grid-cols-2">
             {/* 左：Approve */}
             <div className="space-y-3">
-              <button
-                onClick={onApprove}
-                disabled={saving !== null || typeof record.requested_amount_minor !== "number"}
-                className="inline-flex min-h-[40px] min-w-[110px] items-center justify-center rounded-md bg-black px-4 py-2 text-sm text-white disabled:opacity-60"
-              >
-                {saving === "approve" ? "Approving..." : "Approve"}
-              </button>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 min-h-[300px] flex flex-col justify-between">
+                <div>
+                  <div className="text-sm font-medium text-slate-900">
+                    批准退货 / Approve return
+                  </div>
+                  <div className="mt-2 text-sm leading-6 text-slate-600">
+                    审核通过后，系统会按当前申请退款金额进行批准，并进入后续退款流程。
+                    <br />
+                    Once approved, the return request will be accepted using the
+                    currently requested refund amount and will move into the next refund
+                    stage.
+                  </div>
+
+                  <div className="mt-4 rounded-md border border-slate-200 bg-white px-3 py-3">
+                    <div className="text-xs text-slate-500">Requested refund</div>
+                    <div className="mt-1 font-mono text-sm font-semibold text-slate-900">
+                      {hasRequestedAmount ? requestedAmountText : "N/A"}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <button
+                    onClick={onApprove}
+                    disabled={saving !== null || typeof record.requested_amount_minor !== "number"}
+                    className="inline-flex min-h-[40px] min-w-[110px] items-center justify-center rounded-md bg-black px-4 py-2 text-sm text-white disabled:opacity-60"
+                  >
+                    {saving === "approve" ? "Approving..." : "Approve"}
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* 右：Reject */}
             <div className="space-y-3">
-              <button
-                onClick={onReject}
-                disabled={saving !== null}
-                className="inline-flex min-h-[40px] min-w-[110px] items-center justify-center rounded-md border border-slate-200 bg-white px-4 py-2 text-sm text-slate-900 disabled:opacity-60"
-              >
-                {saving === "reject" ? "Rejecting..." : "Reject"}
-              </button>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 min-h-[300px]">
+                <div className="mb-4">
+                  <div className="text-sm font-medium text-slate-900">
+                    拒绝退货 / Reject return
+                  </div>
+                  <div className="mt-2 text-sm leading-6 text-slate-600">
+                    请选择一个标准化主原因，并补充详细说明。后续拒绝邮件中可展示主原因和原因详情。
+                    <br />
+                    Please choose a standardised main reason and provide a detailed
+                    explanation. The rejection email may display both the main reason
+                    and the detailed explanation.
+                  </div>
+                </div>
 
-              <div className="text-sm text-slate-600">Reason for rejection</div>
+                <div className="mb-4">
+                  <label className="mb-1 block text-sm font-medium text-slate-900">
+                    主原因 / Main reason
+                  </label>
+                  <select
+                    value={rejectReasonCode}
+                    onChange={(e) => setRejectReasonCode(e.target.value)}
+                    disabled={saving !== null}
+                    className="min-h-[44px] w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 disabled:opacity-60"
+                  >
+                    {REJECT_REASON_OPTIONS.map((opt) => (
+                      <option key={opt.value || "__empty"} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-              <textarea
-                value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
-                className="min-h-[120px] w-full resize-y rounded-md border border-slate-200 px-3 py-2 text-sm"
-                placeholder="Enter the rejection reason..."
-              />
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-900">
+                    拒绝原因详情 / Reason for rejection
+                  </label>
+                  <textarea
+                    value={rejectReasonText}
+                    onChange={(e) => setRejectReasonText(e.target.value)}
+                    disabled={saving !== null}
+                    className="min-h-[180px] w-full resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm disabled:opacity-60"
+                    placeholder="请输入会展示给客户的详细说明 / Enter the detailed explanation that may be shown in the rejection email..."
+                  />
+                  <div className="mt-2 text-xs leading-5 text-slate-500">
+                    这段详细说明后续可能会展示在客户收到的拒绝退货邮件中。 / This
+                    detailed message may be shown to the customer in the rejection
+                    email.
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <button
+                    onClick={onReject}
+                    disabled={saving !== null}
+                    className="inline-flex min-h-[40px] min-w-[110px] items-center justify-center rounded-md border border-slate-200 bg-white px-4 py-2 text-sm text-slate-900 disabled:opacity-60"
+                  >
+                    {saving === "reject" ? "Rejecting..." : "Reject"}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
