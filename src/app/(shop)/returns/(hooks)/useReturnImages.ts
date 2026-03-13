@@ -74,7 +74,6 @@ export function useReturnImages({
     if (!images.length) return null;
 
     const fd = new FormData();
-    // ✅ 关键：字段名必须是 files（对应 worker: form.getAll("files")）
     for (const img of images) {
       fd.append("files", img.file);
     }
@@ -114,7 +113,6 @@ export function useReturnImages({
     setUploading(false);
   }
 
-  // ✅ 页面卸载时回收 objectURL，避免内存泄漏
   useEffect(() => {
     return () => {
       setImages((prev) => {
@@ -130,11 +128,8 @@ export function useReturnImages({
 
   return {
     images,
-    setImages,
     uploading,
-    setUploading,
     uploadResult,
-    setUploadResult,
     onPickImages,
     removeImage,
     uploadAttachments,

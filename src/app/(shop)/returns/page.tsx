@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { UserTime } from "@/components/datetime/Time";
+import { useReturnImages } from "./(hooks)/useReturnImages";
 
 // ✅ 复用你现有的 Strapi 工具
 import { api } from "@/lib/strapi";
@@ -32,7 +33,6 @@ import type {
   MyOrderRow,
   ReturnsBootstrapResp,
   SortDir,
-  SelectedImg,
 } from "./types";
 
 import {
@@ -42,7 +42,6 @@ import {
   mapReturnError,
   mapLookupError,
   cmpText,
-  isAllowedImage,
 } from "./utils";
 
 export default function ReturnsPage() {
@@ -124,17 +123,25 @@ export default function ReturnsPage() {
   // ✅ 用 code 表示“不可重复提交类”的错误（逻辑保持你原来那套）
   const [errorCode, setErrorCode] = useState<string | null>(null);
 
-  // ✅ 上传图片 state
-  const [images, setImages] = useState<SelectedImg[]>([]);
-  const [uploading, setUploading] = useState(false);
-  const [uploadResult, setUploadResult] = useState<any>(null);
-
   // ✅ 统一提示：替代原来的 error + displayError useMemo
   const { alert, hasAlert, clear: clearAlert, error: showError, fromError } =
     useFormAlert({
       mapMessage: (raw) => mapReturnError(raw),
       defaultNetworkError: "Network or server error.",
     });
+
+  const {
+    images,
+    uploading,
+    uploadResult,
+    onPickImages,
+    removeImage,
+    uploadAttachments,
+    resetImages,
+  } = useReturnImages({
+    clearAlert,
+    showError,
+  });
 
   // ✅ 两类“不可重复”的错误
   const isDuplicateError = errorCode === "duplicate_return_request"; // pending 审核中（active）
@@ -287,72 +294,7 @@ export default function ReturnsPage() {
   const showingFrom = ordersTotal === 0 ? 0 : (ordersPage - 1) * PAGE_SIZE + 1;
   const showingTo = Math.min(ordersPage * PAGE_SIZE, ordersTotal);
 
-  // ✅ 上传：选择图片
-  function onPickImages(e: ChangeEvent<HTMLInputElement>) {
-    clearAlert();
 
-    const files = Array.from(e.target.files || []);
-    // 允许重复选择同一张图：重置 input
-    e.target.value = "";
-
-    if (!files.length) return;
-
-    const MAX_FILES = 6;
-    const MAX_EACH_BYTES = 5 * 1024 * 1024; // 5MB
-    const current = images.length;
-
-    const accepted: SelectedImg[] = [];
-    for (const f of files) {
-      if (!isAllowedImage(f)) {
-        showError("Only image files are allowed: png/jpg/webp/gif.");
-        continue;
-      }
-      if ((f.size || 0) <= 0) {
-        showError("Empty file is not allowed.");
-        continue;
-      }
-      if ((f.size || 0) > MAX_EACH_BYTES) {
-        showError("Each image must be <= 5MB.");
-        continue;
-      }
-      if (current + accepted.length >= MAX_FILES) {
-        showError(`You can upload up to ${MAX_FILES} images.`);
-        break;
-      }
-
-      const previewUrl = URL.createObjectURL(f);
-      accepted.push({
-        id: crypto.randomUUID(),
-        file: f,
-        previewUrl,
-      });
-    }
-
-    if (accepted.length) {
-      setImages((prev) => [...prev, ...accepted]);
-    }
-  }
-
-  // ✅ 上传：移除图片
-  function removeImage(id: string) {
-    setImages((prev) => {
-      const hit = prev.find((x) => x.id === id);
-      if (hit?.previewUrl) URL.revokeObjectURL(hit.previewUrl);
-      return prev.filter((x) => x.id !== id);
-    });
-  }
-
-  // ✅ step 切换/重置时：回收 objectURL，避免内存泄漏
-  useEffect(() => {
-    return () => {
-      for (const img of images) {
-        try {
-          URL.revokeObjectURL(img.previewUrl);
-        } catch {}
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Step 1: 根据 orderNumber + email 查询订单
   async function handleFindOrder(nextOrderNumber?: string, nextEmail?: string) {
@@ -465,17 +407,7 @@ export default function ReturnsPage() {
       // ✅ 每次进入 Step 2：清空原因 & 图片
       setReasonType("");
       setReasonDetail("");
-      setUploadResult(null);
-      setUploading(false);
-      // 回收旧预览
-      setImages((prev) => {
-        prev.forEach((x) => {
-          try {
-            URL.revokeObjectURL(x.previewUrl);
-          } catch {}
-        });
-        return [];
-      });
+      resetImages();
 
       // ✅ 批量拉图（方案B）：用 product_title 去 Strapi 查 Product.title
       try {
@@ -574,42 +506,10 @@ export default function ReturnsPage() {
     }
   }
 
-  async function uploadAttachments(returnId: number) {
-    if (!images.length) return null;
-
-    const fd = new FormData();
-    // ✅ 关键：字段名必须是 files（对应 worker: form.getAll("files")）
-    for (const img of images) {
-      fd.append("files", img.file);
-    }
-
-    setUploading(true);
-    setUploadResult(null);
-
-    try {
-      const res = await fetch(`/api/returns/${returnId}/attachments`, {
-        method: "POST",
-        credentials: "include",
-        body: fd,
-      });
-
-      const data = await res.json().catch(() => ({} as any));
-      if (!res.ok || !data?.ok) {
-        throw new Error(String(data?.error || "upload_failed"));
-      }
-
-      setUploadResult(data);
-      return data;
-    } finally {
-      setUploading(false);
-    }
-  }
-
   // Step 2: 提交退货（成功后：再上传图片）
   async function handleSubmitReturn() {
     setErrorCode(null);
     clearAlert();
-    setUploadResult(null);
 
     if (!order) {
       showError("No order loaded.");
@@ -1098,18 +998,7 @@ export default function ReturnsPage() {
             setReasonDetail("");
             setErrorCode(null);
             clearAlert();
-
-            // reset images
-            setImages((prev) => {
-              prev.forEach((x) => {
-                try {
-                  URL.revokeObjectURL(x.previewUrl);
-                } catch {}
-              });
-              return [];
-            });
-            setUploadResult(null);
-            setUploading(false);
+            resetImages();
           }}
         />
       )}
