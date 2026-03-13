@@ -3,22 +3,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import PageBack from "@/components/PageBack";
-import BagStep from "./_components/BagStep";
-import AddressStep from "./_components/AddressStep";
-import DeliveryStep from "./_components/DeliveryStep";
-import PaymentStep from "./_components/PaymentStep";
-import CheckoutSteps from "./_components/CheckoutSteps";
-import {
-  LargeBackButton,
-  LargeGhostButton,
-  LargePrimaryButton,
-} from "./_components/CheckoutButtons";
 import { useCart } from "./(hooks)/useCart";
 import { usePricing } from "./(hooks)/usePricing";
 import { useAddress } from "./(hooks)/useAddress";
-import { Alert } from "@/components/ui/alert";
 import { useFormAlert } from "@/hooks/useFormAlert";
+import CheckoutPageView from "./checkout-page-view";
 import type {
   DeliveryMethod,
   ReserveCache,
@@ -651,95 +640,24 @@ export default function CheckoutPage() {
   });
 
   return (
-    <main className="w-full px-4 sm:px-6 lg:px-8 2xl:px-12 py-6 md:py-8">
-      <div className="mx-auto w-full max-w-[2300px]">
-        <div className="mb-5">
-          <PageBack />
-        </div>
-
-        <CheckoutSteps step={step} onChange={setStepAndURL} />
-
-        <div className="space-y-6">
-          {step === "bag" && <BagStep {...bagStepProps} />}
-
-          {step === "address" && <AddressStep {...addressStepProps} />}
-
-          {step === "delivery" && (
-            <div className="space-y-3">
-              <DeliveryStep {...deliveryStepProps} />
-            </div>
-          )}
-
-          {step === "payment" && payPersistErrMsg ? (
-            <div className="px-4">
-              <Alert variant={"error" as any}>{payPersistErrMsg}</Alert>
-            </div>
-          ) : null}
-
-          <PaymentStep {...paymentStepProps} />
-
-          {step === "payment" && (
-            <div className="px-4 pb-4 pt-2 flex justify-end">
-              <div className="w-[320px] max-w-full">
-                <LargeBackButton onClick={() => setStepAndURL("delivery")} />
-              </div>
-            </div>
-          )}
-        </div>
-
-        {step !== "payment" && (
-          <>
-            {/* ✅ Step 7: Continue 按钮在 reserveLoading 时禁用（防止 reserve 未完成就跳到 payment） */}
-            <div className="mt-6 flex justify-end">
-              {step === "bag" ? (
-                <div
-                  className={
-                    isLoggedIn
-                      ? "w-[320px] max-w-full"
-                      : "w-[660px] max-w-full flex gap-3 justify-end"
-                  }
-                >
-                  {!isLoggedIn && (
-                    <div className="w-[320px]">
-                      <LargeGhostButton onClick={handleLoginAndContinue}>
-                        Login / Sign up and Continue
-                      </LargeGhostButton>
-                    </div>
-                  )}
-
-                  <div className="w-[320px]">
-                    <LargePrimaryButton onClick={handleContinue}>
-                      Continue
-                    </LargePrimaryButton>
-                  </div>
-                </div>
-              ) : (
-                <div className="w-[660px] max-w-full flex gap-3 justify-end">
-                  <LargeBackButton onClick={prevStep} />
-
-                  <LargePrimaryButton
-                    onClick={handleContinue}
-                    disabled={blockContinue}
-                  >
-                    {continueText}
-                  </LargePrimaryButton>
-                </div>
-              )}
-            </div>
-
-            {(step === "bag" || step === "address") &&
-            formAlert.hasAlert &&
-            formAlert.alert?.message ? (
-              <div className="mt-2 flex justify-end">
-                <div className={step === "bag" ? "w-[320px] max-w-full" : "w-[660px] max-w-full"}>
-                  <Alert variant={alertVariant as any}>{formAlert.alert.message}</Alert>
-                </div>
-              </div>
-            ) : null}
-          </>
-        )}
-      </div>
-    </main>
+    <CheckoutPageView
+      step={step}
+      setStepAndURL={setStepAndURL}
+      bagStepProps={bagStepProps}
+      addressStepProps={addressStepProps}
+      deliveryStepProps={deliveryStepProps}
+      paymentStepProps={paymentStepProps}
+      payPersistErrMsg={payPersistErrMsg}
+      isLoggedIn={isLoggedIn}
+      handleLoginAndContinue={handleLoginAndContinue}
+      handleContinue={handleContinue}
+      prevStep={prevStep}
+      blockContinue={blockContinue}
+      continueText={continueText}
+      formAlertHasAlert={formAlert.hasAlert}
+      formAlertMessage={formAlert.alert?.message}
+      alertVariant={alertVariant}
+    />
   );
 }
 
