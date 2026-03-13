@@ -1,12 +1,13 @@
 // src/app/checkout/page.tsx
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCart } from "./(hooks)/useCart";
 import { usePricing } from "./(hooks)/usePricing";
 import { useAddress } from "./(hooks)/useAddress";
 import { useCheckoutReservation } from "./(hooks)/useCheckoutReservation";
+import { useCheckoutShippingQuotes } from "./(hooks)/useCheckoutShippingQuotes";
 import { useFormAlert } from "@/hooks/useFormAlert";
 import CheckoutPageView from "./checkout-page-view";
 import type {
@@ -24,22 +25,16 @@ import {
   getPrevCheckoutStep,
   setCheckoutStepAndURL,
 } from "./checkout-navigation";
-import { type ShippingQuoteAPIResult } from "./shipping-quote";
 import { getCheckoutTotals } from "./checkout-totals";
 import { runCheckoutSubscriptionIfNeeded } from "./checkout-subscription";
 import { finalizeCheckoutPaySuccess } from "./checkout-pay-success";
 import { getCheckoutDeliveryViewModel } from "./checkout-delivery-view-model";
 import { runCheckoutContinue } from "./checkout-continue";
-import { fetchCheckoutShippingQuotesBoth } from "./checkout-shipping-request";
 import {
   runCheckoutPageBootstrap,
   runCheckoutPagePreconnect,
 } from "./checkout-bootstrap-runtime";
-import {
-  coerceCheckoutStep,
-  getCheckoutCartHash,
-  getCheckoutQuoteReqKey,
-} from "./checkout-derived-state";
+import { coerceCheckoutStep } from "./checkout-derived-state";
 import {
   getCheckoutAlertVariant,
   getCheckoutContinueButtonState,
@@ -173,35 +168,21 @@ export default function CheckoutPage() {
     deliveryFeeMinor: deliveryFeeMinorFallback,
   } = pricing;
 
-  // ===============================
-  // ✅ NEW: server-side shipping quote state (fetch BOTH standard + express)
-  // ===============================
-  const [quoteLoading, setQuoteLoading] = useState(false);
-  const [quoteError, setQuoteError] = useState<string | null>(null);
-
-  const [quoteByMethod, setQuoteByMethod] = useState<
-    Partial<Record<DeliveryMethod, ShippingQuoteAPIResult>>
-  >({});
-  const [lastQuoteMeta, setLastQuoteMeta] = useState<any | null>(null);
-
-  const abortRef = useRef<AbortController | null>(null);
-
-  const quoteReqKey = useMemo(() => {
-    return getCheckoutQuoteReqKey({
-      hasItems,
-      itemsMinor,
-      country: address?.country,
-      state: address?.state,
-      postcode: address?.postcode,
-    });
-  }, [address?.country, address?.state, address?.postcode, hasItems, itemsMinor]);
-
-  const cartHash = useMemo(() => {
-    return getCheckoutCartHash({
-      hasItems,
-      cart,
-    });
-  }, [cart, hasItems]);
+  const {
+    quoteLoading,
+    quoteError,
+    quoteByMethod,
+    lastQuoteMeta,
+    cartHash,
+  } = useCheckoutShippingQuotes({
+    hasItems,
+    cart,
+    itemsMinor,
+    address,
+    deliveryMethod,
+    remoteBase: REMOTE_BASE,
+    apiURL,
+  });
 
   const {
     reserveLoading,
@@ -217,27 +198,6 @@ export default function CheckoutPage() {
     step,
     apiURL,
   });
-
-  async function fetchShippingQuotesBoth() {
-    await fetchCheckoutShippingQuotesBoth({
-      hasItems,
-      address,
-      itemsMinor,
-      deliveryMethod,
-      remoteBase: REMOTE_BASE,
-      apiURL,
-      abortRef,
-      setQuoteLoading,
-      setQuoteError,
-      setQuoteByMethod,
-      setLastQuoteMeta,
-    });
-  }
-
-  useEffect(() => {
-    void fetchShippingQuotesBoth();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quoteReqKey]);
 
   // ===============================
   // ✅ Effective fee / totals
