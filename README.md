@@ -1211,3 +1211,5 @@ src/lib/strapi.ts
 order 頁面返回出問題
 
 D:\前端练习\social-platform\src\app\(shop)\returns\page.tsx
+
+return頁面的reject reason 和 自動發email
