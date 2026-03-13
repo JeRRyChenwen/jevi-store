@@ -104,6 +104,16 @@ type AttachmentsApiCompat = {
   error?: string;
 };
 
+type RejectReasonOption = {
+  value: string;
+  label: string;
+};
+
+type RejectReasonGroup = {
+  label: string;
+  options: RejectReasonOption[];
+};
+
 function StatusPill({ value }: { value: string }) {
   return (
     <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs capitalize text-slate-700">
@@ -119,7 +129,7 @@ const RETURN_REASON_LABELS: Record<string, string> = {
   other: "Other",
 };
 
-const REJECT_REASON_GROUPS = [
+const REJECT_REASON_GROUPS: RejectReasonGroup[] = [
   {
     label: "流程/系统类 / Process & system",
     options: [
@@ -231,9 +241,11 @@ const REJECT_REASON_GROUPS = [
       },
     ],
   },
-] as const;
+];
 
-const REJECT_REASON_OPTIONS_FLAT = REJECT_REASON_GROUPS.flatMap((group) => group.options);
+const REJECT_REASON_OPTIONS_FLAT: RejectReasonOption[] = REJECT_REASON_GROUPS.flatMap(
+  (group) => group.options
+);
 
 function getRejectReasonLabel(reasonCode: string | null | undefined) {
   const code = String(reasonCode || "").trim();
