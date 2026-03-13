@@ -2,7 +2,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import BackButton from "@/components/navigation/BackButton";
 import { Alert } from "@/components/ui/alert";
 
@@ -119,105 +119,128 @@ const RETURN_REASON_LABELS: Record<string, string> = {
   other: "Other",
 };
 
-const REJECT_REASON_OPTIONS = [
-  { value: "", label: "请选择主原因 / Select a main reason" },
-
-  // 时效类
+const REJECT_REASON_GROUPS = [
   {
-    value: "return_window_expired",
-    label: "超过退货时限 / Return window expired",
+    label: "流程/系统类 / Process & system",
+    options: [
+      {
+        value: "already_refunded_or_processed",
+        label: "已退款或已处理过 / Already refunded or already processed",
+      },
+      {
+        value: "request_no_longer_processable",
+        label: "已超过可处理时效 / Request can no longer be processed",
+      },
+      {
+        value: "duplicate_return_request",
+        label: "重复提交申请 / Duplicate return request",
+      },
+    ],
   },
 
-  // 商品状态类
   {
-    value: "does_not_meet_return_conditions",
-    label: "商品不符合退货条件 / Item does not meet return conditions",
-  },
-  {
-    value: "visible_signs_of_use",
-    label: "商品存在明显使用痕迹 / Item shows visible signs of use",
-  },
-  {
-    value: "damage_not_caused_by_shipping",
-    label: "商品损坏并非运输导致 / Damage not caused by shipping",
-  },
-  {
-    value: "missing_original_packaging_or_tags",
-    label: "缺少原包装或吊牌 / Missing original packaging or tags",
-  },
-  {
-    value: "missing_accessories_or_included_parts",
-    label: "缺少配件、赠品或附件 / Missing accessories, gifts, or included parts",
-  },
-
-  // 商品政策类
-  {
-    value: "non_returnable_item",
-    label: "属于不可退商品 / Non-returnable item",
-  },
-  {
-    value: "final_sale_not_returnable",
-    label: "折扣商品不可退 / Final sale item is not returnable",
-  },
-  {
-    value: "customised_item_not_returnable",
-    label: "定制商品不可退 / Customised item is not returnable",
-  },
-  {
-    value: "hygiene_sensitive_item_not_returnable",
-    label: "贴身/卫生类商品不可退 / Hygiene-sensitive item is not returnable",
+    label: "信息/证据类 / Information & evidence",
+    options: [
+      {
+        value: "insufficient_photos_or_evidence",
+        label: "图片或证据不足 / Insufficient photos or evidence",
+      },
+      {
+        value: "incomplete_submission_information",
+        label: "提交信息不完整 / Incomplete submission information",
+      },
+      {
+        value: "order_information_mismatch",
+        label: "订单信息不匹配 / Order information does not match",
+      },
+      {
+        value: "returned_item_mismatch",
+        label: "退回商品与申请商品不一致 / Returned item does not match the request",
+      },
+    ],
   },
 
-  // 信息/证据类
   {
-    value: "insufficient_photos_or_evidence",
-    label: "图片或证据不足 / Insufficient photos or evidence",
-  },
-  {
-    value: "incomplete_submission_information",
-    label: "提交信息不完整 / Incomplete submission information",
-  },
-  {
-    value: "order_information_mismatch",
-    label: "订单信息不匹配 / Order information does not match",
-  },
-  {
-    value: "returned_item_mismatch",
-    label: "退回商品与申请商品不一致 / Returned item does not match the request",
-  },
-
-  // 流程/系统类
-  {
-    value: "already_refunded_or_processed",
-    label: "已退款或已处理过 / Already refunded or already processed",
-  },
-  {
-    value: "request_no_longer_processable",
-    label: "已超过可处理时效 / Request can no longer be processed",
-  },
-  {
-    value: "duplicate_return_request",
-    label: "重复提交申请 / Duplicate return request",
-  },
-  {
-    value: "does_not_meet_policy_requirements",
-    label: "不符合退货政策 / Does not meet return policy requirements",
+    label: "商品状态类 / Item condition",
+    options: [
+      {
+        value: "does_not_meet_return_conditions",
+        label: "商品不符合退货条件 / Item does not meet return conditions",
+      },
+      {
+        value: "visible_signs_of_use",
+        label: "商品存在明显使用痕迹 / Item shows visible signs of use",
+      },
+      {
+        value: "damage_not_caused_by_shipping",
+        label: "商品损坏并非运输导致 / Damage not caused by shipping",
+      },
+      {
+        value: "missing_original_packaging_or_tags",
+        label: "缺少原包装或吊牌 / Missing original packaging or tags",
+      },
+      {
+        value: "missing_accessories_or_included_parts",
+        label: "缺少配件、赠品或附件 / Missing accessories, gifts, or included parts",
+      },
+    ],
   },
 
-  // 兜底
   {
-    value: "other",
+    label: "商品政策类 / Item policy",
+    options: [
+      {
+        value: "non_returnable_item",
+        label: "属于不可退商品 / Non-returnable item",
+      },
+      {
+        value: "final_sale_not_returnable",
+        label: "折扣商品不可退 / Final sale item is not returnable",
+      },
+      {
+        value: "customised_item_not_returnable",
+        label: "定制商品不可退 / Customised item is not returnable",
+      },
+      {
+        value: "hygiene_sensitive_item_not_returnable",
+        label: "贴身/卫生类商品不可退 / Hygiene-sensitive item is not returnable",
+      },
+      {
+        value: "does_not_meet_policy_requirements",
+        label: "不符合退货政策 / Does not meet return policy requirements",
+      },
+    ],
+  },
+
+  {
+    label: "时效类 / Timing",
+    options: [
+      {
+        value: "return_window_expired",
+        label: "超过退货时限 / Return window expired",
+      },
+    ],
+  },
+
+  {
     label: "其他 / Other",
+    options: [
+      {
+        value: "other",
+        label: "其他 / Other",
+      },
+    ],
   },
 ] as const;
+
+const REJECT_REASON_OPTIONS_FLAT = REJECT_REASON_GROUPS.flatMap((group) => group.options);
 
 function getRejectReasonLabel(reasonCode: string | null | undefined) {
   const code = String(reasonCode || "").trim();
   if (!code) return "-";
-  return (
-    REJECT_REASON_OPTIONS.find((x) => x.value === code)?.label ??
-    titleCaseFromSnake(code)
-  );
+
+  const found = REJECT_REASON_OPTIONS_FLAT.find((x) => x.value === code);
+  return found?.label ?? titleCaseFromSnake(code);
 }
 
 function titleCaseFromSnake(s: string) {
@@ -276,6 +299,7 @@ export default function ReturnDetailClient({ id }: { id: string }) {
 
   const [rejectReasonCode, setRejectReasonCode] = useState<string>("");
   const [rejectReasonText, setRejectReasonText] = useState<string>("");
+  const [isReasonMenuOpen, setIsReasonMenuOpen] = useState(false);
   const [saving, setSaving] = useState<null | "approve" | "reject">(null);
 
   const [attachments, setAttachments] = useState<AttachmentRow[]>([]);
@@ -283,6 +307,12 @@ export default function ReturnDetailClient({ id }: { id: string }) {
   const [attachmentsLoading, setAttachmentsLoading] = useState<boolean>(false);
 
   const [notice, setNotice] = useState<UiNotice | null>(null);
+
+  const selectedRejectReasonLabel = useMemo(() => {
+    return rejectReasonCode
+      ? getRejectReasonLabel(rejectReasonCode)
+      : "请选择主原因 / Select a main reason";
+  }, [rejectReasonCode]);
 
   async function loadDetail(signal?: AbortSignal) {
     const r = await fetch(`/api/admin/returns/${encodeURIComponent(id)}`, {
@@ -530,6 +560,7 @@ export default function ReturnDetailClient({ id }: { id: string }) {
 
       setRejectReasonCode("");
       setRejectReasonText("");
+      setIsReasonMenuOpen(false);
       setNotice({ variant: "success", message: "Approved." });
       await loadDetail();
     } catch (e: any) {
@@ -601,6 +632,7 @@ export default function ReturnDetailClient({ id }: { id: string }) {
 
       setRejectReasonCode("");
       setRejectReasonText("");
+      setIsReasonMenuOpen(false);
       setNotice({ variant: "success", message: "Rejected." });
       await loadDetail();
     } catch (e: any) {
@@ -791,7 +823,7 @@ export default function ReturnDetailClient({ id }: { id: string }) {
           ) : null}
 
           {isRejected ? (
-            <div className="mt-2 space-y-1 text-sm text-slate-700">
+            <div className="mt-2 space-y-3 text-sm text-slate-700">
               <div>
                 <span className="text-slate-500">Status:</span>{" "}
                 <span className="font-medium text-red-700">Rejected</span>
@@ -806,17 +838,25 @@ export default function ReturnDetailClient({ id }: { id: string }) {
                   {record.rejected_at_ts ? toLocalTime(record.rejected_at_ts) : "-"}
                 </span>
               </div>
-              <div>
-                <span className="text-slate-500">Main reason:</span>{" "}
-                <span className="font-mono">
-                  {getRejectReasonLabel(record.reject_reason_code)}
-                </span>
-              </div>
-              <div>
-                <span className="text-slate-500">Reason details:</span>{" "}
-                <span className="font-mono">
-                  {record.reject_reason_text || record.reject_reason || "-"}
-                </span>
+
+              <div className="rounded-md border border-red-100 bg-red-50 px-3 py-3">
+                <div className="text-xs font-medium uppercase tracking-wide text-red-700">
+                  Rejection reason
+                </div>
+
+                <div className="mt-2">
+                  <div className="text-xs text-slate-500">Main reason</div>
+                  <div className="mt-1 font-mono text-sm text-slate-900">
+                    {getRejectReasonLabel(record.reject_reason_code)}
+                  </div>
+                </div>
+
+                <div className="mt-3 border-t border-red-100 pt-3">
+                  <div className="text-xs text-slate-500">Reason details</div>
+                  <div className="mt-1 whitespace-pre-wrap font-mono text-sm text-slate-900">
+                    {record.reject_reason_text || record.reject_reason || "-"}
+                  </div>
+                </div>
               </div>
             </div>
           ) : null}
@@ -1057,18 +1097,64 @@ export default function ReturnDetailClient({ id }: { id: string }) {
                   <label className="mb-1 block text-sm font-medium text-slate-900">
                     主原因 / Main reason
                   </label>
-                  <select
-                    value={rejectReasonCode}
-                    onChange={(e) => setRejectReasonCode(e.target.value)}
-                    disabled={saving !== null}
-                    className="min-h-[44px] w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 disabled:opacity-60"
-                  >
-                    {REJECT_REASON_OPTIONS.map((opt) => (
-                      <option key={opt.value || "__empty"} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
+
+                  <div className="relative">
+                    <button
+                      type="button"
+                      disabled={saving !== null}
+                      onClick={() => setIsReasonMenuOpen((v) => !v)}
+                      className="flex min-h-[44px] w-full items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 text-left text-sm text-slate-900 disabled:opacity-60"
+                    >
+                      <span className={rejectReasonCode ? "text-slate-900" : "text-slate-500"}>
+                        {selectedRejectReasonLabel}
+                      </span>
+                      <span className="ml-3 text-slate-400">
+                        {isReasonMenuOpen ? "▲" : "▼"}
+                      </span>
+                    </button>
+
+                    {isReasonMenuOpen ? (
+                      <div className="absolute z-20 mt-2 max-h-[360px] w-full overflow-y-auto rounded-md border border-slate-900 bg-white shadow-lg">
+                        <div className="sticky top-0 border-b border-slate-200 bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700">
+                          请选择主原因 / Select a main reason
+                        </div>
+
+                        <div className="p-2">
+                          {REJECT_REASON_GROUPS.map((group) => (
+                            <div key={group.label} className="mb-3 last:mb-0">
+                              <div className="rounded-md border border-slate-300 bg-slate-200 px-3 py-2 text-xs font-bold tracking-wide text-slate-800 shadow-sm">
+                                {group.label}
+                              </div>
+
+                              <div className="mt-1 space-y-1">
+                                {group.options.map((opt) => {
+                                  const isActive = rejectReasonCode === opt.value;
+
+                                  return (
+                                    <button
+                                      key={opt.value}
+                                      type="button"
+                                      onClick={() => {
+                                        setRejectReasonCode(opt.value);
+                                        setIsReasonMenuOpen(false);
+                                      }}
+                                      className={`block w-full rounded-md px-3 py-2 text-left text-sm transition ${
+                                        isActive
+                                          ? "bg-slate-900 text-white"
+                                          : "text-slate-800 hover:bg-slate-100"
+                                      }`}
+                                    >
+                                      {opt.label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
 
                 <div>

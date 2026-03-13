@@ -34,11 +34,31 @@ export async function POST(
   const { id } = await ctx.params;
 
   const body = await req.json().catch(() => ({} as any));
-  const reject_reason = String(body?.reject_reason || "").trim();
 
-  if (!reject_reason) {
+  const reject_reason_code = String(
+    body?.reject_reason_code || body?.reason_code || ""
+  ).trim();
+
+  const reject_reason_text = String(
+    body?.reject_reason_text ||
+      body?.reject_reason ||
+      body?.reason ||
+      ""
+  ).trim();
+
+  // ✅ 兼容旧字段：继续保留 reject_reason，默认与详细说明一致
+  const reject_reason = reject_reason_text;
+
+  if (!reject_reason_code) {
     return NextResponse.json(
-      { ok: false, error: "reject_reason_required" },
+      { ok: false, error: "reject_reason_code_required" },
+      { status: 400, headers: { "cache-control": "no-store", "x-next-admin-proxy": "1" } }
+    );
+  }
+
+  if (!reject_reason_text) {
+    return NextResponse.json(
+      { ok: false, error: "reject_reason_text_required" },
       { status: 400, headers: { "cache-control": "no-store", "x-next-admin-proxy": "1" } }
     );
   }
@@ -49,7 +69,11 @@ export async function POST(
     const r = await fetch(upstream, {
       method: "POST",
       headers: upstreamHeaders(req),
-      body: JSON.stringify({ reject_reason }),
+      body: JSON.stringify({
+        reject_reason_code,
+        reject_reason_text,
+        reject_reason,
+      }),
       cache: "no-store",
       redirect: "manual",
     });

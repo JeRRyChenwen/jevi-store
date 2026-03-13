@@ -1215,3 +1215,5 @@ D:\前端练习\social-platform\src\app\(shop)\returns\page.tsx
 return頁面的reject reason 和 自動發email
 
 admin頁面保留 reject return request 的記錄
+
+main reason ui修改
