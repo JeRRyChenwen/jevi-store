@@ -62,6 +62,9 @@ export type StrapiMediaRel =
 /** ✅ 与 admin 一致的排序方向 */
 export type SortDir = "asc" | "desc";
 
+/** ✅ Returns 页面表头排序字段 */
+export type SortKey = "order" | "paidAt" | "amount";
+
 export type SelectedImg = {
   id: string;
   file: File;

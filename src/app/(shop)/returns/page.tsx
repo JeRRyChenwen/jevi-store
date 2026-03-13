@@ -4,9 +4,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import { UserTime } from "@/components/datetime/Time";
 
 // ✅ 复用你现有的 Strapi 工具
@@ -19,6 +16,12 @@ import ReturnItemsSelector, {
   type ReturnOrderDetail,
   type SelectedReturnLine,
 } from "./_components/ReturnItemsSelector";
+import ReturnsOrdersTable from "./_components/ReturnsOrdersTable";
+import ReturnsLookupForm from "./_components/ReturnsLookupForm";
+import ReturnsGuestLookupCard from "./_components/ReturnsGuestLookupCard";
+import ReturnsImageUploadCard from "./_components/ReturnsImageUploadCard";
+import ReturnsReasonCard from "./_components/ReturnsReasonCard";
+import ReturnsSubmittedCard from "./_components/ReturnsSubmittedCard";
 
 // ✅ 统一提示：useFormAlert + Alert
 import { useFormAlert } from "@/hooks/useFormAlert";
@@ -34,19 +37,12 @@ import type {
 
 import {
   firstImageUrlFromRel,
-  fmtMoney,
   toTsFromCn,
   mapReturnError,
   mapLookupError,
   cmpText,
   isAllowedImage,
 } from "./utils";
-
-/** ✅ 与 admin 一致的排序 icon（文本 ↕ / ↑ / ↓） */
-function SortIcon({ dir }: { dir: SortDir | null }) {
-  if (!dir) return <span className="ml-1 text-slate-300">↕</span>;
-  return <span className="ml-1 text-slate-500">{dir === "asc" ? "↑" : "↓"}</span>;
-}
 
 export default function ReturnsPage() {
   const search = useSearchParams();
@@ -105,7 +101,7 @@ export default function ReturnsPage() {
     Math.floor((lookupCooldownUntilRef.current - cooldownNow) / 1000)
   );
   const isLookupCoolingDown = lookupCooldownLeftSec > 0;
-  
+
   const [order, setOrder] = useState<OrderSummary | null>(null);
 
   // 查到的订单明细（带 items），用于 ReturnItemsSelector
@@ -224,8 +220,6 @@ export default function ReturnsPage() {
     }
   }
 
-  const headerBtn = "inline-flex items-center select-none hover:text-slate-900";
-
   // ✅ myOrders -> 排序后的数组（按表头逻辑）
   const sortedMyOrders = useMemo(() => {
     const arr = Array.isArray(myOrders) ? [...myOrders] : [];
@@ -240,24 +234,28 @@ export default function ReturnsPage() {
       }
 
       if (sortKey === "paidAt") {
-      // ✅ 优先 epoch 秒（更准、更快、更统一）
-      const atSec =
-        (typeof a.paid_at_ts === "number" ? a.paid_at_ts : null) ??
-        (typeof a.created_at_ts === "number" ? a.created_at_ts : null);
+        // ✅ 优先 epoch 秒（更准、更快、更统一）
+        const atSec =
+          (typeof a.paid_at_ts === "number" ? a.paid_at_ts : null) ??
+          (typeof a.created_at_ts === "number" ? a.created_at_ts : null);
 
-      const btSec =
-        (typeof b.paid_at_ts === "number" ? b.paid_at_ts : null) ??
-        (typeof b.created_at_ts === "number" ? b.created_at_ts : null);
+        const btSec =
+          (typeof b.paid_at_ts === "number" ? b.paid_at_ts : null) ??
+          (typeof b.created_at_ts === "number" ? b.created_at_ts : null);
 
-      // 转成毫秒用于比较；没有 ts 就用旧 cn 兜底
-      const at =
-        typeof atSec === "number" ? atSec * 1000 : toTsFromCn(a.paid_at_cn || a.created_at_cn);
-      const bt =
-        typeof btSec === "number" ? btSec * 1000 : toTsFromCn(b.paid_at_cn || b.created_at_cn);
+        // 转成毫秒用于比较；没有 ts 就用旧 cn 兜底
+        const at =
+          typeof atSec === "number"
+            ? atSec * 1000
+            : toTsFromCn(a.paid_at_cn || a.created_at_cn);
+        const bt =
+          typeof btSec === "number"
+            ? btSec * 1000
+            : toTsFromCn(b.paid_at_cn || b.created_at_cn);
 
-      if (at === bt) return 0;
-      return at > bt ? dir : -dir;
-    }
+        if (at === bt) return 0;
+        return at > bt ? dir : -dir;
+      }
 
       // sortKey === "order"
       const ao = String(a.order_number || `#${a.id}`);
@@ -269,7 +267,6 @@ export default function ReturnsPage() {
 
     return arr;
   }, [myOrders, sortKey, sortDir]);
-
 
   // ✅ NEW: 前端分页切片（基于排序后的数组）
   const ordersTotal = sortedMyOrders.length;
@@ -449,7 +446,9 @@ export default function ReturnsPage() {
         }
 
         // ✅ 其次：前端映射（会安全地把 not_found 映射成人话）
-        showError(code ? mapLookupError(code, retryAfterSec || undefined) : mapLookupError("no_match"));
+        showError(
+          code ? mapLookupError(code, retryAfterSec || undefined) : mapLookupError("no_match")
+        );
         return;
       }
 
@@ -737,304 +736,47 @@ export default function ReturnsPage() {
           ) : authed ? (
             <Card className="p-4 space-y-6">
               {/* ===== 登录态：订单列表 ===== */}
-              <div className="space-y-3">
-                <div>
-                  <div className="text-sm font-medium">Your orders</div>
-                  <div className="text-xs text-muted-foreground">
-                    Select an order to start a return.
-                  </div>
-                </div>
-
-                {bootError && <div className="text-sm text-red-600">{bootError}</div>}
-
-                {sortedMyOrders.length === 0 ? (
-                  <div className="text-sm text-muted-foreground">No orders found.</div>
-                ) : (
-                  <div
-                    className={[
-                      "flex flex-col gap-3 transition-[min-height] duration-200",
-                      shouldLockListHeight
-                        ? "min-h-[590px]"
-                        : "h-auto min-h-[220px]",
-                    ].join(" ")}
-                  >
-                    {/* ✅ 最终规则：
-                        - 总订单数 <= 10（只有 1 页）时：自适应高度
-                        - 总订单数 > 10（进入“满页 + 后续页”场景）时：
-                          只保留一个较稳的最小高度，避免全屏时裁掉第 10 条，
-                          但不要强行把表格容器本身拉伸到占满剩余空间。 */}
-
-                    {/* ✅ 表格容器：始终按内容自然高度显示，避免底部出现大块空白 */}
-                    <div className="overflow-hidden rounded-lg border bg-white">
-                      <div className="h-auto">
-                        <table className="w-full text-left text-sm">
-                          <thead className="sticky top-0 z-10 border-b bg-slate-50 text-xs text-slate-600">
-                            <tr>
-                              <th className="py-2 pl-3 pr-4">
-                                <button
-                                  type="button"
-                                  className={headerBtn}
-                                  onClick={() => toggleSort("order")}
-                                  title="Sort by Order"
-                                >
-                                  Order number
-                                  <SortIcon dir={sortKey === "order" ? sortDir : null} />
-                                </button>
-                              </th>
-
-                              <th className="py-2 pr-4">
-                                <button
-                                  type="button"
-                                  className={headerBtn}
-                                  onClick={() => toggleSort("paidAt")}
-                                  title="Sort by Paid at"
-                                >
-                                  Paid at
-                                  <SortIcon dir={sortKey === "paidAt" ? sortDir : null} />
-                                </button>
-                              </th>
-
-                              <th className="py-2 pr-4">
-                                <button
-                                  type="button"
-                                  className={headerBtn}
-                                  onClick={() => toggleSort("amount")}
-                                  title="Sort by Amount"
-                                >
-                                  Amount
-                                  <SortIcon dir={sortKey === "amount" ? sortDir : null} />
-                                </button>
-                              </th>
-
-                              <th className="py-2 pr-4">Status</th>
-                              <th className="py-2 pr-3"></th>
-                            </tr>
-                          </thead>
-
-                          <tbody>
-                            {pagedOrders.map((o) => (
-                              <tr key={o.id} className="border-t">
-                                <td className="py-2 pl-3 pr-4 font-medium">
-                                  {o.order_number || `#${o.id}`}
-                                  <div className="text-xs text-muted-foreground">
-                                    Items: {o.item_count}
-                                  </div>
-                                </td>
-                                <td className="py-2 pr-4">
-                                  {/* ✅ 用户侧：优先 epoch 秒 → 浏览器本地时间 */}
-                                  {typeof o.paid_at_ts === "number" ||
-                                  typeof o.created_at_ts === "number" ? (
-                                    <UserTime
-                                      ts={(o.paid_at_ts ?? o.created_at_ts) ?? null}
-                                      fallback="-"
-                                    />
-                                  ) : (
-                                    // ✅ 兜底：如果后端暂时没给 *_ts，就先显示旧的 cn 字符串（以后可以删）
-                                    o.paid_at_cn || o.created_at_cn || "-"
-                                  )}
-                                </td>
-                                <td className="py-2 pr-4">
-                                  {fmtMoney(o.total_minor, o.currency)}
-                                </td>
-                                <td className="py-2 pr-4 text-muted-foreground">
-                                  {o.status || "-"}
-                                </td>
-                                <td className="py-2 pr-3 text-right">
-                                  <Button
-                                    variant="outline"
-                                    className="px-4"
-                                    disabled={
-                                      loading ||
-                                      isLookupCoolingDown ||
-                                      !o.order_number ||
-                                      !o.email
-                                    }
-                                    onClick={() =>
-                                      handleFindOrder(
-                                        String(o.order_number || ""),
-                                        String(o.email || "")
-                                      )
-                                    }
-                                  >
-                                    {loading ? "Loading…" : "Start Return"}
-                                  </Button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-
-                    {/* ✅ 分页：永远贴底 */}
-                    <div className="mt-auto flex items-center justify-between gap-3">
-                      <div className="text-xs text-muted-foreground">
-                        {ordersTotal > 0 ? (
-                          <>
-                            Showing <span className="font-medium">{showingFrom}</span>
-                            {"–"}
-                            <span className="font-medium">{showingTo}</span> of{" "}
-                            <span className="font-medium">{ordersTotal}</span>
-                          </>
-                        ) : (
-                          <>Showing 0</>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="h-9 w-9 px-0 rounded-lg"
-                          disabled={bootLoading || ordersPage <= 1}
-                          onClick={() => goPage(ordersPage - 1)}
-                          aria-label="Previous page"
-                          title="Previous"
-                        >
-                          <ChevronLeft className="h-4 w-4" />
-                        </Button>
-
-                        <div className="flex items-center gap-2">
-                          {(() => {
-                            const totalPages = Math.max(1, Number(ordersTotalPages || 1));
-                            const cur = Math.max(1, Math.min(ordersPage, totalPages));
-
-                            const pages: Array<number | "ellipsis"> = [];
-                            if (totalPages <= 5) {
-                              for (let i = 1; i <= totalPages; i++) pages.push(i);
-                            } else {
-                              pages.push(1);
-                              const start = Math.max(2, cur - 1);
-                              const end = Math.min(totalPages - 1, cur + 1);
-
-                              if (start > 2) pages.push("ellipsis");
-                              for (let i = start; i <= end; i++) pages.push(i);
-                              if (end < totalPages - 1) pages.push("ellipsis");
-
-                              pages.push(totalPages);
-                            }
-
-                            return pages.map((p, idx) => {
-                              if (p === "ellipsis") {
-                                return (
-                                  <span
-                                    key={`e-${idx}`}
-                                    className="px-1 text-sm text-muted-foreground select-none"
-                                  >
-                                    …
-                                  </span>
-                                );
-                              }
-
-                              const isActive = p === cur;
-
-                              const base = "h-9 w-9 px-0 rounded-lg border";
-                              const active =
-                                "bg-slate-100 border-slate-400 text-slate-900 pointer-events-none";
-                              const idle =
-                                "bg-white border-slate-200 text-slate-900 hover:bg-slate-50";
-
-                              return (
-                                <button
-                                  key={p}
-                                  type="button"
-                                  className={[base, isActive ? active : idle].join(" ")}
-                                  onClick={() => goPage(p)}
-                                  aria-current={isActive ? "page" : undefined}
-                                  aria-label={`Page ${p}`}
-                                  title={`Page ${p}`}
-                                  disabled={bootLoading}
-                                >
-                                  {p}
-                                </button>
-                              );
-                            });
-                          })()}
-                        </div>
-
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="h-9 w-9 px-0 rounded-lg"
-                          disabled={bootLoading || ordersPage >= (ordersTotalPages || 1)}
-                          onClick={() => goPage(ordersPage + 1)}
-                          aria-label="Next page"
-                          title="Next"
-                        >
-                          <ChevronRight className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
+              <ReturnsOrdersTable
+                bootError={bootError}
+                sortedMyOrders={sortedMyOrders}
+                pagedOrders={pagedOrders}
+                shouldLockListHeight={shouldLockListHeight}
+                sortKey={sortKey}
+                sortDir={sortDir}
+                toggleSort={toggleSort}
+                loading={loading}
+                isLookupCoolingDown={isLookupCoolingDown}
+                handleFindOrder={handleFindOrder}
+                ordersTotal={ordersTotal}
+                showingFrom={showingFrom}
+                showingTo={showingTo}
+                ordersPage={ordersPage}
+                ordersTotalPages={ordersTotalPages}
+                bootLoading={bootLoading}
+                goPage={goPage}
+              />
 
               {/* ===== 查单输入 ===== */}
-              <div className="border-t pt-6 space-y-4">
-                <div>
-                  <div className="text-sm font-medium">Find an order by order number and email</div>
-                  <div className="text-xs text-muted-foreground">
-                    Use this if you want to start a return for a different email/order.
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Order number</label>
-                  <Input
-                    value={orderNumber}
-                    onChange={(e) => setOrderNumber(e.target.value)}
-                    placeholder="e.g. SP20251201-000123"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Email used for this order</label>
-                  <Input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="e.g. name@example.com"
-                  />
-                </div>
-
-                <Button
-                  variant="outline"
-                  className="px-6"
-                  onClick={() => handleFindOrder()}
-                  disabled={loading || isLookupCoolingDown}
-                >
-                  {loading ? "Finding your order..." : "Find my order"}
-                </Button>
-              </div>
+              <ReturnsLookupForm
+                orderNumber={orderNumber}
+                email={email}
+                setOrderNumber={setOrderNumber}
+                setEmail={setEmail}
+                loading={loading}
+                isLookupCoolingDown={isLookupCoolingDown}
+                handleFindOrder={handleFindOrder}
+              />
             </Card>
           ) : (
-            <Card className="p-4 space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Please enter your order number and email to start a return.
-              </p>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Order number</label>
-                <Input
-                  value={orderNumber}
-                  onChange={(e) => setOrderNumber(e.target.value)}
-                  placeholder="e.g. SP20251201-000123"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Email used for this order</label>
-                <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-              </div>
-
-              <Button
-                variant="outline"
-                className="px-6"
-                onClick={() => handleFindOrder()}
-                disabled={loading || isLookupCoolingDown}
-              >
-                {loading ? "Finding your order..." : "Find my order"}
-              </Button>
-
-            </Card>
+            <ReturnsGuestLookupCard
+              orderNumber={orderNumber}
+              email={email}
+              setOrderNumber={setOrderNumber}
+              setEmail={setEmail}
+              loading={loading}
+              isLookupCoolingDown={isLookupCoolingDown}
+              handleFindOrder={handleFindOrder}
+            />
           )}
         </div>
       )}
@@ -1047,14 +789,17 @@ export default function ReturnsPage() {
                 <div className="font-medium">Order {order.order_number ?? order.id}</div>
                 <div className="text-muted-foreground">
                   Placed at:{" "}
-                  {"created_at_ts" in (order as any) && typeof (order as any).created_at_ts === "number" ? (
+                  {"created_at_ts" in (order as any) &&
+                  typeof (order as any).created_at_ts === "number" ? (
                     <UserTime ts={(order as any).created_at_ts} fallback="N/A" />
                   ) : (
-                    (order.created_at_cn || "N/A")
+                    order.created_at_cn || "N/A"
                   )}
                 </div>
               </div>
-              <div className="text-right text-sm text-muted-foreground">Status: {order.status}</div>
+              <div className="text-right text-sm text-muted-foreground">
+                Status: {order.status}
+              </div>
             </div>
           </Card>
 
@@ -1066,189 +811,59 @@ export default function ReturnsPage() {
             />
           )}
 
-          {/* ✅ NEW: 上传图片（可选） */}
-          <Card className="p-4 space-y-3">
-            <div>
-              <div className="text-sm font-semibold">Upload images (optional)</div>
-              <div className="text-xs text-muted-foreground">
-                Add up to 6 photos (png/jpg/webp/gif). Each image up to 5MB.
-              </div>
-            </div>
+          <ReturnsImageUploadCard
+            images={images}
+            submitting={submitting}
+            uploading={uploading}
+            onPickImages={onPickImages}
+            removeImage={removeImage}
+          />
 
-            <div className="flex items-center gap-3">
-              <Button
-                type="button"
-                variant="outline"
-                className="px-4"
-                onClick={() => document.getElementById("return-upload-input")?.click()}
-                disabled={submitting || uploading}
-              >
-                Add photos
-              </Button>
-
-              <input
-                id="return-upload-input"
-                type="file"
-                accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
-                multiple
-                className="hidden"
-                onChange={onPickImages}
-              />
-
-              {images.length > 0 && (
-                <div className="text-xs text-muted-foreground">
-                  Selected: {images.length} / 6
-                </div>
-              )}
-            </div>
-
-            {images.length > 0 && (
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 pt-2">
-                {images.map((img) => (
-                  <div
-                    key={img.id}
-                    className="relative rounded-xl border border-neutral-200 overflow-hidden bg-neutral-50"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={img.previewUrl}
-                      alt={img.file.name}
-                      className="w-full h-24 object-cover"
-                    />
-
-                    <button
-                      type="button"
-                      className="absolute top-1 right-1 rounded-full bg-white/90 border border-neutral-200 px-2 py-1 text-xs"
-                      onClick={() => removeImage(img.id)}
-                      disabled={submitting || uploading}
-                      title="Remove"
-                    >
-                      ✕
-                    </button>
-
-                    <div className="px-2 py-1 text-[10px] text-neutral-600 truncate">
-                      {img.file.name}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
-
-          <Card className="p-4 space-y-3">
-            <h2 className="text-sm font-semibold">Return reason</h2>
-            <div className="space-y-2">
-              <select
-                className="w-full border rounded px-2 py-1 text-sm"
-                value={reasonType}
-                onChange={(e) => setReasonType(e.target.value)}
-                disabled={submitting || uploading}
-              >
-                <option value="">Select a reason</option>
-                <option value="changed_mind">Changed my mind</option>
-                <option value="wrong_item">Received wrong item</option>
-                <option value="faulty">Faulty / damaged</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Details (optional)</label>
-              <textarea
-                rows={4}
-                className="w-full border rounded px-2 py-1 text-sm"
-                placeholder="Tell us more..."
-                value={reasonDetail}
-                onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setReasonDetail(e.target.value)}
-                disabled={submitting || uploading}
-              />
-            </div>
-
-            <div className="flex justify-end pt-2">
-              <Button
-                variant="outline"
-                className="px-6"
-                onClick={handleSubmitReturn}
-                disabled={submitting || uploading}
-              >
-                {submitting
-                  ? "Submitting..."
-                  : uploading
-                  ? "Uploading images..."
-                  : "Submit return request"}
-              </Button>
-            </div>
-
-            {showInlineBlock && (
-              <div className="mt-6">
-                <Alert variant={inlineVariant}>
-                  <div className="font-semibold">{inlineTitle}</div>
-                  <div className="mt-1 text-xs leading-relaxed">{inlineMessage}</div>
-                </Alert>
-              </div>
-            )}
-          </Card>
+          <ReturnsReasonCard
+            reasonType={reasonType}
+            reasonDetail={reasonDetail}
+            setReasonType={setReasonType}
+            setReasonDetail={setReasonDetail}
+            submitting={submitting}
+            uploading={uploading}
+            handleSubmitReturn={handleSubmitReturn}
+            showInlineBlock={showInlineBlock}
+            inlineVariant={inlineVariant}
+            inlineTitle={inlineTitle}
+            inlineMessage={inlineMessage}
+          />
         </div>
       )}
 
       {step === 3 && submitResult && (
-        <Card className="p-4 space-y-3 mt-4">
-          <h2 className="text-lg font-semibold">Return request submitted 🎉</h2>
-          <p className="text-sm text-muted-foreground">
-            We&apos;ve received your return request. You&apos;ll receive an email once it&apos;s reviewed.
-          </p>
+        <ReturnsSubmittedCard
+          submitResult={submitResult}
+          uploadResult={uploadResult}
+          onStartAnotherReturn={() => {
+            setStep(1);
+            setOrder(null);
+            setFoundOrder(null);
+            setSelectedLines([]);
+            setSubmitResult(null);
+            setThumbByItemId({});
+            setReasonType("");
+            setReasonDetail("");
+            setErrorCode(null);
+            clearAlert();
 
-          <div className="text-sm">
-            <div>
-              Return ID:{" "}
-              <span className="font-mono">
-                {submitResult.return?.return_number ?? submitResult.return?.id}
-              </span>
-            </div>
-            <div>
-              Status: <span>{submitResult.return?.status || "pending"}</span>
-            </div>
-            <div>Created at: {submitResult.return?.created_at_cn || "N/A"}</div>
-          </div>
-
-          {/* ✅ 图片上传结果（可选展示） */}
-          {uploadResult?.ok && (
-            <div className="text-xs text-muted-foreground">
-              Uploaded images: {uploadResult.count || 0}
-            </div>
-          )}
-
-          <Button
-            variant="outline"
-            className="px-6"
-            onClick={() => {
-              setStep(1);
-              setOrder(null);
-              setFoundOrder(null);
-              setSelectedLines([]);
-              setSubmitResult(null);
-              setThumbByItemId({});
-              setReasonType("");
-              setReasonDetail("");
-              setErrorCode(null);
-              clearAlert();
-
-              // reset images
-              setImages((prev) => {
-                prev.forEach((x) => {
-                  try {
-                    URL.revokeObjectURL(x.previewUrl);
-                  } catch {}
-                });
-                return [];
+            // reset images
+            setImages((prev) => {
+              prev.forEach((x) => {
+                try {
+                  URL.revokeObjectURL(x.previewUrl);
+                } catch {}
               });
-              setUploadResult(null);
-              setUploading(false);
-            }}
-          >
-            Start another return
-          </Button>
-        </Card>
+              return [];
+            });
+            setUploadResult(null);
+            setUploading(false);
+          }}
+        />
       )}
     </div>
   );
