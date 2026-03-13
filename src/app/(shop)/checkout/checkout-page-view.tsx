@@ -7,11 +7,8 @@ import AddressStep from "./_components/AddressStep";
 import DeliveryStep from "./_components/DeliveryStep";
 import PaymentStep from "./_components/PaymentStep";
 import CheckoutSteps from "./_components/CheckoutSteps";
-import {
-  LargeBackButton,
-  LargeGhostButton,
-  LargePrimaryButton,
-} from "./_components/CheckoutButtons";
+import { LargeBackButton } from "./_components/CheckoutButtons";
+import CheckoutFooterActions from "./_components/CheckoutFooterActions";
 import type { StepKey } from "./types";
 
 type CheckoutPageViewProps = {
@@ -93,64 +90,18 @@ export default function CheckoutPageView({
           )}
         </div>
 
-        {step !== "payment" && (
-          <>
-            <div className="mt-6 flex justify-end">
-              {step === "bag" ? (
-                <div
-                  className={
-                    isLoggedIn
-                      ? "w-[320px] max-w-full"
-                      : "w-[660px] max-w-full flex gap-3 justify-end"
-                  }
-                >
-                  {!isLoggedIn && (
-                    <div className="w-[320px]">
-                      <LargeGhostButton onClick={handleLoginAndContinue}>
-                        Login / Sign up and Continue
-                      </LargeGhostButton>
-                    </div>
-                  )}
-
-                  <div className="w-[320px]">
-                    <LargePrimaryButton onClick={handleContinue}>
-                      Continue
-                    </LargePrimaryButton>
-                  </div>
-                </div>
-              ) : (
-                <div className="w-[660px] max-w-full flex gap-3 justify-end">
-                  <LargeBackButton onClick={prevStep} />
-
-                  <LargePrimaryButton
-                    onClick={handleContinue}
-                    disabled={blockContinue}
-                  >
-                    {continueText}
-                  </LargePrimaryButton>
-                </div>
-              )}
-            </div>
-
-            {(step === "bag" || step === "address") &&
-            formAlertHasAlert &&
-            formAlertMessage ? (
-              <div className="mt-2 flex justify-end">
-                <div
-                  className={
-                    step === "bag"
-                      ? "w-[320px] max-w-full"
-                      : "w-[660px] max-w-full"
-                  }
-                >
-                  <Alert variant={alertVariant as any}>
-                    {formAlertMessage}
-                  </Alert>
-                </div>
-              </div>
-            ) : null}
-          </>
-        )}
+        <CheckoutFooterActions
+          step={step}
+          isLoggedIn={isLoggedIn}
+          handleLoginAndContinue={handleLoginAndContinue}
+          handleContinue={handleContinue}
+          prevStep={prevStep}
+          blockContinue={blockContinue}
+          continueText={continueText}
+          formAlertHasAlert={formAlertHasAlert}
+          formAlertMessage={formAlertMessage}
+          alertVariant={alertVariant}
+        />
       </div>
     </main>
   );
