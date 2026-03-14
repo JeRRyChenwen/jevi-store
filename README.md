@@ -1212,8 +1212,6 @@ D:\前端练习\social-platform\src\app\(shop)\returns\page.tsx
 
 If you believe this decision was made in error or you have additional supporting information, please reply to this email so our team can review it further.
 
-這是自動發送的郵件
-
 no-reply@jevi.com
 
 country code 每個項目都要檢查和修改單獨拿出來
