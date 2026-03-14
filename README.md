@@ -1208,14 +1208,12 @@ src/lib/strapi.ts
 
 ===========================================
 
-order 頁面返回出問題
-
 D:\前端练习\social-platform\src\app\(shop)\returns\page.tsx
 
-return頁面的reject reason 和 自動發email
-
-admin頁面保留 reject return request 的記錄
-
-main reason ui修改
-
 If you believe this decision was made in error or you have additional supporting information, please reply to this email so our team can review it further.
+
+這是自動發送的郵件
+
+no-reply@jevi.com
+
+country code 每個項目都要檢查和修改單獨拿出來
