@@ -1217,3 +1217,5 @@ return頁面的reject reason 和 自動發email
 admin頁面保留 reject return request 的記錄
 
 main reason ui修改
+
+If you believe this decision was made in error or you have additional supporting information, please reply to this email so our team can review it further.
