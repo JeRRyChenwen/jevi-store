@@ -6,135 +6,11 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 
-type ApiOrderRow = {
-  id: number;
-  order_number?: string | null;
-  status?: string | null;
+import type { ApiOrderRow, ApiResponse } from "./orders.types";
+import { money, fmtWhen, prettifyErrorMessage } from "./orders.utils";
+import StatusPill from "./_components/StatusPill";
+import ShipOrderModal from "./_components/ShipOrderModal";
 
-  email?: string | null;
-  first_name?: string | null;
-  last_name?: string | null;
-
-  currency?: string | null;
-  items_total_minor?: number | null;
-  delivery_fee_minor?: number | null;
-  grand_total_minor?: number | null;
-
-  carrier?: string | null;
-  tracking_number?: string | null;
-  tracking_url?: string | null;
-
-  // ===== 你 worker 现在返回的 epoch 秒（旧/兼容）=====
-  created_at_ts?: number | null;
-  shipped_at_ts?: number | null;
-  shipment_email_sent_at_ts?: number | null;
-
-  // ===== ✅ NEW: 优先使用 D1 中的 cn 文本时间（如果 worker 已返回/未来会返回）=====
-  created_at_cn?: string | null;
-  shipped_at_cn?: string | null;
-  shipment_email_sent_at_cn?: string | null;
-
-  // （可选）如果你还有这些字段，也可以顺便展示
-  paid_at_ts?: number | null;
-  paid_at_cn?: string | null;
-};
-
-type ApiResponse = {
-  ok: boolean;
-  orders?: ApiOrderRow[];
-  page?: number;
-  page_size?: number;
-  total?: number;
-  error?: string;
-};
-
-function money(minor: number | null | undefined, currency: string | null | undefined) {
-  const c = (currency || "AUD").toUpperCase();
-  const v = typeof minor === "number" ? minor / 100 : 0;
-  try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency: c }).format(v);
-  } catch {
-    return `${c} ${v.toFixed(2)}`;
-  }
-}
-
-/**
- * ✅ 不要用 toISOString()（永远 UTC）
- * 这里统一用 Asia/Shanghai（你说的 cn 时间）
- */
-function fmtEpochSecAsCN(ts: number | null | undefined) {
-  if (!ts) return "—";
-  const ms = ts * 1000;
-  const d = new Date(ms);
-
-  try {
-    const parts = new Intl.DateTimeFormat("zh-CN", {
-      timeZone: "Asia/Shanghai",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }).formatToParts(d);
-
-    // 组装成：YYYY-MM-DD HH:mm
-    const get = (type: string) => parts.find((p) => p.type === type)?.value || "";
-    const yyyy = get("year");
-    const mm = get("month");
-    const dd = get("day");
-    const hh = get("hour");
-    const mi = get("minute");
-    return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
-  } catch {
-    // fallback：本地时间（不推荐，但兜底）
-    return d.toLocaleString();
-  }
-}
-
-/**
- * ✅ 优先显示 *_at_cn（来自 D1/worker 已计算好的展示字段）
- * 如果没有，再 fallback 到 *_at_ts（epoch 秒 → CN）
- */
-function fmtWhen(cn: string | null | undefined, ts: number | null | undefined) {
-  const s = (cn || "").trim();
-  if (s) return s;
-  return fmtEpochSecAsCN(ts);
-}
-
-function StatusPill({ value }: { value: string }) {
-  const s = (value || "").toLowerCase();
-  const styles: Record<string, string> = {
-    paid: "bg-blue-100 text-blue-700",
-    shipped: "bg-green-100 text-green-700",
-    cancelled: "bg-slate-200 text-slate-600",
-    failed: "bg-red-100 text-red-700",
-    pending: "bg-slate-100 text-slate-700",
-  };
-
-  return (
-    <span
-      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
-        styles[s] ?? "bg-slate-100 text-slate-700"
-      }`}
-    >
-      {s || "unknown"}
-    </span>
-  );
-}
-
-function prettifyErrorMessage(msg: string) {
-  const s = (msg || "").trim();
-  const lower = s.toLowerCase();
-  if (!s) return "";
-  if (lower.startsWith("request_failed_")) {
-    const code = lower.replace("request_failed_", "");
-    return `Request failed (${code}). Please try again.`;
-  }
-  if (lower === "forbidden") return "Forbidden. Please sign in again.";
-  if (lower === "unauthorized") return "Unauthorized. Please sign in again.";
-  return s;
-}
 
 export default function AdminOrdersPage() {
   const [status, setStatus] = useState<string>(""); // "" = all
@@ -568,91 +444,20 @@ export default function AdminOrdersPage() {
         </div>
       </div>
 
-      {/* Ship Modal */}
-      {shipOpen && shipOrder ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onClick={closeShip}
-        >
-          <div
-            className="w-full max-w-lg rounded-lg border bg-white p-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-base font-semibold">Mark shipped</div>
-                <div className="mt-1 text-xs text-slate-600">
-                  Order:{" "}
-                  <span className="font-mono">
-                    {shipOrder.order_number || `#${shipOrder.id}`}
-                  </span>
-                </div>
-              </div>
-
-              <button
-                onClick={closeShip}
-                className="rounded-md border bg-white px-2 py-1 text-sm hover:bg-slate-50"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              <div>
-                <label className="text-xs text-slate-500">Carrier (optional)</label>
-                <input
-                  value={carrier}
-                  onChange={(e) => setCarrier(e.target.value)}
-                  placeholder="auspost / dhl / ups"
-                  className="mt-1 w-full rounded-md border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs text-slate-500">Tracking number (required)</label>
-                <input
-                  value={trackingNumber}
-                  onChange={(e) => setTrackingNumber(e.target.value)}
-                  placeholder="e.g. TEST123456AU"
-                  className="mt-1 w-full rounded-md border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs text-slate-500">Tracking link (optional)</label>
-                <input
-                  value={trackingUrl}
-                  onChange={(e) => setTrackingUrl(e.target.value)}
-                  placeholder="https://..."
-                  className="mt-1 w-full rounded-md border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  onClick={closeShip}
-                  disabled={submitting}
-                  className="rounded-md border bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-60"
-                >
-                  Cancel
-                </button>
-
-                <button
-                  onClick={submitShip}
-                  disabled={!canShip || submitting}
-                  className="rounded-md bg-slate-900 px-3 py-2 text-sm text-white hover:bg-slate-800 disabled:opacity-60"
-                >
-                  {submitting ? "Submitting..." : "Confirm shipped"}
-                </button>
-              </div>
-
-              <div className="text-xs text-slate-500">
-                Note: Shipment email is sent by worker cron after status becomes shipped.
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <ShipOrderModal
+        open={shipOpen}
+        order={shipOrder}
+        carrier={carrier}
+        trackingNumber={trackingNumber}
+        trackingUrl={trackingUrl}
+        submitting={submitting}
+        canShip={canShip}
+        onClose={closeShip}
+        onSubmit={submitShip}
+        setCarrier={setCarrier}
+        setTrackingNumber={setTrackingNumber}
+        setTrackingUrl={setTrackingUrl}
+      />
     </div>
   );
 }
