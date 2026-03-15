@@ -3,13 +3,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Alert } from "@/components/ui/alert";
-
 import type { ApiOrderRow, ApiResponse } from "./orders.types";
-import { money, fmtWhen, prettifyErrorMessage } from "./orders.utils";
-import StatusPill from "./_components/StatusPill";
+import { prettifyErrorMessage } from "./orders.utils";
 import ShipOrderModal from "./_components/ShipOrderModal";
 import OrdersFiltersBar from "./_components/OrdersFiltersBar";
 import OrdersPagination from "./_components/OrdersPagination";
+import OrdersTable from "./_components/OrdersTable";
 
 
 export default function AdminOrdersPage() {
@@ -232,100 +231,13 @@ export default function AdminOrdersPage() {
 
       {/* Table */}
       <div className="rounded-lg border bg-white">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b bg-slate-50 text-xs text-slate-600">
-              <tr>
-                <th className="px-4 py-3">ID</th>
-                <th className="px-4 py-3">Order number</th>
-                <th className="px-4 py-3">Customer name</th>
-                <th className="px-4 py-3">Email</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Total</th>
-                <th className="px-4 py-3">Created at</th>
-                <th className="px-4 py-3">Shipped</th>
-                <th className="px-4 py-3">Tracking</th>
-                <th className="px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td className="px-4 py-4 text-slate-500" colSpan={10}>
-                    Loading…
-                  </td>
-                </tr>
-              ) : pagedRows.length === 0 ? (
-                <tr>
-                  <td className="px-4 py-4 text-slate-500" colSpan={10}>
-                    No orders.
-                  </td>
-                </tr>
-              ) : (
-                pagedRows.map((o) => {
-                  const fullName = `${o.first_name || ""} ${o.last_name || ""}`.trim() || "—";
-                  const st = String(o.status || "").toLowerCase();
-                  const isShipped = st === "shipped";
-                  const totalText = money(o.grand_total_minor ?? 0, o.currency ?? "AUD");
-
-                  // ✅ 关键：这里改为优先 *_cn
-                  const createdText = fmtWhen(o.created_at_cn, o.created_at_ts);
-                  const shippedText = fmtWhen(o.shipped_at_cn, o.shipped_at_ts);
-
-                  return (
-                    <tr key={o.id} className="border-b last:border-b-0">
-                      <td className="px-4 py-3 font-mono">{o.id}</td>
-                      <td className="px-4 py-3 font-mono">{o.order_number || "—"}</td>
-                      <td className="px-4 py-3">{fullName}</td>
-                      <td className="px-4 py-3">{o.email || "—"}</td>
-                      <td className="px-4 py-3">
-                        <StatusPill value={st} />
-                      </td>
-                      <td className="px-4 py-3">{totalText}</td>
-                      <td className="px-4 py-3 text-slate-600">{createdText}</td>
-                      <td className="px-4 py-3 text-slate-600">{shippedText}</td>
-                      <td className="px-4 py-3">
-                        {o.tracking_number ? (
-                          <div className="flex flex-col gap-1">
-                            <span className="font-mono text-xs">{o.tracking_number}</span>
-                            {o.tracking_url ? (
-                              <a
-                                className="text-blue-600 hover:underline text-xs"
-                                href={o.tracking_url}
-                                target="_blank"
-                                rel="noreferrer"
-                              >
-                                Track
-                              </a>
-                            ) : null}
-                          </div>
-                        ) : (
-                          <span className="text-slate-500">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <button
-                          onClick={() => openShip(o)}
-                          disabled={isShipped}
-                          className={[
-                            actionBtnBase,
-                            actionBtnWidth,
-                            isShipped
-                              ? "bg-slate-200 text-slate-600"
-                              : "bg-slate-900 text-white hover:bg-slate-800",
-                          ].join(" ")}
-                        >
-                          {isShipped ? "Shipped" : "Mark shipped"}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+        <OrdersTable
+          loading={loading}
+          rows={pagedRows}
+          actionBtnBase={actionBtnBase}
+          actionBtnWidth={actionBtnWidth}
+          onOpenShip={openShip}
+        />
 
         <OrdersPagination
           total={total}
