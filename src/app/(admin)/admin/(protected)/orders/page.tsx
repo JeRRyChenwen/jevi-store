@@ -2,14 +2,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Alert } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 
 import type { ApiOrderRow, ApiResponse } from "./orders.types";
 import { money, fmtWhen, prettifyErrorMessage } from "./orders.utils";
 import StatusPill from "./_components/StatusPill";
 import ShipOrderModal from "./_components/ShipOrderModal";
+import OrdersFiltersBar from "./_components/OrdersFiltersBar";
+import OrdersPagination from "./_components/OrdersPagination";
 
 
 export default function AdminOrdersPage() {
@@ -34,7 +34,7 @@ export default function AdminOrdersPage() {
   const canShip = useMemo(() => trackingNumber.trim().length > 0, [trackingNumber]);
 
   const actionBtnBase =
-  "inline-flex items-center justify-center rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:cursor-not-allowed";
+    "inline-flex items-center justify-center rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:cursor-not-allowed";
 
   const actionBtnWidth = "min-w-[120px]"; 
 
@@ -138,18 +138,19 @@ export default function AdminOrdersPage() {
   }, [filteredRows, page, pageCount]);
 
   function openShip(o: ApiOrderRow) {
-  // 已 shipped → 禁止再点
-  const st = String(o.status || "").toLowerCase();
-  if (st === "shipped") {
-    console.log("[ship blocked] already shipped:", o.id);
-    return;
-  }
+    // 已 shipped → 禁止再点
+    const st = String(o.status || "").toLowerCase();
+    if (st === "shipped") {
+      console.log("[ship blocked] already shipped:", o.id);
+      return;
+    }
 
-  setShipOrder(o);
-  setCarrier("");
-  setTrackingUrl("");   
-  setShipOpen(true);
-}
+    setShipOrder(o);
+    setCarrier("");
+    setTrackingNumber("");
+    setTrackingUrl("");
+    setShipOpen(true);
+  }
 
   function closeShip() {
     setShipOpen(false);
@@ -210,44 +211,16 @@ export default function AdminOrdersPage() {
           </p>
         </div>
 
-        {/* Filters */}
-        <div className="flex flex-col gap-2 md:flex-row md:items-center">
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-slate-500">Status</label>
-            <select
-              className="rounded-md border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-              value={status}
-              onChange={(e) => {
-                setStatus(e.target.value);
-                setPage(1);
-              }}
-            >
-              <option value="">All</option>
-              <option value="paid">paid</option>
-              <option value="shipped">shipped</option>
-              <option value="cancelled">cancelled</option>
-              <option value="failed">failed</option>
-            </select>
-          </div>
-
-          <input
-            value={q}
-            onChange={(e) => {
-              setQ(e.target.value);
-              setPage(1);
-            }}
-            placeholder="Search id / order no / email / name / tracking"
-            className="rounded-md border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 md:w-72"
-          />
-
-          <button
-            onClick={fetchAllOnce}
-            disabled={loading || submitting}
-            className="rounded-md border bg-white px-3 py-2 text-sm outline-none hover:bg-slate-50 focus:ring-2 focus:ring-slate-200 disabled:opacity-60"
-          >
-            {loading ? "Refreshing..." : "Refresh"}
-          </button>
-        </div>
+        <OrdersFiltersBar
+          status={status}
+          setStatus={setStatus}
+          q={q}
+          setQ={setQ}
+          setPage={setPage}
+          loading={loading}
+          submitting={submitting}
+          onRefresh={fetchAllOnce}
+        />
       </div>
 
       {/* Unified Error */}
@@ -354,94 +327,13 @@ export default function AdminOrdersPage() {
           </table>
         </div>
 
-        {/* Pagination */}
-        <div className="flex items-center justify-between px-4 py-3">
-          <div className="text-xs text-slate-600">
-            Total: <span className="font-medium">{total}</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              className="h-9 w-9 px-0 rounded-lg"
-              disabled={page <= 1 || loading}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              aria-label="Previous page"
-              title="Previous"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-
-            <div className="flex items-center gap-2">
-              {(() => {
-                const cur = Math.max(1, Math.min(page, pageCount));
-                const pages: Array<number | "ellipsis"> = [];
-
-                if (pageCount <= 5) {
-                  for (let i = 1; i <= pageCount; i++) pages.push(i);
-                } else {
-                  pages.push(1);
-                  const start = Math.max(2, cur - 1);
-                  const end = Math.min(pageCount - 1, cur + 1);
-
-                  if (start > 2) pages.push("ellipsis");
-                  for (let i = start; i <= end; i++) pages.push(i);
-                  if (end < pageCount - 1) pages.push("ellipsis");
-
-                  pages.push(pageCount);
-                }
-
-                return pages.map((p, idx) => {
-                  if (p === "ellipsis") {
-                    return (
-                      <span
-                        key={`e-${idx}`}
-                        className="px-1 text-sm text-slate-500 select-none"
-                      >
-                        …
-                      </span>
-                    );
-                  }
-
-                  const isActive = p === cur;
-                  const base = "h-9 w-9 px-0 rounded-lg border";
-                  const active =
-                    "bg-slate-100 border-slate-400 text-slate-900 pointer-events-none";
-                  const idle =
-                    "bg-white border-slate-200 text-slate-900 hover:bg-slate-50";
-
-                  return (
-                    <button
-                      key={p}
-                      type="button"
-                      className={[base, isActive ? active : idle].join(" ")}
-                      onClick={() => setPage(p)}
-                      aria-current={isActive ? "page" : undefined}
-                      aria-label={`Page ${p}`}
-                      title={`Page ${p}`}
-                      disabled={loading}
-                    >
-                      {p}
-                    </button>
-                  );
-                });
-              })()}
-            </div>
-
-            <Button
-              type="button"
-              variant="outline"
-              className="h-9 w-9 px-0 rounded-lg"
-              disabled={page >= pageCount || loading}
-              onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-              aria-label="Next page"
-              title="Next"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
+        <OrdersPagination
+          total={total}
+          page={page}
+          pageCount={pageCount}
+          loading={loading}
+          setPage={setPage}
+        />
       </div>
 
       <ShipOrderModal
