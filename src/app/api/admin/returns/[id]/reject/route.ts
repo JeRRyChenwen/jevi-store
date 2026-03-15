@@ -46,8 +46,8 @@ export async function POST(
       ""
   ).trim();
 
-  // ✅ 兼容旧字段：继续保留 reject_reason，默认与详细说明一致
-  const reject_reason = reject_reason_text;
+  // ✅ 兼容旧字段：继续保留 reject_reason，默认与详细说明一致；空白时传 null
+  const reject_reason = reject_reason_text || null;
 
   if (!reject_reason_code) {
     return NextResponse.json(
@@ -56,9 +56,18 @@ export async function POST(
     );
   }
 
-  if (!reject_reason_text) {
+  // ✅ 详情默认可空；只有 other 时才要求填写
+  if (reject_reason_code === "other" && !reject_reason_text) {
     return NextResponse.json(
       { ok: false, error: "reject_reason_text_required" },
+      { status: 400, headers: { "cache-control": "no-store", "x-next-admin-proxy": "1" } }
+    );
+  }
+
+  // ✅ 与前端/worker 保持一致：other 时要求更详细说明
+  if (reject_reason_code === "other" && reject_reason_text.length < 8) {
+    return NextResponse.json(
+      { ok: false, error: "reject_reason_text_too_short" },
       { status: 400, headers: { "cache-control": "no-store", "x-next-admin-proxy": "1" } }
     );
   }
@@ -71,7 +80,7 @@ export async function POST(
       headers: upstreamHeaders(req),
       body: JSON.stringify({
         reject_reason_code,
-        reject_reason_text,
+        reject_reason_text: reject_reason_text || null,
         reject_reason,
       }),
       cache: "no-store",

@@ -1,9 +1,7 @@
 // src/app/(admin)/admin/(protected)/returns/[id]/ReturnDetailClient.tsx
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Alert } from "@/components/ui/alert";
 
 import type {
   ApiPayload,
@@ -13,11 +11,15 @@ import type {
 } from "./return-detail.types";
 
 import {
-  formatMoney,
   getRejectReasonLabel,
   prettifyErrorMessage,
 } from "./return-detail.utils";
 
+import { buildReturnDetailViewModel } from "./return-detail.viewmodel";
+
+import ReturnDetailLoading from "./_components/ReturnDetailLoading";
+import ReturnDetailEmptyState from "./_components/ReturnDetailEmptyState";
+import ReturnNoticeBanner from "./_components/ReturnNoticeBanner";
 import ReturnDetailHeader from "./_components/ReturnDetailHeader";
 import ReturnDecisionCard from "./_components/ReturnDecisionCard";
 import ReturnRefundAmountCard from "./_components/ReturnRefundAmountCard";
@@ -203,65 +205,32 @@ export default function ReturnDetailClient({ id }: { id: string }) {
   const record = data?.return ?? null;
   const items = data?.items ?? [];
 
-  const statusLower = String(record?.status || "").toLowerCase();
-  const isPending = statusLower === "pending";
-  const isApproved = statusLower === "approved";
-  const isRejected = statusLower === "rejected";
-  const isRefunded = statusLower === "refunded";
+  const {
+    isPending,
+    isApproved,
+    isRejected,
+    isRefunded,
+
+    requestedAmountText,
+    itemsAmountText,
+    deliveryFeeText,
+    approvedAmountText,
+    refundedAmountText,
+
+    hasApprovedAmount,
+    hasRefundedAmount,
+    hasRequestedAmount,
+    hasDeliveryFee,
+    hasItemsAmount,
+    hasRefundError,
+  } = buildReturnDetailViewModel(record);
 
   if (loading) {
-    return (
-      <div className="space-y-3">
-        <h2 className="text-xl font-semibold">Loading...</h2>
-        <p className="text-sm text-slate-600">Fetching return #{id}</p>
-      </div>
-    );
+    return <ReturnDetailLoading id={id} />;
   }
 
   if (!record) {
-    const pretty =
-      err === "not_found" || err === "HTTP_404"
-        ? "NOT_FOUND"
-        : err === "UNAUTHORIZED" || err === "HTTP_401"
-          ? "UNAUTHORIZED"
-          : err || "UNKNOWN_ERROR";
-
-    const title = pretty === "UNAUTHORIZED" ? "Admin login required" : "No return data";
-    const desc =
-      pretty === "UNAUTHORIZED"
-        ? "You are not logged in as admin. Please sign in to continue."
-        : `No return request exists for this id (id: ${id}).`;
-
-    return (
-      <div className="space-y-3">
-        <h2 className="text-xl font-semibold">{title}</h2>
-        <p className="text-sm text-slate-600">{desc}</p>
-
-        <Alert
-          variant={
-            pretty === "UNAUTHORIZED" ? "warning" : pretty === "NOT_FOUND" ? "info" : "error"
-          }
-          className="border p-3 text-sm"
-        >
-          {pretty === "UNAUTHORIZED"
-            ? "Admin session expired. Please sign in again."
-            : pretty === "NOT_FOUND"
-              ? "No data for this return id."
-              : `Error: ${pretty}`}
-        </Alert>
-
-        {pretty === "UNAUTHORIZED" ? (
-          <div className="pt-2">
-            <Link
-              href="/admin/login"
-              className="inline-flex rounded-md bg-black px-3 py-2 text-sm text-white"
-            >
-              Go to Admin Login
-            </Link>
-          </div>
-        ) : null}
-      </div>
-    );
+    return <ReturnDetailEmptyState id={id} err={err} />;
   }
 
   async function onApprove() {
@@ -326,11 +295,6 @@ export default function ReturnDetailClient({ id }: { id: string }) {
       return;
     }
 
-    if (!text) {
-      setNotice({ variant: "warning", message: "Reject reason detail is required." });
-      return;
-    }
-
     if (code === "other" && text.length < 8) {
       setNotice({
         variant: "warning",
@@ -350,8 +314,8 @@ export default function ReturnDetailClient({ id }: { id: string }) {
         credentials: "include",
         body: JSON.stringify({
           reject_reason_code: code,
-          reject_reason_text: text,
-          reject_reason: text,
+          reject_reason_text: text || null,
+          reject_reason: text || null,
         }),
       });
 
@@ -380,58 +344,9 @@ export default function ReturnDetailClient({ id }: { id: string }) {
     }
   }
 
-  const requestedAmountText = formatMoney(
-    record?.requested_amount_minor,
-    record?.currency
-  );
-
-  const itemsAmountText = formatMoney(
-    record?.items_amount_minor,
-    record?.currency
-  );
-
-  const deliveryFeeText = formatMoney(
-    record?.delivery_fee_minor,
-    record?.currency
-  );
-
-  const approvedAmountText = formatMoney(
-    record?.approved_amount_minor,
-    record?.currency
-  );
-
-  const refundedAmountText = formatMoney(
-    record?.refunded_amount_minor,
-    record?.currency
-  );
-
-  const hasApprovedAmount = typeof record?.approved_amount_minor === "number";
-  const hasRefundedAmount = typeof record?.refunded_amount_minor === "number";
-  const hasRequestedAmount = typeof record?.requested_amount_minor === "number";
-  const hasDeliveryFee = typeof record?.delivery_fee_minor === "number";
-  const hasItemsAmount = typeof record?.items_amount_minor === "number";
-  const hasRefundError = Boolean(record?.refund_error);
-
   return (
     <div className="space-y-6">
-      {notice ? (
-        <div>
-          <Alert variant={notice.variant} className="border p-3 text-sm">
-            <div className="flex items-center justify-between gap-3">
-              <span>{notice.message}</span>
-              {notice.variant === "warning" &&
-              notice.message.toLowerCase().includes("sign in") ? (
-                <Link
-                  href="/admin/login"
-                  className="shrink-0 rounded-md bg-black px-3 py-2 text-sm text-white"
-                >
-                  Login
-                </Link>
-              ) : null}
-            </div>
-          </Alert>
-        </div>
-      ) : null}
+      <ReturnNoticeBanner notice={notice} />
 
       <ReturnDetailHeader record={record} />
 
