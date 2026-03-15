@@ -1,4 +1,4 @@
-// src/app/checkout/_components/AddressStep.tsx
+// D:\前端练习\social-platform\src\app\(shop)\checkout\_components\AddressStep.tsx
 "use client";
 
 import React, { useMemo, useRef } from "react";
@@ -6,128 +6,25 @@ import AddressErrorHint from "./AddressErrorHint";
 import { Alert } from "@/components/ui/alert";
 import CountrySelect from "@/components/address/CountrySelect";
 
-/* ====== 本组件内部使用的类型（结构要和 page.tsx 里的一样） ====== */
-type Address = {
-  firstName?: string;
-  lastName?: string;
-  email?: string;
-  phone?: string;
-  line1?: string;
-  line2?: string;
-  city?: string;
-  state?: string;
-  postcode?: string;
-  country?: string; // 现在存的是 ISO code，比如 "AU"
-};
+import type {
+  Address,
+  AddressErr,
+  SaveMsg,
+  AddressStepProps,
+} from "./address-step.types";
 
-type AddressErr = {
-  firstName: boolean;
-  lastName: boolean;
-  phone: boolean;
-  line1: boolean;
-  city: boolean;
-  state: boolean;
-  postcode: boolean;
-  country: boolean;
-  email: boolean;
-};
+import {
+  baseInput,
+  hasAnyErr,
+  fieldErrorText,
+  clsInput,
+} from "./address-step.utils";
 
-type SaveMsg = { kind: "error" | "success"; text: string } | null;
+import { InlineError, RequiredStar } from "./AddressFieldParts";
 
-/* ====== Props：由 page.tsx 传入 ====== */
-type AddressStepProps = {
-  isLoggedIn: boolean;
 
-  // ✅ NEW: 登录用户的账户邮箱（只读显示，不在 checkout 内修改）
-  accountEmail: string;
 
-  address: Address;
-  setAddress: (a: Address) => void;
 
-  billingAddress: Address;
-  setBillingAddress: (a: Address) => void;
-
-  sameAsDelivery: boolean;
-  setSameAsDelivery: (v: boolean) => void;
-
-  hasSavedDelivery: boolean;
-  hasSavedBilling: boolean;
-  savedDeliveryAddr: Address | null;
-  savedBillingAddr: Address | null;
-  useSavedDelivery: boolean;
-  setUseSavedDelivery: (v: boolean) => void;
-  useSavedBilling: boolean;
-  setUseSavedBilling: (v: boolean) => void;
-
-  addressShowErrors: boolean;
-  addressErrs: AddressErr;
-  billingErrs: AddressErr;
-  handleBillingFieldChange: (k: keyof Address, v: string) => void;
-
-  // 从外面控制清理错误
-  clearAddressErrors: () => void;
-  clearBillingErrors: () => void;
-
-  saveMsg: SaveMsg;
-  onSaveDefault: () => void;
-
-  marketingOptIn: boolean;
-  setMarketingOptIn: (v: boolean) => void;
-  sendSubscriptionIfNeeded: (emailRaw?: string) => void | Promise<void>;
-};
-
-/* ---------------- 小工具 ---------------- */
-const baseInput =
-  "w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-neutral-900/10";
-
-function hasAnyErr(errs: AddressErr, includeEmail: boolean) {
-  const keys: (keyof AddressErr)[] = includeEmail
-    ? [
-        "firstName",
-        "lastName",
-        "phone",
-        "line1",
-        "city",
-        "state",
-        "postcode",
-        "country",
-        "email",
-      ]
-    : ["firstName", "lastName", "phone", "line1", "city", "state", "postcode", "country"];
-  return keys.some((k) => !!errs[k]);
-}
-
-function fieldErrorText(key: keyof AddressErr): string {
-  if (key === "email") return "Please enter a valid email address.";
-  if (key === "phone") return "Please enter a valid phone number.";
-  if (key === "postcode") return "Please enter a valid postcode.";
-  return "This field is required.";
-}
-
-function clsInput(showErrors: boolean, bad: boolean) {
-  return showErrors && bad ? `${baseInput} border-red-500` : `${baseInput} border-neutral-300`;
-}
-
-function InlineError({
-  show,
-  id,
-  text,
-}: {
-  show: boolean;
-  id: string;
-  text: string;
-}) {
-  if (!show) return null;
-  return (
-    <p id={id} className="mt-1 text-xs text-red-600">
-      {text}
-    </p>
-  );
-}
-
-function RequiredStar() {
-  return <span className="ml-1 text-red-600">*</span>;
-}
 
 /* ---------------- Address 表单（UI） ---------------- */
 function AddressForm({
