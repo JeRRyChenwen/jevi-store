@@ -15,7 +15,6 @@ import ProductMeta from "../_components/ProductMeta";
 import Stars from "../_components/Stars";
 
 import {
-  type VariantMeta,
   getImagesByColorFromProduct,
   getVariantMetaList,
   getStockByColorSizeHeightFromD1,
