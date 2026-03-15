@@ -1,134 +1,31 @@
 // src/app/(admin)/admin/(protected)/returns/page.tsx
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Alert } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 
-type ApiReturnRow = {
-  id: number;
-
-  return_number?: string | null;
-  order_id?: number | null;
-  order_number?: string | null;
-  email?: string | null;
-  status?: string | null;
-
-  created_at_cn?: string | null;
-  created_at?: string | null;
-  created_at_ts?: number | null;
-};
-
-type ApiResponse = {
-  ok: boolean;
-  returns?: ApiReturnRow[];
-  page?: number;
-  page_size?: number;
-  total?: number;
-  error?: string;
-};
-
-type SortBy = "return_id" | "order_id" | "created_at";
-type SortDir = "asc" | "desc";
-
-function StatusPill({ value }: { value: string }) {
-  const s = (value || "").toLowerCase();
-
-  const styles: Record<string, string> = {
-    pending: "bg-slate-100 text-slate-700",
-    approved: "bg-green-100 text-green-700",
-    rejected: "bg-red-100 text-red-700",
-    received: "bg-blue-100 text-blue-700",
-    refunded: "bg-purple-100 text-purple-700",
-    cancelled: "bg-slate-200 text-slate-600",
-    failed: "bg-red-100 text-red-700",
-  };
-
-  return (
-    <span
-      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
-        styles[s] ?? "bg-slate-100 text-slate-700"
-      }`}
-    >
-      {s}
-    </span>
-  );
-}
-
-function formatCreatedAt(r: ApiReturnRow) {
-  if (r.created_at_cn) return r.created_at_cn;
-  if (r.created_at) return r.created_at;
-
-  if (typeof r.created_at_ts === "number" && Number.isFinite(r.created_at_ts)) {
-    const d = new Date(r.created_at_ts * 1000);
-    return d.toISOString().slice(0, 16).replace("T", " ");
-  }
-  return "—";
-}
-
-function SortIcon({ dir }: { dir: SortDir | null }) {
-  if (!dir) return <span className="ml-1 text-slate-300">↕</span>;
-  return <span className="ml-1 text-slate-500">{dir === "asc" ? "↑" : "↓"}</span>;
-}
-
-/** 把偏“技术”的错误信息，转成用户可理解的提示 */
-function prettifyErrorMessage(msg: string) {
-  const s = (msg || "").trim();
-  const lower = s.toLowerCase();
-
-  if (!s) return "";
-
-  if (lower.startsWith("request_failed_")) {
-    const code = lower.replace("request_failed_", "");
-    return `Request failed (${code}). Please try again.`;
-  }
-
-  if (lower === "forbidden") return "Forbidden. Please sign in again.";
-  if (lower === "unauthorized") return "Unauthorized. Please sign in again.";
-  if (lower === "internal_error") return "Server error. Please try again later.";
-
-  return s;
-}
-
-/**
- * ✅ NEW: 安全解析 JSON
- * - 先读 text，再 JSON.parse
- * - 如果不是 JSON（比如 HTML 错误页），把前 200 字符吐出来，方便定位问题
- */
-async function safeReadJson<T = any>(r: Response): Promise<T> {
-  const text = await r.text();
-  if (!text) return {} as any;
-
-  try {
-    return JSON.parse(text) as T;
-  } catch {
-    const head = text.slice(0, 200).replace(/\s+/g, " ").trim();
-    throw new Error(
-      `Non-JSON response (status=${r.status}). Body starts with: ${head}`
-    );
-  }
-}
+import type {
+  ApiResponse,
+  ApiReturnRow,
+  SortBy,
+  SortDir,
+} from "./returns.types";
+import { prettifyErrorMessage, safeReadJson } from "./returns.utils";
+import ReturnsTable from "./_components/ReturnsTable";
+import ReturnsPagination from "./_components/ReturnsPagination";
 
 export default function AdminReturnsPage() {
-  const [status, setStatus] = useState<string>(""); // "" = all
+  const [status, setStatus] = useState<string>("");
   const [page, setPage] = useState<number>(1);
   const pageSize = 20;
 
   const [sortBy, setSortBy] = useState<SortBy>("created_at");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
-  // ✅ 全量数据：一次性拉取所有 returns（所有 status）
   const [rows, setRows] = useState<ApiReturnRow[]>([]);
-
-  // ✅ 只在首次加载时 loading；切换 status / 排序 / 翻页都不 loading
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>("");
 
-  // =========================
-  // Fetch ALL rows (once)
-  // =========================
   useEffect(() => {
     let alive = true;
 
@@ -138,14 +35,11 @@ export default function AdminReturnsPage() {
 
       try {
         const all: ApiReturnRow[] = [];
-
-        // worker page_size 最大 100
         const serverPageSize = 100;
         let p = 1;
 
         while (true) {
           const sp = new URLSearchParams();
-          // ✅ 不传 status，拉全量
           sp.set("page", String(p));
           sp.set("page_size", String(serverPageSize));
 
@@ -162,7 +56,6 @@ export default function AdminReturnsPage() {
             return;
           }
 
-          // ✅ NEW: 不直接 r.json()，防止 HTML 导致 Unexpected token '<'
           const data = await safeReadJson<ApiResponse>(r);
 
           if (!r.ok || !data.ok) {
@@ -175,7 +68,7 @@ export default function AdminReturnsPage() {
           if (pageRows.length < serverPageSize) break;
 
           p += 1;
-          if (p > 200) break; // safety
+          if (p > 200) break;
         }
 
         if (!alive) return;
@@ -193,23 +86,18 @@ export default function AdminReturnsPage() {
     }
 
     fetchAllOnce();
+
     return () => {
       alive = false;
     };
   }, []);
 
-  // =========================
-  // Local filter by status (no fetch)
-  // =========================
   const filteredRows = useMemo(() => {
     const s = status.trim().toLowerCase();
     if (!s) return rows;
     return rows.filter((r) => String(r.status || "").toLowerCase() === s);
   }, [rows, status]);
 
-  // =========================
-  // Local sort (no fetch)
-  // =========================
   const sortedRows = useMemo(() => {
     const copy = [...filteredRows];
 
@@ -233,9 +121,6 @@ export default function AdminReturnsPage() {
     return copy;
   }, [filteredRows, sortBy, sortDir]);
 
-  // =========================
-  // Local pagination (no fetch)
-  // =========================
   const total = sortedRows.length;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
 
@@ -255,12 +140,10 @@ export default function AdminReturnsPage() {
     }
   }
 
-  const headerBtn = "inline-flex items-center select-none hover:text-slate-900";
   const prettyError = useMemo(() => prettifyErrorMessage(error), [error]);
 
   return (
     <div className="space-y-4">
-      {/* Header */}
       <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
         <div>
           <h2 className="text-xl font-semibold">Returns</h2>
@@ -269,7 +152,6 @@ export default function AdminReturnsPage() {
           </p>
         </div>
 
-        {/* Filter */}
         <div className="flex items-center gap-2">
           <label className="text-xs text-slate-500">Status</label>
           <select
@@ -290,198 +172,28 @@ export default function AdminReturnsPage() {
         </div>
       </div>
 
-      {/* Unified Error */}
       {prettyError ? (
         <Alert variant="error" className="border p-3 text-sm">
           {prettyError}
         </Alert>
       ) : null}
 
-      {/* Table */}
       <div className="rounded-lg border bg-white">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b bg-slate-50 text-xs text-slate-600">
-              <tr>
-                <th className="px-4 py-3">
-                  <button
-                    type="button"
-                    className={headerBtn}
-                    onClick={() => toggleSort("return_id")}
-                    title="Sort by Return ID"
-                  >
-                    Return number
-                    <SortIcon dir={sortBy === "return_id" ? sortDir : null} />
-                  </button>
-                </th>
+        <ReturnsTable
+          loading={loading}
+          pagedRows={pagedRows}
+          sortBy={sortBy}
+          sortDir={sortDir}
+          onToggleSort={toggleSort}
+        />
 
-                <th className="px-4 py-3">
-                  <button
-                    type="button"
-                    className={headerBtn}
-                    onClick={() => toggleSort("order_id")}
-                    title="Sort by Order ID"
-                  >
-                    Order number
-                    <SortIcon dir={sortBy === "order_id" ? sortDir : null} />
-                  </button>
-                </th>
-
-                <th className="px-4 py-3">Email</th>
-                <th className="px-4 py-3">Status</th>
-
-                <th className="px-4 py-3">
-                  <button
-                    type="button"
-                    className={headerBtn}
-                    onClick={() => toggleSort("created_at")}
-                    title="Sort by Created At"
-                  >
-                    Created at
-                    <SortIcon dir={sortBy === "created_at" ? sortDir : null} />
-                  </button>
-                </th>
-
-                <th className="px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td className="px-4 py-4 text-slate-500" colSpan={6}>
-                    Loading…
-                  </td>
-                </tr>
-              ) : pagedRows.length === 0 ? (
-                <tr>
-                  <td className="px-4 py-4 text-slate-500" colSpan={6}>
-                    No return requests.
-                  </td>
-                </tr>
-              ) : (
-                pagedRows.map((r) => {
-                  const returnNo = r.return_number || `#${r.id}`;
-                  const orderNo =
-                    r.order_number ||
-                    (r.order_id != null ? String(r.order_id) : "—");
-                  const email = r.email || "—";
-                  const st = (r.status || "—").toLowerCase();
-                  const createdAt = formatCreatedAt(r);
-
-                  return (
-                    <tr key={r.id} className="border-b last:border-b-0">
-                      <td className="px-4 py-3 font-mono">{returnNo}</td>
-                      <td className="px-4 py-3 font-mono">{orderNo}</td>
-                      <td className="px-4 py-3">{email}</td>
-                      <td className="px-4 py-3">
-                        <StatusPill value={st} />
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">{createdAt}</td>
-                      <td className="px-4 py-3 text-right">
-                        <Link
-                          className="text-blue-600 hover:underline"
-                          href={`/admin/returns/${r.id}`}
-                        >
-                          View / Approve
-                        </Link>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pagination */}
-        <div className="flex items-center justify-between px-4 py-3">
-          <div className="text-xs text-slate-600">
-            Total: <span className="font-medium">{total}</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              className="h-9 w-9 px-0 rounded-lg"
-              disabled={page <= 1 || loading}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              aria-label="Previous page"
-              title="Previous"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-
-            <div className="flex items-center gap-2">
-              {(() => {
-                const cur = Math.max(1, Math.min(page, pageCount));
-                const pages: Array<number | "ellipsis"> = [];
-
-                if (pageCount <= 5) {
-                  for (let i = 1; i <= pageCount; i++) pages.push(i);
-                } else {
-                  pages.push(1);
-                  const start = Math.max(2, cur - 1);
-                  const end = Math.min(pageCount - 1, cur + 1);
-
-                  if (start > 2) pages.push("ellipsis");
-                  for (let i = start; i <= end; i++) pages.push(i);
-                  if (end < pageCount - 1) pages.push("ellipsis");
-
-                  pages.push(pageCount);
-                }
-
-                return pages.map((p, idx) => {
-                  if (p === "ellipsis") {
-                    return (
-                      <span
-                        key={`e-${idx}`}
-                        className="px-1 text-sm text-slate-500 select-none"
-                      >
-                        …
-                      </span>
-                    );
-                  }
-
-                  const isActive = p === cur;
-                  const base = "h-9 w-9 px-0 rounded-lg border";
-                  const active =
-                    "bg-slate-100 border-slate-400 text-slate-900 pointer-events-none";
-                  const idle =
-                    "bg-white border-slate-200 text-slate-900 hover:bg-slate-50";
-
-                  return (
-                    <button
-                      key={p}
-                      type="button"
-                      className={[base, isActive ? active : idle].join(" ")}
-                      onClick={() => setPage(p)}
-                      aria-current={isActive ? "page" : undefined}
-                      aria-label={`Page ${p}`}
-                      title={`Page ${p}`}
-                      disabled={loading}
-                    >
-                      {p}
-                    </button>
-                  );
-                });
-              })()}
-            </div>
-
-            <Button
-              type="button"
-              variant="outline"
-              className="h-9 w-9 px-0 rounded-lg"
-              disabled={page >= pageCount || loading}
-              onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-              aria-label="Next page"
-              title="Next"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
+        <ReturnsPagination
+          total={total}
+          page={page}
+          pageCount={pageCount}
+          loading={loading}
+          onChangePage={setPage}
+        />
       </div>
     </div>
   );
