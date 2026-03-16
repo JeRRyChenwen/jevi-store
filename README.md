@@ -1214,6 +1214,6 @@ If you believe this decision was made in error or you have additional supporting
 
 no-reply@jevi.com
 
-country code 每個項目都要檢查和修改單獨拿出來
+============================================
 
-reject理由可以為空
+手機端 主頁 logo大小修改

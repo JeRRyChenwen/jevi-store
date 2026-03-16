@@ -15,6 +15,7 @@ export default function NavbarLogo() {
     <BrandLogo
       src="/brand/logo-600-350.png"
       height={55}
+      imageClassName="h-10 w-auto md:h-[55px]"
       priority
     />
   );
