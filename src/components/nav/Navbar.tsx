@@ -65,8 +65,11 @@ function displayName(u: any) {
   return "Account";
 }
 
-const ICON_BTN = "!h-12 !w-12 md:!h-14 md:!w-14";
-const ICON_SIZE = "!h-6 !w-6 md:!h-6 md:!w-6";
+// ✅ 手机端把点击区保留得足够大，但不要像 PC 那样过于撑高顶部
+const ICON_BTN = "!h-11 !w-11 md:!h-14 md:!w-14";
+
+// ✅ 图标本体手机端略小一点，避免视觉上太挤
+const ICON_SIZE = "!h-5 !w-5 md:!h-6 md:!w-6";
 
 /* ============ single-flight + 轻缓存（同一标签页） ============ */
 declare global {
@@ -219,68 +222,70 @@ export default function Navbar() {
   return (
     <>
       {/* 顶部固定且全宽：背景用纯白，避免与页面叠加出现色差 */}
-      <div className="fixed top-0 inset-x-0 z-50 bg-white border-b border-neutral-200">
-        {/* 内容容器：居中排版 */}
-        <nav className="flex h-16 w-full items-center gap-3 pl-1 pr-3 md:h-20 md:pl-2 md:pr-6">
+      <div className="fixed inset-x-0 top-0 z-50 border-b border-neutral-200 bg-white">
+        {/* ✅ 手机端先做紧凑版；桌面端继续保留更宽松的高度 */}
+        <nav className="flex h-14 w-full items-center gap-2 pl-2 pr-2 sm:pl-3 sm:pr-3 md:h-20 md:gap-3 md:pl-2 md:pr-6">
           {/* 左：Logo */}
-          <div className="flex items-center shrink-0">
+          <div className="flex shrink-0 items-center">
             <NavbarLogo />
           </div>
 
           {/* 右：搜索 + 图标 */}
-          <div className="ml-auto min-w-0 flex items-center gap-1 md:gap-2">
-            <CompactSearch className="w-[560px] lg:w-[680px] xl:w-[760px] mr-14 md:mr-16" />
+          <div className="ml-auto flex min-w-0 items-center gap-0.5 sm:gap-1 md:gap-2">
+            {/* ✅ 桌面端才显示紧凑搜索框；手机端只保留搜索按钮 */}
+            <CompactSearch className="hidden md:block md:w-[420px] lg:w-[560px] xl:w-[680px]" />
 
-          <Button
-            variant="ghost"
-            size="icon"
-            className={`${ICON_BTN} md:hidden`}
-            aria-label="search"
-            onClick={() => setOpenSearch(true)}
-          >
-            <SearchIcon className={ICON_SIZE} />
-          </Button>
-
-          <BagButton />
-
-          {loading ? (
+            {/* ✅ 手机端搜索入口 */}
             <Button
               variant="ghost"
               size="icon"
-              className={`${ICON_BTN} opacity-60`}
-              disabled
-              aria-label="account loading"
+              className={`${ICON_BTN} md:hidden`}
+              aria-label="search"
+              onClick={() => setOpenSearch(true)}
             >
-              <UserIcon className={ICON_SIZE} />
+              <SearchIcon className={ICON_SIZE} />
             </Button>
-          ) : user ? (
-            <Button
-              asChild
-              variant="ghost"
-              size="icon"
-              className={ICON_BTN}
-              aria-label="go to profile"
-              title={`Signed in as ${displayName(user)}`}
-            >
-              <Link href="/profile">
+
+            <BagButton />
+
+            {loading ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                className={`${ICON_BTN} opacity-60`}
+                disabled
+                aria-label="account loading"
+              >
                 <UserIcon className={ICON_SIZE} />
-              </Link>
-            </Button>
-          ) : (
-            <Button
-              asChild
-              variant="ghost"
-              size="icon"
-              className={ICON_BTN}
-              aria-label="go to login"
-            >
-              <Link href="/auth/login" title="登录">
-                <UserIcon className={ICON_SIZE} />
-              </Link>
-            </Button>
-          )}
-        </div>
-      </nav>
+              </Button>
+            ) : user ? (
+              <Button
+                asChild
+                variant="ghost"
+                size="icon"
+                className={ICON_BTN}
+                aria-label="go to profile"
+                title={`Signed in as ${displayName(user)}`}
+              >
+                <Link href="/profile">
+                  <UserIcon className={ICON_SIZE} />
+                </Link>
+              </Button>
+            ) : (
+              <Button
+                asChild
+                variant="ghost"
+                size="icon"
+                className={ICON_BTN}
+                aria-label="go to login"
+              >
+                <Link href="/auth/login" title="登录">
+                  <UserIcon className={ICON_SIZE} />
+                </Link>
+              </Button>
+            )}
+          </div>
+        </nav>
       </div>
 
       {/* 搜索浮层（放在 fixed bar 外做兄弟节点更稳） */}

@@ -77,6 +77,11 @@ export default function CategoryBar() {
   const [loadingSlug, setLoadingSlug] = useState<string | null>(null);
   const closeTimer = useRef<number | null>(null);
 
+  // ✅ 手机端横向分类滚动提示
+  const scrollNavRef = useRef<HTMLElement | null>(null);
+  const [showLeftFade, setShowLeftFade] = useState(false);
+  const [showRightFade, setShowRightFade] = useState(false);
+
   // ✅ 初始化：拉取 Strapi 顶级导航分类
   useEffect(() => {
     let mounted = true;
@@ -111,6 +116,40 @@ export default function CategoryBar() {
 
   // 路由变化时关闭
   useEffect(() => setOpenSlug(null), [pathname]);
+
+  // ✅ 手机端：根据横向滚动位置决定是否显示左右 fade
+  useEffect(() => {
+    const el = scrollNavRef.current;
+    if (!el) return;
+
+    const updateFade = () => {
+      const maxScrollLeft = el.scrollWidth - el.clientWidth;
+
+      // 没有可滚动内容：左右提示都不显示
+      if (maxScrollLeft <= 2) {
+        setShowLeftFade(false);
+        setShowRightFade(false);
+        return;
+      }
+
+      // 给一点容差，避免某些设备出现“明明到头了还残留 fade”
+      const left = el.scrollLeft;
+      const threshold = 6;
+
+      setShowLeftFade(left > threshold);
+      setShowRightFade(left < maxScrollLeft - threshold);
+    };
+
+    updateFade();
+
+    el.addEventListener("scroll", updateFade, { passive: true });
+    window.addEventListener("resize", updateFade);
+
+    return () => {
+      el.removeEventListener("scroll", updateFade);
+      window.removeEventListener("resize", updateFade);
+    };
+  }, [topsLoading, tops]);
 
   // 悬停时按需加载子分类；若无子分类则不展示下拉
   const ensureChildren = async (slug: string) => {
@@ -181,24 +220,32 @@ export default function CategoryBar() {
       onMouseLeave={handleLeaveAll}
     >
       <div className="mx-auto w-full max-w-[1400px] px-2 md:px-4">
-        {/* 渐变遮罩 + 横向滚动 */}
+        {/* ✅ 手机端横向滚动提示：右侧 fade 会在“还有内容可滑”时显示 */}
         <div className="relative">
-          <div className="pointer-events-none absolute left-0 top-0 h-full w-6 bg-gradient-to-r from-white to-transparent" />
-          <div className="pointer-events-none absolute right-0 top-0 h-full w-6 bg-gradient-to-l from-white to-transparent" />
+          {/* 左侧 fade：仅手机端，且真的还能往左滑时才显示 */}
+          {showLeftFade && (
+            <div className="pointer-events-none absolute left-0 top-0 z-10 h-full w-8 bg-gradient-to-r from-white via-white/90 to-transparent md:hidden" />
+          )}
+
+          {/* 右侧 fade：仅手机端，且真的还能往右滑时才显示 */}
+          {showRightFade && (
+            <div className="pointer-events-none absolute right-0 top-0 z-10 h-full w-10 bg-gradient-to-l from-white via-white/95 to-transparent md:hidden" />
+          )}
 
           <nav
+            ref={scrollNavRef}
             aria-label="Shop categories"
-            className="no-scrollbar -mx-2 flex w-full items-center gap-2 md:gap-3 overflow-x-auto md:overflow-visible py-2 md:py-3 px-2 justify-start md:justify-center"
+            className="no-scrollbar -mx-2 flex w-full items-center gap-2 overflow-x-auto py-2 px-2 justify-start md:mx-0 md:justify-center md:gap-3 md:overflow-visible md:px-0 md:py-3"
           >
             {topsLoading ? (
               Array.from({ length: 6 }).map((_, i) => (
                 <div
                   key={i}
-                  className="h-8 w-20 rounded-full bg-neutral-100 animate-pulse"
+                  className="h-8 w-20 shrink-0 rounded-full bg-neutral-100 animate-pulse"
                 />
               ))
             ) : tops.length === 0 ? (
-              <div className="text-sm text-neutral-500 py-1">No categories</div>
+              <div className="py-1 text-sm text-neutral-500">No categories</div>
             ) : (
               tops.map((c) => {
                 const slug = c.attributes.slug;
@@ -208,7 +255,7 @@ export default function CategoryBar() {
                   (pathname?.startsWith(`/category/${slug}/`) ?? false);
 
                 return (
-                  <div key={slug} className="relative">
+                  <div key={slug} className="relative shrink-0">
                     <Link
                       href={`/category/${slug}`}
                       onMouseEnter={() => handleEnter(slug)}
