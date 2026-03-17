@@ -1,7 +1,7 @@
 // D:\前端练习\social-platform\src\components\home\HomeBannerClient.tsx
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { HomeBannerLite } from "@/lib/strapi";
 
@@ -61,6 +61,13 @@ export default function HomeBannerClient({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const [containerW, setContainerW] = useState(0);
+
+  // ✅ 拖拽 / 滑动状态
+  const pointerDownRef = useRef(false);
+  const pointerStartXRef = useRef(0);
+  const pointerStartYRef = useRef(0);
+  const pointerIdRef = useRef<number | null>(null);
+  const pointerMovedRef = useRef(false);
 
   // 动画锁：防止狂点导致 idx 越界
   const isAnimatingRef = useRef(false);
@@ -203,6 +210,101 @@ export default function HomeBannerClient({
     setIdx((p) => p + 1);
   };
 
+  // ✅ 横向拖拽 / 滑动：先做“松手后切页”的稳妥版本
+  const resetPointerState = useCallback(() => {
+    pointerDownRef.current = false;
+    pointerStartXRef.current = 0;
+    pointerStartYRef.current = 0;
+    pointerIdRef.current = null;
+    pointerMovedRef.current = false;
+  }, []);
+
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (count <= 1) return;
+      if (isAnimatingRef.current) return;
+
+      pointerDownRef.current = true;
+      pointerStartXRef.current = e.clientX;
+      pointerStartYRef.current = e.clientY;
+      pointerIdRef.current = e.pointerId;
+      pointerMovedRef.current = false;
+
+      // 先暂停自动轮播，但还不立刻翻页
+      pauseAutoForManual();
+
+      try {
+        e.currentTarget.setPointerCapture?.(e.pointerId);
+      } catch {
+        // 某些环境可能不支持，忽略即可
+      }
+    },
+    [count]
+  );
+
+  const onPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!pointerDownRef.current) return;
+    if (pointerIdRef.current !== null && e.pointerId !== pointerIdRef.current) return;
+
+    const dx = e.clientX - pointerStartXRef.current;
+    const dy = e.clientY - pointerStartYRef.current;
+
+    // 只有横向意图明显时，才阻止默认行为，避免和页面纵向滚动打架
+    if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) {
+      pointerMovedRef.current = true;
+      e.preventDefault();
+    }
+  }, []);
+
+  const onPointerUp = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!pointerDownRef.current) return;
+      if (pointerIdRef.current !== null && e.pointerId !== pointerIdRef.current) {
+        resetPointerState();
+        return;
+      }
+
+      const dx = e.clientX - pointerStartXRef.current;
+      const dy = e.clientY - pointerStartYRef.current;
+
+      const threshold = Math.max(36, Math.min(90, containerW * 0.08));
+      const isHorizontalSwipe =
+        Math.abs(dx) > threshold && Math.abs(dx) > Math.abs(dy);
+
+      try {
+        e.currentTarget.releasePointerCapture?.(e.pointerId);
+      } catch {
+        // 忽略
+      }
+
+      resetPointerState();
+
+      if (!isHorizontalSwipe) return;
+      if (isAnimatingRef.current) return;
+
+      if (dx < 0) {
+        next();
+      } else {
+        prev();
+      }
+    },
+    [containerW, next, prev, resetPointerState]
+  );
+
+  const onPointerCancel = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      try {
+        if (pointerIdRef.current !== null) {
+          e.currentTarget.releasePointerCapture?.(pointerIdRef.current);
+        }
+      } catch {
+        // 忽略
+      }
+      resetPointerState();
+    },
+    [resetPointerState]
+  );
+
   // ✅ 只处理轨道自身 transitionend + 回跳用 reflow + 双 rAF
   const onTransitionEnd = (e: React.TransitionEvent<HTMLDivElement>) => {
     if (count <= 1) return;
@@ -294,7 +396,7 @@ export default function HomeBannerClient({
               "relative w-full overflow-hidden rounded-3xl border bg-white shadow-sm",
               "ring-1 ring-black/5",
               heightClassName,
-              "select-none",
+              "select-none touch-pan-y",
             ].join(" ")}
             onMouseEnter={() => {
               setPaused(true);
@@ -312,6 +414,10 @@ export default function HomeBannerClient({
               setPaused(false);
               scheduleAutoNext();
             }}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerCancel}
             aria-label="Home hero carousel"
             role="region"
           >
