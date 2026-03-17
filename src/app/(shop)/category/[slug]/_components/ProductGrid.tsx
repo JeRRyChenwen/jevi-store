@@ -76,7 +76,7 @@ export default function ProductGrid({
   if (loading) {
     return (
       <section style={sectionMinHeightStyle}>
-        <div className="grid gap-7 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-7 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-4">
           {Array.from({ length: Math.min(pageSize, filteredTotal - start) || 8 }).map((_, i) => (
             <CardSkeleton key={i} />
           ))}
@@ -91,7 +91,7 @@ export default function ProductGrid({
 
   return (
     <section style={sectionMinHeightStyle}>
-      <div className="grid gap-7 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-7 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-4">
         {list.map((p, idx) => (
           <ProductCard
             key={p.key}

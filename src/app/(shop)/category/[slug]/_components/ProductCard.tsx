@@ -192,7 +192,7 @@ export default function ProductCard({
   };
 
   return (
-    <article className="group overflow-hidden rounded-3xl border bg-card shadow-sm transition-shadow hover:shadow-md">
+    <article className="group overflow-hidden rounded-2xl sm:rounded-3xl border bg-card shadow-sm transition-shadow hover:shadow-md">
       <div
         className="relative cursor-pointer"
         onPointerDown={handleImagePointerDown}
@@ -205,9 +205,9 @@ export default function ProductCard({
             text="NEW"
             variant="top"
             tone="new"
-            height={28}               // ✅ 更矮
-            className="translate-y-2" // ✅ 往下移一点
-            bannerPulse={true}        // ✅ 关键：打开呼吸闪烁
+            height={22}
+            className="translate-y-1 sm:translate-y-2"
+            bannerPulse={true}
             glass={false}
           />
         )}
@@ -215,8 +215,8 @@ export default function ProductCard({
         <ImageCarousel urls={urls} alt={p.name || `Image #${start + idx + 1}`} />
       </div>
 
-      <div className="p-6 md:p-8">
-        <h3 className="text-lg md:text-xl font-semibold line-clamp-1">
+      <div className="p-3 sm:p-6 md:p-8">
+        <h3 className="text-sm sm:text-lg md:text-xl font-semibold leading-snug line-clamp-2 sm:line-clamp-1 min-h-[2.5rem] sm:min-h-0">
           {p.slug ? (
             <Link href={`/product/${p.slug}`} className="hover:underline">
               {p.name || `Product #${start + idx + 1}`}
@@ -227,35 +227,35 @@ export default function ProductCard({
         </h3>
 
         {discountPct != null && (
-          <p className="mt-1 text-base font-semibold text-emerald-700 uppercase tracking-wide">
+          <p className="mt-1 text-xs sm:text-base font-semibold text-emerald-700 uppercase tracking-wide">
             {discountPct}% OFF
           </p>
         )}
 
-        <div className="mt-2">
+        <div className="mt-1.5 sm:mt-2">
           {discountPct != null && displayBase ? (
-            <div className="flex items-baseline gap-2">
-              <span className="text-base text-neutral-400 line-through">{displayBase}</span>
-              <span className="text-neutral-300">|</span>
-              <span className="text-base font-bold text-emerald-700">{displayEff}</span>
+            <div className="flex flex-wrap items-baseline gap-1 sm:gap-2">
+              <span className="text-xs sm:text-base text-neutral-400 line-through">{displayBase}</span>
+              <span className="text-neutral-300 text-xs sm:text-base">|</span>
+              <span className="text-sm sm:text-base font-bold text-emerald-700">{displayEff}</span>
             </div>
           ) : legacyOnSale && legacySalePrice != null ? (
-            <div className="flex items-baseline gap-2">
-              <span className="text-base text-neutral-400 line-through">
+            <div className="flex flex-wrap items-baseline gap-1 sm:gap-2">
+              <span className="text-xs sm:text-base text-neutral-400 line-through">
                 {formatPriceVal(p.price, p.currency)}
               </span>
-              <span className="text-neutral-300">|</span>
-              <span className="text-base font-bold text-emerald-700">
+              <span className="text-neutral-300 text-xs sm:text-base">|</span>
+              <span className="text-sm sm:text-base font-bold text-emerald-700">
                 {formatPriceVal(legacySalePrice, p.currency)}
               </span>
             </div>
           ) : (
-            <div className="text-base font-bold">{displayEff}</div>
+            <div className="text-sm sm:text-base font-bold">{displayEff}</div>
           )}
         </div>
 
         {p.colors && p.colors.length > 0 && (
-          <div className="mt-3 flex items-center gap-2.5">
+          <div className="mt-2 sm:mt-3 flex items-center gap-1.5 sm:gap-2.5">
             {p.colors.slice(0, 8).map((c) => {
               const normalized = normalizeColorName(c);
               const active = normalizeColorName(selectedColor) === normalized;
@@ -267,18 +267,18 @@ export default function ProductCard({
                   aria-pressed={active}
                   onClick={() => setSelectedColor(normalized)}
                   className={[
-                    "relative inline-flex h-6 w-6 items-center justify-center rounded-full",
+                    "relative inline-flex h-5 w-5 sm:h-6 sm:w-6 items-center justify-center rounded-full",
                     active
-                      ? "ring-2 ring-neutral-900 ring-offset-2 ring-offset-white"
+                      ? "ring-2 ring-neutral-900 ring-offset-1 sm:ring-offset-2 ring-offset-white"
                       : "ring-1 ring-black/10 hover:ring-black/30",
                     "transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30",
                   ].join(" ")}
-                >
-                  <span
-                    className="block h-6 w-6 rounded-full"
-                    style={{ backgroundColor: colorNameToCss(normalized) }}
-                  />
-                </button>
+                  >
+                    <span
+                      className="block h-5 w-5 sm:h-6 sm:w-6 rounded-full"
+                      style={{ backgroundColor: colorNameToCss(normalized) }}
+                    />
+                  </button>
               );
             })}
             {p.colors.length > 8 && (
@@ -288,11 +288,11 @@ export default function ProductCard({
         )}
 
         {p.sizes && p.sizes.length > 0 && (
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <div className="mt-2 flex flex-wrap items-center gap-1">
             {p.sizes.slice(0, 10).map((sz) => (
               <span
                 key={sz}
-                className="px-2 py-0.5 rounded-full border text-xs leading-5 bg-white"
+                className="px-1.5 sm:px-2 py-0.5 rounded-full border text-[11px] sm:text-xs leading-4 sm:leading-5 bg-white"
                 title={`Size ${sz}`}
               >
                 {sz}
@@ -304,14 +304,14 @@ export default function ProductCard({
           </div>
         )}
 
-        <div className="mt-3 flex items-center gap-1">
+        <div className="mt-2 sm:mt-3 flex items-center gap-0.5 sm:gap-1">
           {Array.from({ length: 5 }).map((_, i3) => (
             <Star
               key={i3}
               className={
                 i3 < (stars as number)
-                  ? "h-4 w-4 fill-black text-black"
-                  : "h-4 w-4 text-neutral-300"
+                  ? "h-3.5 w-3.5 sm:h-4 sm:w-4 fill-black text-black"
+                  : "h-3.5 w-3.5 sm:h-4 sm:w-4 text-neutral-300"
               }
             />
           ))}
