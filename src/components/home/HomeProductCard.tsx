@@ -1,11 +1,13 @@
 // src/components/home/HomeProductCard.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Star, ChevronLeft, ChevronRight } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Star } from "lucide-react";
 import { normalizeColorName, colorNameToCss } from "@/lib/colors";
 import CornerRibbon from "@/components/badges/CornerRibbon"; // ✅ NEW
+import HomeImageCarousel from "@/components/home/HomeImageCarousel";
 
 // 不依赖对方导出的类型，避免类型导出不一致时报错
 type PriceRec = any;
@@ -86,6 +88,9 @@ export default function HomeProductCard({
   isSaleActiveByLegacy,
   salePriceLegacy,
 }: HomeProductCardProps) {
+  const router = useRouter();
+  const clickStartRef = useRef<{ x: number; y: number } | null>(null);
+
   const [selectedColor, setSelectedColor] = useState<string | null>(
     p.colors?.[0] ?? null
   );
@@ -164,80 +169,60 @@ export default function HomeProductCard({
   const legacyOnSale = !pick && isSaleActiveByLegacy(p);
   const legacySalePrice = legacyOnSale ? salePriceLegacy(p) : null;
 
-  // ====== 主页专用：更“贴底”的轮播，减少图片下方留白 ======
-  const [imgIdx, setImgIdx] = useState(0);
-  const count = urls.length;
+  const handleImagePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    clickStartRef.current = { x: e.clientX, y: e.clientY };
+  };
 
-  useEffect(() => {
-    setImgIdx(0);
-  }, [urls.join("|")]);
+  const handleImagePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!p.slug) return;
 
-  const go = (delta: number) => {
-    if (!count) return;
-    setImgIdx((i) => (i + delta + count) % count);
+    const startPoint = clickStartRef.current;
+    clickStartRef.current = null;
+
+    if (!startPoint) return;
+
+    const dx = e.clientX - startPoint.x;
+    const dy = e.clientY - startPoint.y;
+
+    const moved = Math.abs(dx) > 10 || Math.abs(dy) > 10;
+    if (moved) return;
+
+    const target = e.target as HTMLElement | null;
+    if (target?.closest("button, a")) return;
+
+    router.push(`/product/${p.slug}`);
+  };
+
+  const handleImagePointerCancel = () => {
+    clickStartRef.current = null;
   };
 
   return (
     <article className="group overflow-hidden rounded-2xl border bg-card shadow-sm transition-shadow hover:shadow-md">
-      {/* 图片区：用固定比例撑开，并让图片 object-bottom（贴底），最大化减少下方留白 */}
-      <div className="relative">
-        <div className="relative aspect-[4/5] w-full bg-muted overflow-hidden">
-          {/* ✅ NEW banner：放在图片容器里（必须 relative） */}
-          {showNew && (
-            <CornerRibbon
-              text="NEW"
-              variant="top"
-              tone="new"
-              height={28}
-              className="translate-y-2"
-              bannerPulse={true} // ✅ 闪烁
-              glass={false}
-            />
-          )}
-
-          {count ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={urls[imgIdx]}
-              alt={p.name || `Image #${start + idx + 1}`}
-              className="absolute inset-0 h-full w-full object-cover object-bottom"
-              loading="lazy"
-            />
-          ) : (
-            <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
-              No Image
-            </div>
-          )}
-
-          {count > 1 && (
-            <>
-              <button
-                type="button"
-                aria-label="Previous image"
-                onClick={() => go(-1)}
-                className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-white/85 hover:bg-white shadow p-1 z-30"
-              >
-                <ChevronLeft className="h-4 w-4 text-neutral-800" />
-              </button>
-              <button
-                type="button"
-                aria-label="Next image"
-                onClick={() => go(1)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-white/85 hover:bg-white shadow p-1 z-30"
-              >
-                <ChevronRight className="h-4 w-4 text-neutral-800" />
-              </button>
-            </>
-          )}
-        </div>
-
-        {p.slug ? (
-          <Link
-            href={`/product/${p.slug}`}
-            aria-label={`View ${p.name}`}
-            className="absolute inset-0 z-10"
+      {/* 图片区：点击进入详情；拖动时不跳详情 */}
+      <div
+        className="relative cursor-pointer"
+        onPointerDown={handleImagePointerDown}
+        onPointerUp={handleImagePointerUp}
+        onPointerCancel={handleImagePointerCancel}
+      >
+        {/* ✅ NEW banner：放在图片容器里 */}
+        {showNew && (
+          <CornerRibbon
+            text="NEW"
+            variant="top"
+            tone="new"
+            height={28}
+            className="translate-y-2"
+            bannerPulse={true}
+            glass={false}
           />
-        ) : null}
+        )}
+
+        <HomeImageCarousel
+          urls={urls}
+          alt={p.name || `Image #${start + idx + 1}`}
+        />
       </div>
 
       {/* 白色信息区：更紧凑 */}
