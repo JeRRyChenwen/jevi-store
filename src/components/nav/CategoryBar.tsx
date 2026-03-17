@@ -216,7 +216,7 @@ export default function CategoryBar() {
   return (
     // 与 Navbar 同色、同宽，吸顶在 Navbar 下方（Navbar 高度：h-16 md:h-20）
     <section
-      className="sticky top-16 md:top-20 z-40 w-full bg-white border-b border-neutral-200"
+      className="sticky top-14 md:top-20 z-40 w-full bg-white border-b border-neutral-200"
       onMouseLeave={handleLeaveAll}
     >
       <div className="mx-auto w-full max-w-[1400px] px-2 md:px-4">
