@@ -2,8 +2,9 @@
 
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Star } from "lucide-react";
 import { normalizeColorName, colorNameToCss } from "@/lib/colors";
 import ImageCarousel from "./ImageCarousel";
@@ -86,6 +87,9 @@ export default function ProductCard({
   isSaleActiveByLegacy,
   salePriceLegacy,
 }: ProductCardProps) {
+  const router = useRouter();
+  const clickStartRef = useRef<{ x: number; y: number } | null>(null);
+
   const [selectedColor, setSelectedColor] = useState<string | null>(p.colors?.[0] ?? null);
 
   // ✅ NEW: 是否显示 NEW（依赖写稳：只跟时间窗相关）
@@ -157,9 +161,44 @@ export default function ProductCard({
   const legacyOnSale = !pick && isSaleActiveByLegacy(p);
   const legacySalePrice = legacyOnSale ? salePriceLegacy(p) : null;
 
+  const handleImagePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    clickStartRef.current = { x: e.clientX, y: e.clientY };
+  };
+
+  const handleImagePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!p.slug) return;
+
+    const startPoint = clickStartRef.current;
+    clickStartRef.current = null;
+
+    if (!startPoint) return;
+
+    const dx = e.clientX - startPoint.x;
+    const dy = e.clientY - startPoint.y;
+
+    // ✅ 位移很小才当作“点击进入详情”；否则当作拖动，不跳转
+    const moved = Math.abs(dx) > 10 || Math.abs(dy) > 10;
+    if (moved) return;
+
+    // ✅ 如果点到按钮/可交互元素，不在这里跳
+    const target = e.target as HTMLElement | null;
+    if (target?.closest("button, a")) return;
+
+    router.push(`/product/${p.slug}`);
+  };
+
+  const handleImagePointerCancel = () => {
+    clickStartRef.current = null;
+  };
+
   return (
     <article className="group overflow-hidden rounded-3xl border bg-card shadow-sm transition-shadow hover:shadow-md">
-      <div className="relative">
+      <div
+        className="relative cursor-pointer"
+        onPointerDown={handleImagePointerDown}
+        onPointerUp={handleImagePointerUp}
+        onPointerCancel={handleImagePointerCancel}
+      >
         {/* ✅ NEW banner：放在图片区域 */}
         {showNew && (
           <CornerRibbon
@@ -174,14 +213,6 @@ export default function ProductCard({
         )}
 
         <ImageCarousel urls={urls} alt={p.name || `Image #${start + idx + 1}`} />
-
-        {p.slug && (
-          <Link
-            href={`/product/${p.slug}`}
-            aria-label={`View ${p.name}`}
-            className="absolute inset-0 z-10"
-          />
-        )}
       </div>
 
       <div className="p-6 md:p-8">
