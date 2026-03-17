@@ -49,6 +49,9 @@ export default function BagDrawer({ ownerId = "global" }: { ownerId?: string }) 
   const currency = cartItems[0]?.currency ?? "AUD";
   const hasItems = cartItems.length > 0;
 
+  // ✅ 总件数：用于手机端 header 辅助信息
+  const itemCount = cartItems.reduce((sum, it) => sum + (it.qty ?? 0), 0);
+
   // ✅ Subtotal：仍然用 cartItems 里的 price * qty（你现在 price 已经是“最终价 major”，所以这里正确）
   const subtotal = useMemo(
     () =>
@@ -106,16 +109,28 @@ export default function BagDrawer({ ownerId = "global" }: { ownerId?: string }) 
         {/* 纵向布局：中部滚动 + 底部吸底 */}
         <div className="flex h-full flex-col overflow-hidden">
           {/* Header */}
-          <div className="shrink-0 flex items-center justify-between border-b px-4 py-3.5 md:px-4 md:py-3">
-            <div className="text-[15px] font-semibold md:text-base">Your Bag</div>
-            <button
-              type="button"
-              className="rounded-full p-2.5 hover:bg-neutral-100"
-              onClick={closeFn}
-              aria-label="Close bag"
-            >
-              <X className="h-5 w-5" />
-            </button>
+          <div className="shrink-0 border-b px-4 py-3 md:px-4 md:py-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[15px] font-semibold leading-6 md:text-base">
+                  Your Bag
+                </div>
+                <div className="text-xs text-neutral-500">
+                  {hasItems
+                    ? `${itemCount} item${itemCount > 1 ? "s" : ""}`
+                    : "Your bag is currently empty"}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="shrink-0 rounded-full p-2.5 hover:bg-neutral-100"
+                onClick={closeFn}
+                aria-label="Close bag"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
           </div>
 
           {/* 中部：可滚动的列表（min-h-0 避免子元素撑爆） */}
@@ -124,41 +139,68 @@ export default function BagDrawer({ ownerId = "global" }: { ownerId?: string }) 
           </div>
 
           {/* 底部：Subtotal / You saved / Total / Check out */}
-          <footer className="sticky bottom-0 z-10 shrink-0 border-t bg-white/95 p-4 pb-[calc(env(safe-area-inset-bottom,0px)+16px)] backdrop-blur supports-[backdrop-filter]:bg-white/60">
-            <div className="space-y-2 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-neutral-600">Subtotal</span>
-                <span className="text-base font-semibold">{fmt(subtotal, currency)}</span>
-              </div>
+          <footer
+            className={[
+              "sticky bottom-0 z-10 shrink-0 border-t bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60",
+              hasItems
+                ? "p-4 pb-[calc(env(safe-area-inset-bottom,0px)+16px)]"
+                : "p-4 pb-[calc(env(safe-area-inset-bottom,0px)+14px)]",
+            ].join(" ")}
+          >
+            {hasItems ? (
+              <>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-neutral-600">Subtotal</span>
+                    <span className="text-base font-semibold">{fmt(subtotal, currency)}</span>
+                  </div>
 
-              {saved > 0 && (
-                <div className="flex items-center justify-between">
-                  <span className="text-neutral-600">You saved</span>
-                  <span className="font-semibold text-emerald-700">{fmt(saved, currency)}</span>
+                  {saved > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-neutral-600">You saved</span>
+                      <span className="font-semibold text-emerald-700">{fmt(saved, currency)}</span>
+                    </div>
+                  )}
+
+                  <div className="mt-1 flex items-center justify-between border-t border-neutral-100 pt-2">
+                    <span className="text-sm font-semibold">Total</span>
+                    <span className="text-lg font-bold">{fmt(total, currency)}</span>
+                  </div>
                 </div>
-              )}
 
-              <div className="mt-1 flex items-center justify-between">
-                <span className="text-sm font-semibold">Total</span>
-                <span className="text-lg font-bold">{fmt(total, currency)}</span>
+                <button
+                  type="button"
+                  disabled={!hasItems}
+                  onClick={toCheckout}
+                  aria-label="Check out"
+                  className={[
+                    // ✅ 手机端按钮更高一点，更适合拇指点击
+                    "mt-4 inline-flex h-12 w-full items-center justify-center gap-2 rounded-full px-6 text-sm font-semibold md:h-11",
+                    "transition-colors",
+                    !hasItems
+                      ? "cursor-not-allowed bg-neutral-200 text-neutral-500"
+                      : "bg-neutral-900 text-white hover:bg-neutral-800",
+                  ].join(" ")}
+                >
+                  Check out <ChevronRight className="h-4 w-4" />
+                </button>
+              </>
+            ) : (
+              <div className="space-y-3">
+                <div className="text-sm text-neutral-500">
+                  Add something you love to continue to checkout.
+                </div>
+
+                <button
+                  type="button"
+                  disabled
+                  aria-label="Check out"
+                  className="inline-flex h-12 w-full cursor-not-allowed items-center justify-center gap-2 rounded-full bg-neutral-200 px-6 text-sm font-semibold text-neutral-500 md:h-11"
+                >
+                  Check out <ChevronRight className="h-4 w-4" />
+                </button>
               </div>
-            </div>
-
-            <button
-              type="button"
-              disabled={!hasItems}
-              onClick={toCheckout}
-              aria-label="Check out"
-              className={[
-                // ✅ 手机端按钮更高一点，更适合拇指点击
-                "mt-4 inline-flex h-12 w-full items-center justify-center gap-2 rounded-full px-6 text-sm font-semibold md:h-11",
-                !hasItems
-                  ? "cursor-not-allowed bg-neutral-200 text-neutral-500"
-                  : "bg-neutral-900 text-white hover:bg-neutral-800",
-              ].join(" ")}
-            >
-              Check out <ChevronRight className="h-4 w-4" />
-            </button>
+            )}
           </footer>
         </div>
       </aside>
