@@ -233,7 +233,7 @@ export default function Navbar() {
           {/* 右：搜索 + 图标 */}
           <div className="ml-auto flex min-w-0 items-center gap-0.5 sm:gap-1 md:gap-2">
             {/* ✅ 桌面端才显示紧凑搜索框；手机端只保留搜索按钮 */}
-            <CompactSearch className="hidden md:block md:w-[420px] lg:w-[560px] xl:w-[680px]" />
+            <CompactSearch className="hidden md:flex md:w-[420px] lg:w-[560px] xl:w-[680px]" />
 
             {/* ✅ 手机端搜索入口 */}
             <Button
