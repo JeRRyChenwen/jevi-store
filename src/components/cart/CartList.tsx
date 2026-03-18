@@ -151,11 +151,7 @@ export default function CartList({
                 </div>
               </div>
 
-              {/* ✅ Max stock 直接用 it.stock（你这里本来就对） */}
-              <div className="mt-1 text-[11px] text-neutral-500">
-                Max {it.stock} available
               </div>
-            </div>
 
             <button
               type="button"
