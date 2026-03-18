@@ -60,6 +60,24 @@ function SortIcon({ dir }: { dir: SortDir | null }) {
   return <span className="ml-1 text-slate-500">{dir === "asc" ? "↑" : "↓"}</span>;
 }
 
+function statusBadgeClass(status?: string | null) {
+  const s = String(status || "").trim().toLowerCase();
+
+  if (["paid", "completed", "delivered", "fulfilled", "success"].includes(s)) {
+    return "bg-emerald-50 text-emerald-700 border-emerald-200";
+  }
+
+  if (["pending", "processing", "in progress"].includes(s)) {
+    return "bg-amber-50 text-amber-700 border-amber-200";
+  }
+
+  if (["cancelled", "canceled", "failed", "refunded", "rejected"].includes(s)) {
+    return "bg-rose-50 text-rose-700 border-rose-200";
+  }
+
+  return "bg-slate-50 text-slate-700 border-slate-200";
+}
+
 export default function EditOrdersCard() {
   const router = useRouter();
   const [orders, setOrders] = useState<OrderRow[] | null>(null);
@@ -250,7 +268,10 @@ export default function EditOrdersCard() {
           >
             {/* ✅ 表格盒子：锁定高度时占满剩余空间；否则自然收缩 */}
             <div className="rounded-lg border bg-white overflow-hidden">
-              <div className="overflow-x-auto">
+              {/* =========================
+                  Desktop: keep existing table
+                ========================= */}
+              <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="text-left border-b bg-slate-50 text-xs text-slate-600">
                     <tr>
@@ -310,7 +331,6 @@ export default function EditOrdersCard() {
 
                         return (
                           <tr key={o.id} className="border-t">
-                            {/* ✅ Order number now plain text */}
                             <td className="py-2 pl-3 pr-4">
                               <span className="font-medium text-black">
                                 {o.order_number || `#${o.id}`}
@@ -326,7 +346,6 @@ export default function EditOrdersCard() {
                             <td className="py-2 pr-4">{o.status || "-"}</td>
                             <td className="py-2 pr-4">{o.item_count}</td>
 
-                            {/* ✅ New action button */}
                             <td className="py-2 pr-3 text-right">
                               <Button
                                 variant="outline"
@@ -344,12 +363,96 @@ export default function EditOrdersCard() {
                 </table>
               </div>
 
-              {/* ✅ 只有进入“超过 10 条”的多页场景后，才用空白块撑满剩余高度 */}
-              {shouldLockListHeight ? <div className="flex-1 bg-white" /> : null}
+              {/* =========================
+                  Mobile: card list
+                ========================= */}
+              <div className="md:hidden">
+                {pagedOrders.length === 0 ? (
+                  <div className="px-4 py-6 text-sm text-neutral-500">No orders yet.</div>
+                ) : (
+                  <div className="divide-y">
+                    {pagedOrders.map((o) => {
+                      const key = o.order_number || String(o.id);
+                      const href = `/profile/orders/${encodeURIComponent(key)}`;
+
+                      return (
+                        <div key={o.id} className="p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="text-xs uppercase tracking-wide text-slate-500">
+                                Order
+                              </div>
+                              <div className="mt-1 break-words text-base font-semibold text-slate-900">
+                                {o.order_number || `#${o.id}`}
+                              </div>
+                            </div>
+
+                            <span
+                              className={[
+                                "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium capitalize",
+                                statusBadgeClass(o.status),
+                              ].join(" ")}
+                            >
+                              {o.status || "-"}
+                            </span>
+                          </div>
+
+                          <div className="mt-4 grid grid-cols-2 gap-3">
+                            <div>
+                              <div className="text-[11px] uppercase tracking-wide text-slate-500">
+                                Created
+                              </div>
+                              <div className="mt-1 text-sm text-slate-900">
+                                <UserTime ts={o.created_at_ts ?? null} fallback="-" />
+                              </div>
+                            </div>
+
+                            <div>
+                              <div className="text-[11px] uppercase tracking-wide text-slate-500">
+                                Amount
+                              </div>
+                              <div className="mt-1 text-sm font-medium text-slate-900">
+                                {fmtCurrency(o.total_minor, o.currency)}
+                              </div>
+                            </div>
+
+                            <div>
+                              <div className="text-[11px] uppercase tracking-wide text-slate-500">
+                                Items
+                              </div>
+                              <div className="mt-1 text-sm text-slate-900">{o.item_count}</div>
+                            </div>
+
+                            <div>
+                              <div className="text-[11px] uppercase tracking-wide text-slate-500">
+                                Order ID
+                              </div>
+                              <div className="mt-1 text-sm text-slate-900">#{o.id}</div>
+                            </div>
+                          </div>
+
+                          <div className="mt-4">
+                            <Button
+                              variant="outline"
+                              className="h-10 w-full rounded-lg"
+                              onClick={() => router.push(href)}
+                            >
+                              View details
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* 只有进入“超过 10 条”的多页场景后，才用空白块撑满剩余高度 */}
+              {shouldLockListHeight ? <div className="hidden md:block flex-1 bg-white" /> : null}
             </div>
 
             {/* ✅ summary 始终显示；右侧始终显示统一分页控件（即使只有 1 页） */}
-            <div className="mt-auto flex items-center justify-between gap-3">
+            <div className="mt-auto flex flex-col items-start gap-3 md:flex-row md:items-center md:justify-between">
               <div className="text-xs text-muted-foreground">
                 {total > 0 ? (
                   <>
@@ -363,7 +466,7 @@ export default function EditOrdersCard() {
                 )}
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex w-full items-center justify-between gap-2 md:w-auto md:justify-start">
                 <Button
                   type="button"
                   variant="outline"

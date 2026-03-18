@@ -156,19 +156,6 @@ export default async function OrderDetailPage({ params }: PageProps) {
  
   return (
     <main className="px-4 md:px-8 py-8 max-w-3xl mx-auto">
-      {/* ✅ 面包屑：Home › Profile › My Orders - [订单号] */}
-      <nav className="mb-4 text-sm text-neutral-600" aria-label="Breadcrumb">
-        <Link href="/" className="hover:underline">
-          Home
-        </Link>
-        <span className="mx-2 text-neutral-400">›</span>
-        <Link href="/profile" className="hover:underline">
-          Profile
-        </Link>
-        <span className="mx-2 text-neutral-400">›</span>
-        <span className="text-neutral-900">My Orders - {displayNo}</span>
-      </nav>
-
       <h1 className="text-2xl font-semibold mb-4">Order details</h1>
 
       {/* 基本信息卡片 */}
