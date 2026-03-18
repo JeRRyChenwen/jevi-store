@@ -244,7 +244,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
 
   return (
     <section
-      className="rounded-xl border bg-white min-h-[720px] flex flex-col"
+      className="rounded-xl border bg-white min-h-0 md:min-h-[720px] flex flex-col"
       aria-hidden={!visible}
       style={
         visible
@@ -271,7 +271,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
         </div>
       </div>
 
-      <div className="p-4 space-y-2 flex-1 flex flex-col">
+      <div className="p-4 space-y-3 md:space-y-2 flex flex-col md:flex-1">
         <PaymentStepAddressNotice />
 
         <PaymentStepStatusAlerts
@@ -282,8 +282,8 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
           payBlockedReason={payBlockedReason}
         />
 
-        <div className="flex-1 flex flex-col">
-          <div className="grid gap-4 md:grid-cols-[minmax(0,1.5fr)_minmax(0,2fr)]">
+        <div className="flex flex-col md:flex-1">
+          <div className="grid items-start gap-4 md:grid-cols-[minmax(0,1.5fr)_minmax(0,2fr)]">
             <PaymentStepMethodPanel
               method={method}
               setMethod={setMethod}
@@ -326,7 +326,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
           </div>
         </div>
 
-        <div className="mt-auto pt-6 space-y-1 text-xs text-gray-500">
+        <div className="mt-4 pt-4 md:mt-auto md:pt-6 space-y-1 text-xs text-gray-500">
           <p>
             All charges are processed in <b>{safeCurrency}</b>. Your bank or PayPal may apply currency conversion and fees.
           </p>

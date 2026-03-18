@@ -124,7 +124,7 @@ export function usePaymentReservationState({
     const expMs = Number.isFinite(expSec) && expSec > 0 ? expSec * 1000 : 0;
 
     if (!rid) {
-      return "No stock reservation found. Please go back to the Address step and reserve again.";
+      return "No reservation found. Please go back to the Address step and reserve again.";
     }
 
     if (preHash && preHash !== cartHash) {

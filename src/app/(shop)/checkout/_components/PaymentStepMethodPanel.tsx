@@ -11,7 +11,7 @@ type Props = {
 
 const PaymentStepMethodPanel: React.FC<Props> = ({ method, setMethod }) => {
   return (
-    <div className="border rounded-lg p-4 h-[460px] flex flex-col">
+    <div className="border rounded-lg p-4 h-auto md:h-[460px] flex flex-col">
       <div className="space-y-3">
         <h3 className="text-sm font-semibold text-neutral-900">Choose a way to pay</h3>
 
@@ -34,7 +34,7 @@ const PaymentStepMethodPanel: React.FC<Props> = ({ method, setMethod }) => {
         </button>
       </div>
 
-      <div className="mt-5 border-t pt-4 flex-1 flex flex-col">
+      <div className="hidden md:flex mt-5 border-t pt-4 flex-1 flex-col">
         <div className="flex-1" />
       </div>
     </div>
