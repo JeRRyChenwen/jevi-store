@@ -42,6 +42,24 @@ type ReturnsLookupStepProps = {
   onFindOrder: (nextOrderNumber?: string, nextEmail?: string) => void;
 };
 
+function statusBadgeClass(status?: string | null) {
+  const s = String(status || "").trim().toLowerCase();
+
+  if (["paid", "completed", "delivered", "fulfilled", "success"].includes(s)) {
+    return "bg-emerald-50 text-emerald-700 border-emerald-200";
+  }
+
+  if (["pending", "processing", "in progress"].includes(s)) {
+    return "bg-amber-50 text-amber-700 border-amber-200";
+  }
+
+  if (["cancelled", "canceled", "failed", "refunded", "rejected"].includes(s)) {
+    return "bg-rose-50 text-rose-700 border-rose-200";
+  }
+
+  return "bg-slate-50 text-slate-700 border-slate-200";
+}
+
 export default function ReturnsLookupStep({
   bootLoading,
   authed,
@@ -98,7 +116,10 @@ export default function ReturnsLookupStep({
                 ].join(" ")}
               >
                 <div className="overflow-hidden rounded-lg border bg-white">
-                  <div className="h-auto">
+                  {/* =========================
+                      Desktop: keep existing table
+                    ========================= */}
+                  <div className="hidden md:block">
                     <table className="w-full text-left text-sm">
                       <thead className="sticky top-0 z-10 border-b bg-slate-50 text-xs text-slate-600">
                         <tr>
@@ -163,12 +184,8 @@ export default function ReturnsLookupStep({
                                 o.paid_at_cn || o.created_at_cn || "-"
                               )}
                             </td>
-                            <td className="py-2 pr-4">
-                              {fmtMoney(o.total_minor, o.currency)}
-                            </td>
-                            <td className="py-2 pr-4 text-muted-foreground">
-                              {o.status || "-"}
-                            </td>
+                            <td className="py-2 pr-4">{fmtMoney(o.total_minor, o.currency)}</td>
+                            <td className="py-2 pr-4 text-muted-foreground">{o.status || "-"}</td>
                             <td className="py-2 pr-3 text-right">
                               <Button
                                 variant="outline"
@@ -186,7 +203,7 @@ export default function ReturnsLookupStep({
                                   )
                                 }
                               >
-                                {loading ? "Loading…" : "Start Return"}
+                                Start Return
                               </Button>
                             </td>
                           </tr>
@@ -194,9 +211,107 @@ export default function ReturnsLookupStep({
                       </tbody>
                     </table>
                   </div>
+
+                  {/* =========================
+                      Mobile: card list
+                    ========================= */}
+                  <div className="md:hidden">
+                    {pagedOrders.length === 0 ? (
+                      <div className="px-4 py-6 text-sm text-neutral-500">No orders found.</div>
+                    ) : (
+                      <div className="divide-y">
+                        {pagedOrders.map((o) => (
+                          <div key={o.id} className="p-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="text-xs uppercase tracking-wide text-slate-500">
+                                  Order
+                                </div>
+                                <div className="mt-1 break-words text-base font-semibold text-slate-900">
+                                  {o.order_number || `#${o.id}`}
+                                </div>
+                              </div>
+
+                              <span
+                                className={[
+                                  "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium capitalize",
+                                  statusBadgeClass(o.status),
+                                ].join(" ")}
+                              >
+                                {o.status || "-"}
+                              </span>
+                            </div>
+
+                            <div className="mt-4 grid grid-cols-2 gap-3">
+                              <div>
+                                <div className="text-[11px] uppercase tracking-wide text-slate-500">
+                                  Paid at
+                                </div>
+                                <div className="mt-1 text-sm text-slate-900">
+                                  {typeof o.paid_at_ts === "number" ||
+                                  typeof o.created_at_ts === "number" ? (
+                                    <UserTime
+                                      ts={(o.paid_at_ts ?? o.created_at_ts) ?? null}
+                                      fallback="-"
+                                    />
+                                  ) : (
+                                    o.paid_at_cn || o.created_at_cn || "-"
+                                  )}
+                                </div>
+                              </div>
+
+                              <div>
+                                <div className="text-[11px] uppercase tracking-wide text-slate-500">
+                                  Amount
+                                </div>
+                                <div className="mt-1 text-sm font-medium text-slate-900">
+                                  {fmtMoney(o.total_minor, o.currency)}
+                                </div>
+                              </div>
+
+                              <div>
+                                <div className="text-[11px] uppercase tracking-wide text-slate-500">
+                                  Items
+                                </div>
+                                <div className="mt-1 text-sm text-slate-900">{o.item_count}</div>
+                              </div>
+
+                              <div>
+                                <div className="text-[11px] uppercase tracking-wide text-slate-500">
+                                  Order ID
+                                </div>
+                                <div className="mt-1 text-sm text-slate-900">#{o.id}</div>
+                              </div>
+                            </div>
+
+                            <div className="mt-4">
+                              <Button
+                                variant="outline"
+                                className="h-10 w-full rounded-lg"
+                                disabled={
+                                  loading ||
+                                  isLookupCoolingDown ||
+                                  !o.order_number ||
+                                  !o.email
+                                }
+                                onClick={() =>
+                                  onFindOrder(
+                                    String(o.order_number || ""),
+                                    String(o.email || "")
+                                  )
+                                }
+                              >
+                                Start Return
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                <div className="mt-auto flex items-center justify-between gap-3">
+                <div className="mt-auto flex flex-col items-start gap-3 md:flex-row md:items-center md:justify-between">
                   <div className="text-xs text-muted-foreground">
                     {ordersTotal > 0 ? (
                       <>
@@ -210,7 +325,7 @@ export default function ReturnsLookupStep({
                     )}
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex w-full items-center justify-between gap-2 md:w-auto md:justify-start">
                     <Button
                       type="button"
                       variant="outline"
