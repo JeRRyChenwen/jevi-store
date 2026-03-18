@@ -310,12 +310,12 @@ const AddressStep: React.FC<AddressStepProps> = ({
             )}
 
             {isLoggedIn && !(useSavedDelivery && useSavedBilling) && (
-              <div className="flex justify-end -mt-2 mr-6">
+              <div className="flex justify-end -mt-2 mr-0 sm:mr-6">
                 <div className="flex flex-col items-end gap-2">
                   <button
                     type="button"
                     onClick={onSaveDefault}
-                    className="rounded-full border bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
+                    className="w-auto max-w-[150px] rounded-full border bg-white px-2 py-0.5 text-[9px] font-semibold leading-[1.1] text-center whitespace-normal hover:bg-neutral-50 sm:max-w-none sm:px-4 sm:py-2 sm:text-sm sm:leading-normal sm:whitespace-nowrap"
                   >
                     Save delivery address and billing address as default
                   </button>
