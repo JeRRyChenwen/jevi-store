@@ -30,7 +30,10 @@ export default function SearchOverlay({
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  const visible = opened && query.trim().length >= 2 && (loading || error || items.length >= 0);
+  const visible =
+  opened &&
+  query.trim().length >= 2 &&
+  (loading || !!error || items.length >= 0);
 
   useEffect(() => {
     if (open) {
