@@ -18,6 +18,9 @@ type BackButtonProps = {
 
   /** 外观风格：chip(推荐默认) / link(像面包屑) */
   variant?: "chip" | "link";
+
+  /** ✅ 强制跳转地址：传了就直接跳，不走 router.back() */
+  forceHref?: string;
 };
 
 function defaultLabelFromFallback(fallbackHref?: string, fallbackLabel?: string) {
@@ -46,23 +49,32 @@ export default function BackButton({
   fallbackHref = "/",
   fallbackLabel,
   variant = "chip",
+  forceHref,
 }: BackButtonProps) {
   const router = useRouter();
 
   const computedLabel = React.useMemo(() => {
     if (label?.trim()) return label.trim();
-    return defaultLabelFromFallback(fallbackHref, fallbackLabel);
-  }, [label, fallbackHref, fallbackLabel]);
+
+    // ✅ 如果 forceHref 存在，就优先用它来生成默认文案
+    return defaultLabelFromFallback(forceHref || fallbackHref, fallbackLabel);
+  }, [label, fallbackHref, fallbackLabel, forceHref]);
 
   const handleBack = React.useCallback(() => {
     if (typeof window === "undefined") return;
+
+    // ✅ 强制跳转优先级最高
+    if (forceHref) {
+      router.push(forceHref);
+      return;
+    }
 
     if (window.history.length > 1) {
       router.back();
     } else {
       router.push(fallbackHref);
     }
-  }, [router, fallbackHref]);
+  }, [router, fallbackHref, forceHref]);
 
   const base = "inline-flex items-center gap-1.5 text-sm transition-colors";
   const focus =
@@ -70,12 +82,10 @@ export default function BackButton({
 
   const styles =
     variant === "chip"
-      ? // ✅ 电商/后台都通用：像轻量“胶囊按钮”
-        "rounded-full border border-slate-200 bg-white/90 px-3 py-1.5 text-slate-700 shadow-sm backdrop-blur " +
+      ? "rounded-full border border-slate-200 bg-white/90 px-3 py-1.5 text-slate-700 shadow-sm backdrop-blur " +
         "hover:bg-white hover:border-slate-300 hover:text-slate-900 " +
         "active:translate-y-[1px] active:shadow-none"
-      : // ✅ 面包屑/链接风格：更克制
-        "text-slate-500 hover:text-slate-900";
+      : "text-slate-500 hover:text-slate-900";
 
   return (
     <button
@@ -87,10 +97,10 @@ export default function BackButton({
       <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
       <span
         className={clsx(
-            "font-medium",
-            variant === "link" ? "hover:underline underline-offset-4" : ""
+          "font-medium",
+          variant === "link" ? "hover:underline underline-offset-4" : ""
         )}
-        >
+      >
         {computedLabel}
       </span>
     </button>
