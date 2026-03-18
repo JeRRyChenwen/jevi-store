@@ -28,7 +28,7 @@ export type UseCategoryProductsArgs = {
 
   devLogPrefix?: string;
 
-  // ✅ 允许虚拟分类（new / sale 等）
+  // ✅ 临时放宽：当前仅用于透传，后续整理 category 相关类型后再收紧
   virtualFilter?: unknown;
 };
 
