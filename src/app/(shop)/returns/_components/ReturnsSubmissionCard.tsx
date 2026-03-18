@@ -27,6 +27,13 @@ type ReturnsSubmissionCardProps = {
   inlineMessage: string;
 };
 
+const RETURN_REASON_OPTIONS = [
+  { value: "changed_mind", label: "Changed my mind" },
+  { value: "wrong_item", label: "Received wrong item" },
+  { value: "faulty", label: "Faulty / damaged" },
+  { value: "other", label: "Other" },
+];
+
 export default function ReturnsSubmissionCard({
   images,
   submitting,
@@ -126,18 +133,48 @@ export default function ReturnsSubmissionCard({
         <h2 className="text-sm font-semibold">Return reason</h2>
 
         <div className="space-y-2">
-          <select
-            className="w-full border rounded px-2 py-1 text-sm"
-            value={reasonType}
-            onChange={(e) => onReasonTypeChange(e.target.value)}
-            disabled={submitting || uploading}
-          >
-            <option value="">Select a reason</option>
-            <option value="changed_mind">Changed my mind</option>
-            <option value="wrong_item">Received wrong item</option>
-            <option value="faulty">Faulty / damaged</option>
-            <option value="other">Other</option>
-          </select>
+          <div className="grid gap-2">
+            {RETURN_REASON_OPTIONS.map((opt) => {
+              const active = reasonType === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => onReasonTypeChange(opt.value)}
+                  disabled={submitting || uploading}
+                  className={[
+                    "w-full rounded-xl border px-4 py-3 text-left text-sm transition",
+                    "focus:outline-none focus:ring-2 focus:ring-black/10",
+                    active
+                      ? "border-slate-900 bg-slate-50 text-slate-900"
+                      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:border-slate-300",
+                    submitting || uploading ? "opacity-60 cursor-not-allowed" : "",
+                  ].join(" ")}
+                  aria-pressed={active}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-medium">{opt.label}</span>
+
+                    <span
+                      className={[
+                        "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
+                        active
+                          ? "border-slate-900 bg-slate-900"
+                          : "border-slate-300 bg-white",
+                      ].join(" ")}
+                    >
+                      <span
+                        className={[
+                          "h-1.5 w-1.5 rounded-full",
+                          active ? "bg-white" : "bg-transparent",
+                        ].join(" ")}
+                      />
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <div className="space-y-2">
