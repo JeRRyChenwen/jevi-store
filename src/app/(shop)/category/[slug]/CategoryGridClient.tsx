@@ -187,24 +187,25 @@ export default function CategoryGridClient({
 
   // products
   const { loading, list, error, filteredTotal: filteredTotalFromApi } =
-    useCategoryProducts({
-      slug,
-      categoryDocIds,
-      page: basePage,
-      pageSize,
-      sortQueryString,
-      appliedMin,
-      appliedMax,
-      appliedGenders,
-      appliedMaterials,
-      appliedSizes,
-      appliedColors,
-      toCents,
-      normalizeProduct,
-      devLogPrefix: "GridProducts",
-      // ✅ NEW：虚拟分类过滤（让 hook 内改用时间窗 filters，而不是 category slug）
-      virtualFilter,
-    });
+  useCategoryProducts({
+    slug,
+    categoryDocIds,
+    page: basePage,
+    pageSize,
+    sortQueryString,
+    appliedMin,
+    appliedMax,
+    appliedGenders,
+    appliedMaterials,
+    appliedSizes,
+    appliedColors,
+    displayCurrency,
+    toCents,
+    normalizeProduct,
+    devLogPrefix: "GridProducts",
+    // ✅ NEW：虚拟分类过滤（让 hook 内改用时间窗 filters，而不是 category slug）
+    virtualFilter,
+  });
 
   // ✅ 兜底：首次加载/接口异常时，仍然使用 server 传入的 total
   const filteredTotal =

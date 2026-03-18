@@ -21,10 +21,15 @@ export type UseCategoryProductsArgs = {
   appliedSizes: string[];
   appliedColors: string[];
 
+  displayCurrency: string;
+
   toCents: (n?: number | null) => number | undefined;
   normalizeProduct: (row: any) => any;
 
   devLogPrefix?: string;
+
+  // ✅ 允许虚拟分类（new / sale 等）
+  virtualFilter?: unknown;
 };
 
 const PROMO_SLUGS = new Set(["new-in", "on-sale"]);
@@ -64,9 +69,11 @@ export function useCategoryProducts({
   appliedMaterials,
   appliedSizes,
   appliedColors,
+  displayCurrency,
   toCents,
   normalizeProduct,
   devLogPrefix = "Products",
+  virtualFilter,
 }: UseCategoryProductsArgs) {
   const DEV = process.env.NODE_ENV !== "production";
   const dbg = (...args: unknown[]) => DEV && console.debug(`[${devLogPrefix}]`, ...args);
@@ -116,11 +123,28 @@ export function useCategoryProducts({
         // 仅展示「被上架显示」的商品
         parts.push(`filters[is_showed][$eq]=true`);
 
-        // 价格区间过滤：暂时禁用（保持你现状）
+        // 价格区间过滤：按当前显示币种的 prices.real_price（minor）筛选
         const minCents = toCents(appliedMin);
         const maxCents = toCents(appliedMax);
+        const currencyCode = String(displayCurrency || "AUD").toUpperCase();
+
         if (typeof minCents === "number" || typeof maxCents === "number") {
-          dbg("price range filter is temporarily disabled:", { minCents, maxCents });
+          // 先限定当前币种，避免多币种组件互相串筛
+          parts.push(`filters[prices][currency][$eq]=${encodeURIComponent(currencyCode)}`);
+
+          if (typeof minCents === "number") {
+            parts.push(`filters[prices][real_price][$gte]=${minCents}`);
+          }
+
+          if (typeof maxCents === "number") {
+            parts.push(`filters[prices][real_price][$lte]=${maxCents}`);
+          }
+
+          dbg("price range filter enabled:", {
+            currencyCode,
+            minCents,
+            maxCents,
+          });
         }
 
         // product 级（gender）

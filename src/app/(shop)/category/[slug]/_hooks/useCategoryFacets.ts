@@ -34,6 +34,9 @@ type UseCategoryFacetsArgs = {
   slug: string;
   categoryDocIds?: string[];
   devLogPrefix?: string;
+
+  // ✅ 由外层传入；当前这个 hook 里暂时不直接使用，只是为了让调用处类型通过
+  virtualFilter?: unknown;
 };
 
 const PROMO_SLUGS = new Set(["new-in", "on-sale"]);
