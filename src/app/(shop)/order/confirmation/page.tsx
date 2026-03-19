@@ -115,30 +115,32 @@ export default function OrderConfirmationPage() {
   const emailLine = String((order as any)?.email || "").trim();
 
   return (
-    <main className="bg-neutral-50/60 px-4 sm:px-6 lg:px-8 py-10">
-      <div className="mx-auto max-w-5xl space-y-6">
-        <div className="rounded-2xl border bg-white p-5 sm:p-6 shadow-sm">
+    <main className="bg-neutral-50/60 px-3 sm:px-6 lg:px-8 py-6 sm:py-10 overflow-x-hidden">
+      <div className="mx-auto max-w-5xl space-y-4 sm:space-y-6">
+        <div className="rounded-2xl border bg-white p-4 sm:p-6 shadow-sm overflow-hidden">
           <div className="flex items-start gap-3">
-            <div className="mt-0.5 rounded-full border bg-neutral-50 p-2">
+            <div className="mt-0.5 shrink-0 rounded-full border bg-neutral-50 p-2">
               <CheckCircle2 className="h-5 w-5" />
             </div>
 
             <div className="min-w-0 flex-1">
-              <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">
+              <h1 className="text-[20px] leading-tight sm:text-3xl font-semibold tracking-tight">
                 Thanks for your order!
               </h1>
 
               {emailLine ? (
-                <p className="mt-1 text-sm text-neutral-600">
+                <p className="mt-2 text-sm leading-6 text-neutral-600 break-words">
                   We’ve emailed your receipt and order details to{" "}
-                  <span className="font-medium text-neutral-800">{emailLine}</span>.
+                  <span className="font-medium text-neutral-800 break-all">
+                    {emailLine}
+                  </span>.
                 </p>
               ) : null}
 
               <div className="mt-3 flex flex-wrap gap-2">
-                <span className="inline-flex items-center rounded-full border bg-white px-3 py-1 text-xs text-neutral-700">
-                  Order:
-                  <span className="ml-1 font-mono text-neutral-900">
+                <span className="inline-flex max-w-full items-center rounded-full border bg-white px-3 py-1 text-xs text-neutral-700">
+                  <span className="shrink-0">Order:</span>
+                  <span className="ml-1 font-mono text-neutral-900 break-all">
                     {order.order_number || "Processing"}
                   </span>
                 </span>
@@ -147,7 +149,7 @@ export default function OrderConfirmationPage() {
           </div>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px] items-start">
+        <div className="grid gap-4 sm:gap-6 lg:grid-cols-[minmax(0,1fr)_380px] items-start">
           <ConfirmationItemsSection items={items} currency={currency} />
 
           <ConfirmationSidebar

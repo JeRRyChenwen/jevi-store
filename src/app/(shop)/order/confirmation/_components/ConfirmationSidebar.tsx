@@ -39,62 +39,62 @@ export default function ConfirmationSidebar({
     typeof order.tax_minor === "number" ? clampMinor(order.tax_minor) : 0;
 
   return (
-    <aside className="space-y-6 lg:sticky lg:top-6">
-      <section className="rounded-2xl border bg-white p-5 shadow-sm">
+    <aside className="space-y-4 sm:space-y-6 lg:sticky lg:top-6 min-w-0">
+      <section className="rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-hidden">
         <h2 className="text-base font-semibold">Order Summary</h2>
 
         <div className="mt-4 space-y-3 text-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-neutral-600">
+          <div className="flex items-start justify-between gap-3">
+            <span className="text-neutral-600 min-w-0 break-words">
               Items subtotal{" "}
               <span className="text-neutral-400">
                 ({totalQty} item{totalQty > 1 ? "s" : ""})
               </span>
             </span>
-            <span className="font-medium text-neutral-900">
+            <span className="font-medium text-neutral-900 shrink-0">
               {fmtMoneyMinor(itemsSubtotalMinor, currency)}
             </span>
           </div>
 
           {discountMinor > 0 ? (
-            <div className="flex items-center justify-between">
-              <span className="text-neutral-600">Discount</span>
-              <span className="font-medium text-neutral-900">
+            <div className="flex items-start justify-between gap-3">
+              <span className="text-neutral-600 min-w-0">Discount</span>
+              <span className="font-medium text-neutral-900 shrink-0">
                 − {fmtMoneyMinor(discountMinor, currency)}
               </span>
             </div>
           ) : null}
 
           {taxMinor > 0 ? (
-            <div className="flex items-center justify-between">
-              <span className="text-neutral-600">Tax</span>
-              <span className="font-medium text-neutral-900">
+            <div className="flex items-start justify-between gap-3">
+              <span className="text-neutral-600 min-w-0">Tax</span>
+              <span className="font-medium text-neutral-900 shrink-0">
                 {fmtMoneyMinor(taxMinor, currency)}
               </span>
             </div>
           ) : null}
 
-          <div className="flex items-center justify-between">
-            <span className="text-neutral-600">Delivery fee</span>
-            <span className="font-medium text-neutral-900">
+          <div className="flex items-start justify-between gap-3">
+            <span className="text-neutral-600 min-w-0">Delivery fee</span>
+            <span className="font-medium text-neutral-900 shrink-0">
               {shippingMinor === 0 ? "FREE" : fmtMoneyMinor(shippingMinor, currency)}
             </span>
           </div>
 
-          <div className="border-t pt-3 flex items-center justify-between">
+          <div className="border-t pt-3 flex items-start justify-between gap-3">
             <span className="font-semibold">Total</span>
-            <span className="text-lg font-bold">
+            <span className="text-[18px] sm:text-lg font-bold shrink-0">
               {fmtMoneyMinor(totalMinor, currency)}
             </span>
           </div>
         </div>
       </section>
 
-      <section className="rounded-2xl border bg-white p-5 shadow-sm">
+      <section className="rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-hidden">
         <h2 className="text-base font-semibold">Delivery Details</h2>
 
         {address ? (
-          <div className="mt-3 text-sm leading-6 text-neutral-800">
+          <div className="mt-3 text-sm leading-6 text-neutral-800 break-words">
             <div className="font-medium text-neutral-900">
               {[address.firstName, address.lastName].filter(Boolean).join(" ")}
             </div>
@@ -121,7 +121,7 @@ export default function ConfirmationSidebar({
             ) : null}
 
             {address.phone ? <div className="mt-2">{address.phone}</div> : null}
-            {address.email ? <div>{address.email}</div> : null}
+            {address.email ? <div className="break-all">{address.email}</div> : null}
           </div>
         ) : (
           <div className="mt-3 text-sm text-neutral-500">
@@ -129,9 +129,9 @@ export default function ConfirmationSidebar({
           </div>
         )}
 
-        <div className="mt-4 rounded-xl border bg-neutral-50 px-4 py-3 text-sm flex items-center justify-between">
+        <div className="mt-4 rounded-xl border bg-neutral-50 px-4 py-3 text-sm flex items-center justify-between gap-3">
           <span className="text-neutral-600">Delivery method</span>
-          <span className="font-medium text-neutral-900">
+          <span className="font-medium text-neutral-900 shrink-0">
             {deliveryOption.toLowerCase() === "express" ? "Express" : "Standard"}
           </span>
         </div>
@@ -140,7 +140,7 @@ export default function ConfirmationSidebar({
       <div className="flex justify-end">
         <Link
           href="/"
-          className="rounded-md bg-black text-white px-6 py-2 text-sm font-medium text-center"
+          className="w-full lg:w-auto rounded-full bg-black text-white px-6 py-3 text-sm font-medium text-center"
         >
           Continue Shopping
         </Link>
