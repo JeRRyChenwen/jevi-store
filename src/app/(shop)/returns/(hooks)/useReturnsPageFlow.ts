@@ -242,7 +242,7 @@ export function useReturnsPageFlow() {
       const returnId = Number(result.data?.return?.id);
       if (images.length && Number.isFinite(returnId) && returnId > 0) {
         try {
-          await uploadAttachments(returnId);
+          await uploadAttachments(returnId, email);
         } catch (e: any) {
           showError(
             `Return submitted, but image upload failed: ${String(e?.message || e)}`

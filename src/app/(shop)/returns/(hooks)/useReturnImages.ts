@@ -21,7 +21,6 @@ export function useReturnImages({
     clearAlert();
 
     const files = Array.from(e.target.files || []);
-    // 允许重复选择同一张图：重置 input
     e.target.value = "";
 
     if (!files.length) return;
@@ -70,7 +69,7 @@ export function useReturnImages({
     });
   }
 
-  async function uploadAttachments(returnId: number) {
+  async function uploadAttachments(returnId: number, returnEmail?: string | null) {
     if (!images.length) return null;
 
     const fd = new FormData();
@@ -82,9 +81,14 @@ export function useReturnImages({
     setUploadResult(null);
 
     try {
+      const email = String(returnEmail || "").trim();
+
       const res = await fetch(`/api/returns/${returnId}/attachments`, {
         method: "POST",
         credentials: "include",
+        headers: {
+          ...(email ? { "x-return-email": email } : {}),
+        },
         body: fd,
       });
 
