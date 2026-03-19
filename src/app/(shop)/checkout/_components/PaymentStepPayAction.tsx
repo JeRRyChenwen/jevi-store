@@ -1,4 +1,3 @@
-// src/app/(shop)/checkout/_components/PaymentStepPayAction.tsx
 "use client";
 
 import React from "react";
@@ -43,12 +42,12 @@ const PaymentStepPayAction: React.FC<Props> = ({
   if (!visible || !(derivedAmountMajor > 0)) return null;
 
   return (
-    <div className="w-[260px] max-w-full">
+    <div className="w-full md:w-[260px] max-w-full">
       {isPayProcessing ? (
         <button
           type="button"
           disabled
-          className="w-full rounded-full px-6 py-3 text-sm font-semibold bg-[#FFC439] text-[#111827] opacity-70 cursor-not-allowed"
+          className="w-full rounded-full px-6 py-3.5 text-sm font-semibold bg-[#FFC439] text-[#111827] opacity-70 cursor-not-allowed shadow-sm"
         >
           Processing payment...
         </button>
@@ -56,7 +55,7 @@ const PaymentStepPayAction: React.FC<Props> = ({
         <button
           type="button"
           disabled
-          className="w-full rounded-full px-6 py-3 text-sm font-semibold bg-[#FFC439] text-[#111827] opacity-70 cursor-not-allowed"
+          className="w-full rounded-full px-6 py-3.5 text-sm font-semibold bg-[#FFC439] text-[#111827] opacity-70 cursor-not-allowed shadow-sm"
         >
           Preparing PayPal...
         </button>

@@ -244,7 +244,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
 
   return (
     <section
-      className="rounded-xl border bg-white min-h-0 md:min-h-[720px] flex flex-col"
+      className="rounded-2xl border bg-white min-h-0 md:min-h-[720px] flex flex-col overflow-hidden"
       aria-hidden={!visible}
       style={
         visible
@@ -261,17 +261,20 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
             }
       }
     >
-      <div className="px-4 py-3 border-b flex items-center justify-between">
+      <div className="px-4 py-4 md:px-4 md:py-3 border-b flex items-center justify-between">
         <div>
-          <div className="text-base font-semibold text-neutral-900">Payment Options</div>
+          <div className="text-[18px] md:text-base font-semibold text-neutral-900">
+            Payment Options
+          </div>
         </div>
-        <div className="flex items-center gap-1 text-xs text-emerald-600">
+
+        <div className="flex items-center gap-1.5 text-xs text-emerald-600">
           <Check className="w-4 h-4" />
           <span>Secure checkout</span>
         </div>
       </div>
 
-      <div className="p-4 space-y-3 md:space-y-2 flex flex-col md:flex-1">
+      <div className="p-3 md:p-4 space-y-3 md:space-y-2 flex flex-col md:flex-1">
         <PaymentStepAddressNotice />
 
         <PaymentStepStatusAlerts
@@ -282,7 +285,59 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
           payBlockedReason={payBlockedReason}
         />
 
-        <div className="flex flex-col md:flex-1">
+        {/* =========================
+           手机端：先支付方式，再订单摘要（含支付按钮），地址放后面
+           桌面端：保持你原来的双栏逻辑
+        ========================== */}
+        <div className="md:hidden space-y-4">
+          <PaymentStepMethodPanel
+            method={method}
+            setMethod={setMethod}
+          />
+
+          <PaymentStepSummaryPanel
+            address={address}
+            hasAddress={hasAddress}
+            countryDisplay={countryDisplay}
+            effectiveOrderEmail={effectiveOrderEmail}
+            derivedItemsCount={derivedItemsCount}
+            derivedItemsMinor={derivedItemsMinor}
+            deliveryFeeMinor={Number(deliveryFeeMinor) || 0}
+            derivedTotalMinor={derivedTotalMinor}
+            safeCurrency={safeCurrency}
+            visible={visible}
+            reservationId={reservationId}
+            reservationSecondsLeft={reservationSecondsLeft}
+            payError={payError}
+            actionSlot={
+              <PaymentStepPayAction
+                visible={visible}
+                derivedAmountMajor={derivedAmountMajor}
+                safeCurrency={safeCurrency}
+                isPayProcessing={isPayProcessing}
+                preReserveLoading={preReserveLoading}
+                paypalUnavailable={paypalUnavailable}
+                successMetaWithReservation={successMetaWithReservation}
+                stockItems={stockItems}
+                runStockReservePreflight={runStockReservePreflight}
+                reservationIdRef={reservationIdRef}
+                setPayError={setPayError}
+                setSuppressBlockedHint={setSuppressBlockedHint}
+                onPayInitiated={onPayInitiated}
+                handlePaySucceeded={handlePaySucceeded}
+                handlePayFailed={handlePayFailed}
+              />
+            }
+          />
+
+          <div className="pt-1 px-1 space-y-1 text-xs text-gray-500">
+            <p>
+              All charges are processed in <b>{safeCurrency}</b>. Your bank or PayPal may apply currency conversion and fees.
+            </p>
+          </div>
+        </div>
+
+        <div className="hidden md:flex md:flex-col md:flex-1">
           <div className="grid items-start gap-4 md:grid-cols-[minmax(0,1.5fr)_minmax(0,2fr)]">
             <PaymentStepMethodPanel
               method={method}
@@ -324,12 +379,12 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
               }
             />
           </div>
-        </div>
 
-        <div className="mt-4 pt-4 md:mt-auto md:pt-6 space-y-1 text-xs text-gray-500">
-          <p>
-            All charges are processed in <b>{safeCurrency}</b>. Your bank or PayPal may apply currency conversion and fees.
-          </p>
+          <div className="mt-4 pt-4 md:mt-auto md:pt-6 space-y-1 text-xs text-gray-500">
+            <p>
+              All charges are processed in <b>{safeCurrency}</b>. Your bank or PayPal may apply currency conversion and fees.
+            </p>
+          </div>
         </div>
       </div>
     </section>

@@ -51,12 +51,78 @@ const PaymentStepSummaryPanel: React.FC<Props> = ({
 
   return (
     <div className="space-y-4">
-      <div className="border rounded-lg p-4">
-        <h3 className="text-base font-medium mb-3">Delivery Details</h3>
+      <div className="border rounded-xl p-4 bg-white space-y-4">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-normal text-gray-600">Items</div>
+            <div className="text-sm font-medium text-neutral-900">
+              {derivedItemsCount} item{derivedItemsCount > 1 ? "s" : ""}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-normal text-gray-600">Subtotal</div>
+            <div className="text-sm font-medium text-neutral-900">
+              {fmtMoneyMinor(derivedItemsMinor, safeCurrency)}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-normal text-gray-600">Delivery</div>
+            <div className="text-sm font-medium text-neutral-900">
+              {Number(deliveryFeeMinor) === 0
+                ? "FREE"
+                : fmtMoneyMinor(Number(deliveryFeeMinor) || 0, safeCurrency)}
+            </div>
+          </div>
+
+          <div className="border-t pt-3 flex items-center justify-between">
+            <div className="text-sm font-semibold text-neutral-900">Total</div>
+            <div className="text-sm font-semibold text-neutral-950">
+              {fmtMoneyMinor(derivedTotalMinor, safeCurrency)}
+            </div>
+          </div>
+        </div>
+
+        {shouldShowReservationAlert && (
+          <Alert variant="info" className="mt-1 rounded-xl">
+            <div className="flex items-start gap-2.5">
+              <span className="text-sm">🛍️</span>
+              <div className="leading-5 flex-1">
+                <div className="font-medium text-sm flex items-center justify-between gap-3">
+                  <span>Your items are reserved.</span>
+
+                  {typeof reservationSecondsLeft === "number" ? (
+                    <span className="text-xs font-semibold tabular-nums rounded-md border bg-white px-2.5 py-1">
+                      {String(Math.floor(reservationSecondsLeft / 60)).padStart(2, "0")}:
+                      {String(reservationSecondsLeft % 60).padStart(2, "0")}
+                    </span>
+                  ) : (
+                    <span className="text-xs opacity-70">--:--</span>
+                  )}
+                </div>
+
+                <div className="text-xs opacity-90 mt-0.5">
+                  Please complete your payment before the reservation expires.
+                </div>
+              </div>
+            </div>
+          </Alert>
+        )}
+
+        {actionSlot ? <div className="pt-1">{actionSlot}</div> : null}
+      </div>
+
+      <div className="border rounded-xl p-4 bg-white">
+        <h3 className="text-base font-semibold mb-3 text-neutral-900">
+          Delivery Details
+        </h3>
 
         {hasAddress ? (
-          <div className="text-sm leading-6 text-gray-800 space-y-0.5">
-            <div>{[address.firstName, address.lastName].filter(Boolean).join(" ")}</div>
+          <div className="text-sm leading-7 text-gray-800 space-y-0.5">
+            <div>
+              {[address.firstName, address.lastName].filter(Boolean).join(" ")}
+            </div>
 
             {address.line1 && (
               <div>
@@ -83,66 +149,6 @@ const PaymentStepSummaryPanel: React.FC<Props> = ({
           </div>
         )}
       </div>
-
-      <div className="border rounded-lg p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="text-sm text-gray-600">Items</div>
-          <div className="text-base font-medium">
-            {derivedItemsCount} item{derivedItemsCount > 1 ? "s" : ""}
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between">
-          <div className="text-sm text-gray-600">Subtotal</div>
-          <div className="text-base font-medium">
-            {fmtMoneyMinor(derivedItemsMinor, safeCurrency)}
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between">
-          <div className="text-sm text-gray-600">Delivery</div>
-          <div className="text-base font-medium">
-            {Number(deliveryFeeMinor) === 0
-              ? "FREE"
-              : fmtMoneyMinor(Number(deliveryFeeMinor) || 0, safeCurrency)}
-          </div>
-        </div>
-
-        <div className="border-t pt-3 flex items-center justify-between">
-          <div className="text-lg font-semibold">Total</div>
-          <div className="text-xl font-bold">
-            {fmtMoneyMinor(derivedTotalMinor, safeCurrency)}
-          </div>
-        </div>
-
-        {shouldShowReservationAlert && (
-          <Alert variant="info" className="mt-3">
-            <div className="flex items-start gap-2">
-              <span className="text-base">🛍️</span>
-              <div className="leading-5 flex-1">
-                <div className="font-medium flex items-center justify-between gap-3">
-                  <span>Your items are reserved.</span>
-
-                  {typeof reservationSecondsLeft === "number" ? (
-                    <span className="text-xs font-semibold tabular-nums rounded-md border bg-white px-2 py-0.5">
-                      {String(Math.floor(reservationSecondsLeft / 60)).padStart(2, "0")}:
-                      {String(reservationSecondsLeft % 60).padStart(2, "0")}
-                    </span>
-                  ) : (
-                    <span className="text-xs opacity-70">--:--</span>
-                  )}
-                </div>
-
-                <div className="text-xs opacity-90">
-                  Please complete your payment before the reservation expires.
-                </div>
-              </div>
-            </div>
-          </Alert>
-        )}
-      </div>
-
-      {actionSlot ? <div className="pt-0 flex justify-end">{actionSlot}</div> : null}
     </div>
   );
 };

@@ -54,15 +54,15 @@ export default function CheckoutPageView({
   alertVariant,
 }: CheckoutPageViewProps) {
   return (
-    <main className="w-full px-4 sm:px-6 lg:px-8 2xl:px-12 py-6 md:py-8">
+    <main className="w-full px-3 sm:px-6 lg:px-8 2xl:px-12 py-4 md:py-8">
       <div className="mx-auto w-full max-w-[2300px]">
-        <div className="mb-5">
+        <div className="mb-3 md:mb-5">
           <PageBack />
         </div>
 
         <CheckoutSteps step={step} onChange={setStepAndURL} />
 
-        <div className="space-y-6">
+        <div className="space-y-4 md:space-y-6">
           {step === "bag" && <BagStep {...bagStepProps} />}
 
           {step === "address" && <AddressStep {...addressStepProps} />}
@@ -74,7 +74,7 @@ export default function CheckoutPageView({
           )}
 
           {step === "payment" && payPersistErrMsg ? (
-            <div className="px-4">
+            <div className="px-1 md:px-4">
               <Alert variant={"error" as any}>{payPersistErrMsg}</Alert>
             </div>
           ) : null}
@@ -82,8 +82,8 @@ export default function CheckoutPageView({
           <PaymentStep {...paymentStepProps} />
 
           {step === "payment" && (
-            <div className="px-4 pb-4 pt-2 flex justify-end">
-              <div className="w-[320px] max-w-full">
+            <div className="px-1 md:px-4 pb-3 md:pb-4 pt-1 md:pt-2 flex justify-end">
+              <div className="w-full md:w-[320px] max-w-full">
                 <LargeBackButton onClick={() => setStepAndURL("delivery")} />
               </div>
             </div>

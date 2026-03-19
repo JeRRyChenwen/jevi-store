@@ -1224,10 +1224,4 @@ no-reply@jevi.com
 
 只有这一条按钮 变成“按下去 / 阴影加深 / 颜色更深”的状态
 
-其他订单按钮保持不变
-
-按钮文字仍然可以继续显示 Start Return
-
-很好，我修改好了，不过我发现一个问题，就是我的checkout页面有个reserve order的功能，用户在address step 就会触发这个reserve order的功能，但如果用户在address step花费太多时间，当用户进入 delivery step的时候reserve order 就会过期，如果过期的话就会在截图的 “Shipping matched: Australia · option standard · fee 10.00 AUD” 这段text的位置
-
 reserv time 改成30分鐘
