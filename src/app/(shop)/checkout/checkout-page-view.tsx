@@ -1,6 +1,6 @@
 "use client";
 
-import PageBack from "@/components/PageBack";
+import BackButton from "@/components/navigation/BackButton";
 import { Alert } from "@/components/ui/alert";
 import BagStep from "./_components/BagStep";
 import AddressStep from "./_components/AddressStep";
@@ -56,8 +56,12 @@ export default function CheckoutPageView({
   return (
     <main className="w-full px-3 sm:px-6 lg:px-8 2xl:px-12 py-4 md:py-8">
       <div className="mx-auto w-full max-w-[2300px]">
-        <div className="mb-3 md:mb-5">
-          <PageBack />
+        <div className="mb-4">
+          <BackButton
+            label="Back"
+            forceHref="/"
+            variant="chip"
+          />
         </div>
 
         <CheckoutSteps step={step} onChange={setStepAndURL} />

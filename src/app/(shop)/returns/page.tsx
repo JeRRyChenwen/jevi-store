@@ -76,8 +76,12 @@ export default function ReturnsPage() {
 
   return (
     <div className="max-w-3xl mx-auto py-8 px-4">
-      <div className="text-sm text-slate-500">
-        <BackButton variant="link" fallbackHref="/" fallbackLabel="Shopping" />
+      <div className="mb-4">
+        <BackButton
+          label="Back"
+          forceHref="/"
+          variant="chip"
+        />
       </div>
 
       <h1 className="text-2xl font-semibold mb-4">Returns &amp; Exchanges</h1>
