@@ -1225,3 +1225,39 @@ no-reply@jevi.com
 只有这一条按钮 变成“按下去 / 阴影加深 / 颜色更深”的状态
 
 reserv time 改成30分鐘
+
+=====================================================
+
+先从阿里巴巴找几家供应商拿样。
+
+你自己检查质量、尺码、实物和图片差距。
+
+选出 1–2 家靠谱的供应商。
+
+先做少量首批库存。
+
+让这批首库存直接发到澳洲 3PL。
+
+后面网站有订单，就由 3PL 发。
+
+return policy 跟 3pl协商之后定下来
+
+Refund / Returns Policy
+
+Privacy Policy
+
+Contact details
+
+About / business identity
+
+先只卖澳洲
+
+结账页只允许 Australia
+
+Shipping policy 写明 currently ship within Australia only
+
+Returns policy 写明退货地址和流程都在澳洲
+
+实际不要接澳洲以外的订单
+
+back 按钮
