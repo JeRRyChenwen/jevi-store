@@ -3,6 +3,9 @@
 
 import { useEffect, useState } from "react";
 
+/** ✅ 当前 checkout 只允许 AU / NZ 收货 */
+const ALLOWED_CHECKOUT_COUNTRIES = new Set(["AU", "NZ"]);
+
 /* ====== 正则与小工具 ====== */
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
 const PHONE_RE = /^\+?[0-9\s\-()]{6,20}$/;
@@ -62,6 +65,8 @@ export function validateAddress(
   emailInput: string,
   ignoreEmail = false
 ) {
+  const countryCode = t(a.country).toUpperCase();
+
   const errs: AddressErr = {
     firstName: t(a.firstName) === "",
     lastName: t(a.lastName) === "",
@@ -70,9 +75,18 @@ export function validateAddress(
     city: t(a.city) === "",
     state: t(a.state) === "",
     postcode: !POSTCODE_RE.test(t(a.postcode)),
-    country: t(a.country) === "",
+
+    /**
+     * ✅ 当前网站只支持 Australia / New Zealand 收货
+     * - 空值报错
+     * - 非 AU / NZ 也报错
+     */
+    country:
+      countryCode === "" || !ALLOWED_CHECKOUT_COUNTRIES.has(countryCode),
+
     email: ignoreEmail ? false : !EMAIL_RE.test(t(emailInput || a.email)),
   };
+
   const valid = Object.values(errs).every((v) => v === false);
   return { valid, errs };
 }

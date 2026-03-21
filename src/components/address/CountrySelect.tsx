@@ -36,6 +36,13 @@ type Props = {
 
   describedById?: string;
   className?: string;
+
+  /**
+   * ✅ 可选：允许调用方传入“当前页面可选国家列表”
+   * - 不传时：默认仍使用全量 COUNTRY_OPTIONS
+   * - 传了时：只显示传入的国家
+   */
+  options?: readonly { code: CountryCode; label: string }[];
 };
 
 function normalizeValue(v?: string | null): CountryCode | "" {
@@ -75,6 +82,7 @@ export default function CountrySelect({
   placeholder = "Select a country",
   describedById,
   className,
+  options,
 }: Props) {
   const v = normalizeValue(value);
 
@@ -92,10 +100,12 @@ export default function CountrySelect({
   const triggerRef = React.useRef<HTMLDivElement | null>(null);
 
   const sortedOptions = React.useMemo(() => {
-    return [...COUNTRY_OPTIONS].sort((a, b) =>
+    const source = options && options.length ? options : COUNTRY_OPTIONS;
+
+    return [...source].sort((a, b) =>
       a.label.localeCompare(b.label, undefined, { sensitivity: "base" })
     );
-  }, []);
+  }, [options]);
 
   const selectedLabel = React.useMemo(() => {
     if (!v) return "";

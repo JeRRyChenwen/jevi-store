@@ -59,7 +59,15 @@ export async function runCheckoutContinue({
 
     if (!deliveryRes.valid || !billingRes.valid) {
       setAddressShowErrors(true);
-      setContinueErrMsg("Please complete all required delivery address fields before saving.");
+
+      const hasCountryError =
+        !!deliveryRes.errs.country || !!billingRes.errs.country;
+
+      setContinueErrMsg(
+        hasCountryError
+          ? "We currently only ship to Australia and New Zealand. Please update your delivery address to continue."
+          : "Please complete all required delivery address fields before saving."
+      );
 
       const el = document.getElementById("address-section");
       el?.scrollIntoView({ behavior: "smooth", block: "start" });

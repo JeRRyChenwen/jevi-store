@@ -3,10 +3,15 @@
 
 import React from "react";
 import CountrySelect from "@/components/address/CountrySelect";
-
 import type { Address, AddressErr } from "./address-step.types";
 import { baseInput, hasAnyErr, fieldErrorText, clsInput } from "./address-step.utils";
 import { InlineError, RequiredStar } from "./AddressFieldParts";
+
+/** ✅ 当前 checkout 只允许 AU / NZ 收货 */
+const CHECKOUT_COUNTRY_OPTIONS = [
+  { code: "AU", label: "Australia" },
+  { code: "NZ", label: "New Zealand" },
+] as const;
 
 type BillingFormProps = {
   billing: Address;
@@ -197,6 +202,7 @@ export default function BillingForm({
             invalid={!!(showErrors && errs.country)}
             describedById="err-bill-country"
             placeholder="Select country"
+            options={CHECKOUT_COUNTRY_OPTIONS}
           />
 
           <InlineError

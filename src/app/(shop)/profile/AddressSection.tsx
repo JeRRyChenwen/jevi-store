@@ -5,6 +5,13 @@ import { Alert } from "@/components/ui/alert";
 import { FieldMessage } from "@/components/ui/field-message";
 import CountrySelect from "@/components/address/CountrySelect";
 import type { Address, FieldErrors } from "./edit-address-card.types";
+
+/** ✅ profile 地址只允许 AU / NZ */
+const PROFILE_COUNTRY_OPTIONS = [
+  { code: "AU", label: "Australia" },
+  { code: "NZ", label: "New Zealand" },
+] as const;
+
 import {
   baseInputClass,
   readOnlyClass,
@@ -241,6 +248,7 @@ export default function AddressSection({
                 value={address.country}
                 disabled={!editing}
                 invalid={!!errors.country}
+                options={PROFILE_COUNTRY_OPTIONS}
                 onChange={(code) => {
                   setAddress((prev) => ({ ...prev, country: code }));
                   setErrors((prev) => ({ ...prev, country: undefined }));
