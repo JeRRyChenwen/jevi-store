@@ -110,7 +110,11 @@ const PaymentStepSummaryPanel: React.FC<Props> = ({
           </Alert>
         )}
 
-        {actionSlot ? <div className="pt-1">{actionSlot}</div> : null}
+        {actionSlot ? (
+          <div className="pt-1 flex justify-start md:justify-end">
+            {actionSlot}
+          </div>
+        ) : null}
       </div>
 
       <div className="border rounded-xl p-4 bg-white">

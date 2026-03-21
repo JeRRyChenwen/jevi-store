@@ -506,7 +506,17 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
 
                   stockForCurrent <= 0 ? (
                     /* No inventory available */
-                    <FieldMessage variant="error">Out of stock</FieldMessage>
+                    <div className="flex items-start justify-between gap-3">
+                      <FieldMessage variant="muted">Availability</FieldMessage>
+                      <div className="text-right">
+                        <div className="text-sm font-medium text-neutral-800">
+                          Out of stock
+                        </div>
+                        <div className="mt-1 text-xs text-neutral-500">
+                          We’re restocking as quickly as possible.
+                        </div>
+                      </div>
+                    </div>
 
                   ) : stockForCurrent <= CRITICAL_STOCK_THRESHOLD ? (
                     /* Extremely low stock → show exact remaining quantity */
@@ -525,7 +535,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                     /* Low inventory but not critical → no exact number */
                     <div className="flex items-center justify-between gap-3">
                       <FieldMessage variant="muted">Availability</FieldMessage>
-                      <div className="text-sm text-amber-700 font-medium">
+                      <div className="text-sm font-medium text-amber-700">
                         Low stock
                       </div>
                     </div>
@@ -534,7 +544,9 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                     /* Inventory is healthy */
                     <div className="flex items-center justify-between gap-3">
                       <FieldMessage variant="muted">Availability</FieldMessage>
-                      <div className="text-sm text-neutral-700">In stock</div>
+                      <div className="text-sm font-medium text-neutral-700">
+                        In stock
+                      </div>
                     </div>
                   )
                 ) : (
