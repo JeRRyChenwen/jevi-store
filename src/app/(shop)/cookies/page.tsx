@@ -1,174 +1,139 @@
-// src/app/cookies/page.tsx
+// src/app/(shop)/cookies/page.tsx
 import type { Metadata } from "next";
 import LegalShell from "@/components/legal/LegalShell";
 import { BRAND } from "@/lib/brand";
 
 export const metadata: Metadata = {
-  title: `Privacy Policy | ${BRAND.displayName}`,
-  description: `Learn how ${BRAND.displayName} collects, uses, and protects your personal information.`,
+  title: `Cookie Policy | ${BRAND.displayName}`,
+  description: `Learn how ${BRAND.displayName} uses cookies and similar technologies on our Website.`,
 };
 
 export default function CookiesPage() {
   return (
     <LegalShell
       title="Cookie Policy"
-      updatedAt="2025-10-29"
+      updatedAt="2026-03-20"
       intro={
         <>
           <p>
-            At <strong>{BRAND.displayName}</strong>, we take your privacy seriously and are committed to
-            providing a transparent experience regarding how we use cookies and similar technologies.
+            This Cookie Policy explains how <strong>{BRAND.displayName}</strong> uses cookies and
+            similar technologies on our Website.
           </p>
           <p>
-            This Cookie Policy explains what cookies are, how we use them, and how you can manage
-            your preferences.
+            We currently sell and ship to customers in Australia and New Zealand. This policy
+            explains what cookies are, why we use them, and how you can manage them.
           </p>
         </>
       }
     >
       <section>
-        <h2 className="text-base font-semibold text-foreground">
-          1. What Are Cookies and Similar Technologies
-        </h2>
+        <h2 className="text-base font-semibold text-foreground">1. What cookies are</h2>
         <p>
-          Cookies are small text files stored on your computer or device when you visit a website.
-          They allow the website to recognize your device and remember certain information about
-          your visit — for example, your preferences, login status, or shopping cart contents.
+          Cookies are small text files placed on your browser or device when you visit a website.
+          They help websites function properly, remember certain preferences, and understand how
+          visitors use the site.
         </p>
         <p>
-          In addition to cookies, we may use technologies such as <strong>web beacons</strong>,{" "}
-          <strong>pixels</strong>, and <strong>local storage</strong>. These tools help us measure
-          engagement, personalize experiences, and improve website functionality.
+          We may also use similar technologies such as local storage and, where enabled, analytics
+          or measurement tools that help us operate and improve the Website.
         </p>
       </section>
 
       <section>
-        <h2 className="text-base font-semibold text-foreground">2. Why We Use Cookies</h2>
-        <p>We use cookies and similar technologies for the following purposes:</p>
+        <h2 className="text-base font-semibold text-foreground">2. How we use cookies</h2>
+        <p>We use cookies and similar technologies for purposes such as:</p>
         <ul className="list-disc pl-5 space-y-1">
-          <li>
-            <strong>Essential cookies</strong> – Required for the operation of our Website (e.g.,
-            enabling navigation, account login, and checkout functionality).
-          </li>
-          <li>
-            <strong>Performance and analytics cookies</strong> – Help us analyze how users interact
-            with the Website, measure marketing effectiveness, and improve site performance.
-          </li>
-          <li>
-            <strong>Preference cookies</strong> – Remember your choices, such as language, currency,
-            or region, to make future visits more convenient.
-          </li>
-          <li>
-            <strong>Advertising cookies</strong> – Deliver relevant ads and promotional content based
-            on your interests. These may be placed by us or third-party partners (e.g., Google,
-            Meta).
-          </li>
+          <li>keeping the Website secure and functioning properly</li>
+          <li>remembering items in your cart and preserving checkout state</li>
+          <li>helping you stay signed in to your account</li>
+          <li>remembering certain preferences or settings</li>
+          <li>understanding how visitors use the Website so we can improve performance and usability</li>
         </ul>
       </section>
 
       <section>
-        <h2 className="text-base font-semibold text-foreground">3. Managing or Blocking Cookies</h2>
-        <p>
-          You can control or delete cookies at any time by adjusting your browser settings. Most
-          browsers allow you to:
-        </p>
-        <ul className="list-disc pl-5 space-y-1">
-          <li>Delete existing cookies</li>
-          <li>Block all cookies</li>
-          <li>Block cookies from specific sites</li>
-          <li>Receive notifications when cookies are being set</li>
+        <h2 className="text-base font-semibold text-foreground">3. Types of cookies we may use</h2>
+        <ul className="list-disc pl-5 space-y-2">
+          <li>
+            <strong>Essential cookies</strong> – These are necessary for core Website functions such
+            as page navigation, account login, cart functionality, security, and checkout.
+          </li>
+          <li>
+            <strong>Preference cookies</strong> – These help remember your settings and preferences,
+            where available, so your experience is more consistent on future visits.
+          </li>
+          <li>
+            <strong>Analytics cookies</strong> – Where enabled, these help us understand traffic,
+            usage patterns, and Website performance so we can improve the customer experience.
+          </li>
+          <li>
+            <strong>Marketing or advertising cookies</strong> – Where enabled, these may help us
+            measure campaign performance or show more relevant promotions through our advertising
+            partners.
+          </li>
         </ul>
         <p>
-          Please note that disabling certain cookies may affect the functionality or performance of
-          the Website. Some features (such as login or checkout) may not work properly without
-          essential cookies.
+          Not all of these cookies will necessarily be active at all times. The cookies used on the
+          Website may vary depending on the features and tools currently enabled.
         </p>
       </section>
 
       <section>
-        <h2 className="text-base font-semibold text-foreground">
-          4. Google Analytics and Similar Tools
-        </h2>
+        <h2 className="text-base font-semibold text-foreground">4. Third-party tools and services</h2>
         <p>
-          We use <strong>Google Analytics</strong> and similar tools to collect information about how
-          visitors use our Website. These tools help us understand traffic patterns and improve user
-          experience. Data collected includes, for example, which pages are visited, how long users
-          stay, and how they reached our site.
+          We may use third-party service providers to support payment processing, delivery,
+          analytics, security, or Website performance.
         </p>
         <p>
-          Google Analytics cookies operate anonymously and do not identify individual users. You can
-          learn more about Google’s data practices at{" "}
-          <a
-            href="https://policies.google.com/privacy"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline"
-          >
-            https://policies.google.com/privacy
-          </a>{" "}
-          and opt out by visiting{" "}
-          <a
-            href="https://tools.google.com/dlpage/gaoptout"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline"
-          >
-            https://tools.google.com/dlpage/gaoptout
+          Where third-party analytics or advertising tools are enabled, those providers may place
+          or access cookies or similar technologies in accordance with their own terms and privacy
+          practices.
+        </p>
+        <p>
+          For more information about how we handle personal information, please see our{" "}
+          <a href="/privacy" className="font-semibold underline">
+            Privacy Policy
           </a>
           .
         </p>
       </section>
 
       <section>
-        <h2 className="text-base font-semibold text-foreground">
-          5. Advertising Cookies and Third Parties
-        </h2>
+        <h2 className="text-base font-semibold text-foreground">5. Managing cookies</h2>
         <p>
-          We may partner with third-party platforms (such as Google, Meta, and others) that use
-          cookies and pixels to display personalized ads and measure marketing effectiveness. These
-          tools help us understand when you visit our Website and which content you engage with.
+          You can usually control, block, or delete cookies through your browser settings. Most
+          browsers allow you to:
         </p>
+        <ul className="list-disc pl-5 space-y-1">
+          <li>delete existing cookies</li>
+          <li>block some or all cookies</li>
+          <li>set preferences for certain websites</li>
+          <li>receive notifications when cookies are being placed</li>
+        </ul>
         <p>
-          The information collected through these technologies is used in accordance with our{" "}
-          <a href="/privacy" className="underline">
-            Privacy Policy
-          </a>{" "}
-          and the privacy policies of the third parties involved. You may still see general ads even
-          if you choose to disable these cookies, but they will not be tailored to your interests.
-        </p>
-      </section>
-
-      <section>
-        <h2 className="text-base font-semibold text-foreground">6. Duration of Cookies</h2>
-        <p>
-          Some cookies are <strong>session cookies</strong>, which expire automatically when you
-          close your browser. Others are <strong>persistent cookies</strong>, which remain on your
-          device until deleted manually or expired according to their set duration.
-        </p>
-        <p>
-          By continuing to use our Website, you consent to the placement of cookies and similar
-          technologies on your device as described in this policy.
+          Please note that if you disable essential cookies, some parts of the Website may not work
+          correctly, including account login, cart functions, or checkout.
         </p>
       </section>
 
       <section>
-        <h2 className="text-base font-semibold text-foreground">7. Updates to This Cookie Policy</h2>
+        <h2 className="text-base font-semibold text-foreground">6. Updates to this Cookie Policy</h2>
         <p>
-          We may update this Cookie Policy periodically to reflect changes in technology, law, or our
-          data practices. The latest version will always be available on this page, with the date of
-          the most recent update displayed at the top.
+          We may update this Cookie Policy from time to time to reflect changes to our Website,
+          technology, legal requirements, or data practices. The latest version will always be
+          available on this page together with its effective date.
         </p>
       </section>
 
       <section>
-        <h2 className="text-base font-semibold text-foreground">8. Contact Us</h2>
+        <h2 className="text-base font-semibold text-foreground">7. Contact us</h2>
         <p>
-          If you have any questions or concerns about this Cookie Policy or how we use cookies,
-          please contact us at:
+          If you have any questions about this Cookie Policy or our use of cookies and similar
+          technologies, please contact us at:
         </p>
         <p className="mt-2">
           <strong>Email:</strong>{" "}
-          <a href="mailto:{BRAND.supportEmail}" className="underline">
+          <a href={`mailto:${BRAND.supportEmail}`} className="font-semibold underline">
             {BRAND.supportEmail}
           </a>
         </p>

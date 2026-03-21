@@ -179,6 +179,13 @@ export default function ReturnsSubmissionCard({
 
         <div className="space-y-2">
           <label className="text-sm font-medium">Details (optional)</label>
+
+          <p className="text-xs text-muted-foreground leading-5">
+            Please describe the issue clearly. If you are requesting a refund or a replacement for a
+            faulty, damaged, or incorrect item, please provide as much detail as possible and upload
+            supporting photos where available.
+          </p>
+
           <textarea
             rows={4}
             className="w-full border rounded px-2 py-1 text-sm"

@@ -84,7 +84,16 @@ export default function ReturnsPage() {
         />
       </div>
 
-      <h1 className="text-2xl font-semibold mb-4">Returns &amp; Exchanges</h1>
+      <h1 className="text-2xl font-semibold mb-2">Returns &amp; Exchanges</h1>
+
+      <p className="text-sm text-muted-foreground mb-4">
+        For information about return eligibility, refunds, exchanges, and your consumer rights,
+        please see our{" "}
+        <a href="/returns-policy" className="font-semibold underline">
+          Returns Policy
+        </a>
+        .
+      </p>
 
       {step === 1 && isLookupCoolingDown && !showInlineBlock && (
         <div className="mb-4">

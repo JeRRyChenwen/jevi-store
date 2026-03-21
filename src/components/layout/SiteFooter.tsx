@@ -41,6 +41,14 @@ export function SiteFooter() {
               </li>
               <li>
                 <Link
+                  href="/returns-policy"
+                  className="hover:text-foreground transition-colors"
+                >
+                  Returns Policy
+                </Link>
+              </li>
+              <li>
+                <Link
                   href="/privacy"
                   className="hover:text-foreground transition-colors"
                 >
