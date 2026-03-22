@@ -7,7 +7,8 @@ import GalleryClient from "../_components/GalleryClient";
 import AddToBagClient from "../_components/AddToBagClient";
 import { colorNameToCss } from "@/lib/colors";
 import { FieldMessage } from "@/components/ui/field-message";
-import { pickCurrency } from "@/lib/pricing";
+import { resolveDisplayPrice } from "@/lib/pricing";
+import { CURRENT_MARKET } from "@/lib/market/current";
 import { isNewProduct } from "@/lib/productNew";
 import CornerRibbon from "@/components/badges/CornerRibbon";
 
@@ -169,51 +170,28 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const categoryRootSlug = category?.parentSlug ? category.parentSlug : category?.slug;
   const categoryLeafSlug = category?.parentSlug ? (category?.slug ?? null) : null;
 
-  // ---- pricing (minor-only, real_price is final) ----
+  // ---- pricing (MARKET-driven) ----
   const prices = getPrices(attrs);
-  const availableCurrencies = prices.map((r) => r.currency);
 
-  const currency =
-    availableCurrencies.length > 0
-      ? pickCurrency(availableCurrencies, { fallback: "AUD" })
-      : "AUD";
-
-  const rec = prices.find(
-    (r) => String(r.currency).toUpperCase() === String(currency).toUpperCase()
+  const displayPrice = resolveDisplayPrice(
+    prices,
+    CURRENT_MARKET.defaultCurrency
   );
 
-  const baseMinor =
-    rec && Number.isFinite(Number((rec as any).price))
-      ? Math.max(0, Math.round(Number((rec as any).price)))
-      : rec && Number.isFinite(Number((rec as any).amount_minor))
-      ? Math.max(0, Math.round(Number((rec as any).amount_minor)))
-      : null;
-
-  const effectiveMinor =
-    rec && Number.isFinite(Number((rec as any).real_price))
-      ? Math.max(0, Math.round(Number((rec as any).real_price)))
-      : baseMinor;
+  const currency = displayPrice.currency;
+  const baseMinor = displayPrice.baseMinor;
+  const effectiveMinor = displayPrice.effectiveMinor;
+  const discount = displayPrice.discountPercent;
+  const saleActive = displayPrice.saleActive;
 
   const price = baseMinor != null ? baseMinor / 100 : null;
   const salePrice =
+    saleActive &&
     baseMinor != null &&
     effectiveMinor != null &&
-    typeof effectiveMinor === "number" &&
-    effectiveMinor > 0 &&
     effectiveMinor < baseMinor
       ? effectiveMinor / 100
       : null;
-
-  const discount =
-    baseMinor != null &&
-    effectiveMinor != null &&
-    typeof effectiveMinor === "number" &&
-    effectiveMinor > 0 &&
-    effectiveMinor < baseMinor
-      ? Math.round((1 - effectiveMinor / baseMinor) * 100)
-      : 0;
-
-  const saleActive = salePrice != null && price != null && salePrice < price;
 
   // ---- media / colors ----
   const byColor = getImagesByColorFromProduct(attrs);

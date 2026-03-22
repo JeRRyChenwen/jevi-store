@@ -31,6 +31,14 @@ export type PriceRec = {
   amount_minor?: number | null;
   sale_amount_minor?: number | null;
 
+  /**
+   * ✅ 你项目当前实际使用的“真正成交价 / 折后价”（minor）
+   * 例如：
+   * - 原价 99.00  -> price / amount_minor = 9900
+   * - 折后 84.15 -> real_price = 8415
+   */
+  real_price?: number | null;
+
   discount_percent_off?: number | null;
   sale_starts_at?: string | null;
   sale_ends_at?: string | null;
@@ -85,6 +93,12 @@ function saleMinor(p: PriceRec): number | undefined {
   return clampMinor(raw);
 }
 
+/** 促销候选价（兼容你项目里的 real_price） */
+function realMinor(p: PriceRec): number | undefined {
+  if (p.real_price == null) return undefined;
+  return clampMinor(p.real_price);
+}
+
 /** 仅判断“是否在促销时间窗内”（忽略有没有促销价/折扣） */
 export function isSaleWindowActive(p: PriceRec, now = new Date()): boolean {
   const s = p.sale_starts_at ? Date.parse(p.sale_starts_at) : NaN;
@@ -98,16 +112,21 @@ export function isSaleWindowActive(p: PriceRec, now = new Date()): boolean {
 /** 该记录是否“有效促销”（既在时间窗内，又存在比基础价更低的候选价） */
 export function isSaleActive(p: PriceRec, now = new Date()): boolean {
   if (!isSaleWindowActive(p, now)) return false;
+
   const base = baseMinor(p);
   const cand: number[] = [base];
 
   const sm = saleMinor(p);
   if (typeof sm === "number") cand.push(sm);
 
+  const rm = realMinor(p);
+  if (typeof rm === "number") cand.push(rm);
+
   if (typeof p.discount_percent_off === "number") {
     const pct = Math.min(100, Math.max(0, p.discount_percent_off));
     cand.push(Math.max(0, Math.round((base * (100 - pct)) / 100)));
   }
+
   return Math.min(...cand) < base;
 }
 
@@ -121,10 +140,14 @@ export function effectiveMinor(p: PriceRec, now = new Date()): number {
   const sm = saleMinor(p);
   if (typeof sm === "number") candidates.push(sm);
 
+  const rm = realMinor(p);
+  if (typeof rm === "number") candidates.push(rm);
+
   if (typeof p.discount_percent_off === "number") {
     const pct = Math.min(100, Math.max(0, p.discount_percent_off));
     candidates.push(Math.max(0, Math.round((base * (100 - pct)) / 100)));
   }
+
   return Math.min(...candidates);
 }
 
@@ -197,4 +220,107 @@ export function formatMoneyFromMinor(
  */
 export function formatMoneySmart(minor: number | null | undefined, currency: Currency): string {
   return formatMoneyFromMinor(minor, currency);
+}
+
+
+/* ================= Step B: MARKET 驱动的价格选择入口（新增） ================= */
+
+export type DisplayPrice = {
+  currency: Currency;
+  record: PriceRec | null;
+  baseMinor: number | null;
+  effectiveMinor: number | null;
+  saleActive: boolean;
+  discountPercent: number;
+};
+
+/**
+ * ✅ 根据 MARKET 默认货币选择“首选币种”
+ * 说明：
+ * - AU_NZ -> AUD
+ * - EU    -> EUR
+ * - US_CA -> USD
+ *
+ * 后续如果你想升级成：
+ * - US_CA + country=CA -> CAD
+ * 可以在这里继续扩展，不需要改调用方。
+ */
+export function pickCurrencyForMarket(
+  available: Currency[],
+  preferredCurrency: Currency
+): Currency {
+  return pickCurrency(available, { fallback: preferredCurrency });
+}
+
+/**
+ * ✅ 从价格数组中找出“当前应显示的那条记录”
+ */
+export function pickPriceRecordByCurrency(
+  prices: PriceRec[],
+  currency: Currency
+): PriceRec | null {
+  const rec =
+    prices.find(
+      (p) => String(p.currency || "").toUpperCase() === String(currency).toUpperCase()
+    ) ?? null;
+
+  return rec;
+}
+
+/**
+ * ✅ 统一：根据首选币种，输出展示层所需的完整价格结果
+ * - 负责选币种
+ * - 负责找 price record
+ * - 负责算基础价 / 生效价 / sale 状态 / discount
+ */
+export function resolveDisplayPrice(
+  prices: PriceRec[],
+  preferredCurrency: Currency
+): DisplayPrice {
+  const available = prices
+    .map((p) => String(p.currency || "").toUpperCase())
+    .filter(Boolean) as Currency[];
+
+  if (!available.length) {
+    return {
+      currency: preferredCurrency,
+      record: null,
+      baseMinor: null,
+      effectiveMinor: null,
+      saleActive: false,
+      discountPercent: 0,
+    };
+  }
+
+  const currency = pickCurrencyForMarket(available, preferredCurrency);
+  const record = pickPriceRecordByCurrency(prices, currency);
+
+  if (!record) {
+    return {
+      currency,
+      record: null,
+      baseMinor: null,
+      effectiveMinor: null,
+      saleActive: false,
+      discountPercent: 0,
+    };
+  }
+
+  const base = baseMinor(record);
+  const effective = effectiveMinor(record);
+  const sale = isSaleActive(record);
+
+  const discountPercent =
+    sale && base > 0 && effective >= 0 && effective < base
+      ? Math.round((1 - effective / base) * 100)
+      : 0;
+
+  return {
+    currency,
+    record,
+    baseMinor: base,
+    effectiveMinor: effective,
+    saleActive: sale,
+    discountPercent,
+  };
 }
