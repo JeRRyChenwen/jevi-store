@@ -12,7 +12,7 @@ export default function CookiesPage() {
   return (
     <LegalShell
       title="Cookie Policy"
-      updatedAt="2026-03-20"
+      updatedAt="2026-03-22"
       intro={
         <>
           <p>
@@ -20,8 +20,16 @@ export default function CookiesPage() {
             similar technologies on our Website.
           </p>
           <p>
-            We currently sell and ship to customers in Australia and New Zealand. This policy
-            explains what cookies are, why we use them, and how you can manage them.
+            We currently sell and ship only to customers in <strong>Australia</strong> and{" "}
+            <strong>New Zealand</strong>. This policy explains what cookies are, why we use them,
+            and how you can manage them.
+          </p>
+          <p>
+            This Cookie Policy should be read together with our{" "}
+            <a href="/privacy" className="font-semibold underline">
+              Privacy Policy
+            </a>
+            .
           </p>
         </>
       }
@@ -34,8 +42,9 @@ export default function CookiesPage() {
           visitors use the site.
         </p>
         <p>
-          We may also use similar technologies such as local storage and, where enabled, analytics
-          or measurement tools that help us operate and improve the Website.
+          We may also use similar technologies such as local storage, browser storage, and, where
+          enabled, analytics or measurement tools that help us operate, secure, and improve the
+          Website.
         </p>
       </section>
 
@@ -48,6 +57,7 @@ export default function CookiesPage() {
           <li>helping you stay signed in to your account</li>
           <li>remembering certain preferences or settings</li>
           <li>understanding how visitors use the Website so we can improve performance and usability</li>
+          <li>supporting analytics, measurement, or marketing tools where those tools are enabled</li>
         </ul>
       </section>
 
@@ -68,13 +78,14 @@ export default function CookiesPage() {
           </li>
           <li>
             <strong>Marketing or advertising cookies</strong> – Where enabled, these may help us
-            measure campaign performance or show more relevant promotions through our advertising
-            partners.
+            measure campaign performance or show more relevant promotions through advertising or
+            remarketing partners.
           </li>
         </ul>
         <p>
-          Not all of these cookies will necessarily be active at all times. The cookies used on the
-          Website may vary depending on the features and tools currently enabled.
+          Not all of these cookies or similar technologies will necessarily be active at all times.
+          The cookies and tools used on the Website may vary depending on the features, integrations,
+          and services currently enabled.
         </p>
       </section>
 
@@ -82,12 +93,12 @@ export default function CookiesPage() {
         <h2 className="text-base font-semibold text-foreground">4. Third-party tools and services</h2>
         <p>
           We may use third-party service providers to support payment processing, delivery,
-          analytics, security, or Website performance.
+          logistics, analytics, security, customer experience, or Website performance.
         </p>
         <p>
-          Where third-party analytics or advertising tools are enabled, those providers may place
-          or access cookies or similar technologies in accordance with their own terms and privacy
-          practices.
+          Where third-party analytics, advertising, or measurement tools are enabled, those
+          providers may place or access cookies or similar technologies in accordance with their own
+          terms and privacy practices.
         </p>
         <p>
           For more information about how we handle personal information, please see our{" "}
@@ -112,7 +123,7 @@ export default function CookiesPage() {
         </ul>
         <p>
           Please note that if you disable essential cookies, some parts of the Website may not work
-          correctly, including account login, cart functions, or checkout.
+          correctly, including account login, saved preferences, cart functions, or checkout.
         </p>
       </section>
 

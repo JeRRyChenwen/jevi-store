@@ -12,7 +12,7 @@ export default function TermsPage() {
   return (
     <LegalShell
       title="Terms & Conditions"
-      updatedAt="2026-03-20"
+      updatedAt="2026-03-22"
       intro={
         <>
           <p>
@@ -21,12 +21,13 @@ export default function TermsPage() {
             through the Website.
           </p>
           <p>
-            By accessing this Website or placing an order with us, you agree to these Terms. If you
+            By accessing the Website or placing an order with us, you agree to these Terms. If you
             do not agree, please do not use the Website.
           </p>
           <p>
-            We currently sell and ship to customers in Australia and New Zealand. Additional terms
-            may apply to certain promotions, products, or services where stated.
+            We currently sell and ship only to customers in <strong>Australia</strong> and{" "}
+            <strong>New Zealand</strong>. Additional terms may apply to certain promotions,
+            products, or services where stated.
           </p>
         </>
       }
@@ -38,9 +39,10 @@ export default function TermsPage() {
           you place through the Website.
         </p>
         <p>
-          We may update these Terms from time to time. If we make material changes, we will publish
-          the updated version on this page. Your continued use of the Website after changes are
-          published indicates your acceptance of the revised Terms.
+          We may update these Terms from time to time to reflect changes to our Website, business
+          practices, legal obligations, or services. If we make material changes, we will publish
+          the updated version on this page. Your continued use of the Website after updated Terms
+          are published indicates your acceptance of the revised Terms.
         </p>
       </section>
 
@@ -52,17 +54,19 @@ export default function TermsPage() {
         </p>
         <p>
           You are responsible for maintaining the confidentiality of your account details and for
-          all activity that occurs under your account. Please contact us promptly if you believe
-          your account has been accessed without your permission.
+          activities that occur under your account. Please contact us promptly if you believe your
+          account has been used without your permission.
         </p>
       </section>
 
       <section>
-        <h2 className="text-base font-semibold text-foreground">3. Products, pricing and availability</h2>
+        <h2 className="text-base font-semibold text-foreground">
+          3. Products, pricing, and availability
+        </h2>
         <p>
           We aim to ensure that product descriptions, images, sizing information, and prices are as
-          accurate as possible. However, we do not guarantee that all Website content is always
-          complete, current, or error-free.
+          accurate as reasonably possible. However, we do not guarantee that all Website content is
+          always complete, current, or error-free.
         </p>
         <p>
           Product images are for general illustration only. Actual colours and appearance may vary
@@ -70,12 +74,12 @@ export default function TermsPage() {
         </p>
         <p>
           All products are subject to availability. We may update, withdraw, or discontinue
-          products at any time without notice.
+          products at any time.
         </p>
         <p>
           Prices shown on the Website are displayed in the applicable currency and include GST where
           required by law, unless stated otherwise. We reserve the right to correct pricing,
-          description, or publishing errors at any time.
+          description, publishing, or technical errors at any time.
         </p>
       </section>
 
@@ -88,7 +92,8 @@ export default function TermsPage() {
         <p>
           We may decline or cancel an order where reasonably necessary, including where a product is
           unavailable, where there is an obvious pricing or listing error, where payment cannot be
-          authorised, or where we reasonably suspect fraud or misuse of the Website.
+          authorised, where delivery is requested outside Australia or New Zealand, or where we
+          reasonably suspect fraud, misuse, or unlawful activity.
         </p>
         <p>
           Payments are processed securely through third-party payment providers. By completing a
@@ -102,10 +107,10 @@ export default function TermsPage() {
       </section>
 
       <section>
-        <h2 className="text-base font-semibold text-foreground">5. Shipping in Australia and New Zealand</h2>
-        <p>
-          We currently ship to addresses in Australia and New Zealand only.
-        </p>
+        <h2 className="text-base font-semibold text-foreground">
+          5. Shipping in Australia and New Zealand
+        </h2>
+        <p>We currently ship to addresses in Australia and New Zealand only.</p>
         <p>
           Delivery timeframes provided on the Website are estimates only and may vary depending on
           location, carrier delays, customs processing, peak periods, or other factors outside our
@@ -133,12 +138,14 @@ export default function TermsPage() {
         </ul>
         <p>
           We may cancel or refuse promotional benefits where we reasonably believe a promotion has
-          been used improperly, fraudulently, or contrary to its intended terms.
+          been used improperly, fraudulently, abusively, or contrary to its intended terms.
         </p>
       </section>
 
       <section>
-        <h2 className="text-base font-semibold text-foreground">7. Returns, refunds and consumer rights</h2>
+        <h2 className="text-base font-semibold text-foreground">
+          7. Returns, refunds, and consumer rights
+        </h2>
         <p>
           Our returns process is described in our{" "}
           <a href="/returns-policy" className="font-semibold underline">
@@ -162,7 +169,9 @@ export default function TermsPage() {
       </section>
 
       <section>
-        <h2 className="text-base font-semibold text-foreground">8. Website use and intellectual property</h2>
+        <h2 className="text-base font-semibold text-foreground">
+          8. Website use and intellectual property
+        </h2>
         <p>
           You may use the Website for personal, lawful, and non-commercial purposes only. You must
           not misuse the Website, interfere with its operation, attempt unauthorised access, or use
@@ -180,7 +189,9 @@ export default function TermsPage() {
       </section>
 
       <section>
-        <h2 className="text-base font-semibold text-foreground">9. Privacy and third-party services</h2>
+        <h2 className="text-base font-semibold text-foreground">
+          9. Privacy and third-party services
+        </h2>
         <p>
           We handle personal information in accordance with our{" "}
           <a href="/privacy" className="font-semibold underline">
@@ -190,9 +201,9 @@ export default function TermsPage() {
         </p>
         <p>
           The Website may rely on third-party services such as payment processors, delivery
-          providers, analytics providers, or other service providers to help us operate our
-          business. Your use of certain third-party services may also be subject to their own terms
-          and privacy practices.
+          providers, logistics providers, analytics providers, hosting providers, or other service
+          providers to help us operate our business. Your use of certain third-party services may
+          also be subject to their own terms and privacy practices.
         </p>
         <p>
           The Website may contain links to third-party websites for convenience. We are not
@@ -222,7 +233,7 @@ export default function TermsPage() {
         <h2 className="text-base font-semibold text-foreground">11. Changes to the Website</h2>
         <p>
           We may update, suspend, withdraw, or change any part of the Website, including product
-          listings, pricing, features, or availability, at any time and without notice.
+          listings, pricing, features, or availability, at any time.
         </p>
       </section>
 
@@ -241,9 +252,7 @@ export default function TermsPage() {
 
       <section>
         <h2 className="text-base font-semibold text-foreground">13. Contact us</h2>
-        <p>
-          If you have any questions about these Terms &amp; Conditions, please contact us at:
-        </p>
+        <p>If you have any questions about these Terms &amp; Conditions, please contact us at:</p>
         <p className="mt-2">
           <strong>Email:</strong>{" "}
           <a href={`mailto:${BRAND.supportEmail}`} className="underline">

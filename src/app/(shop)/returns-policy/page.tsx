@@ -12,7 +12,7 @@ export default function ReturnsPolicyPage() {
   return (
     <LegalShell
       title="Returns Policy"
-      updatedAt="2026-03-20"
+      updatedAt="2026-03-22"
       intro={
         <>
           <p>
@@ -21,10 +21,14 @@ export default function ReturnsPolicyPage() {
             <strong>{BRAND.displayName}</strong>.
           </p>
           <p>
-            We currently sell and ship to customers in Australia and New Zealand. This policy is
-            intended to provide general guidance on our returns process, including how we handle
-            pre-dispatch cancellations, faulty items, incorrect items, and other return or refund
-            requests.
+            We currently sell and ship only to customers in <strong>Australia</strong> and{" "}
+            <strong>New Zealand</strong>. This policy is intended to explain our general returns
+            process, including pre-dispatch cancellations, post-dispatch requests, faulty items,
+            incorrect items, and other return or refund enquiries.
+          </p>
+          <p>
+            This policy operates alongside, and does not replace, any rights or remedies you may
+            have under applicable consumer law.
           </p>
         </>
       }
@@ -51,7 +55,7 @@ export default function ReturnsPolicyPage() {
         </h2>
         <p>
           Rights that arise under applicable consumer law are not automatically limited by a fixed
-          store return period such as 7, 14, or 30 days.
+          store return window such as 7, 14, or 30 days.
         </p>
         <p>
           Whether a remedy may be available depends on what is reasonable in the circumstances,
@@ -59,9 +63,9 @@ export default function ReturnsPolicyPage() {
           cared for, and how long a reasonable consumer would expect it to last.
         </p>
         <p>
-          This means that the availability of a repair, replacement, or refund for a faulty item is
-          assessed by reference to applicable consumer law and the facts of the individual case, not
-          only by reference to a fixed store timeframe.
+          This means the availability of a repair, replacement, refund, or other remedy for a
+          faulty item is assessed by reference to applicable consumer law and the facts of the
+          individual case, not only by reference to a fixed store timeframe.
         </p>
       </section>
 
@@ -71,11 +75,11 @@ export default function ReturnsPolicyPage() {
         </h2>
         <p>
           If you change your mind before your order has been dispatched, you may request to cancel
-          the order and receive a refund to your original payment method.
+          the order.
         </p>
         <p>
           If your cancellation request is approved before dispatch, we will generally refund the
-          order amount you paid, including any shipping amount charged for that order.
+          amount you paid for the order, including any shipping fee charged for that order.
         </p>
         <p>
           If you wish to request a pre-dispatch cancellation, please contact us or submit your
@@ -89,16 +93,15 @@ export default function ReturnsPolicyPage() {
           4. Change-of-mind after dispatch
         </h2>
         <p>
-          Once an order has been dispatched, we do not accept change-of-mind refunds.
+          Once an order has been dispatched, we do not offer change-of-mind refunds.
         </p>
         <p>
           This means that if you no longer want an item after it has been shipped, you are not
           automatically entitled to a refund simply because you changed your mind.
         </p>
         <p>
-          This section does not affect any rights you may have under the Australian Consumer Law or
-          the New Zealand Consumer Guarantees Act where a product is faulty, damaged, unsafe,
-          incorrect, or not as described.
+          This does not affect any rights you may have under applicable consumer law if a product is
+          faulty, damaged, unsafe, incorrect, or not as described.
         </p>
       </section>
 
@@ -148,7 +151,45 @@ export default function ReturnsPolicyPage() {
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          7. Normal wear and tear, misuse, and care instructions
+          7. Australia customers
+        </h2>
+        <p>
+          If you are a customer in Australia, your purchase may be covered by consumer guarantees
+          under the Australian Consumer Law.
+        </p>
+        <p>
+          If a product has a major problem, you may be entitled to choose a refund or replacement.
+          If a product has a minor problem, we may first choose to repair the item or otherwise
+          resolve the issue within a reasonable time, where permitted by law.
+        </p>
+        <p>
+          Any remedies available to you will be handled in accordance with applicable Australian
+          law.
+        </p>
+      </section>
+
+      <section>
+        <h2 className="text-base font-semibold text-foreground">
+          8. New Zealand customers
+        </h2>
+        <p>
+          If you are a customer in New Zealand, your purchase may be covered by rights and remedies
+          under the Consumer Guarantees Act 1993 and other applicable New Zealand law.
+        </p>
+        <p>
+          Where a product does not meet applicable consumer guarantees, you may be entitled to a
+          repair, replacement, refund, or other remedy depending on the circumstances and the
+          seriousness of the issue.
+        </p>
+        <p>
+          Any remedies available to you will be handled in accordance with applicable New Zealand
+          law.
+        </p>
+      </section>
+
+      <section>
+        <h2 className="text-base font-semibold text-foreground">
+          9. Normal wear and tear, misuse, and care instructions
         </h2>
         <p>
           Not every issue with a product will amount to a fault or a failure to meet applicable
@@ -170,7 +211,7 @@ export default function ReturnsPolicyPage() {
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          8. Assessment and evidence
+          10. Assessment and evidence
         </h2>
         <p>
           Before deciding whether a return, refund, repair, or replacement is available, we may
@@ -188,7 +229,7 @@ export default function ReturnsPolicyPage() {
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          9. Return shipping and related costs
+          11. Return shipping and related costs
         </h2>
         <p>
           If an approved return relates to a faulty, damaged, incorrect, unsafe, or not-as-described
@@ -200,14 +241,14 @@ export default function ReturnsPolicyPage() {
           the order before shipment, including any shipping fee charged for that order.
         </p>
         <p>
-          We do not provide post-dispatch change-of-mind refunds, so return shipping arrangements
+          Because we do not offer post-dispatch change-of-mind refunds, return shipping arrangements
           for change-of-mind refunds after dispatch do not apply.
         </p>
       </section>
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          10. Refund method and processing time
+          12. Refund method and processing time
         </h2>
         <p>
           Where a refund is approved, it will generally be processed back to the original payment
@@ -223,17 +264,18 @@ export default function ReturnsPolicyPage() {
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          11. When a request may be refused
+          13. When a request may be refused
         </h2>
-        <p>
-          To the extent permitted by law, we may refuse a request where:
-        </p>
+        <p>To the extent permitted by law, we may refuse a request where:</p>
         <ul className="list-disc pl-5 space-y-1">
           <li>the request is a change-of-mind request made after dispatch</li>
           <li>insufficient information is provided to identify the order or assess the issue</li>
           <li>we reasonably suspect fraud, misuse, or abusive return behaviour</li>
           <li>the evidence reasonably requested to assess the claim is not provided</li>
-          <li>the issue appears to result from normal wear and tear, misuse, accidental damage, or failure to follow care instructions, rather than a fault covered by applicable law</li>
+          <li>
+            the issue appears to result from normal wear and tear, misuse, accidental damage, or
+            failure to follow care instructions, rather than a fault covered by applicable law
+          </li>
         </ul>
         <p>
           This section does not affect any non-excludable rights or remedies you may have under
@@ -243,7 +285,7 @@ export default function ReturnsPolicyPage() {
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          12. How to request a return or cancellation
+          14. How to request a return or cancellation
         </h2>
         <p>
           To request a return, refund assessment, or cancellation, please visit our{" "}
@@ -260,7 +302,7 @@ export default function ReturnsPolicyPage() {
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          13. Updates to this Returns Policy
+          15. Updates to this Returns Policy
         </h2>
         <p>
           We may update this Returns Policy from time to time to reflect changes to our business,
@@ -270,10 +312,8 @@ export default function ReturnsPolicyPage() {
       </section>
 
       <section>
-        <h2 className="text-base font-semibold text-foreground">14. Contact us</h2>
-        <p>
-          If you have any questions about this Returns Policy, please contact us at:
-        </p>
+        <h2 className="text-base font-semibold text-foreground">16. Contact us</h2>
+        <p>If you have any questions about this Returns Policy, please contact us at:</p>
         <p className="mt-2">
           <strong>Email:</strong>{" "}
           <a href={`mailto:${BRAND.supportEmail}`} className="font-semibold underline">
