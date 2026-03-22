@@ -67,13 +67,8 @@ export type ProductCardProps = {
   start: number;
   displayCurrency: string;
 
-  // 从父组件传入：完全复用原来的逻辑
   pickPriceForCurrency: (prices: PriceRec[], currency: string) => PickRes;
   formatPriceForCard: (minor: number, currency: string) => string;
-  formatPriceVal: (n: number | null, currency?: string | null, locale?: string) => string;
-
-  isSaleActiveByLegacy: (p: ProductLite) => boolean;
-  salePriceLegacy: (p: ProductLite) => number;
 };
 
 export default function ProductCard({
@@ -83,9 +78,6 @@ export default function ProductCard({
   displayCurrency,
   pickPriceForCurrency,
   formatPriceForCard,
-  formatPriceVal,
-  isSaleActiveByLegacy,
-  salePriceLegacy,
 }: ProductCardProps) {
   const router = useRouter();
   const clickStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -150,16 +142,14 @@ export default function ProductCard({
   const displayEff =
     typeof effectiveMinor === "number"
       ? formatPriceForCard(effectiveMinor, showCcy)
-      : p.price != null
+      : typeof p.price === "number"
       ? formatPriceForCard(
-          Math.round(Number(p.price) * 100),
-          (p.currency || showCcy || "AUD") as string
+          Math.round(Math.max(0, Number(p.price)) * 100),
+          String(p.currency || showCcy || "AUD")
         )
       : "No price";
 
-  // 旧字段保底（如果没拿到 pick 并且有旧折扣窗口）
-  const legacyOnSale = !pick && isSaleActiveByLegacy(p);
-  const legacySalePrice = legacyOnSale ? salePriceLegacy(p) : null;
+
 
   const handleImagePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     clickStartRef.current = { x: e.clientX, y: e.clientY };
@@ -235,18 +225,12 @@ export default function ProductCard({
         <div className="mt-1.5 sm:mt-2">
           {discountPct != null && displayBase ? (
             <div className="flex flex-wrap items-baseline gap-1 sm:gap-2">
-              <span className="text-xs sm:text-base text-neutral-400 line-through">{displayBase}</span>
-              <span className="text-neutral-300 text-xs sm:text-base">|</span>
-              <span className="text-sm sm:text-base font-bold text-emerald-700">{displayEff}</span>
-            </div>
-          ) : legacyOnSale && legacySalePrice != null ? (
-            <div className="flex flex-wrap items-baseline gap-1 sm:gap-2">
               <span className="text-xs sm:text-base text-neutral-400 line-through">
-                {formatPriceVal(p.price, p.currency)}
+                {displayBase}
               </span>
               <span className="text-neutral-300 text-xs sm:text-base">|</span>
               <span className="text-sm sm:text-base font-bold text-emerald-700">
-                {formatPriceVal(legacySalePrice, p.currency)}
+                {displayEff}
               </span>
             </div>
           ) : (

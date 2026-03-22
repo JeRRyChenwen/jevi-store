@@ -3,12 +3,10 @@
 
 import Link from "next/link";
 import ProductCard from "@/app/(shop)/category/[slug]/_components/ProductCard";
+import { CURRENT_MARKET } from "@/lib/market/current";
 import {
   pickPriceForCurrency,
   formatPriceForCard,
-  formatPriceVal,
-  isSaleActiveByLegacy,
-  salePriceLegacy,
 } from "@/app/(shop)/category/[slug]/_lib/categoryProductMapper";
 
 type PriceRec = any;
@@ -38,7 +36,7 @@ export default function HomeCategorySection({
   title,
   slug,
   products,
-  displayCurrency = "AUD",
+  displayCurrency = CURRENT_MARKET.defaultCurrency,
 }: {
   title: string;
   slug: string;
@@ -79,9 +77,6 @@ export default function HomeCategorySection({
                 displayCurrency={displayCurrency}
                 pickPriceForCurrency={pickPriceForCurrency}
                 formatPriceForCard={formatPriceForCard}
-                formatPriceVal={formatPriceVal}
-                isSaleActiveByLegacy={isSaleActiveByLegacy}
-                salePriceLegacy={salePriceLegacy}
               />
             ))}
           </div>

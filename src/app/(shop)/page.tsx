@@ -1,6 +1,6 @@
 // src/app/(shop)/page.tsx
 import { api, fetchSubcategoriesByParentId, resolveMediaURL } from "@/lib/strapi";
-
+import { CURRENT_MARKET } from "@/lib/market/current";
 import HomeBanner from "@/components/home/HomeBanner";
 import HomeMarketingSection from "@/components/home/HomeMarketingSection";
 import HomeCategorySectionClient from "@/components/home/HomeCategorySectionClient";
@@ -184,7 +184,7 @@ export default async function HomePage() {
             title={s.title}
             categoryDocIds={s.categoryDocIds}
             pageSize={HOME_SECTION_PAGE_SIZE}
-            displayCurrency="AUD"
+            displayCurrency={CURRENT_MARKET.defaultCurrency}
           />
         ))}
       </div>

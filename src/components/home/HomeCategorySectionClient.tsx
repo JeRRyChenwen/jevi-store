@@ -2,17 +2,14 @@
 "use client";
 
 import Link from "next/link";
-
 import HomeProductCard from "@/components/home/HomeProductCard";
+import { CURRENT_MARKET } from "@/lib/market/current";
 
 import { useCategoryProducts } from "@/app/(shop)/category/[slug]/_hooks/useCategoryProducts";
 import {
   normalizeProduct,
   pickPriceForCurrency,
   formatPriceForCard,
-  formatPriceVal,
-  isSaleActiveByLegacy,
-  salePriceLegacy,
 } from "@/app/(shop)/category/[slug]/_lib/categoryProductMapper";
 
 type Props = {
@@ -31,7 +28,7 @@ export default function HomeCategorySectionClient({
   title,
   categoryDocIds,
   pageSize = 5,
-  displayCurrency = "AUD",
+  displayCurrency = CURRENT_MARKET.defaultCurrency,
 }: Props) {
   // 首页固定 hot 排序
   const sortQueryString =
@@ -52,6 +49,7 @@ export default function HomeCategorySectionClient({
     appliedMin: undefined,
     appliedMax: undefined,
 
+    displayCurrency,
     toCents,
     normalizeProduct,
     devLogPrefix: `HomeSection:${slug}`,
@@ -113,9 +111,6 @@ export default function HomeCategorySectionClient({
               displayCurrency={displayCurrency}
               pickPriceForCurrency={pickPriceForCurrency as any}
               formatPriceForCard={formatPriceForCard as any}
-              formatPriceVal={formatPriceVal as any}
-              isSaleActiveByLegacy={isSaleActiveByLegacy as any}
-              salePriceLegacy={salePriceLegacy as any}
             />
           ))}
         </div>

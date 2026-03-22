@@ -45,13 +45,10 @@ export type ProductGridProps = {
   // height lock
   sectionMinHeightStyle: CSSProperties;
 
-  // pricing helpers (pass-through to ProductCard)
+  // pricing helpers
   displayCurrency: string;
   pickPriceForCurrency: (prices: PriceRec[], currency: string) => PickRes;
   formatPriceForCard: (minor: number, currency: string) => string;
-  formatPriceVal: (n: number | null, currency?: string | null, locale?: string) => string;
-  isSaleActiveByLegacy: (p: ProductLite) => boolean;
-  salePriceLegacy: (p: ProductLite) => number;
 };
 
 export default function ProductGrid({
@@ -65,9 +62,6 @@ export default function ProductGrid({
   displayCurrency,
   pickPriceForCurrency,
   formatPriceForCard,
-  formatPriceVal,
-  isSaleActiveByLegacy,
-  salePriceLegacy,
 }: ProductGridProps) {
   if (error) {
     return <div className="py-20 text-center text-red-600">{error}</div>;
@@ -101,9 +95,6 @@ export default function ProductGrid({
             displayCurrency={displayCurrency}
             pickPriceForCurrency={pickPriceForCurrency}
             formatPriceForCard={formatPriceForCard}
-            formatPriceVal={formatPriceVal}
-            isSaleActiveByLegacy={isSaleActiveByLegacy}
-            salePriceLegacy={salePriceLegacy}
           />
         ))}
       </div>

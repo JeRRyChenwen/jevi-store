@@ -19,9 +19,6 @@ import {
   normalizeProduct,
   pickPriceForCurrency,
   formatPriceForCard,
-  formatPriceVal,
-  isSaleActiveByLegacy,
-  salePriceLegacy,
 } from "./_lib/categoryProductMapper";
 
 type Props = {
@@ -323,9 +320,6 @@ export default function CategoryGridClient({
         displayCurrency={displayCurrency}
         pickPriceForCurrency={pickPriceForCurrency}
         formatPriceForCard={formatPriceForCard}
-        formatPriceVal={formatPriceVal}
-        isSaleActiveByLegacy={isSaleActiveByLegacy}
-        salePriceLegacy={salePriceLegacy}
       />
 
       <Pagination

@@ -1,10 +1,11 @@
 import { mediaUrl } from "@/lib/strapi";
 import { normalizeColorName } from "@/lib/colors";
-
-// ⚠️ 旧的 strapiPrice 里可能仍以 major 逻辑工作，现阶段不要再依赖它做换算
-// import * as SP from "@/lib/strapiPrice";
-
-export type PriceRec = any;
+import { CURRENT_MARKET } from "@/lib/market/current";
+import {
+  type PriceRec,
+  type Currency,
+  resolveDisplayPrice,
+} from "@/lib/pricing";
 
 export type ProductLite = {
   key: string;
@@ -36,7 +37,7 @@ export type ProductLite = {
 };
 
 export type PickRes =
-  | { base_minor: number | null; effective_minor: number | null; currency: string }
+  | { base_minor: number | null; effective_minor: number | null; currency: Currency }
   | null;
 
 // ---------- size helpers ----------
@@ -198,10 +199,15 @@ export function formatPriceVal(n: number | null, currency?: string | null, local
  */
 export function isSaleActiveByLegacy(p: ProductLite) {
   const prices = Array.isArray(p?.prices) ? p.prices : [];
-  const picked = _fallbackPickPriceForCurrency(prices, String(p.currency || "AUD"));
-  if (!picked) return false;
-  const base = typeof picked.base_minor === "number" ? picked.base_minor : 0;
-  const eff = typeof picked.effective_minor === "number" ? picked.effective_minor : 0;
+  const preferred = String(
+    p.currency || CURRENT_MARKET.defaultCurrency || "AUD"
+  ).toUpperCase() as Currency;
+
+  const resolved = resolveDisplayPrice(prices, preferred);
+  const base = typeof resolved.baseMinor === "number" ? resolved.baseMinor : 0;
+  const eff =
+    typeof resolved.effectiveMinor === "number" ? resolved.effectiveMinor : 0;
+
   return base > 0 && eff > 0 && eff < base;
 }
 
@@ -217,26 +223,15 @@ export function salePriceLegacy(p: ProductLite) {
 /** 兜底：按币种挑选并计算价格（minor） */
 function _fallbackPickPriceForCurrency(prices: PriceRec[], currency: string): PickRes {
   if (!Array.isArray(prices) || prices.length === 0) return null;
-  const code = String(currency || "AUD").toUpperCase();
 
-  const rec: any =
-    prices.find((r: any) => String(r?.currency || "").toUpperCase() === code) ||
-    prices[0] ||
-    null;
-  if (!rec) return null;
+  const preferred = String(currency || "AUD").toUpperCase() as Currency;
+  const resolved = resolveDisplayPrice(prices, preferred);
 
-  // ✅ base_minor：优先 price（原价，minor），其次 amount_minor（旧字段）
-  const baseFromPrice = toMinorInt(rec.price);
-  const baseFromAmount = toMinorInt(rec.amount_minor);
-
-  const base_minor =
-    baseFromPrice > 0 ? baseFromPrice : baseFromAmount > 0 ? baseFromAmount : null;
-
-  // ✅ effective_minor：优先 real_price（现价，minor），否则退回 base
-  const effFromReal = toMinorInt(rec.real_price);
-  const effective_minor = effFromReal > 0 ? effFromReal : base_minor;
-
-  return { base_minor, effective_minor, currency: code };
+  return {
+    base_minor: resolved.baseMinor,
+    effective_minor: resolved.effectiveMinor,
+    currency: resolved.currency,
+  };
 }
 
 /**
@@ -249,7 +244,7 @@ export const pickPriceForCurrency: (prices: PriceRec[], currency: string) => Pic
   prices,
   currency
 ) => {
-  const ccy = String(currency || "AUD").toUpperCase();
+  const ccy = String(currency || CURRENT_MARKET.defaultCurrency || "AUD").toUpperCase();
   return _fallbackPickPriceForCurrency(prices, ccy);
 };
 
@@ -258,7 +253,7 @@ export function formatPriceForCard(minor: number, currency: string) {
   const code = String(currency || "AUD").toUpperCase();
 
   // ✅ minor -> major 展示
-  const major = (toMinorInt(minor) || 0) / 100;
+  const major = Math.max(0, Math.round(Number(minor) || 0)) / 100;
 
   const numStr = new Intl.NumberFormat(undefined, {
     minimumFractionDigits: 2,
@@ -282,7 +277,7 @@ export function formatPriceForCard(minor: number, currency: string) {
  */
 function deriveLegacyFieldsFromPrices(
   prices: PriceRec[],
-  preferredCurrency = "AUD"
+  preferredCurrency: Currency = CURRENT_MARKET.defaultCurrency
 ): {
   priceMajor: number | null;
   currency: string;
@@ -290,23 +285,20 @@ function deriveLegacyFieldsFromPrices(
   saleStartsAt?: string | null;
   saleEndsAt?: string | null;
 } {
-  const picked = _fallbackPickPriceForCurrency(prices, preferredCurrency);
-  const ccy = picked?.currency ?? String(preferredCurrency || "AUD").toUpperCase();
+  const resolved = resolveDisplayPrice(prices, preferredCurrency);
+  const ccy = resolved.currency;
 
-  const baseMinor = picked && typeof picked.base_minor === "number" ? picked.base_minor : null;
-  const effMinor =
-    picked && typeof picked.effective_minor === "number" ? picked.effective_minor : null;
+  const baseMinor = resolved.baseMinor;
+  const effMinor = resolved.effectiveMinor;
 
-  // ✅ 让 legacy price 显示“现价”（real_price）
+  // ✅ legacy price 继续显示“现价”
   const priceMajor = effMinor != null ? effMinor / 100 : null;
 
-  // 取对应币种的 rec，便于推导 discountPercent（不再依赖 discount 字段）
-  const rec: any =
-    prices.find((r: any) => String(r?.currency || "").toUpperCase() === ccy) ||
+  const rec =
+    prices.find((r) => String(r?.currency || "").toUpperCase() === String(ccy).toUpperCase()) ||
     prices[0] ||
     null;
 
-  // ✅ discountPercent 推导：由 base/eff 自动算
   let discountPercent: number | undefined = undefined;
   if (
     typeof baseMinor === "number" &&
@@ -315,20 +307,21 @@ function deriveLegacyFieldsFromPrices(
     effMinor > 0 &&
     effMinor < baseMinor
   ) {
-    discountPercent = Math.round((1 - effMinor / baseMinor) * 100);
-    if (typeof discountPercent === "number" && discountPercent <= 0) discountPercent = undefined;
-    if (typeof discountPercent === "number" && discountPercent >= 100) discountPercent = 99;
+    const pct = Math.round((1 - effMinor / baseMinor) * 100);
+
+    if (pct > 0) {
+      discountPercent = pct >= 100 ? 99 : pct;
+    }
   }
 
-  // 促销时间窗字段保留（但不用于计算）
   const normDateStr = (v: any): string | null => {
     if (typeof v !== "string") return null;
     const s = v.trim();
     return s ? s : null;
   };
 
-  const saleStartsAt = normDateStr(rec?.sale_starts_at);
-  const saleEndsAt = normDateStr(rec?.sale_ends_at);
+  const saleStartsAt = normDateStr((rec as any)?.sale_starts_at);
+  const saleEndsAt = normDateStr((rec as any)?.sale_ends_at);
 
   return { priceMajor, currency: ccy, discountPercent, saleStartsAt, saleEndsAt };
 }
@@ -339,7 +332,10 @@ export function normalizeProduct(row: any): ProductLite {
   const name: string = attrs.title ?? attrs.name ?? attrs.slug ?? "Product";
 
   const prices = getPrices(attrs);
-  const derived = deriveLegacyFieldsFromPrices(prices, "AUD");
+    const derived = deriveLegacyFieldsFromPrices(
+    prices,
+    CURRENT_MARKET.defaultCurrency
+  );
 
   const variantsByColor = getImagesByColorFromProduct(attrs);
 
@@ -407,9 +403,3 @@ export function normalizeProduct(row: any): ProductLite {
   };
 }
 
-// ------- local helper -------
-function toMinorInt(v: any): number {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return 0;
-  return Math.max(0, Math.round(n));
-}

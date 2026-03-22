@@ -68,13 +68,8 @@ export type HomeProductCardProps = {
   start: number;
   displayCurrency: string;
 
-  // 复用分类页同款定价逻辑
   pickPriceForCurrency: (prices: PriceRec[], currency: string) => PickRes;
   formatPriceForCard: (minor: number, currency: string) => string;
-  formatPriceVal: (n: number | null, currency?: string | null, locale?: string) => string;
-
-  isSaleActiveByLegacy: (p: ProductLite) => boolean;
-  salePriceLegacy: (p: ProductLite) => number;
 };
 
 export default function HomeProductCard({
@@ -84,9 +79,6 @@ export default function HomeProductCard({
   displayCurrency,
   pickPriceForCurrency,
   formatPriceForCard,
-  formatPriceVal,
-  isSaleActiveByLegacy,
-  salePriceLegacy,
 }: HomeProductCardProps) {
   const router = useRouter();
   const clickStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -158,16 +150,12 @@ export default function HomeProductCard({
   const displayEff =
     typeof effectiveMinor === "number"
       ? formatPriceForCard(effectiveMinor, showCcy)
-      : p.price != null
+      : typeof p.price === "number"
       ? formatPriceForCard(
-          Math.round(Number(p.price) * 100),
-          (p.currency || showCcy || "AUD") as string
+          Math.round(Math.max(0, Number(p.price)) * 100),
+          String(p.currency || showCcy || "AUD")
         )
       : "No price";
-
-  // 旧字段保底（如果没拿到 pick）
-  const legacyOnSale = !pick && isSaleActiveByLegacy(p);
-  const legacySalePrice = legacyOnSale ? salePriceLegacy(p) : null;
 
   const handleImagePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     clickStartRef.current = { x: e.clientX, y: e.clientY };
@@ -255,16 +243,6 @@ export default function HomeProductCard({
               <span className="text-neutral-300">|</span>
               <span className="text-[12px] font-bold text-emerald-700">
                 {displayEff}
-              </span>
-            </div>
-          ) : legacyOnSale && legacySalePrice != null ? (
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-[11px] text-neutral-400 line-through">
-                {formatPriceVal(p.price, p.currency)}
-              </span>
-              <span className="text-neutral-300">|</span>
-              <span className="text-[12px] font-bold text-emerald-700">
-                {formatPriceVal(legacySalePrice, p.currency)}
               </span>
             </div>
           ) : (
