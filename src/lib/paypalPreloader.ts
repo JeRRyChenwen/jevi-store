@@ -39,19 +39,20 @@ async function getClientToken(): Promise<string> {
  * client-id: 沙箱用 "sb"，正式填你 PayPal 的 client id（与 Braintree 搭配也可用）
  */
 export function preloadPaypalForBraintree(
-  currency = "AUD",
+  currency: string,
   paypalClientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID || "sb",
 ) {
   if (preloadPromise) return preloadPromise;
 
   preloadPromise = (async () => {
+    const safeCurrency = String(currency || "").trim().toUpperCase() || "AUD";
     const token = await getClientToken();
 
     // 1) 提前加载 PayPal SDK（带 data-client-token 让它对接 Braintree）
     const params = new URLSearchParams({
       "client-id": paypalClientId,
-      components: "buttons,marks",  // 够用且更轻
-      currency,
+      components: "buttons,marks",
+      currency: safeCurrency,
       intent: "capture",
       commit: "true",
       "enable-funding": "paypal",

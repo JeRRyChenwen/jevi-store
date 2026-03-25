@@ -46,7 +46,10 @@ export default function BagDrawer({ ownerId = "global" }: { ownerId?: string }) 
     }
   }, [ownerId]);
 
-  const currency = cartItems[0]?.currency ?? "AUD";
+  const currency =
+    String(cartItems[0]?.currency || "")
+      .trim()
+      .toUpperCase() || "AUD";
   const hasItems = cartItems.length > 0;
 
   // ✅ 总件数：用于手机端 header 辅助信息

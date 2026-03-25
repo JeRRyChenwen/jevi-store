@@ -74,11 +74,17 @@ export function getCheckoutDeliveryViewModel({
       : undefined,
   };
 
+  const countryLabel = addressCountry
+    ? countryLabelOf(addressCountry)
+    : "Selected country";
+
+  const currencyLabel = String(currency || "").trim().toUpperCase() || "—";
+
   const quoteMatchedText =
     !quoteLoading && !quoteError && quoteByMethod?.[deliveryMethod]?.ok
-      ? `Shipping matched: ${countryLabelOf(addressCountry || "AU")} · option ${deliveryMethod} · fee ${(
+      ? `Shipping matched: ${countryLabel} · option ${deliveryMethod} · fee ${(
           (Number(quoteByMethod?.[deliveryMethod]?.delivery_fee_minor ?? 0) || 0) / 100
-        ).toFixed(2)} ${currency || "AUD"}`
+        ).toFixed(2)} ${currencyLabel}`
       : null;
 
   return {

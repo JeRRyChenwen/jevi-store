@@ -26,7 +26,7 @@ export type SelectedReturnLine = {
 };
 
 export function formatMoney(minor: number, currency: string | null | undefined) {
-  const cur = currency || "AUD";
+  const cur = String(currency || "").trim().toUpperCase() || "AUD";
   const major = (minor || 0) / 100;
   return new Intl.NumberFormat("en-AU", {
     style: "currency",
@@ -189,7 +189,10 @@ export default function ReturnItemsSelector({
     return null;
   }
 
-  const currency = order.currency || order.items[0]?.currency || "AUD";
+  const currency =
+    String(order.currency || order.items[0]?.currency || "")
+      .trim()
+      .toUpperCase() || "AUD";
 
   return (
     <section className="mt-6 border border-neutral-200 rounded-2xl p-4 md:p-6 bg-white">

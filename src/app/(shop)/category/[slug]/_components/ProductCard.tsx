@@ -145,7 +145,7 @@ export default function ProductCard({
       : typeof p.price === "number"
       ? formatPriceForCard(
           Math.round(Math.max(0, Number(p.price)) * 100),
-          String(p.currency || showCcy || "AUD")
+          String(p.currency || showCcy || displayCurrency)
         )
       : "No price";
 

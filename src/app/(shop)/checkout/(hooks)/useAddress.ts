@@ -3,8 +3,19 @@
 
 import { useEffect, useState } from "react";
 
-/** ✅ 当前 checkout 只允许 AU / NZ 收货 */
-const ALLOWED_CHECKOUT_COUNTRIES = new Set(["AU", "NZ"]);
+type SiteContext = {
+  market_code: string;
+  default_country: string;
+  default_currency: string;
+  allowed_countries: string[];
+};
+
+const FALLBACK_SITE_CONTEXT: SiteContext = {
+  market_code: "AU_NZ",
+  default_country: "AU",
+  default_currency: "AUD",
+  allowed_countries: ["AU", "NZ"],
+};
 
 /* ====== 正则与小工具 ====== */
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
@@ -63,9 +74,13 @@ export const emptyErr: AddressErr = {
 export function validateAddress(
   a: Address,
   emailInput: string,
-  ignoreEmail = false
+  ignoreEmail = false,
+  allowedCountries: string[] = FALLBACK_SITE_CONTEXT.allowed_countries
 ) {
   const countryCode = t(a.country).toUpperCase();
+  const allowedSet = new Set(
+    (allowedCountries || []).map((x) => String(x || "").trim().toUpperCase()).filter(Boolean)
+  );
 
   const errs: AddressErr = {
     firstName: t(a.firstName) === "",
@@ -75,15 +90,7 @@ export function validateAddress(
     city: t(a.city) === "",
     state: t(a.state) === "",
     postcode: !POSTCODE_RE.test(t(a.postcode)),
-
-    /**
-     * ✅ 当前网站只支持 Australia / New Zealand 收货
-     * - 空值报错
-     * - 非 AU / NZ 也报错
-     */
-    country:
-      countryCode === "" || !ALLOWED_CHECKOUT_COUNTRIES.has(countryCode),
-
+    country: countryCode === "" || !allowedSet.has(countryCode),
     email: ignoreEmail ? false : !EMAIL_RE.test(t(emailInput || a.email)),
   };
 
@@ -145,6 +152,11 @@ export function isFieldValid(k: keyof Address, v: string | undefined) {
 type SaveMsg = { kind: "error" | "success"; text: string } | null;
 
 export function useAddress(isLoggedIn: boolean) {
+  const [siteContext, setSiteContext] = useState<SiteContext>(FALLBACK_SITE_CONTEXT);
+
+  const allowedCountries = siteContext.allowed_countries;
+  const defaultCountry = siteContext.default_country;
+
   // 基础地址状态
   const [address, setAddress] = useState<Address>({});
   const [billingAddress, setBillingAddress] = useState<Address>({
@@ -157,7 +169,7 @@ export function useAddress(isLoggedIn: boolean) {
     city: "",
     state: "",
     postcode: "",
-    country: "",
+    country: FALLBACK_SITE_CONTEXT.default_country,
   });
   const [sameAsDelivery, setSameAsDelivery] = useState<boolean>(false);
 
@@ -211,6 +223,55 @@ export function useAddress(isLoggedIn: boolean) {
     });
   }
 
+  /* ---------- 读取当前站点 market context ---------- */
+  useEffect(() => {
+    let dead = false;
+
+    (async () => {
+      try {
+        const r = await fetch(apiURL("/site/context"), {
+          method: "GET",
+          credentials: "include",
+          headers: { accept: "application/json" },
+          cache: "no-store",
+        });
+
+        const data = await r.json().catch(() => ({}));
+        if (dead) return;
+        if (!r.ok || !data?.ok) {
+          console.error("[useAddress] GET /api/site/context failed:", r.status, data);
+          return;
+        }
+
+        const next: SiteContext = {
+          market_code: String(data?.market_code || FALLBACK_SITE_CONTEXT.market_code),
+          default_country: String(data?.default_country || FALLBACK_SITE_CONTEXT.default_country)
+            .trim()
+            .toUpperCase(),
+          default_currency: String(
+            data?.default_currency || FALLBACK_SITE_CONTEXT.default_currency
+          )
+            .trim()
+            .toUpperCase(),
+          allowed_countries: Array.isArray(data?.allowed_countries)
+            ? data.allowed_countries
+                .map((x: any) => String(x || "").trim().toUpperCase())
+                .filter(Boolean)
+            : FALLBACK_SITE_CONTEXT.allowed_countries,
+        };
+
+        setSiteContext(next);
+      } catch (e: any) {
+        if (dead) return;
+        console.error("[useAddress] GET /api/site/context exception:", e?.message || e);
+      }
+    })();
+
+    return () => {
+      dead = true;
+    };
+  }, []);
+
   /* ---------- 初始：从 localStorage 回填 ---------- */
   useEffect(() => {
     try {
@@ -223,11 +284,34 @@ export function useAddress(isLoggedIn: boolean) {
 
     try {
       const rawBilling = localStorage.getItem(LS_BILLING_ADDR);
-      if (rawBilling) setBillingAddress(JSON.parse(rawBilling));
+      if (rawBilling) {
+        setBillingAddress(JSON.parse(rawBilling));
+      }
       const rawSame = localStorage.getItem(LS_SAME_AS_DELIVERY);
       if (rawSame) setSameAsDelivery(JSON.parse(rawSame));
     } catch {}
   }, []);
+
+  /* ---------- site context 到位后：补默认国家并修正非法国家 ---------- */
+  useEffect(() => {
+    const allowedSet = new Set(
+      allowedCountries.map((x) => String(x || "").trim().toUpperCase()).filter(Boolean)
+    );
+
+    setAddress((prev) => {
+      const nextCountry = String(prev.country || "").trim().toUpperCase();
+      if (!nextCountry) return { ...prev, country: defaultCountry };
+      if (!allowedSet.has(nextCountry)) return { ...prev, country: defaultCountry };
+      return prev;
+    });
+
+    setBillingAddress((prev) => {
+      const nextCountry = String(prev.country || "").trim().toUpperCase();
+      if (!nextCountry) return { ...prev, country: defaultCountry };
+      if (!allowedSet.has(nextCountry)) return { ...prev, country: defaultCountry };
+      return prev;
+    });
+  }, [allowedCountries, defaultCountry]);
 
   /* ---------- 登录状态变化时：请求 /api/addresses ---------- */
   useEffect(() => {
@@ -271,8 +355,32 @@ export function useAddress(isLoggedIn: boolean) {
         const d = data?.addresses?.delivery ?? data?.delivery ?? null;
         const b = data?.addresses?.billing ?? data?.billing ?? null;
 
-        const fd = d ? fromApiAddress(d) : null;
-        const fb = b ? fromApiAddress(b) : null;
+        const allowedSet = new Set(
+          allowedCountries.map((x) => String(x || "").trim().toUpperCase()).filter(Boolean)
+        );
+
+        const fdRaw = d ? fromApiAddress(d) : null;
+        const fbRaw = b ? fromApiAddress(b) : null;
+
+        const fd =
+          fdRaw
+            ? {
+                ...fdRaw,
+                country: allowedSet.has(String(fdRaw.country || "").trim().toUpperCase())
+                  ? String(fdRaw.country || "").trim().toUpperCase()
+                  : defaultCountry,
+              }
+            : null;
+
+        const fb =
+          fbRaw
+            ? {
+                ...fbRaw,
+                country: allowedSet.has(String(fbRaw.country || "").trim().toUpperCase())
+                  ? String(fbRaw.country || "").trim().toUpperCase()
+                  : defaultCountry,
+              }
+            : null;
 
         setHasSavedDelivery(!!fd);
         setHasSavedBilling(!!fb);
@@ -328,7 +436,7 @@ export function useAddress(isLoggedIn: boolean) {
 
     // 1) 校验：只校验需要编辑/保存的那一侧
     if (saveDeliveryOnly || saveBothOrSame) {
-      const { valid, errs } = validateAddress(address, "", true);
+      const { valid, errs } = validateAddress(address, "", true, allowedCountries);
       if (!valid) {
         setAddressErrs(errs);
         setAddressShowErrors(true);
@@ -343,7 +451,7 @@ export function useAddress(isLoggedIn: boolean) {
       }
     }
     if (saveBillingOnly || (saveBothOrSame && !sameAsDelivery)) {
-      const { valid, errs } = validateAddress(billingAddress, "", true);
+      const { valid, errs } = validateAddress(billingAddress, "", true, allowedCountries);
       setBillingErrs(errs);
       if (!valid) {
         setSaveMsg({
@@ -455,5 +563,10 @@ export function useAddress(isLoggedIn: boolean) {
     clearBillingErrors,
     handleBillingFieldChange,
     handleSaveDefaultAddress,
+
+    siteContext,
+    allowedCountries,
+    defaultCountry,
+    defaultCurrency: siteContext.default_currency,
   };
 }

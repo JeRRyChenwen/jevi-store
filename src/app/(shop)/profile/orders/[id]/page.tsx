@@ -54,7 +54,7 @@ type OrderDetailResp = {
 };
 
 function fmtCurrency(minor: number | null | undefined, ccy: string | null) {
-  const code = (ccy || "AUD").toUpperCase();
+  const code = String(ccy || "").trim().toUpperCase() || "AUD";
   const major = ((minor || 0) as number) / 100;
   const num = new Intl.NumberFormat(undefined, {
     minimumFractionDigits: 2,
@@ -108,7 +108,10 @@ export default async function OrderDetailPage({ params }: PageProps) {
   const order = data.order!;
   const items = data.items || [];
 
-  const currency = order.currency || (items[0]?.currency ?? "AUD");
+  const currency =
+    String(order.currency || items[0]?.currency || "")
+      .trim()
+      .toUpperCase() || "AUD";
 
   // ✅ items 小计：优先 order.items_total_minor，否则用 items 汇总
   const itemsTotalMinor =

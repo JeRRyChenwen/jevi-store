@@ -142,7 +142,7 @@ export default function AddToBagClient({
     const heightPart = String(pickedHeightForLookup);
 
     // ✅ 关键：同时写入 prices[]（minor, 分）——让 cart/checkout 统一走 minor 路径
-    const ccy = String(currency || "AUD").toUpperCase();
+    const ccy = String(currency || "").trim().toUpperCase() || "AUD";
 
     const baseMinor = toMinor2(basePriceMajor);
     const effMinor = toMinor2(unitPriceMajor);

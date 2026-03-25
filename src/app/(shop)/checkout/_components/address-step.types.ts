@@ -64,4 +64,6 @@ export type AddressStepProps = {
   marketingOptIn: boolean;
   setMarketingOptIn: (v: boolean) => void;
   sendSubscriptionIfNeeded: (emailRaw?: string) => void | Promise<void>;
+
+  countryOptions: Array<{ code: string; label: string }>;
 };

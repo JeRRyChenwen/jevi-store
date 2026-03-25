@@ -3,7 +3,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Check } from "lucide-react";
-import BraintreeDropIn from "./BraintreeDropIn"; // 你现有的 PayPal 组件（含黄色按钮）
 import BraintreeHostedFields from "./BraintreeHostedFields"; // 新增：卡支付组件
 import { cn } from "@/lib/utils"; // 若你没有该工具，可以直接用模板字符串替代
 
@@ -35,17 +34,21 @@ type CartItem = {
   imageUrl?: string;
 };
 
+const FALLBACK_CURRENCY = "AUD";
+
 function formatMoney(minor: number, currency: string) {
   const major = (minor ?? 0) / 100;
+  const cur = String(currency || "").trim().toUpperCase() || FALLBACK_CURRENCY;
+
   try {
     return new Intl.NumberFormat(undefined, {
       style: "currency",
-      currency: currency || "AUD",
+      currency: cur,
       currencyDisplay: "symbol",
       maximumFractionDigits: 2,
     }).format(major);
   } catch {
-    return `${currency || "AUD"} ${major.toFixed(2)}`;
+    return `${cur} ${major.toFixed(2)}`;
   }
 }
 
@@ -82,7 +85,11 @@ export default function PaymentStepModern() {
   }, []);
 
   const currency = useMemo(() => {
-    return cart.find((i) => i?.currency)?.currency || "AUD";
+    return (
+      String(cart.find((i) => i?.currency)?.currency || "")
+        .trim()
+        .toUpperCase() || FALLBACK_CURRENCY
+    );
   }, [cart]);
 
   const subtotalMinor = useMemo(() => {
@@ -165,13 +172,10 @@ export default function PaymentStepModern() {
             {/* 渲染具体支付组件 */}
             <div className="mt-4 border rounded-md p-3">
               {selected === "paypal" ? (
-                // 你现有的 PayPal 组件（内部有黄色按钮完成支付）
-                <BraintreeDropIn
-                  amount={Number((totalMinor / 100).toFixed(2))}
-                  currency={currency}
-                />
+                <div className="rounded-md border border-dashed p-4 text-sm text-neutral-600">
+                  PayPal payment component is not connected in this screen.
+                </div>
               ) : (
-                // 我们新增的卡支付组件（自带“Pay …”按钮）
                 <BraintreeHostedFields
                   amount={Number((totalMinor / 100).toFixed(2))}
                   currency={currency}

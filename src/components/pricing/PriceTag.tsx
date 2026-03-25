@@ -31,7 +31,7 @@ export default function PriceTag({
   const currency = pickCurrency(available, {
     userCurrency: userCurrency ?? undefined,
     userCountry: userCountry ?? undefined,
-    fallback: "AUD",
+    fallback: available[0] ?? "AUD",
   });
 
   // 找到该币种对应的价格记录（兜底用第 1 条）

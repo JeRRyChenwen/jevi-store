@@ -57,7 +57,7 @@ export function buildQuoteRequestInput(args: {
   itemsMinor: number;
 }) {
   return {
-    country: String(args.country || "").trim() || "AU",
+    country: String(args.country || "").trim().toUpperCase(),
     state: String(args.state || "").trim() || null,
     postcode: String(args.postcode || "").trim() || null,
     items_total_minor: Number(args.itemsMinor) || 0,

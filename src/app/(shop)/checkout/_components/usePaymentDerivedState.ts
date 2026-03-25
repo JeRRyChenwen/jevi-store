@@ -32,7 +32,9 @@ export function usePaymentDerivedState({
   address,
 }: Params) {
   const safeCurrency = useMemo(() => {
-    return (currency || cart?.[0]?.currency || "AUD").toUpperCase();
+    return String(currency || cart?.[0]?.currency || "")
+      .trim()
+      .toUpperCase() || "AUD";
   }, [currency, cart]);
 
   const stockItems = useMemo(() => buildStockItems(cart as any[]), [cart]);

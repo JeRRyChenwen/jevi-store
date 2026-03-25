@@ -205,7 +205,7 @@ const BagStep: React.FC<BagStepProps> = ({
         >
           <BraintreePayPalOnly
             amount={amountInMajorUnit}
-            currency="AUD"
+            currency={currency}
             onInitiate={() => {}}
             onSucceeded={() => {}}
           />

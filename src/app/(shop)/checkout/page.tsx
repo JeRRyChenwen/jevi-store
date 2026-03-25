@@ -14,6 +14,7 @@ import type {
   DeliveryMethod,
   StepKey,
 } from "./types";
+import type { Currency } from "@/lib/pricing";
 import {
   CONFIRM_PATH,
   DELIVERY_FLAT,
@@ -102,7 +103,68 @@ export default function CheckoutPage() {
     clearBillingErrors,
     handleBillingFieldChange,
     handleSaveDefaultAddress,
+    allowedCountries,
+    defaultCountry,
+    defaultCurrency,
   } = useAddress(isLoggedIn);
+
+  const countryLabelMap: Record<string, string> = {
+    AU: "Australia",
+    NZ: "New Zealand",
+    US: "United States",
+    CA: "Canada",
+    AT: "Austria",
+    BE: "Belgium",
+    BG: "Bulgaria",
+    HR: "Croatia",
+    CY: "Cyprus",
+    CZ: "Czech Republic",
+    DK: "Denmark",
+    EE: "Estonia",
+    FI: "Finland",
+    FR: "France",
+    DE: "Germany",
+    GR: "Greece",
+    HU: "Hungary",
+    IE: "Ireland",
+    IT: "Italy",
+    LV: "Latvia",
+    LT: "Lithuania",
+    LU: "Luxembourg",
+    MT: "Malta",
+    NL: "Netherlands",
+    PL: "Poland",
+    PT: "Portugal",
+    RO: "Romania",
+    SK: "Slovakia",
+    SI: "Slovenia",
+    ES: "Spain",
+    SE: "Sweden",
+  };
+
+  const countryOptions = allowedCountries.map((code) => {
+    const upper = String(code || "").trim().toUpperCase();
+    return {
+      code: upper,
+      label: countryLabelMap[upper] || upper,
+    };
+  });
+
+  const pricingCurrency: Currency = (() => {
+    const candidate = String(defaultCurrency || "").trim().toUpperCase();
+
+    if (
+      candidate === "AUD" ||
+      candidate === "USD" ||
+      candidate === "EUR" ||
+      candidate === "GBP" ||
+      candidate === "CAD"
+    ) {
+      return candidate as Currency;
+    }
+
+    return DISPLAY_CURRENCY;
+  })();
 
   useEffect(() => {
     if (continueErrMsg && continueErrMsg.trim()) {
@@ -159,7 +221,13 @@ export default function CheckoutPage() {
   }, [setAddress]);
 
   // 旧 hook 仍然用于 itemsMinor / itemsMajor（delivery fee 下面会用 server quote 覆盖）
-  const pricing = usePricing(cart, hasItems, DISPLAY_CURRENCY, DELIVERY_FREE_THRESHOLD, DELIVERY_FLAT);
+  const pricing = usePricing(
+    cart,
+    hasItems,
+    pricingCurrency,
+    DELIVERY_FREE_THRESHOLD,
+    DELIVERY_FLAT
+  );
   const {
     currency,
     itemsMinor,
@@ -178,7 +246,10 @@ export default function CheckoutPage() {
     hasItems,
     cart,
     itemsMinor,
-    address,
+    address: {
+      ...address,
+      country: address?.country || defaultCountry,
+    },
     deliveryMethod,
     remoteBase: REMOTE_BASE,
     apiURL,
@@ -360,6 +431,7 @@ export default function CheckoutPage() {
     marketingOptIn,
     setMarketingOptIn,
     sendSubscriptionIfNeeded,
+    countryOptions,
   });
 
   const deliveryStepProps = buildCheckoutDeliveryStepProps({

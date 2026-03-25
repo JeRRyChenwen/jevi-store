@@ -50,7 +50,7 @@ function readBaseAndEffectiveMinor(p: any): { baseMinor: number; effMinor: numbe
  *
  * 注意：不再在前端计算折扣；discount/window 字段对结算不再需要
  */
-export function itemToPriceRecs(it: any): PriceRec[] {
+export function itemToPriceRecs(it: any, fallbackCurrency: Currency): PriceRec[] {
   const rawPrices = it?.prices;
 
   // 1) 优先用 it.prices（来自 Strapi Product.prices 或 bag 中持久化的 prices）
@@ -68,8 +68,7 @@ export function itemToPriceRecs(it: any): PriceRec[] {
         const rec: PriceRec = {
           currency,
           amount_minor: finalMinor,
-          price: finalMinor, // 兼容旧逻辑读取 rec.price
-          // （可选）把原价带上，方便你未来做 savings/展示
+          price: finalMinor,
           price_minor: baseMinor > 0 ? baseMinor : undefined,
         };
 
@@ -81,7 +80,7 @@ export function itemToPriceRecs(it: any): PriceRec[] {
   }
 
   // 2) fallback（旧 cart 结构过渡）
-  const currency = String(it?.currency || "AUD").toUpperCase() as Currency;
+  const currency = String(it?.currency || fallbackCurrency).toUpperCase() as Currency;
 
   // 如果旧 item 里有 real_price（minor）就用它，否则用 price（但这里无法判断它是不是 major）
   const realMinor = toMinorInt(it?.real_price ?? 0);
@@ -112,9 +111,9 @@ export function usePricing(
     () =>
       cart.map((it: any) => ({
         qty: Number(it?.qty) || 1,
-        prices: itemToPriceRecs(it),
+        prices: itemToPriceRecs(it, displayCurrency),
       })),
-    [cart]
+    [cart, displayCurrency]
   );
 
   // 2) 计算商品总价（不含运费）

@@ -36,7 +36,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const nonce: string = body?.nonce;
-    const currency = (body?.currency || "AUD").toString().toUpperCase();
+    const currency = String(body?.currency || "").trim().toUpperCase();
     const amountNum =
       typeof body?.amount === "string"
         ? Number(body.amount)
@@ -49,6 +49,21 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+
+    if (!currency) {
+      return NextResponse.json(
+        { ok: false, error: "Missing currency" },
+        { status: 400 }
+      );
+    }
+
+    if (!MA_MAP[currency] && !(currency in DECIMALS)) {
+      return NextResponse.json(
+        { ok: false, error: `Unsupported currency: ${currency}` },
+        { status: 400 }
+      );
+    }
+
     if (!Number.isFinite(amountNum) || amountNum <= 0) {
       return NextResponse.json(
         { ok: false, error: "Invalid amount" },

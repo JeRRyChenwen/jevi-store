@@ -18,7 +18,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 
-import { COUNTRY_OPTIONS, type CountryCode, isCountryCode } from "@/lib/country";
+import { COUNTRY_OPTIONS } from "@/lib/country";
 
 type Props = {
   id?: string;
@@ -26,8 +26,8 @@ type Props = {
 
   value?: string | null;
 
-  onChange?: (code: CountryCode) => void;
-  onValueChange?: (code: CountryCode) => void;
+  onChange?: (code: string) => void;
+  onValueChange?: (code: string) => void;
 
   disabled?: boolean;
   invalid?: boolean;
@@ -42,12 +42,11 @@ type Props = {
    * - 不传时：默认仍使用全量 COUNTRY_OPTIONS
    * - 传了时：只显示传入的国家
    */
-  options?: readonly { code: CountryCode; label: string }[];
+  options?: ReadonlyArray<{ code: string; label: string }>;
 };
 
-function normalizeValue(v?: string | null): CountryCode | "" {
-  const s = String(v ?? "").trim().toUpperCase();
-  return isCountryCode(s) ? (s as CountryCode) : "";
+function normalizeValue(v?: string | null): string {
+  return String(v ?? "").trim().toUpperCase();
 }
 
 function renderHighlighted(label: string, q: string) {
@@ -87,8 +86,8 @@ export default function CountrySelect({
   const v = normalizeValue(value);
 
   const emit = React.useCallback(
-    (code: CountryCode) => {
-      (onValueChange ?? onChange)?.(code);
+    (code: string) => {
+      (onValueChange ?? onChange)?.(String(code || "").trim().toUpperCase());
     },
     [onChange, onValueChange]
   );
@@ -286,10 +285,9 @@ export default function CountrySelect({
                     value={c.code}
                     onSelect={(val) => {
                       const s = String(val).trim().toUpperCase();
-                      if (isCountryCode(s)) {
-                        emit(s as CountryCode);
-                        setOpen(false);
-                      }
+                      if (!s) return;
+                      emit(s);
+                      setOpen(false);
                     }}
                     // 防止点击 item 导致 input 失焦触发奇怪的 close/open
                     onMouseDown={(e) => e.preventDefault()}

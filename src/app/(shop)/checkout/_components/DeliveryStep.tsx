@@ -146,7 +146,7 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
   setDeliveryMethod,
   showFreeShipping,
   standardFreeThresholdMinor = null,
-  currency = "AUD",
+  currency = null,
   deliveryFeeMinorByMethod = {},
   etaByMethod,
 
@@ -154,7 +154,7 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
   quoteError = null,
   quoteMatchedText = null,
 }) => {
-  const cur = String(currency || "AUD");
+  const cur = String(currency || "").trim().toUpperCase() || "AUD";
 
   const thresholdText =
     standardFreeThresholdMinor != null

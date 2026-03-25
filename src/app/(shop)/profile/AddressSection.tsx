@@ -1,16 +1,25 @@
 // src/app/profile/AddressSection.tsx
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { Alert } from "@/components/ui/alert";
 import { FieldMessage } from "@/components/ui/field-message";
 import CountrySelect from "@/components/address/CountrySelect";
 import type { Address, FieldErrors } from "./edit-address-card.types";
 
-/** ✅ profile 地址只允许 AU / NZ */
-const PROFILE_COUNTRY_OPTIONS = [
-  { code: "AU", label: "Australia" },
-  { code: "NZ", label: "New Zealand" },
-] as const;
+type SiteContext = {
+  market_code: string;
+  default_country: string;
+  default_currency: string;
+  allowed_countries: string[];
+};
+
+const FALLBACK_SITE_CONTEXT: SiteContext = {
+  market_code: "AU_NZ",
+  default_country: "AU",
+  default_currency: "AUD",
+  allowed_countries: ["AU", "NZ"],
+};
 
 import {
   baseInputClass,
@@ -52,6 +61,118 @@ export default function AddressSection({
   alert,
 }: AddressSectionProps) {
   const lowerTitle = title.toLowerCase();
+
+  const [siteContext, setSiteContext] = useState<SiteContext>(FALLBACK_SITE_CONTEXT);
+
+  const allowedCountries = siteContext.allowed_countries;
+  const defaultCountry = siteContext.default_country;
+
+  const countryLabelMap: Record<string, string> = {
+    AU: "Australia",
+    NZ: "New Zealand",
+    US: "United States",
+    CA: "Canada",
+    AT: "Austria",
+    BE: "Belgium",
+    BG: "Bulgaria",
+    HR: "Croatia",
+    CY: "Cyprus",
+    CZ: "Czech Republic",
+    DK: "Denmark",
+    EE: "Estonia",
+    FI: "Finland",
+    FR: "France",
+    DE: "Germany",
+    GR: "Greece",
+    HU: "Hungary",
+    IE: "Ireland",
+    IT: "Italy",
+    LV: "Latvia",
+    LT: "Lithuania",
+    LU: "Luxembourg",
+    MT: "Malta",
+    NL: "Netherlands",
+    PL: "Poland",
+    PT: "Portugal",
+    RO: "Romania",
+    SK: "Slovakia",
+    SI: "Slovenia",
+    ES: "Spain",
+    SE: "Sweden",
+  };
+
+  const countryOptions = useMemo(
+    () =>
+      allowedCountries.map((code) => {
+        const upper = String(code || "").trim().toUpperCase();
+        return {
+          code: upper,
+          label: countryLabelMap[upper] || upper,
+        };
+      }),
+    [allowedCountries]
+  );
+
+  useEffect(() => {
+    let dead = false;
+
+    (async () => {
+      try {
+        const r = await fetch("/api/site/context", {
+          method: "GET",
+          credentials: "include",
+          headers: { accept: "application/json" },
+          cache: "no-store",
+        });
+
+        const data = await r.json().catch(() => ({}));
+        if (dead) return;
+        if (!r.ok || !data?.ok) {
+          console.error("[AddressSection] GET /api/site/context failed:", r.status, data);
+          return;
+        }
+
+        const next: SiteContext = {
+          market_code: String(data?.market_code || FALLBACK_SITE_CONTEXT.market_code),
+          default_country: String(data?.default_country || FALLBACK_SITE_CONTEXT.default_country)
+            .trim()
+            .toUpperCase(),
+          default_currency: String(
+            data?.default_currency || FALLBACK_SITE_CONTEXT.default_currency
+          )
+            .trim()
+            .toUpperCase(),
+          allowed_countries: Array.isArray(data?.allowed_countries)
+            ? data.allowed_countries
+                .map((x: any) => String(x || "").trim().toUpperCase())
+                .filter(Boolean)
+            : FALLBACK_SITE_CONTEXT.allowed_countries,
+        };
+
+        setSiteContext(next);
+      } catch (e: any) {
+        if (dead) return;
+        console.error("[AddressSection] GET /api/site/context exception:", e?.message || e);
+      }
+    })();
+
+    return () => {
+      dead = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const allowedSet = new Set(
+      allowedCountries.map((x) => String(x || "").trim().toUpperCase()).filter(Boolean)
+    );
+
+    const current = String(address.country || "").trim().toUpperCase();
+
+    if (!current || !allowedSet.has(current)) {
+      setAddress((prev) => ({ ...prev, country: defaultCountry }));
+      setErrors((prev) => ({ ...prev, country: undefined }));
+    }
+  }, [address.country, allowedCountries, defaultCountry, setAddress, setErrors]);
 
   return (
     <section className="rounded-lg border bg-white">
@@ -248,7 +369,7 @@ export default function AddressSection({
                 value={address.country}
                 disabled={!editing}
                 invalid={!!errors.country}
-                options={PROFILE_COUNTRY_OPTIONS}
+                options={countryOptions}
                 onChange={(code) => {
                   setAddress((prev) => ({ ...prev, country: code }));
                   setErrors((prev) => ({ ...prev, country: undefined }));
@@ -264,17 +385,30 @@ export default function AddressSection({
         <div className="mt-3 flex items-center gap-3">
           {!editing ? (
             <button
-              type="button"
-              onClick={() => {
-                setAddress((prev) => normalizeAddressForUI(prev));
-                setEditing(true);
-                setErrors({});
-                alert.clear();
-              }}
-              className="min-w-[96px] rounded-full border px-5 py-2 text-sm font-semibold hover:bg-neutral-50"
-            >
-              Edit
-            </button>
+                type="button"
+                onClick={() => {
+                  const allowedSet = new Set(
+                    allowedCountries.map((x) => String(x || "").trim().toUpperCase()).filter(Boolean)
+                  );
+
+                  setAddress((prev) => {
+                    const next = normalizeAddressForUI(prev);
+                    const current = String(next.country || "").trim().toUpperCase();
+
+                    return {
+                      ...next,
+                      country: current && allowedSet.has(current) ? current : defaultCountry,
+                    };
+                  });
+
+                  setEditing(true);
+                  setErrors({});
+                  alert.clear();
+                }}
+                className="min-w-[96px] rounded-full border px-5 py-2 text-sm font-semibold hover:bg-neutral-50"
+              >
+                Edit
+              </button>
           ) : (
             <>
               <button

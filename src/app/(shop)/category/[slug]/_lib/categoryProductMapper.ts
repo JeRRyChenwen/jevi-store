@@ -1,11 +1,12 @@
 import { mediaUrl } from "@/lib/strapi";
 import { normalizeColorName } from "@/lib/colors";
-import { CURRENT_MARKET } from "@/lib/market/current";
 import {
   type PriceRec,
   type Currency,
   resolveDisplayPrice,
 } from "@/lib/pricing";
+
+const FALLBACK_CURRENCY: Currency = "AUD";
 
 export type ProductLite = {
   key: string;
@@ -199,9 +200,7 @@ export function formatPriceVal(n: number | null, currency?: string | null, local
  */
 export function isSaleActiveByLegacy(p: ProductLite) {
   const prices = Array.isArray(p?.prices) ? p.prices : [];
-  const preferred = String(
-    p.currency || CURRENT_MARKET.defaultCurrency || "AUD"
-  ).toUpperCase() as Currency;
+  const preferred = String(p.currency || FALLBACK_CURRENCY).toUpperCase() as Currency;
 
   const resolved = resolveDisplayPrice(prices, preferred);
   const base = typeof resolved.baseMinor === "number" ? resolved.baseMinor : 0;
@@ -244,7 +243,7 @@ export const pickPriceForCurrency: (prices: PriceRec[], currency: string) => Pic
   prices,
   currency
 ) => {
-  const ccy = String(currency || CURRENT_MARKET.defaultCurrency || "AUD").toUpperCase();
+  const ccy = String(currency || FALLBACK_CURRENCY).toUpperCase();
   return _fallbackPickPriceForCurrency(prices, ccy);
 };
 
@@ -277,7 +276,7 @@ export function formatPriceForCard(minor: number, currency: string) {
  */
 function deriveLegacyFieldsFromPrices(
   prices: PriceRec[],
-  preferredCurrency: Currency = CURRENT_MARKET.defaultCurrency
+  preferredCurrency: Currency = FALLBACK_CURRENCY
 ): {
   priceMajor: number | null;
   currency: string;
@@ -334,7 +333,7 @@ export function normalizeProduct(row: any): ProductLite {
   const prices = getPrices(attrs);
     const derived = deriveLegacyFieldsFromPrices(
     prices,
-    CURRENT_MARKET.defaultCurrency
+    FALLBACK_CURRENCY
   );
 
   const variantsByColor = getImagesByColorFromProduct(attrs);

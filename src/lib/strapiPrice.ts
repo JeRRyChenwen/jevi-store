@@ -51,7 +51,7 @@ function inSaleWindow(start?: string | null, end?: string | null) {
 
 /** 传入一个价格条目（某币种），返回计算结果（major + minor） */
 export function calcPrice(p: StrapiPrice): PriceCalc {
-  const currency = String(p?.currency || "AUD").toUpperCase();
+  const currency = String(p?.currency || "").trim().toUpperCase() || "AUD";
   const baseMajor = Math.max(0, Number(p?.price) || 0);
 
   let effectiveMajor = baseMajor;
@@ -90,15 +90,15 @@ export function calcPrice(p: StrapiPrice): PriceCalc {
  */
 export function pickPriceForCurrency(
   prices: StrapiPrice[] | null | undefined,
-  want = "AUD"
+  want?: string | null
 ): PriceCalc {
   const list = Array.isArray(prices) ? prices : [];
-  const wantCcy = String(want || "AUD").toUpperCase();
+  const wantCcy = String(want || "").trim().toUpperCase();
 
   const hit = list.find(
     (p) => String(p?.currency || "").toUpperCase() === wantCcy
   );
 
-  const chosen = hit || list[0] || { currency: wantCcy, price: 0 };
+  const chosen = hit || list[0] || { currency: wantCcy || "AUD", price: 0 };
   return calcPrice(chosen as StrapiPrice);
 }

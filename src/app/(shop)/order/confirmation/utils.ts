@@ -100,7 +100,10 @@ export function normalizeAddress(order: ServerOrder | null): any | null {
 }
 
 export function deriveMoney(order: ServerOrder, items: ServerItem[]) {
-  const currency = String(order.currency || "AUD").toUpperCase();
+  const currency =
+    String(order.currency || "")
+      .trim()
+      .toUpperCase() || "AUD";
 
   const itemsTotal = isFiniteInt(order.items_total_minor)
     ? clampMinor(order.items_total_minor)

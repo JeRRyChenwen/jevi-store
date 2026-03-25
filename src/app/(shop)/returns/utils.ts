@@ -28,7 +28,7 @@ export function firstImageUrlFromRel(rel?: StrapiMediaRel): string | null {
 }
 
 export function fmtMoney(minor: number, currency: string | null) {
-  const code = (currency || "AUD").toUpperCase();
+  const code = String(currency || "").trim().toUpperCase() || "AUD";
   const major = (minor || 0) / 100;
   const num = new Intl.NumberFormat(undefined, {
     minimumFractionDigits: 2,
@@ -104,7 +104,7 @@ export function mapLookupError(raw: string, retryAfterSec?: number) {
     if (Number.isFinite(s) && s > 0) {
       return `Too many attempts. Please wait ${s} seconds and try again.`;
     }
-    return "Too many attempts. Please wait a moment and try again111.";
+    return "Too many attempts. Please wait a moment and try again.";
   }
 
   // fallback：不要把原始 error code 直接展示给用户

@@ -14,6 +14,10 @@ type Props = {
  */
 export default function PayPalProvider({ children }: Props) {
   const clientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID || "";
+  const defaultCurrency =
+    String(process.env.NEXT_PUBLIC_DEFAULT_CURRENCY || "")
+      .trim()
+      .toUpperCase() || "AUD";
 
   // 防御：没有配置 clientId 时，不要挂 SDK，避免报错
   if (!clientId) {
@@ -29,13 +33,9 @@ export default function PayPalProvider({ children }: Props) {
     <PayPalScriptProvider
       options={{
         clientId,
-        currency: "AUD",
+        currency: defaultCurrency,
         intent: "capture",
         components: "buttons",
-        // 需要的话可以禁用某些 funding 来源
-        // disableFunding: "card,credit",
-        // enableFunding: "paypal,venmo",
-        // locale: "en_AU",
         commit: true,
       }}
     >

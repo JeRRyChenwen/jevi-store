@@ -355,7 +355,7 @@ export default function PayPalBigButton({
                 }
 
                 const orderBody = {
-                  currency: (checkoutTotals?.currency || currency || "AUD").toUpperCase(),
+                  currency: String(checkoutTotals?.currency || currency).trim().toUpperCase(),
                   items: itemsFromMeta,
 
                   reservation_id,

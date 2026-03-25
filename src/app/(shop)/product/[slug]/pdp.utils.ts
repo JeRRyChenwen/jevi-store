@@ -132,7 +132,7 @@ export function getStockByColorSizeHeightFromD1(
 
 export function formatPriceVal(n: number | null, currency?: string | null, locale?: string) {
   if (n == null) return "—";
-  const cur = (currency || "AUD").toUpperCase();
+  const cur = String(currency || "").trim().toUpperCase() || "AUD";
   return new Intl.NumberFormat(locale, {
     style: "currency",
     currency: cur,

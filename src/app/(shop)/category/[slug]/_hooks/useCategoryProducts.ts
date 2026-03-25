@@ -126,7 +126,7 @@ export function useCategoryProducts({
         // 价格区间过滤：按当前显示币种的 prices.real_price（minor）筛选
         const minCents = toCents(appliedMin);
         const maxCents = toCents(appliedMax);
-        const currencyCode = String(displayCurrency || "AUD").toUpperCase();
+        const currencyCode = String(displayCurrency || "").trim().toUpperCase();
 
         if (typeof minCents === "number" || typeof maxCents === "number") {
           // 先限定当前币种，避免多币种组件互相串筛
@@ -228,6 +228,7 @@ export function useCategoryProducts({
     sizesKey,
     colorsKey,
     sortQueryString,
+    displayCurrency,
   ]);
 
   return { loading, list, error, filteredTotal };

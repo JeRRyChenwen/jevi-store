@@ -21,7 +21,7 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const amount = Number(body?.amount);
-    const currency = (body?.currency ?? "usd").toString().toLowerCase();
+    const currency = String(body?.currency ?? "").trim().toLowerCase();
     const delivery = (body?.delivery ?? null) as string | null;
     const cart = Array.isArray(body?.cart) ? body.cart : [];
     const idempotencyKey =
@@ -35,6 +35,11 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+
+    if (!currency) {
+      return NextResponse.json({ error: "Missing currency" }, { status: 400 });
+    }
+
     if (!/^[a-z]{3}$/.test(currency) || !CURRENCY_ALLOWLIST.has(currency)) {
       return NextResponse.json({ error: `Unsupported currency: ${currency}` }, { status: 400 });
     }

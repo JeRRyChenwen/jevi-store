@@ -32,7 +32,7 @@ type MyOrdersResp = {
 };
 
 function fmtCurrency(minor: number, ccy: string | null) {
-  const code = (ccy || "AUD").toUpperCase();
+  const code = String(ccy || "").trim().toUpperCase() || "AUD";
   const major = (minor || 0) / 100;
   const num = new Intl.NumberFormat(undefined, {
     minimumFractionDigits: 2,

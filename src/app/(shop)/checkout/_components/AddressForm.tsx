@@ -8,11 +8,7 @@ import { baseInput, hasAnyErr, fieldErrorText, clsInput } from "./address-step.u
 import { InlineError, RequiredStar } from "./AddressFieldParts";
 
 
-/** ✅ 当前 checkout 只允许 AU / NZ 收货 */
-const CHECKOUT_COUNTRY_OPTIONS = [
-  { code: "AU", label: "Australia" },
-  { code: "NZ", label: "New Zealand" },
-] as const;
+
 
 type AddressFormProps = {
   address: Address;
@@ -27,6 +23,7 @@ type AddressFormProps = {
   accountEmail?: string;
   variant?: "section" | "bare";
   title?: string;
+  countryOptions: Array<{ code: string; label: string }>;
 };
 
 export default function AddressForm({
@@ -42,6 +39,7 @@ export default function AddressForm({
   accountEmail = "",
   variant = "section",
   title = "Address",
+  countryOptions,
 }: AddressFormProps) {
   const on =
     (k: keyof Address) =>
@@ -224,7 +222,7 @@ export default function AddressForm({
             invalid={!!(showErrors && errs.country)}
             describedById="err-addr-country"
             placeholder="Select country"
-            options={CHECKOUT_COUNTRY_OPTIONS}
+            options={countryOptions}
           />
 
           <InlineError

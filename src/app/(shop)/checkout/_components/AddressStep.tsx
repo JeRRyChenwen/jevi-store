@@ -31,6 +31,8 @@ const AddressStep: React.FC<AddressStepProps> = ({
   billingAddress,
   setBillingAddress,
 
+  countryOptions,
+
   sameAsDelivery,
   setSameAsDelivery,
 
@@ -266,6 +268,7 @@ const AddressStep: React.FC<AddressStepProps> = ({
                   hideYourDetails={isLoggedIn}
                   accountEmail={accountEmail}
                   variant="bare"
+                  countryOptions={countryOptions}
                 />
               </div>
             )}
@@ -305,6 +308,7 @@ const AddressStep: React.FC<AddressStepProps> = ({
                   errs={billingErrs}
                   onFieldChange={handleBillingFieldChange}
                   variant="bare"
+                  countryOptions={countryOptions}
                 />
               </div>
             )}

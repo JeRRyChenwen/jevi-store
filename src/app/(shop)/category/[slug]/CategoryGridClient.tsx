@@ -27,7 +27,7 @@ type Props = {
   total: number;
   pageSize?: number;
   categoryDocIds?: string[];
-  displayCurrency?: string;
+  displayCurrency: string;
 };
 
 export type SortKey = "default" | "price-desc" | "price-asc" | "hot";
@@ -69,7 +69,7 @@ export default function CategoryGridClient({
   total,
   pageSize = 40,
   categoryDocIds,
-  displayCurrency = "AUD",
+  displayCurrency,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();

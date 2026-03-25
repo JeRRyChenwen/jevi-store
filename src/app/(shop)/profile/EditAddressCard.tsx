@@ -1,7 +1,7 @@
 // src/app/profile/EditAddressCard.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useFormAlert } from "@/hooks/useFormAlert";
 import AddressSection from "./AddressSection";
@@ -19,12 +19,35 @@ import {
   validateAddress,
 } from "./edit-address-card.utils";
 
+type SiteContext = {
+  market_code: string;
+  default_country: string;
+  default_currency: string;
+  allowed_countries: string[];
+};
+
+const FALLBACK_SITE_CONTEXT: SiteContext = {
+  market_code: "AU_NZ",
+  default_country: "AU",
+  default_currency: "AUD",
+  allowed_countries: ["AU", "NZ"],
+};
+
 export default function EditAddressCard() {
   const [loading, setLoading] = useState(false);
   const [globalErr, setGlobalErr] = useState<string | null>(null);
 
-  const [delivery, setDelivery] = useState<Address>(normalizeAddressForUI({ ...EMPTY_ADDRESS }));
-  const [billing, setBilling] = useState<Address>(normalizeAddressForUI({ ...EMPTY_ADDRESS }));
+  const [siteContext, setSiteContext] = useState<SiteContext>(FALLBACK_SITE_CONTEXT);
+
+  const defaultCountry = siteContext.default_country;
+  const allowedCountries = siteContext.allowed_countries;
+
+  const [delivery, setDelivery] = useState<Address>(
+    normalizeAddressForUI({ ...EMPTY_ADDRESS }, FALLBACK_SITE_CONTEXT.default_country)
+  );
+  const [billing, setBilling] = useState<Address>(
+    normalizeAddressForUI({ ...EMPTY_ADDRESS }, FALLBACK_SITE_CONTEXT.default_country)
+  );
 
   const [editingDelivery, setEditingDelivery] = useState(false);
   const [editingBilling, setEditingBilling] = useState(false);
@@ -49,6 +72,43 @@ export default function EditAddressCard() {
         deliveryAlert.clear();
         billingAlert.clear();
 
+        const siteResp = await fetch("/api/site/context", {
+          method: "GET",
+          credentials: "include",
+          headers: { accept: "application/json" },
+          cache: "no-store",
+        });
+
+        const siteData = await siteResp.json().catch(() => ({} as any));
+
+        const nextSiteContext: SiteContext =
+          siteResp.ok && siteData?.ok
+            ? {
+                market_code: String(
+                  siteData?.market_code || FALLBACK_SITE_CONTEXT.market_code
+                ),
+                default_country: String(
+                  siteData?.default_country || FALLBACK_SITE_CONTEXT.default_country
+                )
+                  .trim()
+                  .toUpperCase(),
+                default_currency: String(
+                  siteData?.default_currency || FALLBACK_SITE_CONTEXT.default_currency
+                )
+                  .trim()
+                  .toUpperCase(),
+                allowed_countries: Array.isArray(siteData?.allowed_countries)
+                  ? siteData.allowed_countries
+                      .map((x: any) => String(x || "").trim().toUpperCase())
+                      .filter(Boolean)
+                  : FALLBACK_SITE_CONTEXT.allowed_countries,
+              }
+            : FALLBACK_SITE_CONTEXT;
+
+        if (!dead) {
+          setSiteContext(nextSiteContext);
+        }
+
         const r = await fetch("/api/addresses", {
           method: "GET",
           credentials: "include",
@@ -67,8 +127,8 @@ export default function EditAddressCard() {
         const d = (data as any)?.delivery ?? (data as any)?.addresses?.delivery ?? null;
         const b = (data as any)?.billing ?? (data as any)?.addresses?.billing ?? null;
 
-        setDelivery(shapeAddress(d));
-        setBilling(shapeAddress(b));
+        setDelivery(shapeAddress(d, nextSiteContext.default_country));
+        setBilling(shapeAddress(b, nextSiteContext.default_country));
       } catch (e: any) {
         if (!dead) setGlobalErr(e?.message || String(e));
       } finally {
@@ -85,7 +145,7 @@ export default function EditAddressCard() {
   function normalizeBeforeSave(addr: Address): Address {
     return {
       ...addr,
-      country: normalizeAddressForUI(addr).country,
+      country: normalizeAddressForUI(addr, defaultCountry).country,
     };
   }
 
@@ -97,7 +157,7 @@ export default function EditAddressCard() {
     if (kind === "delivery") setDelivery(addr);
     else setBilling(addr);
 
-    const { ok, errors, message } = validateAddress(addr, kind);
+    const { ok, errors, message } = validateAddress(addr, kind, allowedCountries);
 
     if (!ok) {
       if (kind === "delivery") {
