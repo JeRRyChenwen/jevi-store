@@ -2,20 +2,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-type SiteContext = {
-  market_code: string;
-  default_country: string;
-  default_currency: string;
-  allowed_countries: string[];
-};
-
-const FALLBACK_SITE_CONTEXT: SiteContext = {
-  market_code: "AU_NZ",
-  default_country: "AU",
-  default_currency: "AUD",
-  allowed_countries: ["AU", "NZ"],
-};
+import {
+  FALLBACK_SITE_CONTEXT,
+  normalizeSiteContext,
+  type SiteContext,
+} from "@/lib/market/site-context";
 
 /* ====== 正则与小工具 ====== */
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
@@ -156,6 +147,9 @@ export function useAddress(isLoggedIn: boolean) {
 
   const allowedCountries = siteContext.allowed_countries;
   const defaultCountry = siteContext.default_country;
+  const defaultCurrency = siteContext.default_currency;
+  const shippingCountryErrorMessage = siteContext.shipping_country_error_message;
+  const checkoutRegionLabel = siteContext.checkout_region_label;
 
   // 基础地址状态
   const [address, setAddress] = useState<Address>({});
@@ -243,22 +237,7 @@ export function useAddress(isLoggedIn: boolean) {
           return;
         }
 
-        const next: SiteContext = {
-          market_code: String(data?.market_code || FALLBACK_SITE_CONTEXT.market_code),
-          default_country: String(data?.default_country || FALLBACK_SITE_CONTEXT.default_country)
-            .trim()
-            .toUpperCase(),
-          default_currency: String(
-            data?.default_currency || FALLBACK_SITE_CONTEXT.default_currency
-          )
-            .trim()
-            .toUpperCase(),
-          allowed_countries: Array.isArray(data?.allowed_countries)
-            ? data.allowed_countries
-                .map((x: any) => String(x || "").trim().toUpperCase())
-                .filter(Boolean)
-            : FALLBACK_SITE_CONTEXT.allowed_countries,
-        };
+        const next: SiteContext = normalizeSiteContext(data);
 
         setSiteContext(next);
       } catch (e: any) {
@@ -567,6 +546,8 @@ export function useAddress(isLoggedIn: boolean) {
     siteContext,
     allowedCountries,
     defaultCountry,
-    defaultCurrency: siteContext.default_currency,
+    defaultCurrency,
+    shippingCountryErrorMessage,
+    checkoutRegionLabel,
   };
 }

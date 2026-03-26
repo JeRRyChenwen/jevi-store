@@ -1,7 +1,7 @@
 // src/app/profile/EditAddressCard.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useFormAlert } from "@/hooks/useFormAlert";
 import AddressSection from "./AddressSection";
@@ -18,20 +18,11 @@ import {
   shapeAddress,
   validateAddress,
 } from "./edit-address-card.utils";
-
-type SiteContext = {
-  market_code: string;
-  default_country: string;
-  default_currency: string;
-  allowed_countries: string[];
-};
-
-const FALLBACK_SITE_CONTEXT: SiteContext = {
-  market_code: "AU_NZ",
-  default_country: "AU",
-  default_currency: "AUD",
-  allowed_countries: ["AU", "NZ"],
-};
+import {
+  FALLBACK_SITE_CONTEXT,
+  normalizeSiteContext,
+  type SiteContext,
+} from "@/lib/market/site-context";
 
 export default function EditAddressCard() {
   const [loading, setLoading] = useState(false);
@@ -83,26 +74,7 @@ export default function EditAddressCard() {
 
         const nextSiteContext: SiteContext =
           siteResp.ok && siteData?.ok
-            ? {
-                market_code: String(
-                  siteData?.market_code || FALLBACK_SITE_CONTEXT.market_code
-                ),
-                default_country: String(
-                  siteData?.default_country || FALLBACK_SITE_CONTEXT.default_country
-                )
-                  .trim()
-                  .toUpperCase(),
-                default_currency: String(
-                  siteData?.default_currency || FALLBACK_SITE_CONTEXT.default_currency
-                )
-                  .trim()
-                  .toUpperCase(),
-                allowed_countries: Array.isArray(siteData?.allowed_countries)
-                  ? siteData.allowed_countries
-                      .map((x: any) => String(x || "").trim().toUpperCase())
-                      .filter(Boolean)
-                  : FALLBACK_SITE_CONTEXT.allowed_countries,
-              }
+            ? normalizeSiteContext(siteData)
             : FALLBACK_SITE_CONTEXT;
 
         if (!dead) {

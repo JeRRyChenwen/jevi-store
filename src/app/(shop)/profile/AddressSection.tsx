@@ -6,20 +6,12 @@ import { Alert } from "@/components/ui/alert";
 import { FieldMessage } from "@/components/ui/field-message";
 import CountrySelect from "@/components/address/CountrySelect";
 import type { Address, FieldErrors } from "./edit-address-card.types";
-
-type SiteContext = {
-  market_code: string;
-  default_country: string;
-  default_currency: string;
-  allowed_countries: string[];
-};
-
-const FALLBACK_SITE_CONTEXT: SiteContext = {
-  market_code: "AU_NZ",
-  default_country: "AU",
-  default_currency: "AUD",
-  allowed_countries: ["AU", "NZ"],
-};
+import { countryLabelOf } from "@/lib/country";
+import {
+  FALLBACK_SITE_CONTEXT,
+  normalizeSiteContext,
+  type SiteContext,
+} from "@/lib/market/site-context";
 
 import {
   baseInputClass,
@@ -67,47 +59,13 @@ export default function AddressSection({
   const allowedCountries = siteContext.allowed_countries;
   const defaultCountry = siteContext.default_country;
 
-  const countryLabelMap: Record<string, string> = {
-    AU: "Australia",
-    NZ: "New Zealand",
-    US: "United States",
-    CA: "Canada",
-    AT: "Austria",
-    BE: "Belgium",
-    BG: "Bulgaria",
-    HR: "Croatia",
-    CY: "Cyprus",
-    CZ: "Czech Republic",
-    DK: "Denmark",
-    EE: "Estonia",
-    FI: "Finland",
-    FR: "France",
-    DE: "Germany",
-    GR: "Greece",
-    HU: "Hungary",
-    IE: "Ireland",
-    IT: "Italy",
-    LV: "Latvia",
-    LT: "Lithuania",
-    LU: "Luxembourg",
-    MT: "Malta",
-    NL: "Netherlands",
-    PL: "Poland",
-    PT: "Portugal",
-    RO: "Romania",
-    SK: "Slovakia",
-    SI: "Slovenia",
-    ES: "Spain",
-    SE: "Sweden",
-  };
-
   const countryOptions = useMemo(
     () =>
       allowedCountries.map((code) => {
         const upper = String(code || "").trim().toUpperCase();
         return {
           code: upper,
-          label: countryLabelMap[upper] || upper,
+          label: countryLabelOf(upper) || upper,
         };
       }),
     [allowedCountries]
@@ -132,22 +90,7 @@ export default function AddressSection({
           return;
         }
 
-        const next: SiteContext = {
-          market_code: String(data?.market_code || FALLBACK_SITE_CONTEXT.market_code),
-          default_country: String(data?.default_country || FALLBACK_SITE_CONTEXT.default_country)
-            .trim()
-            .toUpperCase(),
-          default_currency: String(
-            data?.default_currency || FALLBACK_SITE_CONTEXT.default_currency
-          )
-            .trim()
-            .toUpperCase(),
-          allowed_countries: Array.isArray(data?.allowed_countries)
-            ? data.allowed_countries
-                .map((x: any) => String(x || "").trim().toUpperCase())
-                .filter(Boolean)
-            : FALLBACK_SITE_CONTEXT.allowed_countries,
-        };
+        const next: SiteContext = normalizeSiteContext(data);
 
         setSiteContext(next);
       } catch (e: any) {

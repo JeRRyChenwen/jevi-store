@@ -5,12 +5,16 @@ const WORKER_BASE =
   "http://127.0.0.1:8787";
 
 export async function GET(req: NextRequest) {
-  const upstreamUrl = `${WORKER_BASE}/admin/inventory/stats`;
+  const search = req.nextUrl.search || "";
+  const upstreamUrl = `${WORKER_BASE}/admin/inventory/stats${search}`;
 
   try {
     const r = await fetch(upstreamUrl, {
       method: "GET",
-      headers: { cookie: req.headers.get("cookie") || "" },
+      headers: {
+        cookie: req.headers.get("cookie") || "",
+        accept: "application/json",
+      },
       cache: "no-store",
     });
 
@@ -24,7 +28,12 @@ export async function GET(req: NextRequest) {
     });
   } catch (e: any) {
     return NextResponse.json(
-      { ok: false, error: "upstream_unreachable", detail: String(e?.message || e), upstream: upstreamUrl },
+      {
+        ok: false,
+        error: "upstream_unreachable",
+        detail: String(e?.message || e),
+        upstream: upstreamUrl,
+      },
       { status: 502 }
     );
   }

@@ -1,8 +1,9 @@
 // src/app/profile/edit-address-card.utils.ts
 
 import type { Address, FieldErrors } from "./edit-address-card.types";
+import { CURRENT_MARKET } from "@/lib/market/current";
 
-export const DEFAULT_COUNTRY_FALLBACK = "AU";
+export const DEFAULT_COUNTRY_FALLBACK = CURRENT_MARKET.primaryCountry;
 
 export const EMPTY_ADDRESS: Address = {
   first_name: "",
@@ -87,7 +88,7 @@ export function validateAddress(
 
   const country = String(addr.country || "").trim().toUpperCase();
   if (country && allowedSet.size > 0 && !allowedSet.has(country)) {
-    errors.country = "Country is not available for this market";
+    errors.country = CURRENT_MARKET.shippingCountryErrorMessage;
   }
 
   const ok = Object.keys(errors).length === 0;

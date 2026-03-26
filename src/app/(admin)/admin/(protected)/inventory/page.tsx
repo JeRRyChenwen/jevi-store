@@ -1,8 +1,10 @@
-// src/app/(admin)/admin/(protected)/inventory/page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 import { Alert } from "@/components/ui/alert";
+
+type MarketCode = "AU_NZ" | "EU" | "US_CA";
+type SyncScope = "all" | "sku_list";
 
 type StatsResp =
   | {
@@ -10,6 +12,8 @@ type StatsResp =
       rows: number;
       in_stock_rows: number;
       total_stock: number;
+      market_code?: string;
+      warehouse_code?: string;
       worker_version?: string;
     }
   | { ok: false; error: string; [k: string]: any };
@@ -19,8 +23,14 @@ type SyncResp =
       ok: true;
       fetched: number;
       upserted: number;
-      pageSize: number;
+      pageSize?: number;
       ms: number;
+      market_code?: string;
+      warehouse_code?: string;
+      scope?: SyncScope;
+      matched_skus?: number;
+      requested_skus?: number;
+      missing_skus?: string[];
       worker_version?: string;
     }
   | { ok: false; error: string; [k: string]: any };
@@ -38,13 +48,13 @@ function prettifyErrorMessage(msg: string) {
   if (lower === "forbidden") return "Forbidden. Please sign in again.";
   if (lower === "unauthorized") return "Unauthorized. Please sign in again.";
   if (lower === "internal_error") return "Server error. Please try again later.";
+  if (lower === "missing_skus") return "Please enter at least one SKU.";
+  if (lower === "bad_market_code") return "Invalid market code.";
+  if (lower === "server_error") return "Server error. Please try again later.";
 
   return s;
 }
 
-/**
- * ✅ NEW: 安全解析 JSON，避免 400/500 返回 HTML 导致 Unexpected token '<'
- */
 async function safeReadJson<T = any>(r: Response): Promise<T> {
   const text = await r.text();
   if (!text) return {} as any;
@@ -57,6 +67,21 @@ async function safeReadJson<T = any>(r: Response): Promise<T> {
   }
 }
 
+function normalizeSkuInput(raw: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+
+  for (const part of raw.split(/[\n,\s]+/g)) {
+    const sku = String(part || "").trim();
+    if (!sku) continue;
+    if (seen.has(sku)) continue;
+    seen.add(sku);
+    out.push(sku);
+  }
+
+  return out;
+}
+
 export default function InventoryPage() {
   const [stats, setStats] = useState<StatsResp | null>(null);
   const [syncResult, setSyncResult] = useState<SyncResp | null>(null);
@@ -67,15 +92,22 @@ export default function InventoryPage() {
   const [error, setError] = useState("");
   const [showConfirm, setShowConfirm] = useState(false);
 
+  const [marketCode, setMarketCode] = useState<MarketCode>("AU_NZ");
+  const [scope, setScope] = useState<SyncScope>("all");
+  const [skuText, setSkuText] = useState("");
+
   const pageSize = 100;
 
+  const parsedSkus = useMemo(() => normalizeSkuInput(skuText), [skuText]);
+
   // ================= stats =================
-  const fetchStats = async () => {
+  const fetchStats = async (nextMarketCode: MarketCode = marketCode) => {
     setLoading(true);
     setError("");
 
     try {
-      const r = await fetch("/api/admin/inventory/stats", {
+      const qs = new URLSearchParams({ marketCode: nextMarketCode }).toString();
+      const r = await fetch(`/api/admin/inventory/stats?${qs}`, {
         method: "GET",
         cache: "no-store",
         credentials: "include",
@@ -110,10 +142,28 @@ export default function InventoryPage() {
     setSyncResult(null);
 
     try {
+      if (scope === "sku_list" && parsedSkus.length === 0) {
+        throw new Error("missing_skus");
+      }
+
+      const payload =
+        scope === "sku_list"
+          ? {
+              marketCode,
+              scope,
+              skus: parsedSkus,
+              pageSize,
+            }
+          : {
+              marketCode,
+              scope,
+              pageSize,
+            };
+
       const r = await fetch("/api/admin/inventory/sync", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ pageSize }),
+        body: JSON.stringify(payload),
         cache: "no-store",
         credentials: "include",
       });
@@ -132,7 +182,7 @@ export default function InventoryPage() {
         throw new Error(err);
       }
 
-      await fetchStats();
+      await fetchStats(marketCode);
     } catch (e: any) {
       setError(String(e?.message || e || "Sync error"));
     } finally {
@@ -141,31 +191,42 @@ export default function InventoryPage() {
   };
 
   useEffect(() => {
-    fetchStats();
+    fetchStats(marketCode);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [marketCode]);
 
   const rows = (stats as any)?.rows ?? 0;
   const inStockRows = (stats as any)?.in_stock_rows ?? 0;
   const totalStock = (stats as any)?.total_stock ?? 0;
+  const currentMarketCode =
+    (stats as any)?.market_code || (syncResult as any)?.market_code || marketCode;
+  const currentWarehouseCode =
+    (stats as any)?.warehouse_code || (syncResult as any)?.warehouse_code || "Unknown";
 
   const prettyError = useMemo(() => prettifyErrorMessage(error), [error]);
 
   return (
     <div className="space-y-4">
-      {/* Header (对齐 Returns / Orders 的 header 布局) */}
       <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
         <div>
           <h2 className="text-xl font-semibold">Inventory</h2>
           <p className="mt-1 text-sm text-slate-600">
-            Sync all product variants stock from Strapi → D1 inventory.
+            Sync Strapi product variants into D1 inventory for a selected market.
           </p>
+
+          <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-600">
+            <span className="rounded-full border bg-slate-50 px-2 py-1">
+              Current market: {currentMarketCode}
+            </span>
+            <span className="rounded-full border bg-slate-50 px-2 py-1">
+              Current warehouse: {currentWarehouseCode}
+            </span>
+          </div>
         </div>
 
-        {/* Actions */}
         <div className="flex items-center gap-2">
           <button
-            onClick={fetchStats}
+            onClick={() => fetchStats(marketCode)}
             disabled={loading || syncing}
             className="rounded-md border bg-white px-3 py-2 text-sm outline-none hover:bg-slate-50 focus:ring-2 focus:ring-slate-200 disabled:opacity-60"
           >
@@ -186,20 +247,80 @@ export default function InventoryPage() {
         </div>
       </div>
 
-      {/* Error */}
       {prettyError ? (
         <Alert variant="error" className="border p-3 text-sm">
           {prettyError}
         </Alert>
       ) : null}
 
-      {/* Confirm */}
+      <div className="rounded-lg border bg-white p-4 space-y-4">
+        <div className="grid gap-4 md:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              Target market
+            </label>
+            <select
+              value={marketCode}
+              onChange={(e) => setMarketCode(e.target.value as MarketCode)}
+              disabled={loading || syncing}
+              className="w-full rounded-md border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:opacity-60"
+            >
+              <option value="AU_NZ">AU_NZ</option>
+              <option value="EU">EU</option>
+              <option value="US_CA">US_CA</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              Sync scope
+            </label>
+            <select
+              value={scope}
+              onChange={(e) => setScope(e.target.value as SyncScope)}
+              disabled={loading || syncing}
+              className="w-full rounded-md border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:opacity-60"
+            >
+              <option value="all">All variants in Strapi</option>
+              <option value="sku_list">Selected SKU list</option>
+            </select>
+          </div>
+        </div>
+
+        {scope === "sku_list" ? (
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              SKU list
+            </label>
+            <textarea
+              value={skuText}
+              onChange={(e) => setSkuText(e.target.value)}
+              rows={6}
+              placeholder={"SKU-001\nSKU-002\nSKU-003"}
+              disabled={syncing}
+              className="w-full rounded-md border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:opacity-60"
+            />
+            <div className="mt-2 text-xs text-slate-500">
+              Separate SKUs by comma, space, or new line. Parsed SKUs: {parsedSkus.length}
+            </div>
+          </div>
+        ) : null}
+      </div>
+
       {showConfirm ? (
         <Alert variant="warning" className="border p-3 text-sm">
           <div className="font-medium">Confirm inventory sync</div>
           <div className="mt-1 text-slate-700">
-            This will pull ALL variants from Strapi and upsert stock into D1 inventory by SKU.
+            {scope === "all"
+              ? `This will pull product variants from Strapi and upsert inventory records for market ${marketCode}.`
+              : `This will upsert ${parsedSkus.length} requested SKU(s) into market ${marketCode}.`}
           </div>
+
+          {scope === "sku_list" ? (
+            <div className="mt-2 text-xs text-slate-600">
+              Requested SKUs: {parsedSkus.join(", ") || "None"}
+            </div>
+          ) : null}
 
           <div className="mt-3 flex gap-2">
             <button
@@ -224,29 +345,39 @@ export default function InventoryPage() {
         </Alert>
       ) : null}
 
-      {/* Stats cards (对齐 Dashboard 样式) */}
       <div className="grid gap-4 md:grid-cols-3">
         <div className="rounded-lg border bg-white p-4">
-          <div className="text-xs text-slate-500">Total SKUs</div>
+          <div className="text-xs text-slate-500">Active SKUs in Selected Market</div>
           <div className="mt-2 text-2xl font-bold">{rows}</div>
         </div>
 
         <div className="rounded-lg border bg-white p-4">
-          <div className="text-xs text-slate-500">In Stock SKUs</div>
+          <div className="text-xs text-slate-500">In-Stock SKUs in Selected Market</div>
           <div className="mt-2 text-2xl font-bold">{inStockRows}</div>
         </div>
 
         <div className="rounded-lg border bg-white p-4">
-          <div className="text-xs text-slate-500">Total Stock</div>
+          <div className="text-xs text-slate-500">Total Available Units in Selected Market</div>
           <div className="mt-2 text-2xl font-bold">{totalStock}</div>
         </div>
       </div>
 
-      {/* Success */}
       {syncResult && (syncResult as any).ok ? (
         <Alert variant="success" className="border p-3 text-sm">
-          Sync success — fetched {(syncResult as any).fetched}, upserted{" "}
-          {(syncResult as any).upserted}, time {(syncResult as any).ms} ms.
+          <div>
+            Sync success — market {(syncResult as any).market_code || currentMarketCode} /
+            warehouse {(syncResult as any).warehouse_code || currentWarehouseCode}, fetched{" "}
+            {(syncResult as any).fetched}, matched{" "}
+            {(syncResult as any).matched_skus ?? "-"}, upserted{" "}
+            {(syncResult as any).upserted}, time {(syncResult as any).ms} ms.
+          </div>
+
+          {Array.isArray((syncResult as any).missing_skus) &&
+          (syncResult as any).missing_skus.length > 0 ? (
+            <div className="mt-2 text-xs text-amber-700">
+              Missing SKUs: {(syncResult as any).missing_skus.join(", ")}
+            </div>
+          ) : null}
         </Alert>
       ) : null}
     </div>

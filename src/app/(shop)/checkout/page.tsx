@@ -15,6 +15,7 @@ import type {
   StepKey,
 } from "./types";
 import type { Currency } from "@/lib/pricing";
+import { countryLabelOf } from "@/lib/country";
 import {
   CONFIRM_PATH,
   DELIVERY_FLAT,
@@ -106,47 +107,15 @@ export default function CheckoutPage() {
     allowedCountries,
     defaultCountry,
     defaultCurrency,
+    shippingCountryErrorMessage,
+    checkoutRegionLabel,
   } = useAddress(isLoggedIn);
-
-  const countryLabelMap: Record<string, string> = {
-    AU: "Australia",
-    NZ: "New Zealand",
-    US: "United States",
-    CA: "Canada",
-    AT: "Austria",
-    BE: "Belgium",
-    BG: "Bulgaria",
-    HR: "Croatia",
-    CY: "Cyprus",
-    CZ: "Czech Republic",
-    DK: "Denmark",
-    EE: "Estonia",
-    FI: "Finland",
-    FR: "France",
-    DE: "Germany",
-    GR: "Greece",
-    HU: "Hungary",
-    IE: "Ireland",
-    IT: "Italy",
-    LV: "Latvia",
-    LT: "Lithuania",
-    LU: "Luxembourg",
-    MT: "Malta",
-    NL: "Netherlands",
-    PL: "Poland",
-    PT: "Portugal",
-    RO: "Romania",
-    SK: "Slovakia",
-    SI: "Slovenia",
-    ES: "Spain",
-    SE: "Sweden",
-  };
 
   const countryOptions = allowedCountries.map((code) => {
     const upper = String(code || "").trim().toUpperCase();
     return {
       code: upper,
-      label: countryLabelMap[upper] || upper,
+      label: countryLabelOf(upper) || upper,
     };
   });
 
@@ -334,6 +303,8 @@ export default function CheckoutPage() {
       address,
       billingAddress,
       sameAsDelivery,
+      allowedCountries,
+      shippingCountryErrorMessage,
       setContinueErrMsg,
       setAddressErrs,
       setBillingErrs,

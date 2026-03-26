@@ -10,6 +10,8 @@ type Params = {
   address: any;
   billingAddress: any;
   sameAsDelivery: boolean;
+  allowedCountries: string[];
+  shippingCountryErrorMessage: string;
   setContinueErrMsg: (msg: string | null) => void;
   setAddressErrs: (errs: any) => void;
   setBillingErrs: (errs: any) => void;
@@ -27,6 +29,8 @@ export async function runCheckoutContinue({
   address,
   billingAddress,
   sameAsDelivery,
+  allowedCountries,
+  shippingCountryErrorMessage,
   setContinueErrMsg,
   setAddressErrs,
   setBillingErrs,
@@ -49,10 +53,10 @@ export async function runCheckoutContinue({
   if (step === "address") {
     const ignoreEmail = isLoggedIn || !!(address.email && address.email.trim());
 
-    const deliveryRes = validateAddress(address, "", ignoreEmail);
+    const deliveryRes = validateAddress(address, "", ignoreEmail, allowedCountries);
     const billingRes = sameAsDelivery
       ? { valid: true, errs: emptyErr }
-      : validateAddress(billingAddress, "", true);
+      : validateAddress(billingAddress, "", true, allowedCountries);
 
     setAddressErrs(deliveryRes.errs);
     setBillingErrs(billingRes.errs);
@@ -65,7 +69,7 @@ export async function runCheckoutContinue({
 
       setContinueErrMsg(
         hasCountryError
-          ? "We currently only ship to Australia and New Zealand. Please update your delivery address to continue."
+          ? shippingCountryErrorMessage
           : "Please complete all required delivery address fields before saving."
       );
 
