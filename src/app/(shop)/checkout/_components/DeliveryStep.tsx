@@ -272,7 +272,7 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
                 />
 
                 <div className="flex-1">
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
                     <div>
                       <div className="flex items-center gap-2">
                         <div className="font-medium">{METHOD_META[m].label}</div>
@@ -290,11 +290,6 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
                           </span>
                         ) : null}
                       </div>
-                    </div>
-
-                    {/* ✅ 右侧价格（loading 时也留空，不要骨架） */}
-                    <div className="text-sm font-semibold text-neutral-900">
-                      {feeText && !quoteLoading ? feeText : ""}
                     </div>
                   </div>
 
