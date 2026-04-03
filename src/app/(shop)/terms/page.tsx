@@ -2,261 +2,281 @@
 import type { Metadata } from "next";
 import LegalShell from "@/components/legal/LegalShell";
 import { BRAND } from "@/lib/brand";
+import { CURRENT_MARKET } from "@/lib/market/current";
+import { getPolicyContext } from "@/lib/legal/policy-context";
+import { POLICY_LINKS } from "@/lib/legal/policy-links";
+
+const POLICY = getPolicyContext();
 
 export const metadata: Metadata = {
   title: `Terms & Conditions | ${BRAND.displayName}`,
-  description: `Read the terms that apply to your use of ${BRAND.displayName}, including orders, payments, shipping, and your consumer rights in Australia and New Zealand.`,
+  description: `Read the website, ordering, payment, shipping, and returns terms for ${BRAND.displayName} in ${CURRENT_MARKET.legalRegionLabel}.`,
 };
 
 export default function TermsPage() {
+  const {
+    isAuNz,
+    legalRegionLabel,
+    checkoutRegionLabel,
+    supportRegionLabel,
+    supportEmail,
+  } = POLICY;
+
   return (
     <LegalShell
       title="Terms & Conditions"
-      updatedAt="2026-03-22"
+      updatedAt="2026-03-30"
       intro={
         <>
           <p>
-            These Terms &amp; Conditions (“Terms”) apply to your use of the{" "}
-            <strong>{BRAND.displayName}</strong> website (the “Website”) and to purchases made
-            through the Website.
+            These Terms &amp; Conditions govern your use of the{" "}
+            <strong>{BRAND.displayName}</strong> website and any orders placed
+            through this storefront.
           </p>
           <p>
-            By accessing the Website or placing an order with us, you agree to these Terms. If you
-            do not agree, please do not use the Website.
+            We currently offer sales and shipping only within{" "}
+            <strong>{checkoutRegionLabel}</strong>.
           </p>
           <p>
-            We currently sell and ship only to customers in <strong>Australia</strong> and{" "}
-            <strong>New Zealand</strong>. Additional terms may apply to certain promotions,
-            products, or services where stated.
+            By accessing this website or placing an order, you agree to these
+            Terms &amp; Conditions together with our{" "}
+            <a href={POLICY_LINKS.privacy} className="font-semibold underline">
+              Privacy Policy
+            </a>
+            ,{" "}
+            <a
+              href={POLICY_LINKS.cookies}
+              className="font-semibold underline"
+            >
+              Cookie Policy
+            </a>
+            , and{" "}
+            <a
+              href={POLICY_LINKS.returnsPolicy}
+              className="font-semibold underline"
+            >
+              Returns Policy
+            </a>
+            .
           </p>
         </>
       }
     >
       <section>
-        <h2 className="text-base font-semibold text-foreground">1. About these Terms</h2>
+        <h2 className="text-base font-semibold text-foreground">
+          1. Eligibility and use of the site
+        </h2>
         <p>
-          These Terms govern your use of the Website, any account you create with us, and any order
-          you place through the Website.
+          You must use this website only for lawful purposes and in a manner
+          that does not infringe the rights of others, damage the site, or
+          interfere with its normal operation.
         </p>
         <p>
-          We may update these Terms from time to time to reflect changes to our Website, business
-          practices, legal obligations, or services. If we make material changes, we will publish
-          the updated version on this page. Your continued use of the Website after updated Terms
-          are published indicates your acceptance of the revised Terms.
-        </p>
-      </section>
-
-      <section>
-        <h2 className="text-base font-semibold text-foreground">2. Eligibility and accounts</h2>
-        <p>
-          You may browse the Website without creating an account. To access certain features, you
-          may need to register an account and provide accurate, current, and complete information.
-        </p>
-        <p>
-          You are responsible for maintaining the confidentiality of your account details and for
-          activities that occur under your account. Please contact us promptly if you believe your
-          account has been used without your permission.
+          You must not misuse the website, attempt unauthorised access, upload
+          malicious material, or use automated means in a way that disrupts our
+          systems or services.
         </p>
       </section>
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          3. Products, pricing, and availability
+          2. Product information and availability
         </h2>
         <p>
-          We aim to ensure that product descriptions, images, sizing information, and prices are as
-          accurate as reasonably possible. However, we do not guarantee that all Website content is
-          always complete, current, or error-free.
+          We aim to present products, descriptions, images, sizes, pricing, and
+          availability as accurately as reasonably possible. However, colours,
+          materials, sizing, and display appearance may vary depending on the
+          device or screen used.
         </p>
         <p>
-          Product images are for general illustration only. Actual colours and appearance may vary
-          depending on your screen, device settings, and lighting conditions.
-        </p>
-        <p>
-          All products are subject to availability. We may update, withdraw, or discontinue
-          products at any time.
-        </p>
-        <p>
-          Prices shown on the Website are displayed in the applicable currency and include GST where
-          required by law, unless stated otherwise. We reserve the right to correct pricing,
-          description, publishing, or technical errors at any time.
-        </p>
-      </section>
-
-      <section>
-        <h2 className="text-base font-semibold text-foreground">4. Orders and payment</h2>
-        <p>
-          When you place an order, you are making an offer to purchase the selected products subject
-          to these Terms. Submission of an order does not guarantee acceptance of that order.
-        </p>
-        <p>
-          We may decline or cancel an order where reasonably necessary, including where a product is
-          unavailable, where there is an obvious pricing or listing error, where payment cannot be
-          authorised, where delivery is requested outside Australia or New Zealand, or where we
-          reasonably suspect fraud, misuse, or unlawful activity.
-        </p>
-        <p>
-          Payments are processed securely through third-party payment providers. By completing a
-          purchase, you authorise the relevant payment provider to process your payment using your
-          selected payment method.
-        </p>
-        <p>
-          If we cancel an order after payment has been processed, we will arrange a refund of the
-          amount paid through the original payment method, unless otherwise required by law.
+          Product availability, stock levels, product assortment, pricing, and
+          shipping options may change at any time without prior notice.
         </p>
       </section>
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          5. Shipping in Australia and New Zealand
+          3. Orders and acceptance
         </h2>
-        <p>We currently ship to addresses in Australia and New Zealand only.</p>
         <p>
-          Delivery timeframes provided on the Website are estimates only and may vary depending on
-          location, carrier delays, customs processing, peak periods, or other factors outside our
-          reasonable control.
+          Placing an order does not necessarily mean the order has been finally
+          accepted. We may need to review payment status, stock availability,
+          shipping eligibility, pricing issues, fraud or risk checks, or other
+          operational matters before the order is confirmed.
         </p>
         <p>
-          Risk in products passes to you on delivery, to the extent permitted by applicable law.
-          Ownership in products passes once full payment has been received and the order has been
-          dispatched, unless otherwise required by law.
-        </p>
-      </section>
-
-      <section>
-        <h2 className="text-base font-semibold text-foreground">6. Promotions and discount codes</h2>
-        <p>
-          From time to time, we may offer discount codes, promotional campaigns, or limited offers.
-          Unless stated otherwise in the relevant promotion:
-        </p>
-        <ul className="list-disc pl-5 space-y-1">
-          <li>discount codes are valid for one-time use only</li>
-          <li>codes may be subject to expiry dates and minimum spend requirements</li>
-          <li>codes cannot be combined with other offers unless expressly stated</li>
-          <li>codes cannot be applied retrospectively after an order has been placed</li>
-          <li>some exclusions may apply, including sale items, shipping fees, or selected products</li>
-        </ul>
-        <p>
-          We may cancel or refuse promotional benefits where we reasonably believe a promotion has
-          been used improperly, fraudulently, abusively, or contrary to its intended terms.
+          If we are unable to accept an order, we may cancel it and provide an
+          appropriate refund where payment has already been captured.
         </p>
       </section>
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          7. Returns, refunds, and consumer rights
+          4. Shipping regions and address restrictions
         </h2>
         <p>
-          Our returns process is described in our{" "}
-          <a href="/returns-policy" className="font-semibold underline">
+          This storefront currently accepts delivery addresses only within{" "}
+          <strong>{checkoutRegionLabel}</strong>.
+        </p>
+        <p>
+          We may reject, cancel, or refuse to fulfil orders that include
+          ineligible shipping destinations, incomplete address information,
+          operational fulfilment issues, or other circumstances that prevent us
+          from completing delivery.
+        </p>
+      </section>
+
+      <section>
+        <h2 className="text-base font-semibold text-foreground">
+          5. Pricing, taxes, and currency
+        </h2>
+        <p>
+          Prices shown on the storefront are presented in the currency selected
+          for the active market configuration. Taxes, duties, and similar
+          charges may depend on the destination country, market rules, and how
+          the storefront is configured at the time of purchase.
+        </p>
+        <p>
+          Shipping fees, if applicable, are shown during checkout before you
+          complete payment.
+        </p>
+      </section>
+
+      <section>
+        <h2 className="text-base font-semibold text-foreground">
+          6. Payment methods
+        </h2>
+        <p>
+          Available payment methods may vary depending on the active market,
+          country, device, payment provider configuration, fraud controls, and
+          operational availability at the time of checkout.
+        </p>
+        <p>
+          We may suspend, remove, or limit payment methods at any time where
+          reasonably necessary for security, compliance, provider availability,
+          or operational reasons.
+        </p>
+      </section>
+
+      <section>
+        <h2 className="text-base font-semibold text-foreground">
+          7. Cancellations, returns, and refunds
+        </h2>
+        <p>
+          Pre-dispatch cancellations, faulty-item returns, refund processing,
+          and change-of-mind rules are governed by our{" "}
+          <a
+            href={POLICY_LINKS.returnsPolicy}
+            className="font-semibold underline"
+          >
             Returns Policy
           </a>
           .
         </p>
         <p>
-          Nothing in these Terms excludes, restricts, or modifies any rights or remedies you may
-          have under the Australian Consumer Law, the New Zealand Consumer Guarantees Act, or any
-          other rights that cannot be excluded by law.
+          Nothing in these Terms &amp; Conditions is intended to exclude any
+          non-excludable rights you may have under applicable consumer law in{" "}
+          <strong>{legalRegionLabel}</strong>.
+        </p>
+      </section>
+
+      {isAuNz ? (
+        <section>
+          <h2 className="text-base font-semibold text-foreground">
+            8. Australia and New Zealand consumer law context
+          </h2>
+          <p>
+            If you are purchasing from Australia or New Zealand, mandatory
+            consumer rights may apply under the laws of your jurisdiction,
+            including rights relating to faulty goods, remedies, and guarantees
+            that cannot be excluded by contract.
+          </p>
+          <p>
+            To the extent any part of these Terms &amp; Conditions conflicts
+            with non-excludable consumer rights, those rights will prevail.
+          </p>
+        </section>
+      ) : (
+        <section>
+          <h2 className="text-base font-semibold text-foreground">
+            8. Market-specific legal notes
+          </h2>
+          <p>
+            Some legal wording, taxes, payment availability, or fulfilment rules
+            may differ depending on the country within the active market.
+          </p>
+          <p>
+            Where country-level differences apply, we may provide supplementary
+            notices during checkout, in emails, or in country-specific policy
+            wording.
+          </p>
+        </section>
+      )}
+
+      <section>
+        <h2 className="text-base font-semibold text-foreground">
+          9. Intellectual property
+        </h2>
+        <p>
+          Website content, branding, product imagery, text, layout, graphics,
+          and other materials on this storefront are owned by us, licensed to
+          us, or otherwise protected by applicable intellectual property laws.
         </p>
         <p>
-          Where a product is faulty, unsafe, not of acceptable quality, or does not match its
-          description, you may be entitled to a repair, replacement, refund, or other remedy in
-          accordance with applicable law.
-        </p>
-        <p>
-          Change-of-mind returns are not guaranteed unless expressly stated in our Returns Policy.
+          You must not copy, reproduce, distribute, republish, scrape, or use
+          such content for commercial purposes without prior written permission,
+          except to the extent permitted by law.
         </p>
       </section>
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          8. Website use and intellectual property
+          10. Website availability and liability
         </h2>
         <p>
-          You may use the Website for personal, lawful, and non-commercial purposes only. You must
-          not misuse the Website, interfere with its operation, attempt unauthorised access, or use
-          the Website in a way that infringes the rights of others.
+          We aim to keep the website available and functioning properly, but we
+          do not guarantee uninterrupted access, continuous availability, or the
+          absence of errors, delays, or third-party service failures.
         </p>
         <p>
-          All content on the Website, including text, graphics, logos, images, branding, layouts,
-          and software, is owned by or licensed to <strong>{BRAND.displayName}</strong> and is
-          protected by applicable intellectual property laws.
-        </p>
-        <p>
-          You must not reproduce, modify, republish, upload, distribute, or commercially exploit
-          Website content without our prior written consent, except as permitted by law.
+          To the extent permitted by law, we are not liable for indirect,
+          incidental, special, or consequential loss arising from the use of the
+          website or delays outside our reasonable control. Nothing in these
+          Terms &amp; Conditions excludes liability that cannot lawfully be
+          excluded.
         </p>
       </section>
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          9. Privacy and third-party services
+          11. Changes to the site or terms
         </h2>
         <p>
-          We handle personal information in accordance with our{" "}
-          <a href="/privacy" className="font-semibold underline">
-            Privacy Policy
-          </a>
-          .
+          We may update this website, its features, the active market
+          configuration, shipping eligibility, or these Terms &amp; Conditions
+          from time to time.
         </p>
         <p>
-          The Website may rely on third-party services such as payment processors, delivery
-          providers, logistics providers, analytics providers, hosting providers, or other service
-          providers to help us operate our business. Your use of certain third-party services may
-          also be subject to their own terms and privacy practices.
-        </p>
-        <p>
-          The Website may contain links to third-party websites for convenience. We are not
-          responsible for the content, availability, or practices of those third-party websites.
+          The version displayed on this page applies from the date shown at the
+          top of the document, unless otherwise stated.
         </p>
       </section>
 
       <section>
-        <h2 className="text-base font-semibold text-foreground">10. Liability</h2>
+        <h2 className="text-base font-semibold text-foreground">
+          12. Contact
+        </h2>
         <p>
-          To the maximum extent permitted by law, we do not guarantee that the Website will always
-          be available, uninterrupted, secure, or free from errors, viruses, or other harmful
-          components.
+          Support for this storefront is currently managed for{" "}
+          <strong>{supportRegionLabel}</strong>.
         </p>
-        <p>
-          To the maximum extent permitted by law, we are not liable for indirect, incidental,
-          special, or consequential loss, or for loss of profit, revenue, opportunity, goodwill, or
-          data arising from your use of, or inability to use, the Website.
-        </p>
-        <p>
-          Nothing in these Terms excludes, restricts, or modifies any non-excludable rights,
-          guarantees, or remedies available to you under applicable consumer law.
-        </p>
-      </section>
-
-      <section>
-        <h2 className="text-base font-semibold text-foreground">11. Changes to the Website</h2>
-        <p>
-          We may update, suspend, withdraw, or change any part of the Website, including product
-          listings, pricing, features, or availability, at any time.
-        </p>
-      </section>
-
-      <section>
-        <h2 className="text-base font-semibold text-foreground">12. Governing law</h2>
-        <p>
-          These Terms are governed by the laws of Victoria, Australia, except to the extent that
-          mandatory consumer protection laws in Australia or New Zealand apply to your purchase or
-          use of the Website.
-        </p>
-        <p>
-          Subject to any rights you may have under applicable law, you submit to the non-exclusive
-          jurisdiction of the courts of Victoria, Australia.
-        </p>
-      </section>
-
-      <section>
-        <h2 className="text-base font-semibold text-foreground">13. Contact us</h2>
-        <p>If you have any questions about these Terms &amp; Conditions, please contact us at:</p>
         <p className="mt-2">
           <strong>Email:</strong>{" "}
-          <a href={`mailto:${BRAND.supportEmail}`} className="underline">
-            {BRAND.supportEmail}
+          <a
+            href={`mailto:${supportEmail}`}
+            className="font-semibold underline"
+          >
+            {supportEmail}
           </a>
         </p>
       </section>

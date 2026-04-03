@@ -4,9 +4,11 @@
 import { useEffect, useState } from "react";
 import {
   FALLBACK_SITE_CONTEXT,
-  normalizeSiteContext,
   type SiteContext,
 } from "@/lib/market/site-context";
+
+/* ====== /api 工具 ====== */
+const apiURL = (path: string) => `/api${path}`;
 
 /* ====== 正则与小工具 ====== */
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
@@ -20,8 +22,7 @@ const LS_ADDRESS_KEY = "sp.checkout.address";
 const LS_BILLING_ADDR = "sp.checkout.billingAddress";
 const LS_SAME_AS_DELIVERY = "sp.checkout.sameAsDelivery";
 
-/* ====== /api 工具 ====== */
-const apiURL = (path: string) => `/api${path}`;
+
 
 /* ====== 类型 ====== */
 export type Address = {
@@ -217,39 +218,7 @@ export function useAddress(isLoggedIn: boolean) {
     });
   }
 
-  /* ---------- 读取当前站点 market context ---------- */
-  useEffect(() => {
-    let dead = false;
-
-    (async () => {
-      try {
-        const r = await fetch(apiURL("/site/context"), {
-          method: "GET",
-          credentials: "include",
-          headers: { accept: "application/json" },
-          cache: "no-store",
-        });
-
-        const data = await r.json().catch(() => ({}));
-        if (dead) return;
-        if (!r.ok || !data?.ok) {
-          console.error("[useAddress] GET /api/site/context failed:", r.status, data);
-          return;
-        }
-
-        const next: SiteContext = normalizeSiteContext(data);
-
-        setSiteContext(next);
-      } catch (e: any) {
-        if (dead) return;
-        console.error("[useAddress] GET /api/site/context exception:", e?.message || e);
-      }
-    })();
-
-    return () => {
-      dead = true;
-    };
-  }, []);
+  /* ---------- 当前 checkout 直接使用前端当前 market 派生的 fallback site context ---------- */
 
   /* ---------- 初始：从 localStorage 回填 ---------- */
   useEffect(() => {

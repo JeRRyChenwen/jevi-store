@@ -20,7 +20,6 @@ import {
 } from "./edit-address-card.utils";
 import {
   FALLBACK_SITE_CONTEXT,
-  normalizeSiteContext,
   type SiteContext,
 } from "@/lib/market/site-context";
 
@@ -63,19 +62,7 @@ export default function EditAddressCard() {
         deliveryAlert.clear();
         billingAlert.clear();
 
-        const siteResp = await fetch("/api/site/context", {
-          method: "GET",
-          credentials: "include",
-          headers: { accept: "application/json" },
-          cache: "no-store",
-        });
-
-        const siteData = await siteResp.json().catch(() => ({} as any));
-
-        const nextSiteContext: SiteContext =
-          siteResp.ok && siteData?.ok
-            ? normalizeSiteContext(siteData)
-            : FALLBACK_SITE_CONTEXT;
+        const nextSiteContext: SiteContext = FALLBACK_SITE_CONTEXT;
 
         if (!dead) {
           setSiteContext(nextSiteContext);

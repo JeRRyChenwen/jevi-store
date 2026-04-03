@@ -1417,4 +1417,12 @@ supplier → 3PL → customer → return → 责任回溯
 
 的完整链路。
 
-delivery 页面 A 10 需要修改
+我发现一个问题，就是我只要在一个market里注册过一个账号，那么我就可以用这个账号登录其他不同的market，但是我的order 历史列表还是会显示这个账号在所有market曾经下过的订单，这样好吗，
+
+对了，我目前是有限制不同的market只能负责对应区域的delivery 服务，也就是说，假设我的market是美国和加拿大的话，那么我就会限制这个网站的delivery 服务的目的地只能是美国和加拿大，不允许送到其他国家，我目前是这么做的，因为这样更方便管理和处理税务
+
+不同一个market用一个网站，不同货币的问题，ca us 同一个usd
+
+order列表添加：
+Region: Australia / New Zealand
+Region: United States / Canada

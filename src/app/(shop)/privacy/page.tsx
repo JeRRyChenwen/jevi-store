@@ -2,62 +2,64 @@
 import type { Metadata } from "next";
 import LegalShell from "@/components/legal/LegalShell";
 import { BRAND } from "@/lib/brand";
+import { CURRENT_MARKET } from "@/lib/market/current";
+import { getPolicyContext } from "@/lib/legal/policy-context";
+import { POLICY_LINKS } from "@/lib/legal/policy-links";
+
+const POLICY = getPolicyContext();
 
 export const metadata: Metadata = {
   title: `Privacy Policy | ${BRAND.displayName}`,
-  description: `Learn how ${BRAND.displayName} collects, uses, stores, and shares personal information when you use our Website and services.`,
+  description: `Learn how ${BRAND.displayName} collects, uses, stores, and protects personal information for customers in ${CURRENT_MARKET.legalRegionLabel}.`,
 };
 
 export default function PrivacyPage() {
+  const {
+    isAuNz,
+    legalRegionLabel,
+    checkoutRegionLabel,
+    supportRegionLabel,
+    supportEmail,
+  } = POLICY;
+
   return (
     <LegalShell
       title="Privacy Policy"
-      updatedAt="2026-03-22"
+      updatedAt="2026-03-30"
       intro={
         <>
           <p>
-            This Privacy Policy explains how <strong>{BRAND.displayName}</strong> (“we”, “us”, or
-            “our”) collects, uses, stores, and shares personal information when you use our Website
-            and related services.
+            This Privacy Policy explains how <strong>{BRAND.displayName}</strong>{" "}
+            collects, uses, stores, and discloses personal information when you
+            visit our website, place an order, contact us, submit a return
+            request, or otherwise interact with our services.
           </p>
           <p>
-            We currently sell and ship only to customers in <strong>Australia</strong> and{" "}
-            <strong>New Zealand</strong>. We are committed to handling personal information in an
-            open and transparent way and in accordance with applicable privacy requirements that
-            apply to our business.
+            We currently provide storefront services and shipping only within{" "}
+            <strong>{checkoutRegionLabel}</strong>.
           </p>
           <p>
-            This Privacy Policy should be read together with our{" "}
-            <a href="/terms" className="font-semibold underline">
-              Terms &amp; Conditions
-            </a>{" "}
-            and{" "}
-            <a href="/cookies" className="font-semibold underline">
-              Cookie Policy
-            </a>
-            .
+            This Privacy Policy is intended to operate in a way that is
+            consistent with applicable privacy and consumer protection
+            requirements in <strong>{legalRegionLabel}</strong>.
           </p>
         </>
       }
     >
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          1. What information we collect
+          1. What information we may collect
         </h2>
-        <p>Depending on how you interact with us, we may collect personal information such as:</p>
+        <p>We may collect information such as:</p>
         <ul className="list-disc pl-5 space-y-1">
-          <li>your name, email address, phone number, and delivery or billing address</li>
-          <li>account details, account preferences, and login-related information</li>
-          <li>order, transaction, delivery, return, refund, and customer service information</li>
-          <li>payment-related information handled through our payment providers</li>
-          <li>communications you send to us, including support enquiries and complaints</li>
-          <li>device, browser, IP, and usage information collected when you use the Website</li>
-          <li>
-            cookie and similar technology data, as described in our{" "}
-            <a href="/cookies" className="font-semibold underline">
-              Cookie Policy
-            </a>
-          </li>
+          <li>your name</li>
+          <li>email address</li>
+          <li>phone number</li>
+          <li>billing and shipping address</li>
+          <li>order details and payment-related information</li>
+          <li>communications with us</li>
+          <li>return, refund, and support request details</li>
+          <li>technical and device-related information from website usage</li>
         </ul>
       </section>
 
@@ -65,62 +67,78 @@ export default function PrivacyPage() {
         <h2 className="text-base font-semibold text-foreground">
           2. How we collect information
         </h2>
-        <p>We may collect personal information in several ways, including when you:</p>
+        <p>We may collect personal information when you:</p>
         <ul className="list-disc pl-5 space-y-1">
-          <li>create an account or sign in to the Website</li>
-          <li>place an order, save an address, or begin the checkout process</li>
-          <li>subscribe to emails or marketing communications</li>
-          <li>contact us with a question, request, complaint, or return enquiry</li>
-          <li>browse the Website and interact with our pages, features, or tools</li>
+          <li>browse or use our website</li>
+          <li>create an account or sign in</li>
+          <li>place an order</li>
+          <li>request a cancellation, return, refund, or exchange</li>
+          <li>contact customer support</li>
+          <li>subscribe to updates or marketing, where offered</li>
+          <li>interact with cookies or similar technologies on our site</li>
         </ul>
       </section>
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          3. How we use information
+          3. How we use personal information
         </h2>
-        <p>We may use personal information for purposes such as:</p>
+        <p>We may use personal information to:</p>
         <ul className="list-disc pl-5 space-y-1">
-          <li>providing our Website and customer services</li>
-          <li>processing orders, payments, delivery, returns, refunds, and cancellations</li>
-          <li>communicating with you about your orders, account, requests, or enquiries</li>
-          <li>sending service-related notices and customer support responses</li>
-          <li>sending marketing communications where permitted or where you have subscribed</li>
-          <li>improving Website functionality, performance, security, and user experience</li>
-          <li>detecting fraud, misuse, suspicious activity, or other unlawful conduct</li>
-          <li>meeting legal, regulatory, tax, accounting, and record-keeping obligations</li>
+          <li>process and fulfil orders</li>
+          <li>arrange shipping and delivery</li>
+          <li>provide customer service and support</li>
+          <li>handle returns, refunds, and related enquiries</li>
+          <li>send transactional emails such as order confirmations and shipment updates</li>
+          <li>maintain site security and prevent fraud or misuse</li>
+          <li>improve our website, products, and services</li>
+          <li>comply with legal and regulatory obligations</li>
         </ul>
       </section>
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          4. Marketing communications
+          4. Payment and transaction information
         </h2>
         <p>
-          If you subscribe to our marketing emails, we may send you updates, promotions, and other
-          information about our products and services.
+          Payments may be processed through third-party payment providers. We do
+          not necessarily store full card details on our own systems.
         </p>
         <p>
-          You can unsubscribe at any time by using the unsubscribe link in the email or by
-          contacting us at{" "}
-          <a href={`mailto:${BRAND.supportEmail}`} className="font-semibold underline">
-            {BRAND.supportEmail}
-          </a>
-          .
+          We may retain order references, payment status information, and other
+          transaction metadata necessary for order processing, fraud prevention,
+          accounting, dispute handling, and customer support.
         </p>
       </section>
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          5. Cookies and similar technologies
+          5. Shipping, returns, and support data
         </h2>
         <p>
-          We use cookies and similar technologies to help operate the Website, remember preferences,
-          support account and checkout functions, improve security, and understand Website usage.
+          To fulfil orders and support after-sales service, we may share relevant
+          information with delivery providers, logistics partners, service
+          providers, and support systems used to process orders and returns.
         </p>
         <p>
-          For more information about how we use cookies and how you can manage them, please see our{" "}
-          <a href="/cookies" className="font-semibold underline">
+          Where you submit a return or refund request, we may also collect
+          supporting information such as item photos, issue descriptions, and
+          correspondence relevant to assessing the request.
+        </p>
+      </section>
+
+      <section>
+        <h2 className="text-base font-semibold text-foreground">
+          6. Cookies and similar technologies
+        </h2>
+        <p>
+          We may use cookies or similar technologies to support essential site
+          functions, remember preferences, improve performance, analyse traffic,
+          and help protect the website from abuse.
+        </p>
+        <p>
+          For more detail, please see our{" "}
+          <a href={POLICY_LINKS.cookies} className="font-semibold underline">
             Cookie Policy
           </a>
           .
@@ -129,125 +147,131 @@ export default function PrivacyPage() {
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          6. When we share information
+          7. When we may disclose information
         </h2>
         <p>
-          We may share personal information with trusted third parties where reasonably necessary to
-          operate our business, including:
-        </p>
-        <ul className="list-disc pl-5 space-y-1">
-          <li>payment processors and payment service providers</li>
-          <li>delivery, shipping, fulfilment, and logistics providers</li>
-          <li>email, hosting, cloud, infrastructure, and technology service providers</li>
-          <li>analytics, fraud prevention, security, or customer support service providers</li>
-          <li>professional advisers, insurers, auditors, or regulators where required</li>
-        </ul>
-        <p>
-          We may also disclose personal information where required by law, to respond to lawful
-          requests, or to protect our rights, customers, Website, or business operations.
+          We may disclose personal information to service providers, technology
+          vendors, payment processors, shipping partners, professional advisers,
+          or authorities where reasonably necessary to operate the storefront,
+          fulfil orders, manage disputes, enforce our terms, or comply with law.
         </p>
         <p>
-          We do not sell personal information to third parties for their own direct marketing.
+          We do not sell personal information in the ordinary sense of selling
+          customer lists for unrelated third-party marketing.
+        </p>
+      </section>
+
+      {isAuNz ? (
+        <section>
+          <h2 className="text-base font-semibold text-foreground">
+            8. Australia and New Zealand privacy context
+          </h2>
+          <p>
+            If you are located in Australia or New Zealand, your personal
+            information may be handled in a manner intended to be consistent
+            with applicable privacy obligations in those jurisdictions, taking
+            into account the nature and scale of this storefront.
+          </p>
+          <p>
+            Depending on how our systems and providers are configured, some data
+            may be processed or stored outside your country. Where this occurs,
+            we take reasonable steps to work with providers and operational
+            arrangements that support secure handling of personal information.
+          </p>
+        </section>
+      ) : (
+        <section>
+          <h2 className="text-base font-semibold text-foreground">
+            8. Market-specific privacy notes
+          </h2>
+          <p>
+            Privacy obligations and disclosure requirements may vary depending on
+            the country within this storefront’s active market and the services
+            used to operate the site.
+          </p>
+          <p>
+            Where country-level or market-level privacy wording differs, we may
+            present additional notices at checkout, on forms, or in country-
+            specific policy updates.
+          </p>
+        </section>
+      )}
+
+      <section>
+        <h2 className="text-base font-semibold text-foreground">
+          9. Data security
+        </h2>
+        <p>
+          We take reasonable technical and organisational steps to protect
+          personal information against misuse, interference, loss, unauthorised
+          access, modification, or disclosure.
+        </p>
+        <p>
+          However, no online system or transmission method can be guaranteed to
+          be completely secure.
         </p>
       </section>
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          7. Storage, security, and overseas processing
+          10. Retention
         </h2>
         <p>
-          We take reasonable steps to protect personal information from misuse, interference, loss,
-          and unauthorised access, modification, or disclosure.
-        </p>
-        <p>
-          No method of transmission over the internet or electronic storage is completely secure, so
-          we cannot guarantee absolute security.
-        </p>
-        <p>
-          Depending on the service providers we use, personal information may be stored or processed
-          in Australia, New Zealand, or other countries where those providers or their
-          infrastructure operate. Where this occurs, we take reasonable steps to ensure your
-          information is handled appropriately.
+          We keep personal information for as long as reasonably necessary for
+          order fulfilment, record-keeping, customer service, returns handling,
+          legal compliance, dispute resolution, fraud prevention, and legitimate
+          business operations.
         </p>
       </section>
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          8. Access, correction, and privacy requests
+          11. Access, correction, and enquiries
         </h2>
         <p>
-          You may request access to personal information we hold about you and ask us to correct
-          information that is inaccurate, incomplete, or out of date, subject to any legal
-          exceptions.
+          You may contact us if you would like to request access to personal
+          information we hold about you, request corrections, or raise a privacy
+          concern.
         </p>
         <p>
-          You may also contact us if you have a privacy question, concern, complaint, or request,
-          or if you would like to opt out of marketing communications.
-        </p>
-        <p>
-          To make a privacy request, please contact us at{" "}
-          <a href={`mailto:${BRAND.supportEmail}`} className="font-semibold underline">
-            {BRAND.supportEmail}
-          </a>
-          .
-        </p>
-      </section>
-
-      <section>
-        <h2 className="text-base font-semibold text-foreground">
-          9. Data retention
-        </h2>
-        <p>
-          We retain personal information for as long as reasonably necessary for the purposes
-          described in this Privacy Policy, including to provide our services, maintain business and
-          legal records, resolve disputes, prevent fraud, and comply with applicable legal
-          obligations.
-        </p>
-        <p>
-          When personal information is no longer reasonably required, we may delete it, de-identify
-          it, or otherwise handle it in accordance with applicable requirements.
-        </p>
-      </section>
-
-      <section>
-        <h2 className="text-base font-semibold text-foreground">
-          10. Australia and New Zealand privacy matters
-        </h2>
-        <p>
-          We currently sell and ship only to customers in Australia and New Zealand, and we aim to
-          handle personal information consistently with privacy requirements that apply to our
-          business in those markets.
-        </p>
-        <p>
-          If you are located in Australia or New Zealand and you have questions or concerns about
-          how your personal information is handled, you may contact us using the details below so we
-          can review and respond to your request.
-        </p>
-      </section>
-
-      <section>
-        <h2 className="text-base font-semibold text-foreground">
-          11. Changes to this Privacy Policy
-        </h2>
-        <p>
-          We may update this Privacy Policy from time to time to reflect changes to our Website,
-          services, legal obligations, or privacy practices. The latest version will always be
-          published on this page together with its effective date.
-        </p>
-      </section>
-
-      <section>
-        <h2 className="text-base font-semibold text-foreground">12. Contact us</h2>
-        <p>
-          If you have any questions, concerns, or complaints about this Privacy Policy or how we
-          handle personal information, please contact us at:
+          Support for this storefront is currently managed for{" "}
+          <strong>{supportRegionLabel}</strong>.
         </p>
         <p className="mt-2">
           <strong>Email:</strong>{" "}
-          <a href={`mailto:${BRAND.supportEmail}`} className="font-semibold underline">
-            {BRAND.supportEmail}
+          <a
+            href={`mailto:${supportEmail}`}
+            className="font-semibold underline"
+          >
+            {supportEmail}
           </a>
         </p>
+      </section>
+
+      <section>
+        <h2 className="text-base font-semibold text-foreground">
+          12. Related policies
+        </h2>
+        <ul className="list-disc pl-5 space-y-1">
+          <li>
+            <a href={POLICY_LINKS.terms} className="font-semibold underline">
+              Terms &amp; Conditions
+            </a>
+          </li>
+          <li>
+            <a href={POLICY_LINKS.cookies} className="font-semibold underline">
+              Cookie Policy
+            </a>
+          </li>
+          <li>
+            <a
+              href={POLICY_LINKS.returnsPolicy}
+              className="font-semibold underline"
+            >
+              Returns Policy
+            </a>
+          </li>
+        </ul>
       </section>
     </LegalShell>
   );

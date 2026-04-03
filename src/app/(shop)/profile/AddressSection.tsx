@@ -1,17 +1,13 @@
 // src/app/profile/AddressSection.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { Alert } from "@/components/ui/alert";
 import { FieldMessage } from "@/components/ui/field-message";
 import CountrySelect from "@/components/address/CountrySelect";
 import type { Address, FieldErrors } from "./edit-address-card.types";
 import { countryLabelOf } from "@/lib/country";
-import {
-  FALLBACK_SITE_CONTEXT,
-  normalizeSiteContext,
-  type SiteContext,
-} from "@/lib/market/site-context";
+import { FALLBACK_SITE_CONTEXT } from "@/lib/market/site-context";
 
 import {
   baseInputClass,
@@ -54,10 +50,8 @@ export default function AddressSection({
 }: AddressSectionProps) {
   const lowerTitle = title.toLowerCase();
 
-  const [siteContext, setSiteContext] = useState<SiteContext>(FALLBACK_SITE_CONTEXT);
-
-  const allowedCountries = siteContext.allowed_countries;
-  const defaultCountry = siteContext.default_country;
+  const allowedCountries = FALLBACK_SITE_CONTEXT.allowed_countries;
+  const defaultCountry = FALLBACK_SITE_CONTEXT.default_country;
 
   const countryOptions = useMemo(
     () =>
@@ -71,38 +65,7 @@ export default function AddressSection({
     [allowedCountries]
   );
 
-  useEffect(() => {
-    let dead = false;
-
-    (async () => {
-      try {
-        const r = await fetch("/api/site/context", {
-          method: "GET",
-          credentials: "include",
-          headers: { accept: "application/json" },
-          cache: "no-store",
-        });
-
-        const data = await r.json().catch(() => ({}));
-        if (dead) return;
-        if (!r.ok || !data?.ok) {
-          console.error("[AddressSection] GET /api/site/context failed:", r.status, data);
-          return;
-        }
-
-        const next: SiteContext = normalizeSiteContext(data);
-
-        setSiteContext(next);
-      } catch (e: any) {
-        if (dead) return;
-        console.error("[AddressSection] GET /api/site/context exception:", e?.message || e);
-      }
-    })();
-
-    return () => {
-      dead = true;
-    };
-  }, []);
+  // 当前 profile 地址表单直接使用前端当前 market 派生的 fallback site context
 
   useEffect(() => {
     const allowedSet = new Set(
