@@ -1,7 +1,7 @@
 // src/app/(shop)/checkout/_components/address-step.utils.ts
 
 import type { AddressErr } from "./address-step.types";
-import { CURRENT_MARKET } from "@/lib/market/current";
+import { CURRENT_STOREFRONT } from "@/lib/market/current";
 
 export const baseInput =
   "w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-neutral-900/10";
@@ -31,9 +31,10 @@ export function fieldErrorText(key: keyof AddressErr): string {
 
   /**
    * ✅ country 字段除了“必填”之外，还承担“限制可配送国家”的校验
+   * 现在这里应该优先读 storefront，而不是 market。
    */
   if (key === "country") {
-    return CURRENT_MARKET.shippingCountryErrorMessage;
+    return CURRENT_STOREFRONT.shippingCountryErrorMessage;
   }
 
   return "This field is required.";

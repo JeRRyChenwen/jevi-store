@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import {
   FALLBACK_SITE_CONTEXT,
+  normalizeSiteContext,
   type SiteContext,
 } from "@/lib/market/site-context";
 
@@ -218,7 +219,47 @@ export function useAddress(isLoggedIn: boolean) {
     });
   }
 
-  /* ---------- 当前 checkout 直接使用前端当前 market 派生的 fallback site context ---------- */
+  /* ---------- 初始化：加载 /api/site/context，失败时回退到 storefront fallback ---------- */
+  useEffect(() => {
+    let dead = false;
+
+    (async () => {
+      try {
+        const r = await fetch(apiURL("/site/context"), {
+          method: "GET",
+          credentials: "include",
+          headers: { accept: "application/json" },
+          cache: "no-store",
+        });
+
+        const data = await r.json().catch(() => ({}));
+
+        if (dead) return;
+
+        if (!r.ok) {
+          console.error("[useAddress] GET /api/site/context failed:", r.status, data);
+          setSiteContext(FALLBACK_SITE_CONTEXT);
+          return;
+        }
+
+        /**
+         * 兼容两种返回：
+         * A) 直接就是 site context 对象
+         * B) { ok: true, context: {...} }
+         */
+        const rawContext = data?.context ?? data;
+        setSiteContext(normalizeSiteContext(rawContext));
+      } catch (e: any) {
+        if (dead) return;
+        console.error("[useAddress] GET /api/site/context exception:", e?.message || e);
+        setSiteContext(FALLBACK_SITE_CONTEXT);
+      }
+    })();
+
+    return () => {
+      dead = true;
+    };
+  }, []);
 
   /* ---------- 初始：从 localStorage 回填 ---------- */
   useEffect(() => {

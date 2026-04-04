@@ -1,7 +1,7 @@
 // src/lib/pricing.ts
 // 通用：前端/后端都可用的纯函数
 
-export type Currency = "AUD" | "USD" | "EUR" | "GBP" | "CAD";
+export type Currency = "AUD" | "NZD" | "USD" | "EUR" | "GBP" | "CAD";
 
 /**
  * 单条价格记录（最小货币单位整数，例如 12.34 -> 1234）
@@ -46,6 +46,7 @@ export type PriceRec = {
 
 const DECIMALS: Record<string, number> = {
   AUD: 2,
+  NZD: 2,
   USD: 2,
   EUR: 2,
   GBP: 2,
@@ -164,6 +165,7 @@ export function pickCurrency(
 
   const byCountryMap: Record<string, Currency> = {
     AU: "AUD",
+    NZ: "NZD",
     US: "USD",
     GB: "GBP",
     CA: "CAD",

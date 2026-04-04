@@ -1,11 +1,12 @@
 // src/lib/market/site-context.ts
 import type { CountryCode } from "@/lib/country";
 import type { Currency } from "@/lib/pricing";
-import { CURRENT_MARKET } from "./current";
-import type { MarketCode } from "./types";
+import { CURRENT_MARKET, CURRENT_STOREFRONT } from "./current";
+import type { MarketCode, StorefrontCode } from "./types";
 
 export type SiteContext = {
   market_code: MarketCode;
+  storefront_code: StorefrontCode;
   default_country: CountryCode;
   default_currency: Currency;
   allowed_countries: CountryCode[];
@@ -15,11 +16,12 @@ export type SiteContext = {
 
 export const FALLBACK_SITE_CONTEXT: SiteContext = {
   market_code: CURRENT_MARKET.code,
-  default_country: CURRENT_MARKET.primaryCountry,
-  default_currency: CURRENT_MARKET.defaultCurrency,
-  allowed_countries: [...CURRENT_MARKET.checkoutCountryCodes],
-  shipping_country_error_message: CURRENT_MARKET.shippingCountryErrorMessage,
-  checkout_region_label: CURRENT_MARKET.checkoutRegionLabel,
+  storefront_code: CURRENT_STOREFRONT.code,
+  default_country: CURRENT_STOREFRONT.primaryCountry,
+  default_currency: CURRENT_STOREFRONT.defaultCurrency,
+  allowed_countries: [...CURRENT_STOREFRONT.checkoutCountryCodes],
+  shipping_country_error_message: CURRENT_STOREFRONT.shippingCountryErrorMessage,
+  checkout_region_label: CURRENT_STOREFRONT.checkoutRegionLabel,
 };
 
 export function normalizeSiteContext(input: any): SiteContext {
@@ -27,6 +29,10 @@ export function normalizeSiteContext(input: any): SiteContext {
     market_code: String(
       input?.market_code || FALLBACK_SITE_CONTEXT.market_code
     ).trim().toUpperCase() as MarketCode,
+
+    storefront_code: String(
+      input?.storefront_code || FALLBACK_SITE_CONTEXT.storefront_code
+    ).trim().toUpperCase() as StorefrontCode,
 
     default_country: String(
       input?.default_country || FALLBACK_SITE_CONTEXT.default_country
