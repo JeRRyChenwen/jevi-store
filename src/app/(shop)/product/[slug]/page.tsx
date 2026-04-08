@@ -8,7 +8,7 @@ import AddToBagClient from "../_components/AddToBagClient";
 import { colorNameToCss } from "@/lib/colors";
 import { FieldMessage } from "@/components/ui/field-message";
 import { resolveDisplayPrice } from "@/lib/pricing";
-import { CURRENT_MARKET } from "@/lib/market/current";
+import { CURRENT_STOREFRONT } from "@/lib/market/current";
 import { isNewProduct } from "@/lib/productNew";
 import CornerRibbon from "@/components/badges/CornerRibbon";
 
@@ -170,12 +170,12 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const categoryRootSlug = category?.parentSlug ? category.parentSlug : category?.slug;
   const categoryLeafSlug = category?.parentSlug ? (category?.slug ?? null) : null;
 
-  // ---- pricing (MARKET-driven) ----
+  // ---- pricing (STOREFRONT-driven) ----
   const prices = getPrices(attrs);
 
   const displayPrice = resolveDisplayPrice(
     prices,
-    CURRENT_MARKET.defaultCurrency
+    CURRENT_STOREFRONT.defaultCurrency
   );
 
   const currency = displayPrice.currency;

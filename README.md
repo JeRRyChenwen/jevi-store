@@ -1546,3 +1546,35 @@ MAIL_SITE_URL=http://localhost:3000
 ======================================================
 
 货币，地址
+
+STRAPI_URL=https://regional-ahead-inherited-leslie.trycloudflare.com
+
+# ====================================================
+
+# ACTIVE MARKET
+
+# ?????????????????????
+
+# ???????????wrangler dev
+
+# ====================================================
+
+# ---------- AU / NZ market ----------
+
+MARKET_CODE=AU_NZ
+
+# ---------- EU market ----------
+
+# MARKET_CODE=EU
+
+# ---------- US / CA market ----------
+
+# MARKET_CODE=US_CA
+
+PAYPAL_ENV=sandbox
+PAYPAL_CLIENT_ID=AZMLDL80MqO75jccmU7POkM8o7WIlRgl4jvs9RYipLBisgTwj4e6yB5mX96aVTjTjlE4mSTjpMOP48uY
+PAYPAL_SECRET=EAKZVpF_c_uGubGsJh9cUOE2qh8V9JLsXKacXmDUVRMa07kBsbwvDvOlVl9-uNb-jhc7He0MBM4-\_omN
+
+MAIL_BRAND_NAME=JEVI
+MAIL_SUPPORT_EMAIL=support@jevi.com
+MAIL_SITE_URL=http://localhost:3000

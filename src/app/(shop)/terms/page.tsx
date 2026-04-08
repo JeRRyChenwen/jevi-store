@@ -2,7 +2,7 @@
 import type { Metadata } from "next";
 import LegalShell from "@/components/legal/LegalShell";
 import { BRAND } from "@/lib/brand";
-import { CURRENT_MARKET } from "@/lib/market/current";
+import { CURRENT_STOREFRONT } from "@/lib/market/current";
 import { getPolicyContext } from "@/lib/legal/policy-context";
 import { POLICY_LINKS } from "@/lib/legal/policy-links";
 
@@ -10,16 +10,20 @@ const POLICY = getPolicyContext();
 
 export const metadata: Metadata = {
   title: `Terms & Conditions | ${BRAND.displayName}`,
-  description: `Read the website, ordering, payment, shipping, and returns terms for ${BRAND.displayName} in ${CURRENT_MARKET.legalRegionLabel}.`,
+  description: `Read the terms that govern the use of ${BRAND.displayName} in ${CURRENT_STOREFRONT.legalRegionLabel}.`,
 };
 
 export default function TermsPage() {
   const {
-    isAuNz,
+    isAu,
+    isNz,
+    isUs,
+    isCa,
     legalRegionLabel,
     checkoutRegionLabel,
     supportRegionLabel,
     supportEmail,
+    siteUrl,
   } = POLICY;
 
   return (
@@ -29,242 +33,243 @@ export default function TermsPage() {
       intro={
         <>
           <p>
-            These Terms &amp; Conditions govern your use of the{" "}
-            <strong>{BRAND.displayName}</strong> website and any orders placed
-            through this storefront.
+            These Terms &amp; Conditions govern your access to and use of{" "}
+            <strong>{BRAND.displayName}</strong>, including browsing the site,
+            placing orders, requesting returns, and using related services.
           </p>
           <p>
-            We currently offer sales and shipping only within{" "}
+            This storefront currently offers sales and shipping only within{" "}
             <strong>{checkoutRegionLabel}</strong>.
           </p>
           <p>
-            By accessing this website or placing an order, you agree to these
-            Terms &amp; Conditions together with our{" "}
-            <a href={POLICY_LINKS.privacy} className="font-semibold underline">
-              Privacy Policy
-            </a>
-            ,{" "}
-            <a
-              href={POLICY_LINKS.cookies}
-              className="font-semibold underline"
-            >
-              Cookie Policy
-            </a>
-            , and{" "}
-            <a
-              href={POLICY_LINKS.returnsPolicy}
-              className="font-semibold underline"
-            >
-              Returns Policy
-            </a>
-            .
+            By using this website, you agree to these Terms &amp; Conditions to
+            the extent permitted by applicable law in{" "}
+            <strong>{legalRegionLabel}</strong>.
           </p>
         </>
       }
     >
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          1. Eligibility and use of the site
+          1. About this storefront
         </h2>
         <p>
-          You must use this website only for lawful purposes and in a manner
-          that does not infringe the rights of others, damage the site, or
-          interfere with its normal operation.
+          This website is operated under the <strong>{BRAND.displayName}</strong>{" "}
+          brand for customers in <strong>{legalRegionLabel}</strong>.
         </p>
         <p>
-          You must not misuse the website, attempt unauthorised access, upload
-          malicious material, or use automated means in a way that disrupts our
-          systems or services.
-        </p>
-      </section>
-
-      <section>
-        <h2 className="text-base font-semibold text-foreground">
-          2. Product information and availability
-        </h2>
-        <p>
-          We aim to present products, descriptions, images, sizes, pricing, and
-          availability as accurately as reasonably possible. However, colours,
-          materials, sizing, and display appearance may vary depending on the
-          device or screen used.
-        </p>
-        <p>
-          Product availability, stock levels, product assortment, pricing, and
-          shipping options may change at any time without prior notice.
-        </p>
-      </section>
-
-      <section>
-        <h2 className="text-base font-semibold text-foreground">
-          3. Orders and acceptance
-        </h2>
-        <p>
-          Placing an order does not necessarily mean the order has been finally
-          accepted. We may need to review payment status, stock availability,
-          shipping eligibility, pricing issues, fraud or risk checks, or other
-          operational matters before the order is confirmed.
-        </p>
-        <p>
-          If we are unable to accept an order, we may cancel it and provide an
-          appropriate refund where payment has already been captured.
-        </p>
-      </section>
-
-      <section>
-        <h2 className="text-base font-semibold text-foreground">
-          4. Shipping regions and address restrictions
-        </h2>
-        <p>
-          This storefront currently accepts delivery addresses only within{" "}
-          <strong>{checkoutRegionLabel}</strong>.
-        </p>
-        <p>
-          We may reject, cancel, or refuse to fulfil orders that include
-          ineligible shipping destinations, incomplete address information,
-          operational fulfilment issues, or other circumstances that prevent us
-          from completing delivery.
-        </p>
-      </section>
-
-      <section>
-        <h2 className="text-base font-semibold text-foreground">
-          5. Pricing, taxes, and currency
-        </h2>
-        <p>
-          Prices shown on the storefront are presented in the currency selected
-          for the active market configuration. Taxes, duties, and similar
-          charges may depend on the destination country, market rules, and how
-          the storefront is configured at the time of purchase.
-        </p>
-        <p>
-          Shipping fees, if applicable, are shown during checkout before you
-          complete payment.
-        </p>
-      </section>
-
-      <section>
-        <h2 className="text-base font-semibold text-foreground">
-          6. Payment methods
-        </h2>
-        <p>
-          Available payment methods may vary depending on the active market,
-          country, device, payment provider configuration, fraud controls, and
-          operational availability at the time of checkout.
-        </p>
-        <p>
-          We may suspend, remove, or limit payment methods at any time where
-          reasonably necessary for security, compliance, provider availability,
-          or operational reasons.
-        </p>
-      </section>
-
-      <section>
-        <h2 className="text-base font-semibold text-foreground">
-          7. Cancellations, returns, and refunds
-        </h2>
-        <p>
-          Pre-dispatch cancellations, faulty-item returns, refund processing,
-          and change-of-mind rules are governed by our{" "}
-          <a
-            href={POLICY_LINKS.returnsPolicy}
-            className="font-semibold underline"
-          >
-            Returns Policy
+          The website address for this storefront is{" "}
+          <a href={siteUrl} className="font-semibold underline">
+            {siteUrl}
           </a>
           .
         </p>
+      </section>
+
+      <section>
+        <h2 className="text-base font-semibold text-foreground">
+          2. Eligibility and acceptable use
+        </h2>
         <p>
-          Nothing in these Terms &amp; Conditions is intended to exclude any
-          non-excludable rights you may have under applicable consumer law in{" "}
-          <strong>{legalRegionLabel}</strong>.
+          You must use this website only for lawful purposes and in a way that
+          does not infringe the rights of others, interfere with the operation
+          of the site, or attempt to misuse the storefront, checkout flow, user
+          accounts, pricing, inventory, returns process, or related systems.
         </p>
       </section>
 
-      {isAuNz ? (
+      <section>
+        <h2 className="text-base font-semibold text-foreground">
+          3. Product information and availability
+        </h2>
+        <p>
+          We aim to present product descriptions, prices, images, sizing
+          information, and availability as accurately as reasonably possible.
+        </p>
+        <p>
+          However, product presentation may vary by device, and stock
+          availability, pricing, product details, shipping availability, and
+          related content may change without notice.
+        </p>
+      </section>
+
+      <section>
+        <h2 className="text-base font-semibold text-foreground">
+          4. Orders and acceptance
+        </h2>
+        <p>
+          When you place an order, you are making an offer to purchase goods
+          from this storefront. We may accept, reject, cancel, or limit orders
+          where reasonably necessary, including in cases involving payment
+          issues, suspected fraud, pricing errors, stock problems, operational
+          constraints, or other legitimate business reasons.
+        </p>
+        <p>
+          An order confirmation email does not necessarily mean final acceptance
+          if later review identifies an issue that requires cancellation or
+          correction in accordance with applicable law.
+        </p>
+      </section>
+
+      <section>
+        <h2 className="text-base font-semibold text-foreground">
+          5. Pricing, currency, taxes, and delivery scope
+        </h2>
+        <p>
+          Prices shown on this storefront are presented in the currency
+          configured for this storefront.
+        </p>
+        <p>
+          Delivery is currently limited to addresses within{" "}
+          <strong>{checkoutRegionLabel}</strong>.
+        </p>
+        <p>
+          Taxes, duties, shipping charges, and checkout disclosures may vary
+          depending on the delivery destination and the configuration of this
+          storefront.
+        </p>
+      </section>
+
+      {isAu ? (
         <section>
           <h2 className="text-base font-semibold text-foreground">
-            8. Australia and New Zealand consumer law context
+            6. Australia consumer context
           </h2>
           <p>
-            If you are purchasing from Australia or New Zealand, mandatory
-            consumer rights may apply under the laws of your jurisdiction,
-            including rights relating to faulty goods, remedies, and guarantees
-            that cannot be excluded by contract.
+            Nothing in these Terms &amp; Conditions is intended to exclude,
+            restrict, or modify any consumer rights or remedies that cannot be
+            excluded under applicable consumer law in Australia.
           </p>
           <p>
-            To the extent any part of these Terms &amp; Conditions conflicts
-            with non-excludable consumer rights, those rights will prevail.
+            Any rights you may have under applicable law will continue to apply
+            in addition to these Terms &amp; Conditions.
+          </p>
+        </section>
+      ) : isNz ? (
+        <section>
+          <h2 className="text-base font-semibold text-foreground">
+            6. New Zealand consumer context
+          </h2>
+          <p>
+            Nothing in these Terms &amp; Conditions is intended to exclude,
+            restrict, or modify any consumer rights or remedies that cannot be
+            excluded under applicable consumer law in New Zealand.
+          </p>
+          <p>
+            Any rights you may have under applicable law will continue to apply
+            in addition to these Terms &amp; Conditions.
+          </p>
+        </section>
+      ) : isUs ? (
+        <section>
+          <h2 className="text-base font-semibold text-foreground">
+            6. United States storefront context
+          </h2>
+          <p>
+            Consumer protection, returns, disclosures, and payment-related
+            practices may vary depending on the jurisdiction served by this
+            storefront.
+          </p>
+          <p>
+            Additional storefront notices may appear on product pages, at
+            checkout, or in supporting policy documents where needed.
+          </p>
+        </section>
+      ) : isCa ? (
+        <section>
+          <h2 className="text-base font-semibold text-foreground">
+            6. Canada storefront context
+          </h2>
+          <p>
+            Consumer protection, returns, disclosures, and payment-related
+            practices may vary depending on the jurisdiction served by this
+            storefront.
+          </p>
+          <p>
+            Additional storefront notices may appear on product pages, at
+            checkout, or in supporting policy documents where needed.
           </p>
         </section>
       ) : (
         <section>
           <h2 className="text-base font-semibold text-foreground">
-            8. Market-specific legal notes
+            6. Storefront-specific legal context
           </h2>
           <p>
-            Some legal wording, taxes, payment availability, or fulfilment rules
-            may differ depending on the country within the active market.
+            Legal requirements, disclosures, and customer rights may differ
+            depending on the country or region served by this storefront.
           </p>
           <p>
-            Where country-level differences apply, we may provide supplementary
-            notices during checkout, in emails, or in country-specific policy
-            wording.
+            Where additional local wording is needed, it may be shown elsewhere
+            on the site, at checkout, or in linked policies.
           </p>
         </section>
       )}
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          9. Intellectual property
+          7. Returns, refunds, and cancellations
         </h2>
         <p>
-          Website content, branding, product imagery, text, layout, graphics,
-          and other materials on this storefront are owned by us, licensed to
-          us, or otherwise protected by applicable intellectual property laws.
-        </p>
-        <p>
-          You must not copy, reproduce, distribute, republish, scrape, or use
-          such content for commercial purposes without prior written permission,
-          except to the extent permitted by law.
+          Returns, refunds, and any applicable cancellation rights are governed
+          by our{" "}
+          <a
+            href={POLICY_LINKS.returnsPolicy}
+            className="font-semibold underline"
+          >
+            Returns Policy
+          </a>
+          , together with any non-excludable consumer guarantees or statutory
+          rights that apply in the jurisdiction served by this storefront.
         </p>
       </section>
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          10. Website availability and liability
+          8. Intellectual property
         </h2>
         <p>
-          We aim to keep the website available and functioning properly, but we
-          do not guarantee uninterrupted access, continuous availability, or the
-          absence of errors, delays, or third-party service failures.
-        </p>
-        <p>
-          To the extent permitted by law, we are not liable for indirect,
-          incidental, special, or consequential loss arising from the use of the
-          website or delays outside our reasonable control. Nothing in these
-          Terms &amp; Conditions excludes liability that cannot lawfully be
-          excluded.
+          Unless otherwise stated, content on this site, including text,
+          product descriptions, graphics, logos, images, and site design
+          elements, is owned by or licensed to the operator of this storefront
+          and may not be copied, reproduced, distributed, or exploited without
+          permission, except as allowed by law.
         </p>
       </section>
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          11. Changes to the site or terms
+          9. Website operation and availability
         </h2>
         <p>
-          We may update this website, its features, the active market
-          configuration, shipping eligibility, or these Terms &amp; Conditions
-          from time to time.
+          We may update, suspend, withdraw, or modify parts of the storefront,
+          features, inventory presentation, account functions, and support
+          processes from time to time.
         </p>
         <p>
-          The version displayed on this page applies from the date shown at the
-          top of the document, unless otherwise stated.
+          We do not guarantee uninterrupted or error-free access to the site.
         </p>
       </section>
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          12. Contact
+          10. Liability and legal rights
+        </h2>
+        <p>
+          To the maximum extent permitted by law, and subject always to any
+          rights that cannot be excluded, we are not liable for indirect or
+          consequential loss arising from your use of the site or purchase of
+          goods through the storefront.
+        </p>
+        <p>
+          Nothing in these Terms &amp; Conditions excludes liability where such
+          exclusion would be unlawful.
+        </p>
+      </section>
+
+      <section>
+        <h2 className="text-base font-semibold text-foreground">
+          11. Contact and support
         </h2>
         <p>
           Support for this storefront is currently managed for{" "}
@@ -279,6 +284,32 @@ export default function TermsPage() {
             {supportEmail}
           </a>
         </p>
+      </section>
+
+      <section>
+        <h2 className="text-base font-semibold text-foreground">
+          12. Related policies
+        </h2>
+        <ul className="list-disc pl-5 space-y-1">
+          <li>
+            <a href={POLICY_LINKS.privacy} className="font-semibold underline">
+              Privacy Policy
+            </a>
+          </li>
+          <li>
+            <a href={POLICY_LINKS.cookies} className="font-semibold underline">
+              Cookie Policy
+            </a>
+          </li>
+          <li>
+            <a
+              href={POLICY_LINKS.returnsPolicy}
+              className="font-semibold underline"
+            >
+              Returns Policy
+            </a>
+          </li>
+        </ul>
       </section>
     </LegalShell>
   );

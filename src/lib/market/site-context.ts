@@ -1,11 +1,10 @@
 // src/lib/market/site-context.ts
 import type { CountryCode } from "@/lib/country";
 import type { Currency } from "@/lib/pricing";
-import { CURRENT_MARKET, CURRENT_STOREFRONT } from "./current";
-import type { MarketCode, StorefrontCode } from "./types";
+import { CURRENT_STOREFRONT } from "./current";
+import type { StorefrontCode } from "./types";
 
 export type SiteContext = {
-  market_code: MarketCode;
   storefront_code: StorefrontCode;
   default_country: CountryCode;
   default_currency: Currency;
@@ -14,8 +13,13 @@ export type SiteContext = {
   checkout_region_label: string;
 };
 
+/**
+ * storefront_code 是当前前端站点的唯一主驱动配置。
+ * default_country / default_currency / allowed_countries /
+ * shipping_country_error_message / checkout_region_label
+ * 都由 storefront 决定。
+ */
 export const FALLBACK_SITE_CONTEXT: SiteContext = {
-  market_code: CURRENT_MARKET.code,
   storefront_code: CURRENT_STOREFRONT.code,
   default_country: CURRENT_STOREFRONT.primaryCountry,
   default_currency: CURRENT_STOREFRONT.defaultCurrency,
@@ -26,10 +30,6 @@ export const FALLBACK_SITE_CONTEXT: SiteContext = {
 
 export function normalizeSiteContext(input: any): SiteContext {
   return {
-    market_code: String(
-      input?.market_code || FALLBACK_SITE_CONTEXT.market_code
-    ).trim().toUpperCase() as MarketCode,
-
     storefront_code: String(
       input?.storefront_code || FALLBACK_SITE_CONTEXT.storefront_code
     ).trim().toUpperCase() as StorefrontCode,

@@ -2,7 +2,7 @@
 import type { Metadata } from "next";
 import LegalShell from "@/components/legal/LegalShell";
 import { BRAND } from "@/lib/brand";
-import { CURRENT_MARKET } from "@/lib/market/current";
+import { CURRENT_STOREFRONT } from "@/lib/market/current";
 import { getPolicyContext } from "@/lib/legal/policy-context";
 import { POLICY_LINKS } from "@/lib/legal/policy-links";
 
@@ -10,12 +10,13 @@ const POLICY = getPolicyContext();
 
 export const metadata: Metadata = {
   title: `Privacy Policy | ${BRAND.displayName}`,
-  description: `Learn how ${BRAND.displayName} collects, uses, stores, and protects personal information for customers in ${CURRENT_MARKET.legalRegionLabel}.`,
+  description: `Learn how ${BRAND.displayName} collects, uses, stores, and protects personal information for customers in ${CURRENT_STOREFRONT.legalRegionLabel}.`,
 };
 
 export default function PrivacyPage() {
   const {
-    isAuNz,
+    isAu,
+    isNz,
     legalRegionLabel,
     checkoutRegionLabel,
     supportRegionLabel,
@@ -89,7 +90,10 @@ export default function PrivacyPage() {
           <li>arrange shipping and delivery</li>
           <li>provide customer service and support</li>
           <li>handle returns, refunds, and related enquiries</li>
-          <li>send transactional emails such as order confirmations and shipment updates</li>
+          <li>
+            send transactional emails such as order confirmations and shipment
+            updates
+          </li>
           <li>maintain site security and prevent fraud or misuse</li>
           <li>improve our website, products, and services</li>
           <li>comply with legal and regulatory obligations</li>
@@ -116,9 +120,10 @@ export default function PrivacyPage() {
           5. Shipping, returns, and support data
         </h2>
         <p>
-          To fulfil orders and support after-sales service, we may share relevant
-          information with delivery providers, logistics partners, service
-          providers, and support systems used to process orders and returns.
+          To fulfil orders and support after-sales service, we may share
+          relevant information with delivery providers, logistics partners,
+          service providers, and support systems used to process orders and
+          returns.
         </p>
         <p>
           Where you submit a return or refund request, we may also collect
@@ -161,20 +166,38 @@ export default function PrivacyPage() {
         </p>
       </section>
 
-      {isAuNz ? (
+      {isAu ? (
         <section>
           <h2 className="text-base font-semibold text-foreground">
-            8. Australia and New Zealand privacy context
+            8. Australia privacy context
           </h2>
           <p>
-            If you are located in Australia or New Zealand, your personal
-            information may be handled in a manner intended to be consistent
-            with applicable privacy obligations in those jurisdictions, taking
-            into account the nature and scale of this storefront.
+            If you are located in Australia, your personal information may be
+            handled in a manner intended to be consistent with applicable
+            privacy obligations in Australia, taking into account the nature and
+            scale of this storefront.
           </p>
           <p>
             Depending on how our systems and providers are configured, some data
-            may be processed or stored outside your country. Where this occurs,
+            may be processed or stored outside Australia. Where this occurs, we
+            take reasonable steps to work with providers and operational
+            arrangements that support secure handling of personal information.
+          </p>
+        </section>
+      ) : isNz ? (
+        <section>
+          <h2 className="text-base font-semibold text-foreground">
+            8. New Zealand privacy context
+          </h2>
+          <p>
+            If you are located in New Zealand, your personal information may be
+            handled in a manner intended to be consistent with applicable
+            privacy obligations in New Zealand, taking into account the nature
+            and scale of this storefront.
+          </p>
+          <p>
+            Depending on how our systems and providers are configured, some data
+            may be processed or stored outside New Zealand. Where this occurs,
             we take reasonable steps to work with providers and operational
             arrangements that support secure handling of personal information.
           </p>
@@ -182,17 +205,17 @@ export default function PrivacyPage() {
       ) : (
         <section>
           <h2 className="text-base font-semibold text-foreground">
-            8. Market-specific privacy notes
+            8. Storefront-specific privacy notes
           </h2>
           <p>
             Privacy obligations and disclosure requirements may vary depending on
-            the country within this storefront’s active market and the services
+            the country or region served by this storefront and the services
             used to operate the site.
           </p>
           <p>
-            Where country-level or market-level privacy wording differs, we may
-            present additional notices at checkout, on forms, or in country-
-            specific policy updates.
+            Where storefront-specific privacy wording differs, we may present
+            additional notices at checkout, on forms, or in local policy
+            updates.
           </p>
         </section>
       )}
@@ -230,8 +253,8 @@ export default function PrivacyPage() {
         </h2>
         <p>
           You may contact us if you would like to request access to personal
-          information we hold about you, request corrections, or raise a privacy
-          concern.
+          information we hold about you, request corrections, or raise a
+          privacy concern.
         </p>
         <p>
           Support for this storefront is currently managed for{" "}

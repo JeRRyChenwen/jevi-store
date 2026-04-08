@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Alert } from "@/components/ui/alert";
 
-type MarketCode = "AU_NZ" | "EU" | "US_CA";
+type StorefrontCode = "AU" | "NZ" | "EU" | "US" | "CA";
 type SyncScope = "all" | "sku_list";
 
 type StatsResp =
@@ -92,7 +92,7 @@ export default function InventoryPage() {
   const [error, setError] = useState("");
   const [showConfirm, setShowConfirm] = useState(false);
 
-  const [marketCode, setMarketCode] = useState<MarketCode>("AU_NZ");
+  const [storefrontCode, setStorefrontCode] = useState<StorefrontCode>("AU");
   const [scope, setScope] = useState<SyncScope>("all");
   const [skuText, setSkuText] = useState("");
 
@@ -101,12 +101,12 @@ export default function InventoryPage() {
   const parsedSkus = useMemo(() => normalizeSkuInput(skuText), [skuText]);
 
   // ================= stats =================
-  const fetchStats = async (nextMarketCode: MarketCode = marketCode) => {
+  const fetchStats = async (nextStorefrontCode: StorefrontCode = storefrontCode) => {
     setLoading(true);
     setError("");
 
     try {
-      const qs = new URLSearchParams({ marketCode: nextMarketCode }).toString();
+      const qs = new URLSearchParams({ storefrontCode: nextStorefrontCode }).toString();
       const r = await fetch(`/api/admin/inventory/stats?${qs}`, {
         method: "GET",
         cache: "no-store",
@@ -149,13 +149,13 @@ export default function InventoryPage() {
       const payload =
         scope === "sku_list"
           ? {
-              marketCode,
+              storefrontCode,
               scope,
               skus: parsedSkus,
               pageSize,
             }
           : {
-              marketCode,
+              storefrontCode,
               scope,
               pageSize,
             };
@@ -182,7 +182,7 @@ export default function InventoryPage() {
         throw new Error(err);
       }
 
-      await fetchStats(marketCode);
+      await fetchStats(storefrontCode);
     } catch (e: any) {
       setError(String(e?.message || e || "Sync error"));
     } finally {
@@ -191,15 +191,17 @@ export default function InventoryPage() {
   };
 
   useEffect(() => {
-    fetchStats(marketCode);
+    fetchStats(storefrontCode);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [marketCode]);
+  }, [storefrontCode]);
 
   const rows = (stats as any)?.rows ?? 0;
   const inStockRows = (stats as any)?.in_stock_rows ?? 0;
   const totalStock = (stats as any)?.total_stock ?? 0;
-  const currentMarketCode =
-    (stats as any)?.market_code || (syncResult as any)?.market_code || marketCode;
+  const currentStorefrontCode =
+    (stats as any)?.storefront_code ||
+    (syncResult as any)?.storefront_code ||
+    storefrontCode;
   const currentWarehouseCode =
     (stats as any)?.warehouse_code || (syncResult as any)?.warehouse_code || "Unknown";
 
@@ -216,7 +218,7 @@ export default function InventoryPage() {
 
           <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-600">
             <span className="rounded-full border bg-slate-50 px-2 py-1">
-              Current market: {currentMarketCode}
+              Current storefront: {currentStorefrontCode}
             </span>
             <span className="rounded-full border bg-slate-50 px-2 py-1">
               Current warehouse: {currentWarehouseCode}
@@ -226,7 +228,7 @@ export default function InventoryPage() {
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => fetchStats(marketCode)}
+            onClick={() => fetchStats(storefrontCode)}
             disabled={loading || syncing}
             className="rounded-md border bg-white px-3 py-2 text-sm outline-none hover:bg-slate-50 focus:ring-2 focus:ring-slate-200 disabled:opacity-60"
           >
@@ -257,17 +259,19 @@ export default function InventoryPage() {
         <div className="grid gap-4 md:grid-cols-2">
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              Target market
+              Target storefront
             </label>
             <select
-              value={marketCode}
-              onChange={(e) => setMarketCode(e.target.value as MarketCode)}
+              value={storefrontCode}
+              onChange={(e) => setStorefrontCode(e.target.value as StorefrontCode)}
               disabled={loading || syncing}
               className="w-full rounded-md border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:opacity-60"
             >
-              <option value="AU_NZ">AU_NZ</option>
+              <option value="AU">AU</option>
+              <option value="NZ">NZ</option>
               <option value="EU">EU</option>
-              <option value="US_CA">US_CA</option>
+              <option value="US">US</option>
+              <option value="CA">CA</option>
             </select>
           </div>
 
@@ -312,8 +316,8 @@ export default function InventoryPage() {
           <div className="font-medium">Confirm inventory sync</div>
           <div className="mt-1 text-slate-700">
             {scope === "all"
-              ? `This will pull product variants from Strapi and upsert inventory records for market ${marketCode}.`
-              : `This will upsert ${parsedSkus.length} requested SKU(s) into market ${marketCode}.`}
+              ? `This will pull product variants from Strapi and upsert inventory records for storefront ${storefrontCode}.`
+              : `This will upsert ${parsedSkus.length} requested SKU(s) into storefront ${storefrontCode}.`}
           </div>
 
           {scope === "sku_list" ? (
@@ -347,17 +351,17 @@ export default function InventoryPage() {
 
       <div className="grid gap-4 md:grid-cols-3">
         <div className="rounded-lg border bg-white p-4">
-          <div className="text-xs text-slate-500">Active SKUs in Selected Market</div>
+          <div className="text-xs text-slate-500">Active SKUs in Selected Storefront</div>
           <div className="mt-2 text-2xl font-bold">{rows}</div>
         </div>
 
         <div className="rounded-lg border bg-white p-4">
-          <div className="text-xs text-slate-500">In-Stock SKUs in Selected Market</div>
+          <div className="text-xs text-slate-500">In-Stock SKUs in Selected Storefront</div>
           <div className="mt-2 text-2xl font-bold">{inStockRows}</div>
         </div>
 
         <div className="rounded-lg border bg-white p-4">
-          <div className="text-xs text-slate-500">Total Available Units in Selected Market</div>
+          <div className="text-xs text-slate-500">Total Available Units in Selected Storefront</div>
           <div className="mt-2 text-2xl font-bold">{totalStock}</div>
         </div>
       </div>
@@ -365,7 +369,7 @@ export default function InventoryPage() {
       {syncResult && (syncResult as any).ok ? (
         <Alert variant="success" className="border p-3 text-sm">
           <div>
-            Sync success — market {(syncResult as any).market_code || currentMarketCode} /
+            Sync success — storefront {(syncResult as any).storefront_code || currentStorefrontCode} /
             warehouse {(syncResult as any).warehouse_code || currentWarehouseCode}, fetched{" "}
             {(syncResult as any).fetched}, matched{" "}
             {(syncResult as any).matched_skus ?? "-"}, upserted{" "}

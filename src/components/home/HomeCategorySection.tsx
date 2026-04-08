@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import ProductCard from "@/app/(shop)/category/[slug]/_components/ProductCard";
-import { CURRENT_MARKET } from "@/lib/market/current";
+import { CURRENT_STOREFRONT } from "@/lib/market/current";
 import {
   pickPriceForCurrency,
   formatPriceForCard,
@@ -36,7 +36,7 @@ export default function HomeCategorySection({
   title,
   slug,
   products,
-  displayCurrency = CURRENT_MARKET.defaultCurrency,
+  displayCurrency = CURRENT_STOREFRONT.defaultCurrency,
 }: {
   title: string;
   slug: string;

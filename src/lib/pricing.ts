@@ -225,7 +225,7 @@ export function formatMoneySmart(minor: number | null | undefined, currency: Cur
 }
 
 
-/* ================= Step B: MARKET 驱动的价格选择入口（新增） ================= */
+/* ================= Step B: STOREFRONT 驱动的价格选择入口（新增） ================= */
 
 export type DisplayPrice = {
   currency: Currency;
@@ -237,15 +237,16 @@ export type DisplayPrice = {
 };
 
 /**
- * ✅ 根据 MARKET 默认货币选择“首选币种”
+ * ✅ 根据当前 storefront 的默认货币选择“首选币种”
  * 说明：
- * - AU_NZ -> AUD
- * - EU    -> EUR
- * - US_CA -> USD
+ * - AU -> AUD
+ * - NZ -> NZD
+ * - EU -> EUR
+ * - US -> USD
+ * - CA -> CAD
  *
- * 后续如果你想升级成：
- * - US_CA + country=CA -> CAD
- * 可以在这里继续扩展，不需要改调用方。
+ * 这里保持函数签名不变，避免影响现有调用方。
+ * 当前调用方只需要传入 storefront 对应的 preferredCurrency 即可。
  */
 export function pickCurrencyForMarket(
   available: Currency[],

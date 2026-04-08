@@ -20,8 +20,31 @@ import {
 } from "./edit-address-card.utils";
 import {
   FALLBACK_SITE_CONTEXT,
+  normalizeSiteContext,
   type SiteContext,
 } from "@/lib/market/site-context";
+
+function pickAddressForCurrentStorefront(
+  raw: any,
+  allowedCountries: string[]
+) {
+  if (!raw) return null;
+
+  const allowedSet = new Set(
+    (allowedCountries || [])
+      .map((x) => String(x || "").trim().toUpperCase())
+      .filter(Boolean)
+  );
+
+  const rawCountry = String(raw?.country ?? raw?.country_code ?? "")
+    .trim()
+    .toUpperCase();
+
+  if (!rawCountry) return null;
+  if (!allowedSet.has(rawCountry)) return null;
+
+  return raw;
+}
 
 export default function EditAddressCard() {
   const [loading, setLoading] = useState(false);
@@ -62,7 +85,25 @@ export default function EditAddressCard() {
         deliveryAlert.clear();
         billingAlert.clear();
 
-        const nextSiteContext: SiteContext = FALLBACK_SITE_CONTEXT;
+        let nextSiteContext: SiteContext = FALLBACK_SITE_CONTEXT;
+
+        try {
+          const siteRes = await fetch("/api/site/context", {
+            method: "GET",
+            credentials: "include",
+            headers: { accept: "application/json" },
+            cache: "no-store",
+          });
+
+          const siteData = await siteRes.json().catch(() => ({}));
+
+          if (siteRes.ok) {
+            const rawContext = siteData?.context ?? siteData;
+            nextSiteContext = normalizeSiteContext(rawContext);
+          }
+        } catch {
+          nextSiteContext = FALLBACK_SITE_CONTEXT;
+        }
 
         if (!dead) {
           setSiteContext(nextSiteContext);
@@ -86,8 +127,21 @@ export default function EditAddressCard() {
         const d = (data as any)?.delivery ?? (data as any)?.addresses?.delivery ?? null;
         const b = (data as any)?.billing ?? (data as any)?.addresses?.billing ?? null;
 
-        setDelivery(shapeAddress(d, nextSiteContext.default_country));
-        setBilling(shapeAddress(b, nextSiteContext.default_country));
+        const deliveryForStorefront = pickAddressForCurrentStorefront(
+          d,
+          nextSiteContext.allowed_countries
+        );
+        const billingForStorefront = pickAddressForCurrentStorefront(
+          b,
+          nextSiteContext.allowed_countries
+        );
+
+        setDelivery(
+          shapeAddress(deliveryForStorefront, nextSiteContext.default_country)
+        );
+        setBilling(
+          shapeAddress(billingForStorefront, nextSiteContext.default_country)
+        );
       } catch (e: any) {
         if (!dead) setGlobalErr(e?.message || String(e));
       } finally {
@@ -166,8 +220,8 @@ export default function EditAddressCard() {
       const d = (data as any)?.delivery ?? (data as any)?.addresses?.delivery ?? null;
       const b = (data as any)?.billing ?? (data as any)?.addresses?.billing ?? null;
 
-      if (d) setDelivery(shapeAddress(d));
-      if (b) setBilling(shapeAddress(b));
+      if (d) setDelivery(shapeAddress(d, defaultCountry));
+      if (b) setBilling(shapeAddress(b, defaultCountry));
 
       if (kind === "delivery") {
         setEditingDelivery(false);
@@ -213,6 +267,8 @@ export default function EditAddressCard() {
         setErrors={setDeliveryErrors}
         onSave={() => saveAddress("delivery")}
         alert={deliveryAlert}
+        allowedCountries={allowedCountries}
+        defaultCountry={defaultCountry}
       />
 
       <AddressSection
@@ -226,6 +282,8 @@ export default function EditAddressCard() {
         setErrors={setBillingErrors}
         onSave={() => saveAddress("billing")}
         alert={billingAlert}
+        allowedCountries={allowedCountries}
+        defaultCountry={defaultCountry}
       />
     </div>
   );

@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import HomeProductCard from "@/components/home/HomeProductCard";
-import { CURRENT_MARKET } from "@/lib/market/current";
+import { CURRENT_STOREFRONT } from "@/lib/market/current";
 
 import { useCategoryProducts } from "@/app/(shop)/category/[slug]/_hooks/useCategoryProducts";
 import {
@@ -28,7 +28,7 @@ export default function HomeCategorySectionClient({
   title,
   categoryDocIds,
   pageSize = 5,
-  displayCurrency = CURRENT_MARKET.defaultCurrency,
+  displayCurrency = CURRENT_STOREFRONT.defaultCurrency,
 }: Props) {
   // 首页固定 hot 排序
   const sortQueryString =

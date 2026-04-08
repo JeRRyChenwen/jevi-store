@@ -7,7 +7,7 @@ import {
   restoreCheckoutAddressFromStorage,
 } from "./checkout-browser-effects";
 import { syncCheckoutAuthState } from "./checkout-side-effects";
-import { CURRENT_MARKET } from "@/lib/market/current";
+import { CURRENT_STOREFRONT } from "@/lib/market/current";
 
 type SetAddress = Dispatch<SetStateAction<any>>;
 type SetBoolean = Dispatch<SetStateAction<boolean>>;
@@ -48,7 +48,7 @@ export function runCheckoutPageBootstrap({
 
   restoreCheckoutAddressFromStorage({
     storageKey: LS_ADDRESS_KEY,
-    fallbackCountry: CURRENT_MARKET.primaryCountry,
+    fallbackCountry: CURRENT_STOREFRONT.primaryCountry,
     setAddress,
   });
 

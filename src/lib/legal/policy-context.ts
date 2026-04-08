@@ -1,26 +1,26 @@
 // src/lib/legal/policy-context.ts
 import { BRAND } from "@/lib/brand";
-import { CURRENT_MARKET, getCountryOverride } from "@/lib/market/current";
+import { CURRENT_STOREFRONT } from "@/lib/market/current";
 
 export function getPolicyContext() {
-  const market = CURRENT_MARKET;
+  const storefront = CURRENT_STOREFRONT;
 
-  const supportEmail = market.supportEmail || BRAND.supportEmail;
-  const siteUrl = market.siteUrl || BRAND.siteUrl;
+  const supportEmail = storefront.supportEmail || BRAND.supportEmail;
+  const siteUrl = storefront.siteUrl || BRAND.siteUrl;
 
-  const legalRegionLabel = market.legalRegionLabel || market.label;
-  const checkoutRegionLabel = market.checkoutRegionLabel || market.label;
-  const supportRegionLabel = market.supportRegionLabel || market.label;
+  const legalRegionLabel = storefront.legalRegionLabel || storefront.label;
+  const checkoutRegionLabel =
+    storefront.checkoutRegionLabel || storefront.label;
+  const supportRegionLabel = storefront.supportRegionLabel || storefront.label;
 
-  const isAuNz = market.policyVariant === "au_nz";
-  const isEu = market.policyVariant === "eu";
-  const isUsCa = market.policyVariant === "us_ca";
-
-  const auOverride = getCountryOverride("AU", market);
-  const nzOverride = getCountryOverride("NZ", market);
+  const isAu = storefront.policyVariant === "au";
+  const isNz = storefront.policyVariant === "nz";
+  const isEu = storefront.policyVariant === "eu";
+  const isUs = storefront.policyVariant === "us";
+  const isCa = storefront.policyVariant === "ca";
 
   return {
-    market,
+    storefront,
     supportEmail,
     siteUrl,
 
@@ -28,17 +28,16 @@ export function getPolicyContext() {
     checkoutRegionLabel,
     supportRegionLabel,
 
-    isAuNz,
+    isAu,
+    isNz,
     isEu,
-    isUsCa,
+    isUs,
+    isCa,
 
-    auTaxLabel: auOverride?.taxLabel || "GST where applicable",
-    nzTaxLabel:
-      nzOverride?.taxLabel || "Taxes and duties may vary by destination",
+    auTaxLabel: "GST where applicable",
+    nzTaxLabel: "GST where applicable",
 
-    auReturnsPolicyLabel:
-      auOverride?.returnsPolicyLabel || "Australia returns policy",
-    nzReturnsPolicyLabel:
-      nzOverride?.returnsPolicyLabel || "New Zealand returns policy",
+    auReturnsPolicyLabel: "Australia returns policy",
+    nzReturnsPolicyLabel: "New Zealand returns policy",
   };
 }

@@ -2,8 +2,6 @@
 import type { CountryCode } from "@/lib/country";
 import type { Currency } from "@/lib/pricing";
 
-export type MarketCode = "AU_NZ" | "EU" | "US_CA";
-
 /**
  * ✅ storefront = 用户实际访问到的前台站点单元
  * 它可以是国家站，也可以是区域站。
@@ -27,12 +25,10 @@ export type StorefrontCode =
   | "NL"
   | "BE";
 
-export type MarketPolicyVariant = "au_nz" | "eu" | "us_ca";
-
 /**
  * ✅ storefront 级 policy variant
  * 以后 policy 页面、页脚文案、邮件里的链接与帮助信息，
- * 都更应该优先看 storefront，而不是只看 market。
+ * 都优先看 storefront。
  */
 export type StorefrontPolicyVariant =
   | "au"
@@ -50,50 +46,9 @@ export type StorefrontPolicyVariant =
 export type PaymentMethodCode = "paypal" | "card";
 
 /**
- * ✅ market 层：
- * 只表达“运营分组”的共性，不再承载 storefront 的展示细节。
- */
-export type MarketConfig = {
-  code: MarketCode;
-  label: string;
-
-  /**
-   * ✅ 当前 market 的默认币种
-   * storefront 没显式覆盖时可回退到这里
-   */
-  defaultCurrency: Currency;
-
-  /**
-   * ✅ 当前 market 的默认时区
-   */
-  defaultTimezone: string;
-
-  /**
-   * ✅ 当前 market 的默认政策 variant
-   * 主要给旧逻辑 / 回退逻辑使用
-   */
-  policyVariant: MarketPolicyVariant;
-
-  /**
-   * ✅ 当前 market 的默认支持信息
-   * storefront 没单独覆盖时可回退
-   */
-  siteUrl: string;
-  supportEmail: string;
-
-  /**
-   * ✅ 当前 market 下允许挂哪些 storefront
-   * 例如：
-   * - AU_NZ -> ["AU", "NZ"]
-   * - US_CA -> ["US", "CA"]
-   * - EU    -> ["EU"]
-   */
-  storefrontCodes: readonly StorefrontCode[];
-};
-
-/**
  * ✅ storefront 层：
  * 这才是前台真正应该读的配置。
+ * 前端不再以 market 作为主驱动类型。
  */
 export type StorefrontConfig = {
   /**
@@ -101,15 +56,6 @@ export type StorefrontConfig = {
    * 例如 AU / NZ / EU
    */
   code: StorefrontCode;
-
-  /**
-   * ✅ 它归属哪个 market
-   * 例如：
-   * - AU -> AU_NZ
-   * - NZ -> AU_NZ
-   * - EU -> EU
-   */
-  marketCode: MarketCode;
 
   /**
    * ✅ storefront 对应的主国家
@@ -120,7 +66,6 @@ export type StorefrontConfig = {
    *
    * 对区域 storefront（例如 EU）来说，
    * 这里先保留为一个默认国家，用于默认地址 / 默认文案 / 默认回退逻辑。
-   * 具体值我们下一步在 config.ts 里再定。
    */
   countryCode: CountryCode;
 

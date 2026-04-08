@@ -2,7 +2,7 @@
 
 import type { Currency } from "@/lib/pricing";
 import type { StepKey } from "./types";
-import { CURRENT_MARKET } from "@/lib/market/current";
+import { CURRENT_STOREFRONT } from "@/lib/market/current";
 
 /* ---------------- 本地存储 ---------------- */
 export const LS_ADDRESS_KEY = "sp.checkout.address";
@@ -15,7 +15,7 @@ export const SS_RESERVE_KEY = "sp.checkout.reserve.v1"; // sessionStorage key
  */
 export const DELIVERY_FREE_THRESHOLD = 100;
 export const DELIVERY_FLAT = 10;
-export const DISPLAY_CURRENCY: Currency = CURRENT_MARKET.defaultCurrency;
+export const DISPLAY_CURRENCY: Currency = CURRENT_STOREFRONT.defaultCurrency;
 
 /* ---------------- 页面 / 路由 ---------------- */
 export const CONFIRM_PATH = "/order/confirmation";

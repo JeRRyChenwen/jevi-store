@@ -1,4 +1,4 @@
-// src/app/profile/AddressSection.tsx
+// src/app/(shop)/profile/AddressSection.tsx
 "use client";
 
 import { useEffect, useMemo } from "react";
@@ -7,7 +7,6 @@ import { FieldMessage } from "@/components/ui/field-message";
 import CountrySelect from "@/components/address/CountrySelect";
 import type { Address, FieldErrors } from "./edit-address-card.types";
 import { countryLabelOf } from "@/lib/country";
-import { FALLBACK_SITE_CONTEXT } from "@/lib/market/site-context";
 
 import {
   baseInputClass,
@@ -16,6 +15,21 @@ import {
   normalizeAddressForUI,
   alertVariantOf,
 } from "./edit-address-card.utils";
+
+function buildEmptyAddressForStorefront(defaultCountry: string): Address {
+  return {
+    first_name: "",
+    last_name: "",
+    phone: "",
+    line1: "",
+    line2: "",
+    city: "",
+    state: "",
+    postcode: "",
+    country: String(defaultCountry || "").trim().toUpperCase(),
+    is_default: false,
+  };
+}
 
 type FormAlertLike = {
   hasAlert: boolean;
@@ -34,6 +48,8 @@ type AddressSectionProps = {
   setErrors: React.Dispatch<React.SetStateAction<FieldErrors>>;
   onSave: () => void;
   alert: FormAlertLike;
+  allowedCountries: string[];
+  defaultCountry: string;
 };
 
 export default function AddressSection({
@@ -47,11 +63,10 @@ export default function AddressSection({
   setErrors,
   onSave,
   alert,
+  allowedCountries,
+  defaultCountry,
 }: AddressSectionProps) {
   const lowerTitle = title.toLowerCase();
-
-  const allowedCountries = FALLBACK_SITE_CONTEXT.allowed_countries;
-  const defaultCountry = FALLBACK_SITE_CONTEXT.default_country;
 
   const countryOptions = useMemo(
     () =>
@@ -65,8 +80,6 @@ export default function AddressSection({
     [allowedCountries]
   );
 
-  // 当前 profile 地址表单直接使用前端当前 market 派生的 fallback site context
-
   useEffect(() => {
     const allowedSet = new Set(
       allowedCountries.map((x) => String(x || "").trim().toUpperCase()).filter(Boolean)
@@ -75,10 +88,26 @@ export default function AddressSection({
     const current = String(address.country || "").trim().toUpperCase();
 
     if (!current || !allowedSet.has(current)) {
-      setAddress((prev) => ({ ...prev, country: defaultCountry }));
-      setErrors((prev) => ({ ...prev, country: undefined }));
+      setAddress((prev) => {
+        const prevIsDefault = !!prev?.is_default;
+
+        return {
+          ...buildEmptyAddressForStorefront(defaultCountry),
+          is_default: prevIsDefault,
+        };
+      });
+
+      setErrors({});
+      alert.clear();
     }
-  }, [address.country, allowedCountries, defaultCountry, setAddress, setErrors]);
+  }, [
+    address.country,
+    allowedCountries,
+    defaultCountry,
+    setAddress,
+    setErrors,
+    alert,
+  ]);
 
   return (
     <section className="rounded-lg border bg-white">
@@ -291,30 +320,34 @@ export default function AddressSection({
         <div className="mt-3 flex items-center gap-3">
           {!editing ? (
             <button
-                type="button"
-                onClick={() => {
-                  const allowedSet = new Set(
-                    allowedCountries.map((x) => String(x || "").trim().toUpperCase()).filter(Boolean)
-                  );
+              type="button"
+              onClick={() => {
+                const allowedSet = new Set(
+                  allowedCountries.map((x) => String(x || "").trim().toUpperCase()).filter(Boolean)
+                );
 
-                  setAddress((prev) => {
-                    const next = normalizeAddressForUI(prev);
-                    const current = String(next.country || "").trim().toUpperCase();
+                setAddress((prev) => {
+                  const next = normalizeAddressForUI(prev);
+                  const current = String(next.country || "").trim().toUpperCase();
 
-                    return {
-                      ...next,
-                      country: current && allowedSet.has(current) ? current : defaultCountry,
-                    };
-                  });
+                  if (current && allowedSet.has(current)) {
+                    return next;
+                  }
 
-                  setEditing(true);
-                  setErrors({});
-                  alert.clear();
-                }}
-                className="min-w-[96px] rounded-full border px-5 py-2 text-sm font-semibold hover:bg-neutral-50"
-              >
-                Edit
-              </button>
+                  return {
+                    ...buildEmptyAddressForStorefront(defaultCountry),
+                    is_default: !!prev?.is_default,
+                  };
+                });
+
+                setEditing(true);
+                setErrors({});
+                alert.clear();
+              }}
+              className="min-w-[96px] rounded-full border px-5 py-2 text-sm font-semibold hover:bg-neutral-50"
+            >
+              Edit
+            </button>
           ) : (
             <>
               <button

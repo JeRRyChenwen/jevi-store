@@ -2,7 +2,7 @@
 import type { Metadata } from "next";
 import LegalShell from "@/components/legal/LegalShell";
 import { BRAND } from "@/lib/brand";
-import { CURRENT_MARKET } from "@/lib/market/current";
+import { CURRENT_STOREFRONT } from "@/lib/market/current";
 import { getPolicyContext } from "@/lib/legal/policy-context";
 import { POLICY_LINKS } from "@/lib/legal/policy-links";
 
@@ -10,14 +10,17 @@ const POLICY = getPolicyContext();
 
 export const metadata: Metadata = {
   title: `Cookie Policy | ${BRAND.displayName}`,
-  description: `Learn how ${BRAND.displayName} uses cookies and similar technologies for customers in ${CURRENT_MARKET.legalRegionLabel}.`,
+  description: `Learn how ${BRAND.displayName} uses cookies and similar technologies for customers in ${CURRENT_STOREFRONT.legalRegionLabel}.`,
 };
 
-export default function CookiesPage() {
+export default function CookiePolicyPage() {
   const {
-    isAuNz,
+    isAu,
+    isNz,
+    isEu,
+    isUs,
+    isCa,
     legalRegionLabel,
-    checkoutRegionLabel,
     supportRegionLabel,
     supportEmail,
   } = POLICY;
@@ -30,18 +33,12 @@ export default function CookiesPage() {
         <>
           <p>
             This Cookie Policy explains how <strong>{BRAND.displayName}</strong>{" "}
-            uses cookies and similar technologies on this website.
+            may use cookies and similar technologies when you visit or interact
+            with our website.
           </p>
           <p>
-            We currently operate this storefront for customers in{" "}
-            <strong>{checkoutRegionLabel}</strong>.
-          </p>
-          <p>
-            This Cookie Policy should be read together with our{" "}
-            <a href={POLICY_LINKS.privacy} className="font-semibold underline">
-              Privacy Policy
-            </a>
-            .
+            This policy applies to the storefront currently operated for{" "}
+            <strong>{legalRegionLabel}</strong>.
           </p>
         </>
       }
@@ -51,10 +48,11 @@ export default function CookiesPage() {
           1. What cookies are
         </h2>
         <p>
-          Cookies are small text files or similar technologies that may be
-          stored on your device when you visit a website. They can help the site
-          remember actions, preferences, technical session data, and other
-          information relevant to your browsing experience.
+          Cookies are small text files placed on your device when you visit a
+          website. Similar technologies may include pixels, tags, scripts, local
+          storage, and other tools used to recognise devices, remember
+          preferences, support functionality, analyse traffic, or improve the
+          operation of the site.
         </p>
       </section>
 
@@ -62,14 +60,14 @@ export default function CookiesPage() {
         <h2 className="text-base font-semibold text-foreground">
           2. How we may use cookies
         </h2>
-        <p>We may use cookies and similar technologies to:</p>
+        <p>We may use cookies or similar technologies to:</p>
         <ul className="list-disc pl-5 space-y-1">
-          <li>keep the site functioning properly</li>
-          <li>support login or session continuity</li>
-          <li>remember user preferences or cart-related state</li>
-          <li>help secure the storefront and reduce abuse</li>
-          <li>measure site performance and improve user experience</li>
-          <li>support analytics or diagnostics</li>
+          <li>keep the website functioning properly</li>
+          <li>remember preferences or session information</li>
+          <li>support login, cart, checkout, or account-related functions</li>
+          <li>measure traffic and site performance</li>
+          <li>help detect fraud, abuse, or technical issues</li>
+          <li>improve the user experience</li>
         </ul>
       </section>
 
@@ -77,83 +75,135 @@ export default function CookiesPage() {
         <h2 className="text-base font-semibold text-foreground">
           3. Types of cookies we may use
         </h2>
-        <p>Depending on how the site is configured, we may use:</p>
         <ul className="list-disc pl-5 space-y-1">
-          <li><strong>Essential cookies</strong> for core website operation</li>
-          <li><strong>Preference cookies</strong> for remembering settings</li>
-          <li><strong>Analytics cookies</strong> for usage measurement and diagnostics</li>
-          <li><strong>Security-related cookies</strong> for fraud or abuse prevention</li>
+          <li>strictly necessary cookies</li>
+          <li>functional or preference cookies</li>
+          <li>analytics or performance cookies</li>
+          <li>security-related cookies</li>
         </ul>
-      </section>
-
-      <section>
-        <h2 className="text-base font-semibold text-foreground">
-          4. Third-party technologies
-        </h2>
         <p>
-          Some site features, payment flows, embedded services, analytics tools,
-          or infrastructure providers may place or read cookies or similar
-          identifiers through their own systems, subject to their own policies
-          and configurations.
+          Some cookies may be first-party cookies set by this storefront, while
+          others may be set by service providers supporting website functions or
+          analytics.
         </p>
       </section>
 
-      {isAuNz ? (
+      {isEu ? (
         <section>
           <h2 className="text-base font-semibold text-foreground">
-            5. Australia and New Zealand note
+            4. Consent and controls for EU storefronts
           </h2>
           <p>
-            For this AU/NZ storefront phase, cookie usage is primarily intended
-            to support website operation, order flow, user experience, security,
-            and limited analytics or diagnostics where enabled.
+            Where required by applicable law, we may request cookie consent
+            before using non-essential cookies or similar technologies.
+          </p>
+          <p>
+            You may also be able to adjust cookie preferences through browser
+            settings or any cookie controls made available on the site.
+          </p>
+        </section>
+      ) : isAu ? (
+        <section>
+          <h2 className="text-base font-semibold text-foreground">
+            4. Australia storefront notes
+          </h2>
+          <p>
+            Cookie disclosure practices may reflect privacy and consumer
+            expectations relevant to Australia, depending on the configuration
+            of this storefront and the technologies in use.
+          </p>
+          <p>
+            If we introduce additional tracking or analytics tools in the
+            future, we may update this policy and present further notices where
+            appropriate.
+          </p>
+        </section>
+      ) : isNz ? (
+        <section>
+          <h2 className="text-base font-semibold text-foreground">
+            4. New Zealand storefront notes
+          </h2>
+          <p>
+            Cookie disclosure practices may reflect privacy and consumer
+            expectations relevant to New Zealand, depending on the
+            configuration of this storefront and the technologies in use.
+          </p>
+          <p>
+            If we introduce additional tracking or analytics tools in the
+            future, we may update this policy and present further notices where
+            appropriate.
+          </p>
+        </section>
+      ) : isUs ? (
+        <section>
+          <h2 className="text-base font-semibold text-foreground">
+            4. United States storefront notes
+          </h2>
+          <p>
+            Cookie and tracking disclosure obligations may vary depending on the
+            jurisdiction served by this storefront and the technologies used.
+          </p>
+          <p>
+            We may provide additional notices or controls if required by law or
+            operational policy.
+          </p>
+        </section>
+      ) : isCa ? (
+        <section>
+          <h2 className="text-base font-semibold text-foreground">
+            4. Canada storefront notes
+          </h2>
+          <p>
+            Cookie and tracking disclosure obligations may vary depending on the
+            jurisdiction served by this storefront and the technologies used.
+          </p>
+          <p>
+            We may provide additional notices or controls if required by law or
+            operational policy.
           </p>
         </section>
       ) : (
         <section>
           <h2 className="text-base font-semibold text-foreground">
-            5. Market-specific cookie notes
+            4. Storefront-specific notes
           </h2>
           <p>
-            Cookie disclosures, consent mechanisms, and analytics wording may
-            need to vary depending on the country within the active market and
-            the laws that apply there.
+            Cookie, privacy, and consent requirements may differ depending on
+            the country or region served by this storefront.
+          </p>
+          <p>
+            We may update this policy or provide extra notices where local
+            requirements apply.
           </p>
         </section>
       )}
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          6. Managing cookies
+          5. Managing cookies
         </h2>
         <p>
-          You can usually control or delete cookies through your browser or
-          device settings. Blocking some cookies may affect how parts of the
-          website function, including checkout, account access, or preference
-          retention.
+          Most browsers allow you to control cookies through browser settings.
+          You may be able to block, delete, or restrict cookies, although doing
+          so may affect some website functionality.
         </p>
       </section>
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          7. Updates to this Cookie Policy
+          6. Updates to this policy
         </h2>
         <p>
           We may update this Cookie Policy from time to time to reflect changes
-          to our website, technology stack, service providers, analytics setup,
-          legal obligations, or market configuration.
+          in law, technology, service providers, or the way the storefront
+          operates.
         </p>
       </section>
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          8. Contact
+          7. Contact and related policies
         </h2>
-        <p>
-          If you have questions about cookie usage, privacy, or related policy
-          matters for this storefront in <strong>{legalRegionLabel}</strong>,
-          please contact us.
-        </p>
         <p>
           Support for this storefront is currently managed for{" "}
           <strong>{supportRegionLabel}</strong>.
@@ -167,6 +217,26 @@ export default function CookiesPage() {
             {supportEmail}
           </a>
         </p>
+        <ul className="mt-4 list-disc pl-5 space-y-1">
+          <li>
+            <a href={POLICY_LINKS.privacy} className="font-semibold underline">
+              Privacy Policy
+            </a>
+          </li>
+          <li>
+            <a href={POLICY_LINKS.terms} className="font-semibold underline">
+              Terms &amp; Conditions
+            </a>
+          </li>
+          <li>
+            <a
+              href={POLICY_LINKS.returnsPolicy}
+              className="font-semibold underline"
+            >
+              Returns Policy
+            </a>
+          </li>
+        </ul>
       </section>
     </LegalShell>
   );

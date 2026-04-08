@@ -1,11 +1,6 @@
 // src/lib/market/config.ts
 import { COUNTRY_OPTIONS, type CountryCode } from "@/lib/country";
-import type {
-  MarketCode,
-  MarketConfig,
-  StorefrontCode,
-  StorefrontConfig,
-} from "./types";
+import type { StorefrontCode, StorefrontConfig } from "./types";
 
 const COUNTRY_LABEL_MAP = new Map<string, string>(
   COUNTRY_OPTIONS.map((item) => [item.code, item.label])
@@ -31,62 +26,13 @@ function envSupportEmail(fallback: string) {
 }
 
 /**
- * ✅ market 层：
- * 只放“运营分组”的共性。
- * 不再直接承担 storefront 的 checkout / 文案 / 国家限制。
- */
-export const MARKET_CONFIGS: Record<MarketCode, MarketConfig> = {
-  AU_NZ: {
-    code: "AU_NZ",
-    label: "Australia & New Zealand",
-
-    defaultCurrency: "AUD",
-    defaultTimezone: "Australia/Sydney",
-    policyVariant: "au_nz",
-
-    siteUrl: envSiteUrl("https://example.com"),
-    supportEmail: envSupportEmail("support@example.com"),
-
-    storefrontCodes: ["AU", "NZ"],
-  },
-
-  EU: {
-    code: "EU",
-    label: "Europe",
-
-    defaultCurrency: "EUR",
-    defaultTimezone: "Europe/Berlin",
-    policyVariant: "eu",
-
-    siteUrl: envSiteUrl("https://example.com"),
-    supportEmail: envSupportEmail("support@example.com"),
-
-    storefrontCodes: ["EU"],
-  },
-
-  US_CA: {
-    code: "US_CA",
-    label: "United States & Canada",
-
-    defaultCurrency: "USD",
-    defaultTimezone: "America/Los_Angeles",
-    policyVariant: "us_ca",
-
-    siteUrl: envSiteUrl("https://example.com"),
-    supportEmail: envSupportEmail("support@example.com"),
-
-    storefrontCodes: ["US", "CA"],
-  },
-};
-
-/**
  * ✅ storefront 层：
  * 这才是前台真正应该读取的配置。
+ * 前端不再保留 market 作为主驱动配置。
  */
 export const STOREFRONT_CONFIGS: Record<StorefrontCode, StorefrontConfig> = {
   AU: {
     code: "AU",
-    marketCode: "AU_NZ",
     countryCode: "AU",
     label: "Australia",
 
@@ -113,7 +59,6 @@ export const STOREFRONT_CONFIGS: Record<StorefrontCode, StorefrontConfig> = {
 
   NZ: {
     code: "NZ",
-    marketCode: "AU_NZ",
     countryCode: "NZ",
     label: "New Zealand",
 
@@ -140,7 +85,6 @@ export const STOREFRONT_CONFIGS: Record<StorefrontCode, StorefrontConfig> = {
 
   EU: {
     code: "EU",
-    marketCode: "EU",
     countryCode: "DE",
     label: "Europe",
 
@@ -167,7 +111,6 @@ export const STOREFRONT_CONFIGS: Record<StorefrontCode, StorefrontConfig> = {
 
   US: {
     code: "US",
-    marketCode: "US_CA",
     countryCode: "US",
     label: "United States",
 
@@ -194,7 +137,6 @@ export const STOREFRONT_CONFIGS: Record<StorefrontCode, StorefrontConfig> = {
 
   CA: {
     code: "CA",
-    marketCode: "US_CA",
     countryCode: "CA",
     label: "Canada",
 

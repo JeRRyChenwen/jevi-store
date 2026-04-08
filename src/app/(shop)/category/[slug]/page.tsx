@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import CategoryGridClient from "./CategoryGridClient";
 import { api } from "@/lib/strapi";
-import { CURRENT_MARKET } from "@/lib/market/current";
+import { CURRENT_STOREFRONT } from "@/lib/market/current";
 
 // 兜底顶级分类（防止没连上 Strapi 时至少有这 6 个）
 const STATIC_SLUGS = ["shoes", "bottoms", "tops", "suit", "accessories", "outfit"];
@@ -270,7 +270,7 @@ export default async function CategoryPage({ params }: { params: ParamsPromise }
           total={totalForUI}
           pageSize={40}
           categoryDocIds={categoryDocIds}
-          displayCurrency={CURRENT_MARKET.defaultCurrency}
+          displayCurrency={CURRENT_STOREFRONT.defaultCurrency}
         />
       </div>
     </main>
