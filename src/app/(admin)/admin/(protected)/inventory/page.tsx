@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { Alert } from "@/components/ui/alert";
+import { CURRENT_STOREFRONT } from "@/lib/market/current";
 
 type StorefrontCode = "AU" | "NZ" | "EU" | "US" | "CA";
 type SyncScope = "all" | "sku_list";
@@ -92,7 +93,9 @@ export default function InventoryPage() {
   const [error, setError] = useState("");
   const [showConfirm, setShowConfirm] = useState(false);
 
-  const [storefrontCode, setStorefrontCode] = useState<StorefrontCode>("AU");
+  const [storefrontCode, setStorefrontCode] = useState<StorefrontCode>(
+  CURRENT_STOREFRONT.code as StorefrontCode
+  );
   const [scope, setScope] = useState<SyncScope>("all");
   const [skuText, setSkuText] = useState("");
 
