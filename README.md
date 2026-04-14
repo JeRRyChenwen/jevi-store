@@ -1421,160 +1421,26 @@ supplier → 3PL → customer → return → 责任回溯
 
 对了，我目前是有限制不同的market只能负责对应区域的delivery 服务，也就是说，假设我的market是美国和加拿大的话，那么我就会限制这个网站的delivery 服务的目的地只能是美国和加拿大，不允许送到其他国家，我目前是这么做的，因为这样更方便管理和处理税务
 
-不同一个market用一个网站，不同货币的问题，ca us 同一个usd
-
 order列表添加：
 Region: Australia / New Zealand
 Region: United States / Canada
 
-=============================================
+我的paypal 账号需要设置一下接收的币种
 
-MAIL_SITE_URL=http://localhost:3000
+====================================
 
-这对d1 worker本地开发可以先留着。
-但以后正式切：
+1. 商家责任 / 法定退款
 
-AU storefront
-NZ storefront
-EU storefront
+比如：
 
-============================================================
+商品有质量问题
+发错货
+描述严重不符
+严重延迟、根本没送到
+到货即损坏
 
-# 测试使用
+这类情况下，澳洲和新西兰的消费者法都要求你提供相应救济；在澳洲，如果商品确认有问题，商家还要报销合理的退回成本；在新西兰，商品如果有问题，商家也应偿付退货邮费/配送成本。
 
-NEXT_PUBLIC_API_BASE=http://localhost:8787
+====================================
 
-# NEXT_PUBLIC_API_BASE=https://purple-pond-3b88.lancechen1998.workers.dev
-
-# 假设真实的domain
-
-# API_PROXY=http://127.0.0.1:8787
-
-AUTH_UPSTREAM=http://127.0.0.1:8787
-
-# 若你的 Worker 路径是 /auth/login，请加上：
-
-AUTH_LOGIN_PATH=/auth/login
-
-# 仅开发期用来代理到你的后端
-
-API_PROXY=http://localhost:8787
-
-# Strapi token
-
-STRAPI_URL=http://127.0.0.1:1337
-NEXT_PUBLIC_STRAPI_URL=http://127.0.0.1:1337
-STRAPI_API_TOKEN=bc40e397cca1056446e572827ec963de0c240e34622d8ee183d77369834988f25a5a7101899af540c10e41f2646e3aa1e9c08d62cba3254ddcd85e131d7ccf9d8153b40f499e2bb1498afabf66495eccec5bbe4df161e98a18b4398bc1353a1c27cf77be5f60b8855837c436fa8687ceb7c3b8e8ea60070366140a8995305293
-
-# 前端可读（名字需以 NEXT*PUBLIC* 开头）
-
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_51S5ctjJ3ur1dGHJPtqKPb7E9LLFT2bRZpZ7kKBQ9jl2lQJ7qrS5kLh5KFJujB6l76K2k257FtdreDLeZkf9qe66m00XRgWpnbJ
-
-# 仅服务端可读（不要加 NEXT*PUBLIC*）
-
-STRIPE_SECRET_KEY=sk_test_51S5ctjJ3ur1dGHJPl8KGahmPvSahfC2SHmb1SLf8ZZoC3FyesMbayh8tXuienrWIzSIgabU0TqIOIrTIRqXQpMeJ008NeFrzMN
-
-# BrainTree 的秘钥
-
-BT_MERCHANT_ID=g6j3b93mhv9ky37v
-BT_PUBLIC_KEY=j983ynw3zjcd55kn
-BT_PRIVATE_KEY=7acfc47407b39b2b258088994414e7ad
-
-# 多币种映射 —— 用你刚创建的 Merchant Account ID
-
-BT_MERCHANT_ACCOUNT_AUD=AUD # 例：你的 AUD 子账户 ID
-BT_MERCHANT_ACCOUNT_USD=USD # 例：你的 USD 子账户 ID
-BT_MERCHANT_ACCOUNT_EUR=EUR # 例：你的 EUR 子账户 ID
-BT_MERCHANT_ACCOUNT_GBP=GBP
-BT_MERCHANT_ACCOUNT_CAD=CAD
-
-# PayPal Developer Dashboard → My Apps & Credentials 里的client id
-
-NEXT_PUBLIC_PAYPAL_CLIENT_ID=AZMLDL80MqO75jccmU7POkM8o7WIlRgl4jvs9RYipLBisgTwj4e6yB5mX96aVTjTjlE4mSTjpMOP48uY
-
-# admin的环境变量
-
-ADMIN_TOKEN=dev-admin-token
-
-# worker的环境变量
-
-NEXT_PUBLIC_D1_WORKER_URL=http://127.0.0.1:8787
-
-# 切换market的不同的区域
-
-NEXT_PUBLIC_STOREFRONT_CODE=AU
-NEXT_PUBLIC_MARKET=AU_NZ
-
-=====================================================================================================================
-
-NEXT_PUBLIC_STOREFRONT_CODE=AU
-NEXT_PUBLIC_MARKET=AU_NZ
-
-NEXT_PUBLIC_STOREFRONT_CODE=NZ
-NEXT_PUBLIC_MARKET=AU_NZ
-
-NEXT_PUBLIC_STOREFRONT_CODE=EU
-NEXT_PUBLIC_MARKET=EU
-
-NEXT_PUBLIC_STOREFRONT_CODE=US
-NEXT_PUBLIC_MARKET=US_CA
-
-NEXT_PUBLIC_STOREFRONT_CODE=CA
-NEXT_PUBLIC_MARKET=US_CA
-
-====================================================
-
-NEXT_PUBLIC_MARKET=AU_NZ
-NEXT_PUBLIC_MARKET=AU_NZ
-NEXT_PUBLIC_MARKET=EU
-NEXT_PUBLIC_MARKET=US_CA
-
-然后：
-
-STRAPI_URL=https://irrigation-receives-induction-accepts.trycloudflare.com
-
-MARKET_CODE=AU_NZ
-
-PAYPAL_ENV=sandbox
-PAYPAL_CLIENT_ID=AZMLDL80MqO75jccmU7POkM8o7WIlRgl4jvs9RYipLBisgTwj4e6yB5mX96aVTjTjlE4mSTjpMOP48uY
-PAYPAL_SECRET=EAKZVpF_c_uGubGsJh9cUOE2qh8V9JLsXKacXmDUVRMa07kBsbwvDvOlVl9-uNb-jhc7He0MBM4-\_omN
-
-MAIL_BRAND_NAME=JEVI
-MAIL_SUPPORT_EMAIL=support@jevi.com
-MAIL_SITE_URL=http://localhost:3000
-
-======================================================
-
-货币，地址
-
-STRAPI_URL=https://regional-ahead-inherited-leslie.trycloudflare.com
-
-# ====================================================
-
-# ACTIVE MARKET
-
-# ?????????????????????
-
-# ???????????wrangler dev
-
-# ====================================================
-
-# ---------- AU / NZ market ----------
-
-MARKET_CODE=AU_NZ
-
-# ---------- EU market ----------
-
-# MARKET_CODE=EU
-
-# ---------- US / CA market ----------
-
-# MARKET_CODE=US_CA
-
-PAYPAL_ENV=sandbox
-PAYPAL_CLIENT_ID=AZMLDL80MqO75jccmU7POkM8o7WIlRgl4jvs9RYipLBisgTwj4e6yB5mX96aVTjTjlE4mSTjpMOP48uY
-PAYPAL_SECRET=EAKZVpF_c_uGubGsJh9cUOE2qh8V9JLsXKacXmDUVRMa07kBsbwvDvOlVl9-uNb-jhc7He0MBM4-\_omN
-
-MAIL_BRAND_NAME=JEVI
-MAIL_SUPPORT_EMAIL=support@jevi.com
-MAIL_SITE_URL=http://localhost:3000
+我的品牌服装网站

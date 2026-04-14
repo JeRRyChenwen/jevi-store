@@ -13,7 +13,7 @@ type StatsResp =
       rows: number;
       in_stock_rows: number;
       total_stock: number;
-      market_code?: string;
+      storefront_code?: string;
       warehouse_code?: string;
       worker_version?: string;
     }
@@ -26,7 +26,7 @@ type SyncResp =
       upserted: number;
       pageSize?: number;
       ms: number;
-      market_code?: string;
+      storefront_code?: string;
       warehouse_code?: string;
       scope?: SyncScope;
       matched_skus?: number;
@@ -50,7 +50,7 @@ function prettifyErrorMessage(msg: string) {
   if (lower === "unauthorized") return "Unauthorized. Please sign in again.";
   if (lower === "internal_error") return "Server error. Please try again later.";
   if (lower === "missing_skus") return "Please enter at least one SKU.";
-  if (lower === "bad_market_code") return "Invalid market code.";
+  if (lower === "bad_storefront_code") return "Invalid storefront code.";
   if (lower === "server_error") return "Server error. Please try again later.";
 
   return s;

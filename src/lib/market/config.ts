@@ -161,15 +161,4 @@ export const STOREFRONT_CONFIGS: Record<StorefrontCode, StorefrontConfig> = {
     paymentMethods: ["paypal", "card"],
   },
 
-  /**
-   * ✅ 这些国家 storefront 先预留类型位，
-   * 但当前阶段你还没正式启用，所以不在这里配置。
-   * 等未来 EU 要拆国家站时再补。
-   */
-  DE: undefined as never,
-  FR: undefined as never,
-  IT: undefined as never,
-  ES: undefined as never,
-  NL: undefined as never,
-  BE: undefined as never,
 };

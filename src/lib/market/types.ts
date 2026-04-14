@@ -6,24 +6,19 @@ import type { Currency } from "@/lib/pricing";
  * ✅ storefront = 用户实际访问到的前台站点单元
  * 它可以是国家站，也可以是区域站。
  *
- * 例如：
+ * 当前项目已落地支持：
  * - AU / NZ / US / CA = 国家 storefront
  * - EU = 区域 storefront
  *
- * 后面如果你未来决定把 EU 再拆成 DE / FR / IT，也可以继续补。
+ * 后面如果你未来决定把 EU 再拆成 DE / FR / IT 等国家站，
+ * 再把对应 code 补回这里即可。
  */
 export type StorefrontCode =
   | "AU"
   | "NZ"
   | "US"
   | "CA"
-  | "EU"
-  | "DE"
-  | "FR"
-  | "IT"
-  | "ES"
-  | "NL"
-  | "BE";
+  | "EU";
 
 /**
  * ✅ storefront 级 policy variant
@@ -35,14 +30,9 @@ export type StorefrontPolicyVariant =
   | "nz"
   | "us"
   | "ca"
-  | "eu"
-  | "de"
-  | "fr"
-  | "it"
-  | "es"
-  | "nl"
-  | "be";
+  | "eu";
 
+  
 export type PaymentMethodCode = "paypal" | "card";
 
 /**

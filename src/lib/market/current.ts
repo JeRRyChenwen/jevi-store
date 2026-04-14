@@ -14,12 +14,6 @@ function normalizeStorefrontCode(input?: string | null): StorefrontCode {
   if (v === "EU") return "EU";
   if (v === "US") return "US";
   if (v === "CA") return "CA";
-  if (v === "DE") return "DE";
-  if (v === "FR") return "FR";
-  if (v === "IT") return "IT";
-  if (v === "ES") return "ES";
-  if (v === "NL") return "NL";
-  if (v === "BE") return "BE";
 
   return "AU";
 }

@@ -3,8 +3,14 @@
 export function money(minor: number | null | undefined, currency: string | null | undefined) {
   const c = (currency || "AUD").toUpperCase();
   const v = typeof minor === "number" ? minor / 100 : 0;
+
   try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency: c }).format(v);
+    const amount = new Intl.NumberFormat(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(v);
+
+    return `${c} ${amount}`;
   } catch {
     return `${c} ${v.toFixed(2)}`;
   }
