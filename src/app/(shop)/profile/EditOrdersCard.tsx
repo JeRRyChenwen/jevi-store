@@ -14,6 +14,7 @@ type OrderRow = {
   order_number?: string | null;
   email: string | null;
   currency: string | null;
+  storefront_code?: string | null;
   total_minor: number;
   status: string | null;
 
@@ -27,6 +28,8 @@ type OrderRow = {
 type MyOrdersResp = {
   ok: boolean;
   email: string | null;
+  scope?: "this" | "all";
+  storefront_code?: string | null;
   orders: OrderRow[];
   worker_version?: string;
 };
@@ -78,11 +81,36 @@ function statusBadgeClass(status?: string | null) {
   return "bg-slate-50 text-slate-700 border-slate-200";
 }
 
+function storefrontLabel(code?: string | null) {
+  const c = String(code || "").trim().toUpperCase();
+
+  if (c === "AU") return "Australia";
+  if (c === "NZ") return "New Zealand";
+  if (c === "US") return "United States";
+  if (c === "CA") return "Canada";
+  if (c === "EU") return "Europe";
+
+  return c || "Current store";
+}
+
+
+function scopeButtonClass(active: boolean) {
+  return [
+    "h-10 rounded-xl border px-4 text-sm font-medium transition-colors",
+    active
+      ? "border-slate-400 bg-slate-100 text-slate-900 shadow-sm"
+      : "border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50",
+  ].join(" ");
+}
+
 export default function EditOrdersCard() {
   const router = useRouter();
   const [orders, setOrders] = useState<OrderRow[] | null>(null);
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const [scope, setScope] = useState<"this" | "all">("this");
+  const [activeStorefrontCode, setActiveStorefrontCode] = useState<string | null>(null);
 
   // ✅ NEW: pagination
   const PAGE_SIZE = 10;
@@ -112,7 +140,7 @@ export default function EditOrdersCard() {
     }
   }
 
-  // Load "My orders" on mount
+  // Load "My orders"
   useEffect(() => {
     let dead = false;
     (async () => {
@@ -120,7 +148,10 @@ export default function EditOrdersCard() {
         setLoading(true);
         pageAlert.clear();
 
-        const r = await fetch("/api/my/orders", {
+        const apiUrl =
+          scope === "all" ? "/api/my/orders?scope=all" : "/api/my/orders";
+
+        const r = await fetch(apiUrl, {
           method: "GET",
           credentials: "include",
           headers: { accept: "application/json" },
@@ -129,11 +160,15 @@ export default function EditOrdersCard() {
 
         if (!r.ok) {
           const t = await r.text().catch(() => "");
-          throw new Error(`/api/my/orders ${r.status}: ${t}`);
+          throw new Error(`${apiUrl} ${r.status}: ${t}`);
         }
 
         const data = (await r.json()) as MyOrdersResp;
-        if (!dead) setOrders(Array.isArray(data.orders) ? data.orders : []);
+
+        if (!dead) {
+          setOrders(Array.isArray(data.orders) ? data.orders : []);
+          setActiveStorefrontCode(data.storefront_code ?? null);
+        }
       } catch (e: any) {
         if (!dead) pageAlert.error(e?.message || String(e));
       } finally {
@@ -145,7 +180,7 @@ export default function EditOrdersCard() {
       dead = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [scope]);
 
   // Local filter
   const filtered = useMemo(() => {
@@ -195,10 +230,10 @@ export default function EditOrdersCard() {
     return arr;
   }, [filtered, sortKey, sortDir]);
 
-  // ✅ NEW: reset page when query changes
+  // ✅ reset page when query or scope changes
   useEffect(() => {
     setPage(1);
-  }, [q]);
+  }, [q, scope]);
 
   // ✅ NEW: derive pagination
   const total = sortedFiltered.length;
@@ -224,8 +259,38 @@ export default function EditOrdersCard() {
   const showingFrom = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const showingTo = Math.min(page * PAGE_SIZE, total);
 
+  const currentStoreLabel = storefrontLabel(activeStorefrontCode);
+  const showStoreColumn = scope === "all";
+
   return (
     <div className="px-4 pb-4">
+      {/* Scope switcher */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          className={scopeButtonClass(scope === "this")}
+          onClick={() => {
+            setScope("this");
+            if (pageAlert.hasAlert) pageAlert.clear();
+          }}
+        >
+          {`This store (${currentStoreLabel})`}
+        </Button>
+
+        <Button
+          type="button"
+          variant="outline"
+          className={scopeButtonClass(scope === "all")}
+          onClick={() => {
+            setScope("all");
+            if (pageAlert.hasAlert) pageAlert.clear();
+          }}
+        >
+          All stores
+        </Button>
+      </div>
+
       {/* Search row */}
       <div className="flex items-center gap-2 mb-3">
         <input
@@ -311,6 +376,8 @@ export default function EditOrdersCard() {
                         </button>
                       </th>
 
+                      {showStoreColumn ? <th className="py-2 pr-4">Store</th> : null}
+
                       <th className="py-2 pr-4">Status</th>
                       <th className="py-2 pr-4">Items</th>
                       <th className="py-2 pr-3 text-right">Action</th>
@@ -320,7 +387,10 @@ export default function EditOrdersCard() {
                   <tbody>
                     {pagedOrders.length === 0 ? (
                       <tr>
-                        <td className="py-6 pl-3 pr-4 text-neutral-500" colSpan={6}>
+                        <td
+                          className="py-6 pl-3 pr-4 text-neutral-500"
+                          colSpan={showStoreColumn ? 7 : 6}
+                        >
                           No orders yet.
                         </td>
                       </tr>
@@ -343,6 +413,13 @@ export default function EditOrdersCard() {
                             <td className="py-2 pr-4">
                               {fmtCurrency(o.total_minor, o.currency)}
                             </td>
+
+                            {showStoreColumn ? (
+                              <td className="py-2 pr-4">
+                                {storefrontLabel(o.storefront_code)}
+                              </td>
+                            ) : null}
+
                             <td className="py-2 pr-4">{o.status || "-"}</td>
                             <td className="py-2 pr-4">{o.item_count}</td>
 
@@ -415,6 +492,17 @@ export default function EditOrdersCard() {
                                 {fmtCurrency(o.total_minor, o.currency)}
                               </div>
                             </div>
+
+                            {showStoreColumn ? (
+                              <div>
+                                <div className="text-[11px] uppercase tracking-wide text-slate-500">
+                                  Store
+                                </div>
+                                <div className="mt-1 text-sm text-slate-900">
+                                  {storefrontLabel(o.storefront_code)}
+                                </div>
+                              </div>
+                            ) : null}
 
                             <div>
                               <div className="text-[11px] uppercase tracking-wide text-slate-500">
