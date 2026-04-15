@@ -3,6 +3,7 @@
 
 import React from "react";
 import { Check } from "lucide-react";
+import { CURRENT_STOREFRONT, getShippingNotice } from "@/lib/market/current";
 
 type DeliveryMethod = "standard" | "express";
 
@@ -155,6 +156,8 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
   quoteMatchedText = null,
 }) => {
   const cur = String(currency || "").trim().toUpperCase() || "AUD";
+  const shippingNotice = getShippingNotice(CURRENT_STOREFRONT);
+  const shippingRegionLabel = CURRENT_STOREFRONT.label;
 
   const thresholdText =
     standardFreeThresholdMinor != null
@@ -174,7 +177,6 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
     if (v == null) return null;
     const n = Number(v);
     if (!Number.isFinite(n)) return null;
-    // 这里你截图里想要 A$10.00 这种展示，我们用 Intl 做本地化
     return formatMoney(n, cur);
   };
 
@@ -244,10 +246,19 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
         <div className="border-b px-4 py-3 font-semibold">Delivery</div>
 
         <div className="space-y-3 p-4">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+            <div className="text-sm font-medium text-slate-900">
+              {shippingNotice}
+            </div>
+            <div className="mt-1 text-xs text-slate-600">
+              Delivery addresses outside {shippingRegionLabel} are not supported.
+            </div>
+          </div>
+
           {(["standard", "express"] as DeliveryMethod[]).map((m) => {
             const selected = deliveryMethod === m;
             const { etaLine, noteLine } = formatEtaText(m, etaByMethod, {
-              suppressFallback: quoteLoading, // ✅ loading 时不显示写死 ETA
+              suppressFallback: quoteLoading,
             });
 
             const feeText = feeTextOf(m);
@@ -293,12 +304,10 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
                     </div>
                   </div>
 
-                  {/* ✅ ETA：loading 时留空；quote 完成后显示数据库时效 */}
                   <div className="mt-1 min-h-[20px] text-sm text-neutral-600">
                     {etaLine ? etaLine : ""}
                   </div>
 
-                  {/* ✅ 备注（可选） */}
                   {noteLine ? (
                     <div className="mt-1 text-xs text-neutral-500">{noteLine}</div>
                   ) : null}
@@ -307,7 +316,6 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
             );
           })}
 
-          {/* ✅ 统一底部状态条：始终在 Delivery 框内 */}
           {statusLine ? (
             <div className="pt-2">
               <div className={["text-sm", statusLine.cls].join(" ")}>

@@ -32,7 +32,6 @@ export type StorefrontPolicyVariant =
   | "ca"
   | "eu";
 
-  
 export type PaymentMethodCode = "paypal" | "card";
 
 /**
@@ -91,6 +90,7 @@ export type StorefrontConfig = {
    * ✅ storefront 级文案
    */
   shippingCountryErrorMessage: string;
+  shippingNotice: string;
   checkoutRegionLabel: string;
   legalRegionLabel: string;
   supportRegionLabel: string;

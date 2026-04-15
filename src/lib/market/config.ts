@@ -45,6 +45,7 @@ export const STOREFRONT_CONFIGS: Record<StorefrontCode, StorefrontConfig> = {
 
     shippingCountryErrorMessage:
       "We currently only ship within Australia. Please update your delivery address to continue.",
+    shippingNotice: "Shipping available within Australia only.",
     checkoutRegionLabel: "Australia",
 
     legalRegionLabel: "Australia",
@@ -71,6 +72,7 @@ export const STOREFRONT_CONFIGS: Record<StorefrontCode, StorefrontConfig> = {
 
     shippingCountryErrorMessage:
       "We currently only ship within New Zealand. Please update your delivery address to continue.",
+    shippingNotice: "Shipping available within New Zealand only.",
     checkoutRegionLabel: "New Zealand",
 
     legalRegionLabel: "New Zealand",
@@ -97,6 +99,7 @@ export const STOREFRONT_CONFIGS: Record<StorefrontCode, StorefrontConfig> = {
 
     shippingCountryErrorMessage:
       "We currently only ship to selected European destinations for this storefront. Please update your delivery address to continue.",
+    shippingNotice: "Shipping available to selected European destinations only.",
     checkoutRegionLabel: "selected European destinations",
 
     legalRegionLabel: "selected European destinations",
@@ -123,6 +126,7 @@ export const STOREFRONT_CONFIGS: Record<StorefrontCode, StorefrontConfig> = {
 
     shippingCountryErrorMessage:
       "We currently only ship within the United States. Please update your delivery address to continue.",
+    shippingNotice: "Shipping available within the United States only.",
     checkoutRegionLabel: "the United States",
 
     legalRegionLabel: "the United States",
@@ -149,6 +153,7 @@ export const STOREFRONT_CONFIGS: Record<StorefrontCode, StorefrontConfig> = {
 
     shippingCountryErrorMessage:
       "We currently only ship within Canada. Please update your delivery address to continue.",
+    shippingNotice: "Shipping available within Canada only.",
     checkoutRegionLabel: "Canada",
 
     legalRegionLabel: "Canada",

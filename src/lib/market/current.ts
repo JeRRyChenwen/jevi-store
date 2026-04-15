@@ -66,6 +66,15 @@ export function getEffectivePaymentMethods(
 }
 
 /**
+ * ✅ storefront 的配送范围提示文案
+ */
+export function getShippingNotice(
+  storefront: StorefrontConfig = getCurrentStorefront()
+): string {
+  return storefront.shippingNotice;
+}
+
+/**
  * ✅ 当前 storefront 常量
  */
 export const CURRENT_STOREFRONT = getCurrentStorefront();
