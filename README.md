@@ -1080,14 +1080,6 @@ order-item 表的variant 字段，material也要存进去
 0003_indexes.sql -> 后期补索引
 这样你以后就不会因为改 rate limit 而重建所有表。
 
-================================================
-
-我想问下，Phase 2做好了之后，是在什么情况下才会需要“极低概率需要人工退款/联系用户”
-
-order添加一个delivered的状态
-
-上线之后immigration文件要从 DROP TABLE IF EXISTS rate_limit_failures; 改成 CREATE TABLE IF NOT EXISTS rate_limit_failures 并且索引也改成 IF NOT EXISTS
-
 ======================
 
 域名弄好了之后
@@ -1108,103 +1100,6 @@ YouTube
 Open Graph (OG Image)，让别人分享你的网站
 
 网站主域名 和 发邮件专用子域名，把域名加到 Resend
-
-==================================
-
-                    ┌─────────────────────────────────────┐
-                    │            用户浏览器 / App          │
-                    └─────────────────────────────────────┘
-                                      │
-                                      │ HTTPS
-                                      ▼
-                    ┌─────────────────────────────────────┐
-                    │         Cloudflare Pages             │
-                    │  social-platform 前端（Next/React）  │
-                    │  - 商品页 / 购物车 / 结账 / 个人中心   │
-                    │  - 管理后台前端 UI                   │
-                    └─────────────────────────────────────┘
-                                      │
-                     API 请求          │
-             ┌────────────────────────┘
-             ▼
-
-┌──────────────────────────────────────────────────────────────────┐
-│ Cloudflare Worker (API Gateway) │
-│ d1-worker │
-│ │
-│ 路由层： │
-│ - /orders │
-│ - /returns │
-│ - /inventory │
-│ - /shipping/quote │
-│ - /admin/_ │
-│ - /auth/_ │
-│ │
-│ 业务层： │
-│ - 库存 reservation / consume │
-│ - 下单 / 支付记录 / 退货 / 审批 │
-│ - email_outbox 入队 │
-│ - scheduled cron 消费 outbox / 清理过期数据 │
-└──────────────────────────────────────────────────────────────────┘
-│ │ │
-│ │ │
-▼ ▼ ▼
-┌───────────────────┐ ┌────────────────────┐ ┌────────────────────┐
-│ Cloudflare D1 │ │ Cloudflare R2 │ │ Mailer Worker │
-│ 交易数据库 │ │ 文件对象存储 │ │ mailer-api │
-│ │ │ │ │ │
-│ - orders │ │ - return images │ │ - 渲染邮件模板 │
-│ - order_items │ │ - attachments │ │ - 调 Resend │
-│ - order_payments │ │ - future uploads │ │ - 返回 provider id │
-│ - inventory │ │ │ │ │
-│ - reservations │ │ │ │ │
-│ - returns │ │ │ │ │
-│ - refunds │ │ │ │ │
-│ - email_outbox │ │ │ │ │
-└───────────────────┘ └────────────────────┘ └────────────────────┘
-│
-▼
-┌────────────────────┐
-│ Resend │
-│ 外部邮件投递服务 │
-└────────────────────┘
-
-                    ┌─────────────────────────────────────┐
-                    │              Strapi CMS             │
-                    │   商品内容后台（独立服务/独立部署）  │
-                    │ - products / variants / media       │
-                    │ - CMS 内容维护                      │
-                    └─────────────────────────────────────┘
-                                      ▲
-                                      │
-                         Worker / Pages 按需读取商品内容
-
-============================================================
-
-我看了你上传的 social-platform 代码包，当前最需要拆的几个文件大概是：
-
-src/app/(shop)/checkout/page.tsx
-
-src/app/(shop)/returns/page.tsx
-
-src/app/(shop)/checkout/\_components/PaymentStep.tsx
-
-src/app/(shop)/product/[slug]/page.tsx
-
-src/app/(admin)/admin/(protected)/returns/[id]/ReturnDetailClient.tsx
-
-src/app/(shop)/profile/EditAddressCard.tsx
-
-src/app/(admin)/admin/(protected)/orders/page.tsx
-
-src/lib/strapi.ts
-
-=================================================================
-
-我觉得这样好像不是很好，因为我原本的代码是没问题的，但是你帮我修改之后不行了，接着又修修补补，我怕会埋下什么隐患，我原本写好的代码一直是没问题的，你能不能就按照之前写好的代码帮我看看怎么拆分，不要做多余的动作小心帮我看看要怎么拆分，或者说，有没有可能是 D:\前端练习\social-platform\src\app\(shop)\checkout\(hooks)\useCheckoutBootstrap.ts 文件，D:\前端练习\social-platform\src\app\(shop)\checkout\(hooks)\useCheckoutShippingQuotes.ts 文件，D:\前端练习\social-platform\src\app\(shop)\checkout\(hooks)\useCheckoutReserveFlow.ts 文件的问题
-
-你这次的担心是对的。
-像 checkout / reserve / payment 这种流程页，最怕的不是代码长，而是“看起来只是搬家，实际上 effect 触发时机变了”。
 
 ===========================================
 
@@ -1382,8 +1277,6 @@ profile 页面也要修改
 
 优化AU NZ 的法律
 
-拓张全球市场，写成适应不同地区的版本的代码
-
 ================================================================
 
 1. 对 3PL 的要求
@@ -1417,10 +1310,6 @@ supplier → 3PL → customer → return → 责任回溯
 
 的完整链路。
 
-order列表添加：
-Region: Australia / New Zealand
-Region: United States / Canada
-
 我的paypal 账号需要设置一下接收的币种
 
 ====================================
@@ -1440,3 +1329,5 @@ Region: United States / Canada
 ====================================
 
 我的品牌服装网站
+
+政策页面需要检查
