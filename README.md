@@ -840,6 +840,9 @@ wrangler deploy
 以及修改了corn 和 schedule之后也要重新在 d1 worker里部署一次：
 wrangler deploy
 
+打开浏览器，进入你网站任意页面，按 F12 打开控制台，把你之前点过的 Accept all / Reject non-essential 记录清掉，执行：
+localStorage.removeItem("jevi_cookie_consent_v1");
+
 ==============================================================================
 
 脚本运行命令：
@@ -1331,3 +1334,5 @@ supplier → 3PL → customer → return → 责任回溯
 我的品牌服装网站
 
 政策页面需要检查
+
+它们现在是 “结构和口径已经比较稳”，但还不是 “法律层面完全收口的正式最终版”。你现在还差的是一些更偏“经营主体信息”和“实际运营落地”的内容。

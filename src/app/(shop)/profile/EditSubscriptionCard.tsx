@@ -198,7 +198,7 @@ export default function EditSubscriptionCard({ userEmail }: Props) {
                 onClick={handleToggle}
                 disabled={toggling}
                 className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                  isSubscribed ? "bg-emerald-500" : "bg-neutral-300"
+                  isSubscribed ? "bg-neutral-900" : "bg-neutral-300"
                 } ${toggling ? "opacity-60 cursor-default" : "cursor-pointer"}`}
                 aria-pressed={isSubscribed}
                 aria-label="Toggle email subscription"
@@ -216,7 +216,7 @@ export default function EditSubscriptionCard({ userEmail }: Props) {
             <span
               className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs ${
                 isSubscribed
-                  ? "bg-emerald-100 text-emerald-700"
+                  ? "bg-neutral-900 text-white"
                   : "bg-neutral-200 text-neutral-800"
               }`}
             >

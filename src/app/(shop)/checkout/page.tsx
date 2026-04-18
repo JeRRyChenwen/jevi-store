@@ -10,6 +10,7 @@ import { useCheckoutReservation } from "./(hooks)/useCheckoutReservation";
 import { useCheckoutShippingQuotes } from "./(hooks)/useCheckoutShippingQuotes";
 import { useFormAlert } from "@/hooks/useFormAlert";
 import CheckoutPageView from "./checkout-page-view";
+import PayPalProvider from "@/components/paypal/Provider";
 import type {
   DeliveryMethod,
   StepKey,
@@ -52,6 +53,17 @@ import {
 /* ---------------- 工具：本地 /api 优先（需要远端时单独指定） ---------------- */
 const apiURL = (path: string) => `/api${path}`;
 const REMOTE_BASE = (process.env.NEXT_PUBLIC_API_BASE || "").replace(/\/+$/, "");
+
+const COOKIE_CONSENT_KEY = "jevi_cookie_consent_v1";
+const STOREFRONT_CODE = String(
+  process.env.NEXT_PUBLIC_STOREFRONT_CODE || "AU"
+)
+  .trim()
+  .toUpperCase();
+
+function isEuStorefront() {
+  return STOREFRONT_CODE === "EU";
+}
 
 /* ---------------- Page ---------------- */
 export default function CheckoutPage() {
@@ -147,6 +159,9 @@ export default function CheckoutPage() {
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>("standard");
   const [isPayProcessing, setIsPayProcessing] = useState(false);
   const [payPersistErrMsg, setPayPersistErrMsg] = useState<string | null>(null);
+  const [cookieConsent, setCookieConsent] = useState<
+    "accept_all" | "reject_non_essential" | null
+  >(null);
 
   const initialStepFromURL = coerceCheckoutStep(searchParams.get("step"), "bag");
   const [step, setStep] = useState<StepKey>(initialStepFromURL);
@@ -173,8 +188,51 @@ export default function CheckoutPage() {
     });
   };
 
+
+
   useEffect(() => {
-    runCheckoutPagePreconnect();
+    function syncConsent() {
+      if (typeof window === "undefined") return;
+
+      try {
+        const raw = window.localStorage.getItem(COOKIE_CONSENT_KEY);
+        if (raw === "accept_all" || raw === "reject_non_essential") {
+          setCookieConsent(raw);
+          return;
+        }
+      } catch {}
+
+      setCookieConsent(null);
+    }
+
+    syncConsent();
+
+    function handleConsentChanged(event: Event) {
+      const customEvent = event as CustomEvent<{ value?: string }>;
+      const next = customEvent?.detail?.value;
+
+      if (next === "accept_all" || next === "reject_non_essential") {
+        setCookieConsent(next);
+        return;
+      }
+
+      syncConsent();
+    }
+
+    window.addEventListener(
+      "jevi-cookie-consent-changed",
+      handleConsentChanged as EventListener
+    );
+
+    window.addEventListener("storage", syncConsent);
+
+    return () => {
+      window.removeEventListener(
+        "jevi-cookie-consent-changed",
+        handleConsentChanged as EventListener
+      );
+      window.removeEventListener("storage", syncConsent);
+    };
   }, []);
 
   useEffect(() => {
@@ -418,6 +476,17 @@ export default function CheckoutPage() {
     quoteMatchedText,
   });
 
+  const paypalConsentRequired =
+    isEuStorefront() && cookieConsent !== "accept_all";
+
+  const canLoadPayPalProvider = !paypalConsentRequired;
+
+  useEffect(() => {
+    if (!canLoadPayPalProvider) return;
+
+    runCheckoutPagePreconnect();
+  }, [canLoadPayPalProvider]);
+
   const paymentStepProps = buildCheckoutPaymentStepProps({
     visible: step === "payment",
     amountInMajorUnit: amountInMajorUnitEffective,
@@ -440,9 +509,13 @@ export default function CheckoutPage() {
     preReserveError: reserveErr,
     cart,
     onBackToBag: () => setStepAndURL("bag"),
+    paypalConsentRequired,
+    paypalDisabledText: paypalConsentRequired
+      ? "Accept cookies to use PayPal"
+      : undefined,
   });
 
-  return (
+  const checkoutView = (
     <CheckoutPageView
       step={step}
       setStepAndURL={setStepAndURL}
@@ -461,5 +534,11 @@ export default function CheckoutPage() {
       formAlertMessage={formAlert.alert?.message}
       alertVariant={alertVariant}
     />
+  );
+
+  return canLoadPayPalProvider ? (
+    <PayPalProvider>{checkoutView}</PayPalProvider>
+  ) : (
+    checkoutView
   );
 }

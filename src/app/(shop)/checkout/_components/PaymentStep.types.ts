@@ -52,4 +52,7 @@ export type PaymentStepProps = {
   preReservationCartHash?: string | null;
   preReserveLoading?: boolean;
   preReserveError?: string | null;
+
+  paypalConsentRequired?: boolean;
+  paypalDisabledText?: string;
 };

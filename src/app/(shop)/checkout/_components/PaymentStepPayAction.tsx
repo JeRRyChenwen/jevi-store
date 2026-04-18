@@ -11,6 +11,8 @@ type Props = {
   isPayProcessing: boolean;
   preReserveLoading?: boolean;
   paypalUnavailable: boolean;
+  paypalConsentRequired?: boolean;
+  paypalDisabledText?: string;
   successMetaWithReservation: any;
   stockItems: StockCheckItem[];
   runStockReservePreflight: (items?: StockCheckItem[]) => Promise<any>;
@@ -29,6 +31,8 @@ const PaymentStepPayAction: React.FC<Props> = ({
   isPayProcessing,
   preReserveLoading = false,
   paypalUnavailable,
+  paypalConsentRequired = false,
+  paypalDisabledText,
   successMetaWithReservation,
   stockItems,
   runStockReservePreflight,
@@ -59,6 +63,27 @@ const PaymentStepPayAction: React.FC<Props> = ({
         >
           Preparing PayPal...
         </button>
+      ) : paypalConsentRequired ? (
+        <div className="space-y-2">
+          <button
+            type="button"
+            disabled
+            className="w-full rounded-full px-6 py-3.5 text-sm font-semibold bg-neutral-200 text-neutral-500 cursor-not-allowed shadow-sm"
+            title={paypalDisabledText || "Accept cookies to use PayPal"}
+          >
+            {paypalDisabledText || "Accept cookies to use PayPal"}
+          </button>
+          <p className="text-xs leading-5 text-neutral-500">
+            On the EU storefront, PayPal is available only after you accept the
+            relevant cookie and technology settings.
+          </p>
+          <a
+            href="/cookies"
+            className="inline-block text-xs font-medium text-neutral-700 underline underline-offset-2 transition hover:text-neutral-900"
+          >
+            Change cookie settings
+          </a>
+        </div>
       ) : (
         <PayPalBigButton
           disabled={paypalUnavailable}

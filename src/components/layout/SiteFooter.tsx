@@ -68,7 +68,7 @@ export function SiteFooter() {
                   href="/cookies"
                   className="hover:text-foreground transition-colors"
                 >
-                  Cookie Policy
+                  Cookie Policy &amp; Cookie Settings
                 </Link>
               </li>
             </ul>

@@ -43,6 +43,8 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   preReservationCartHash,
   preReserveLoading,
   preReserveError,
+  paypalConsentRequired = false,
+  paypalDisabledText,
 }) => {
   const router = useRouter();
 
@@ -105,17 +107,27 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     derivedTotalMinor,
   });
 
+  const uiPayBlockedReason = paypalConsentRequired ? null : payBlockedReason;
+
   // ✅ PayPal 按钮可用性逻辑已抽到独立 util
   const paypalUnavailable = useMemo(() => {
+    if (paypalConsentRequired) return true;
+
     return getPayPalUnavailable({
       visible,
       isPayProcessing,
       preReserveLoading,
-      payBlockedReason,
+      payBlockedReason: uiPayBlockedReason,
       payError,
     });
-  }, [visible, isPayProcessing, preReserveLoading, payBlockedReason, payError]);
-
+  }, [
+    visible,
+    isPayProcessing,
+    preReserveLoading,
+    uiPayBlockedReason,
+    payError,
+    paypalConsentRequired,
+  ]);
 
 
   /**
@@ -282,7 +294,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
           payError={payError}
           outOfStockDisplay={outOfStockDisplay}
           preReserveLoading={preReserveLoading}
-          payBlockedReason={payBlockedReason}
+          payBlockedReason={uiPayBlockedReason}
         />
 
         {/* =========================
@@ -317,6 +329,8 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                 isPayProcessing={isPayProcessing}
                 preReserveLoading={preReserveLoading}
                 paypalUnavailable={paypalUnavailable}
+                paypalConsentRequired={paypalConsentRequired}
+                paypalDisabledText={paypalDisabledText}
                 successMetaWithReservation={successMetaWithReservation}
                 stockItems={stockItems}
                 runStockReservePreflight={runStockReservePreflight}
@@ -366,6 +380,8 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                   isPayProcessing={isPayProcessing}
                   preReserveLoading={preReserveLoading}
                   paypalUnavailable={paypalUnavailable}
+                  paypalConsentRequired={paypalConsentRequired}
+                  paypalDisabledText={paypalDisabledText}
                   successMetaWithReservation={successMetaWithReservation}
                   stockItems={stockItems}
                   runStockReservePreflight={runStockReservePreflight}

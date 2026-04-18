@@ -2,6 +2,8 @@
 
 import { coerceCountryCode } from "@/lib/country";
 
+type SupportedCountryCode = Parameters<typeof coerceCountryCode>[1];
+
 export function addCheckoutPaymentPreconnectHints() {
   const hosts = [
     "https://www.paypal.com",
@@ -30,7 +32,7 @@ export function addCheckoutPaymentPreconnectHints() {
 
 export function restoreCheckoutAddressFromStorage(args: {
   storageKey: string;
-  fallbackCountry?: string;
+  fallbackCountry?: SupportedCountryCode;
   setAddress: (updater: any) => void;
 }) {
   try {
