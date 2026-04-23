@@ -200,8 +200,16 @@ export default function CheckoutPage() {
           setCookieConsent(raw);
           return;
         }
+
+        // ✅ 非 EU storefront：默认视为 accept_all，并写入本地
+        if (!isEuStorefront()) {
+          window.localStorage.setItem(COOKIE_CONSENT_KEY, "accept_all");
+          setCookieConsent("accept_all");
+          return;
+        }
       } catch {}
 
+      // ✅ EU storefront：如果还没选，就保持 null，继续走 banner
       setCookieConsent(null);
     }
 
@@ -476,8 +484,7 @@ export default function CheckoutPage() {
     quoteMatchedText,
   });
 
-  const paypalConsentRequired =
-    isEuStorefront() && cookieConsent !== "accept_all";
+  const paypalConsentRequired = cookieConsent !== "accept_all";
 
   const canLoadPayPalProvider = !paypalConsentRequired;
 

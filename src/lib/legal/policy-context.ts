@@ -19,6 +19,37 @@ export function getPolicyContext() {
   const isUs = storefront.policyVariant === "us";
   const isCa = storefront.policyVariant === "ca";
 
+  const legalEntityName =
+    storefront.legalEntityName || BRAND.legalEntityName;
+  const legalEntityAddress =
+    storefront.legalEntityAddress || BRAND.legalEntityAddress;
+  const legalEntityCountry =
+    storefront.legalEntityCountry || BRAND.legalEntityCountry;
+  const companyRegistrationNumber =
+    storefront.companyRegistrationNumber || BRAND.companyRegistrationNumber;
+
+  const privacyContactEmail =
+    storefront.privacyContactEmail || BRAND.privacyContactEmail;
+  const returnsContactEmail =
+    storefront.returnsContactEmail || BRAND.returnsContactEmail;
+
+  const governingLawLabel =
+    storefront.governingLawLabel || BRAND.governingLawLabel;
+
+  const supportedCountriesForStorefront =
+    storefront.supportedCountriesForStorefront ||
+    storefront.checkoutCountryCodes;
+
+  const returnWindowDaysChangeOfMind =
+    storefront.returnWindowDaysChangeOfMind ?? 14;
+
+  const hasEuWithdrawalRight =
+    storefront.hasEuWithdrawalRight ?? isEu;
+
+  const cookieConsentMode =
+    storefront.cookieConsentMode ||
+    (isEu ? "eu_strict" : "optional_settings_only");
+
   return {
     storefront,
     supportEmail,
@@ -27,6 +58,18 @@ export function getPolicyContext() {
     legalRegionLabel,
     checkoutRegionLabel,
     supportRegionLabel,
+
+    legalEntityName,
+    legalEntityAddress,
+    legalEntityCountry,
+    companyRegistrationNumber,
+    privacyContactEmail,
+    returnsContactEmail,
+    governingLawLabel,
+    supportedCountriesForStorefront,
+    returnWindowDaysChangeOfMind,
+    hasEuWithdrawalRight,
+    cookieConsentMode,
 
     isAu,
     isNz,

@@ -45,9 +45,51 @@ export const BRAND = {
   contactEmail: "support@jevi.com",
 
   /**
+   * ✅ 隐私联系邮箱
+   * 先默认与 support 一样，后续 storefront 可覆盖
+   */
+  privacyContactEmail: "support@jevi.com",
+
+  /**
+   * ✅ 售后 / 退货联系邮箱
+   * 先默认与 support 一样，后续 storefront 可覆盖
+   */
+  returnsContactEmail: "support@jevi.com",
+
+  /**
    * ✅ 法务页 / footer 用的版权名
    */
   legalName: "Jevi",
+
+  /**
+   * ✅ 经营主体默认名称
+   * 当前按你的实际情况先写 sole trader / operator
+   */
+  legalEntityName: "Wenxuan Chen trading as Jevi",
+
+  /**
+   * ✅ 经营主体默认国家
+   * storefront 未覆盖时的兜底显示
+   */
+  legalEntityCountry: "Australia",
+
+  /**
+   * ✅ 经营主体默认地址
+   * 暂时先留占位，后面你确认可公开地址后再替换
+   */
+  legalEntityAddress: "Business address to be provided before launch",
+
+  /**
+   * ✅ 注册号 / ABN / company number
+   * 暂时先留占位，后续 storefront 可覆盖
+   */
+  companyRegistrationNumber: "ABN / registration number to be provided before launch",
+
+  /**
+   * ✅ 默认适用法标签
+   * storefront 未覆盖时兜底
+   */
+  governingLawLabel: "Applicable law of the storefront’s operating region",
 
   /**
    * ✅ 站点 URL（未来做 OG / canonical / sitemap 时会用到）

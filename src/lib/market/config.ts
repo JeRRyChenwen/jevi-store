@@ -1,4 +1,5 @@
 // src/lib/market/config.ts
+import { BRAND } from "@/lib/brand";
 import { COUNTRY_OPTIONS, type CountryCode } from "@/lib/country";
 import type { StorefrontCode, StorefrontConfig } from "./types";
 
@@ -53,9 +54,21 @@ export const STOREFRONT_CONFIGS: Record<StorefrontCode, StorefrontConfig> = {
     policyVariant: "au",
 
     siteUrl: envSiteUrl("https://au.example.com"),
-    supportEmail: envSupportEmail("support@example.com"),
+    supportEmail: envSupportEmail(BRAND.supportEmail),
 
     paymentMethods: ["paypal", "card"],
+
+    legalEntityName: BRAND.legalEntityName,
+    legalEntityAddress: BRAND.legalEntityAddress,
+    legalEntityCountry: "Australia",
+    companyRegistrationNumber: BRAND.companyRegistrationNumber,
+    privacyContactEmail: BRAND.privacyContactEmail,
+    returnsContactEmail: BRAND.returnsContactEmail,
+    governingLawLabel: "Laws of Australia",
+    supportedCountriesForStorefront: ["AU"],
+    returnWindowDaysChangeOfMind: 14,
+    hasEuWithdrawalRight: false,
+    cookieConsentMode: "optional_settings_only",
   },
 
   NZ: {
@@ -80,9 +93,21 @@ export const STOREFRONT_CONFIGS: Record<StorefrontCode, StorefrontConfig> = {
     policyVariant: "nz",
 
     siteUrl: envSiteUrl("https://nz.example.com"),
-    supportEmail: envSupportEmail("support@example.com"),
+    supportEmail: envSupportEmail(BRAND.supportEmail),
 
     paymentMethods: ["paypal", "card"],
+
+    legalEntityName: BRAND.legalEntityName,
+    legalEntityAddress: BRAND.legalEntityAddress,
+    legalEntityCountry: "Australia",
+    companyRegistrationNumber: BRAND.companyRegistrationNumber,
+    privacyContactEmail: BRAND.privacyContactEmail,
+    returnsContactEmail: BRAND.returnsContactEmail,
+    governingLawLabel: "Laws of New Zealand",
+    supportedCountriesForStorefront: ["NZ"],
+    returnWindowDaysChangeOfMind: 14,
+    hasEuWithdrawalRight: false,
+    cookieConsentMode: "optional_settings_only",
   },
 
   EU: {
@@ -107,9 +132,21 @@ export const STOREFRONT_CONFIGS: Record<StorefrontCode, StorefrontConfig> = {
     policyVariant: "eu",
 
     siteUrl: envSiteUrl("https://eu.example.com"),
-    supportEmail: envSupportEmail("support@example.com"),
+    supportEmail: envSupportEmail(BRAND.supportEmail),
 
     paymentMethods: ["paypal", "card"],
+
+    legalEntityName: BRAND.legalEntityName,
+    legalEntityAddress: BRAND.legalEntityAddress,
+    legalEntityCountry: "Australia",
+    companyRegistrationNumber: BRAND.companyRegistrationNumber,
+    privacyContactEmail: BRAND.privacyContactEmail,
+    returnsContactEmail: BRAND.returnsContactEmail,
+    governingLawLabel: "Applicable laws governing this European storefront",
+    supportedCountriesForStorefront: ["DE", "FR", "IT", "ES", "NL", "BE"],
+    returnWindowDaysChangeOfMind: 14,
+    hasEuWithdrawalRight: true,
+    cookieConsentMode: "eu_strict",
   },
 
   US: {
@@ -134,9 +171,21 @@ export const STOREFRONT_CONFIGS: Record<StorefrontCode, StorefrontConfig> = {
     policyVariant: "us",
 
     siteUrl: envSiteUrl("https://us.example.com"),
-    supportEmail: envSupportEmail("support@example.com"),
+    supportEmail: envSupportEmail(BRAND.supportEmail),
 
     paymentMethods: ["paypal", "card"],
+
+    legalEntityName: BRAND.legalEntityName,
+    legalEntityAddress: BRAND.legalEntityAddress,
+    legalEntityCountry: "Australia",
+    companyRegistrationNumber: BRAND.companyRegistrationNumber,
+    privacyContactEmail: BRAND.privacyContactEmail,
+    returnsContactEmail: BRAND.returnsContactEmail,
+    governingLawLabel: "Applicable laws governing this United States storefront",
+    supportedCountriesForStorefront: ["US"],
+    returnWindowDaysChangeOfMind: 14,
+    hasEuWithdrawalRight: false,
+    cookieConsentMode: "optional_settings_only",
   },
 
   CA: {
@@ -161,9 +210,20 @@ export const STOREFRONT_CONFIGS: Record<StorefrontCode, StorefrontConfig> = {
     policyVariant: "ca",
 
     siteUrl: envSiteUrl("https://ca.example.com"),
-    supportEmail: envSupportEmail("support@example.com"),
+    supportEmail: envSupportEmail(BRAND.supportEmail),
 
     paymentMethods: ["paypal", "card"],
-  },
 
+    legalEntityName: BRAND.legalEntityName,
+    legalEntityAddress: BRAND.legalEntityAddress,
+    legalEntityCountry: "Australia",
+    companyRegistrationNumber: BRAND.companyRegistrationNumber,
+    privacyContactEmail: BRAND.privacyContactEmail,
+    returnsContactEmail: BRAND.returnsContactEmail,
+    governingLawLabel: "Applicable laws governing this Canada storefront",
+    supportedCountriesForStorefront: ["CA"],
+    returnWindowDaysChangeOfMind: 14,
+    hasEuWithdrawalRight: false,
+    cookieConsentMode: "optional_settings_only",
+  },
 };

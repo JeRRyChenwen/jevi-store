@@ -17,6 +17,7 @@ export default function TermsPage() {
   const {
     isAu,
     isNz,
+    isEu,
     isUs,
     isCa,
     legalRegionLabel,
@@ -24,6 +25,12 @@ export default function TermsPage() {
     supportRegionLabel,
     supportEmail,
     siteUrl,
+    legalEntityName,
+    legalEntityAddress,
+    legalEntityCountry,
+    companyRegistrationNumber,
+    governingLawLabel,
+    supportedCountriesForStorefront,
   } = POLICY;
 
   return (
@@ -57,9 +64,8 @@ export default function TermsPage() {
           1. About this storefront
         </h2>
         <p>
-          This website is operated by <strong>Wenxuan Chen</strong>, trading as{" "}
-          <strong>{BRAND.displayName}</strong>, for customers using the{" "}
-          <strong>{legalRegionLabel}</strong> storefront.
+          This website is operated by <strong>{legalEntityName}</strong> for
+          customers using the <strong>{legalRegionLabel}</strong> storefront.
         </p>
         <p>
           The website address for this storefront is{" "}
@@ -72,16 +78,26 @@ export default function TermsPage() {
           Business enquiries and customer support for this storefront may be
           directed to{" "}
           <a
-            href="mailto:support@jevi.com"
+            href={`mailto:${supportEmail}`}
             className="font-semibold underline"
           >
-            support@jevi.com
+            {supportEmail}
           </a>
           .
         </p>
         <p>
+          <strong>Legal entity country:</strong> {legalEntityCountry}
+        </p>
+        <p>
+          <strong>Business address:</strong> {legalEntityAddress}
+        </p>
+        <p>
+          <strong>Registration / business number:</strong>{" "}
+          {companyRegistrationNumber}
+        </p>
+        <p>
           References in these Terms &amp; Conditions to “we”, “us”, and “our”
-          refer to Wenxuan Chen trading as <strong>{BRAND.displayName}</strong>.
+          refer to <strong>{legalEntityName}</strong>.
         </p>
       </section>
 
@@ -124,18 +140,20 @@ export default function TermsPage() {
           from this storefront. We may accept, reject, cancel, or limit an order
           where reasonably necessary, including in cases involving suspected
           fraud, payment issues, pricing errors, stock unavailability, shipping
-          restrictions, or other legitimate operational reasons.
+          restrictions, destination restrictions, compliance checks, or other
+          legitimate operational reasons.
         </p>
         <p>
-          An acknowledgement or confirmation email does not necessarily mean that
-          your order has been finally accepted if later review identifies an
-          issue that requires cancellation, correction, or refund in accordance
-          with applicable law.
+          An acknowledgement, order confirmation, or payment confirmation email
+          does not necessarily mean that your order has been finally accepted if
+          later review identifies an issue that requires cancellation,
+          correction, refund, partial fulfilment, or another appropriate step in
+          accordance with applicable law.
         </p>
         <p>
           If we cannot fulfil your order after payment has been authorised or
-          captured, we may cancel the affected order and arrange an appropriate
-          refund or other remedy as required.
+          captured, we may cancel the affected order in whole or in part and
+          arrange an appropriate refund or other remedy as required.
         </p>
       </section>
 
@@ -154,9 +172,16 @@ export default function TermsPage() {
           region for this storefront.
         </p>
         <p>
-          Unless otherwise stated, product prices may exclude or include taxes,
-          shipping charges, duties, or other checkout amounts depending on the
-          configuration of the storefront and the applicable delivery location.
+          Supported delivery countries for this storefront are currently:{" "}
+          <strong>{supportedCountriesForStorefront.join(", ")}</strong>.
+        </p>
+        <p>
+          Availability, shipping options, duties, taxes, and other checkout
+          amounts may vary depending on the destination country, state,
+          province, or other jurisdiction served by this storefront and the
+          configuration applied to that order.
+        </p>
+        <p>
           Final payable amounts are shown during checkout before you submit your
           order.
         </p>
@@ -176,8 +201,15 @@ export default function TermsPage() {
         <p>
           You are responsible for providing accurate and complete order,
           shipping, and contact information. We are not responsible for delay,
-          failed delivery, or additional cost resulting from incorrect or
-          incomplete information supplied by you.
+          failed delivery, additional cost, or re-delivery expense resulting
+          from incorrect, incomplete, or outdated information supplied by you.
+        </p>
+        <p>
+          Where delivery cannot be completed because of incorrect customer
+          information or another issue attributable to the customer, we may
+          contact you to resolve the issue before re-dispatching, cancelling,
+          or otherwise managing the order in accordance with applicable law and
+          our operational requirements.
         </p>
       </section>
 
@@ -188,8 +220,13 @@ export default function TermsPage() {
           </h2>
           <p>
             For customers using this Australia storefront, our goods and
-            services may come with consumer guarantees that cannot be excluded
-            under the Australian Consumer Law.
+            services may come with guarantees that cannot be excluded under the
+            Australian Consumer Law.
+          </p>
+          <p>
+            These Terms &amp; Conditions, including any delivery, returns,
+            cancellation, or after-sales wording, operate alongside your rights
+            under the Australian Consumer Law and do not replace them.
           </p>
           <p>
             Nothing in these Terms &amp; Conditions is intended to exclude,
@@ -204,11 +241,46 @@ export default function TermsPage() {
             7. New Zealand consumer context
           </h2>
           <p>
-            For customers using this New Zealand storefront, nothing in these
-            Terms &amp; Conditions is intended to exclude, restrict, or modify
-            any rights or remedies you may have under the Consumer Guarantees
-            Act 1993, the Fair Trading Act 1986, or any other applicable New
-            Zealand law where those rights cannot lawfully be excluded.
+            For customers using this New Zealand storefront, your rights may be
+            affected by the Consumer Guarantees Act 1993, the Fair Trading Act
+            1986, and other applicable New Zealand laws.
+          </p>
+          <p>
+            These Terms &amp; Conditions, including any delivery, returns,
+            cancellation, or after-sales wording, operate alongside any rights
+            or remedies you may have under applicable New Zealand law and do not
+            replace them.
+          </p>
+          <p>
+            Nothing in these Terms &amp; Conditions is intended to exclude,
+            restrict, or modify any rights or remedies you may have under the
+            Consumer Guarantees Act 1993, the Fair Trading Act 1986, or any
+            other applicable New Zealand law where those rights cannot lawfully
+            be excluded.
+          </p>
+        </section>
+      ) : isEu ? (
+        <section>
+          <h2 className="text-base font-semibold text-foreground">
+            7. European storefront legal context
+          </h2>
+          <p>
+            For customers using this European storefront, consumer disclosures,
+            cancellation or withdrawal rights, returns handling, refund timing,
+            privacy notices, and payment practices may vary depending on the
+            relevant European destination and the mandatory rules that apply to
+            that transaction.
+          </p>
+          <p>
+            These Terms &amp; Conditions, including any delivery, returns,
+            cancellation, withdrawal, or after-sales wording, operate alongside
+            any mandatory legal rights or remedies that apply in the relevant
+            European destination and do not replace them.
+          </p>
+          <p>
+            Where required, we may provide additional storefront-specific or
+            destination-specific notices on product pages, at checkout, on
+            forms, or in related policy documents.
           </p>
         </section>
       ) : isUs ? (
@@ -217,10 +289,24 @@ export default function TermsPage() {
             7. United States storefront context
           </h2>
           <p>
-            Consumer disclosures, returns handling, and payment practices may
-            vary depending on the jurisdiction served by this storefront.
-            Additional notices may appear on product pages, at checkout, or in
-            related policy documents where needed.
+            For customers using this United States storefront, consumer
+            disclosures, returns handling, payment practices, taxes, delivery
+            restrictions, cancellation expectations, complaint-handling
+            expectations, and other order-related requirements may vary
+            depending on the state or jurisdiction involved.
+          </p>
+          <p>
+            These Terms &amp; Conditions, including any delivery, returns,
+            cancellation, refund, or after-sales wording, operate alongside any
+            mandatory legal rights or remedies that apply under the law of the
+            relevant jurisdiction and do not replace them.
+          </p>
+          <p>
+            Depending on the law that applies, we may provide additional
+            storefront-specific or jurisdiction-specific notices about pricing,
+            taxes, cancellations, refunds, complaints, or other customer rights
+            on product pages, at checkout, on forms, or in related policy
+            documents.
           </p>
         </section>
       ) : isCa ? (
@@ -229,10 +315,25 @@ export default function TermsPage() {
             7. Canada storefront context
           </h2>
           <p>
-            Consumer disclosures, returns handling, and payment practices may
-            vary depending on the province or territory served by this
-            storefront. Additional notices may appear on product pages, at
-            checkout, or in related policy documents where needed.
+            For customers using this Canada storefront, consumer disclosures,
+            returns handling, payment practices, taxes, delivery restrictions,
+            cancellation expectations, complaint-handling expectations, and
+            other order-related requirements may vary depending on the province
+            or territory involved.
+          </p>
+          <p>
+            These Terms &amp; Conditions, including any delivery, returns,
+            cancellation, refund, or after-sales wording, operate alongside any
+            mandatory legal rights or remedies that apply under the law of the
+            relevant province, territory, or other applicable Canadian law and
+            do not replace them.
+          </p>
+          <p>
+            Depending on the law that applies, we may provide additional
+            storefront-specific or province-specific notices about pricing,
+            taxes, cancellations, refunds, complaints, or other customer rights
+            on product pages, at checkout, on forms, or in related policy
+            documents.
           </p>
         </section>
       ) : (
@@ -318,7 +419,7 @@ export default function TermsPage() {
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          12. Contact and support
+          12. Contact, support, and governing law
         </h2>
         <p>
           Support for this storefront is currently managed for{" "}
@@ -332,6 +433,16 @@ export default function TermsPage() {
           >
             {supportEmail}
           </a>
+        </p>
+        <p className="mt-2">
+          <strong>Governing law:</strong> {governingLawLabel}
+        </p>
+        <p className="mt-2">
+          Depending on the storefront and the destination country, state,
+          province, or other jurisdiction served, we may provide additional
+          legally required notices, consumer information, cancellation details,
+          return information, complaint-handling information, or customer-rights
+          disclosures in connection with specific orders or transactions.
         </p>
       </section>
 

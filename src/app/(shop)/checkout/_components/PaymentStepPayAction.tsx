@@ -73,10 +73,12 @@ const PaymentStepPayAction: React.FC<Props> = ({
           >
             {paypalDisabledText || "Accept cookies to use PayPal"}
           </button>
+
           <p className="text-xs leading-5 text-neutral-500">
-            On the EU storefront, PayPal is available only after you accept the
-            relevant cookie and technology settings.
+            PayPal is unavailable because your current cookie settings disable
+            non-essential cookies and similar technologies.
           </p>
+
           <a
             href="/cookies"
             className="inline-block text-xs font-medium text-neutral-700 underline underline-offset-2 transition hover:text-neutral-900"

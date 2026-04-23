@@ -17,10 +17,18 @@ export default function PrivacyPage() {
   const {
     isAu,
     isNz,
+    isEu,
+    isUs,
+    isCa,
     legalRegionLabel,
     checkoutRegionLabel,
     supportRegionLabel,
     supportEmail,
+    siteUrl,
+    legalEntityName,
+    legalEntityCountry,
+    privacyContactEmail,
+    cookieConsentMode,
   } = POLICY;
 
   return (
@@ -30,11 +38,12 @@ export default function PrivacyPage() {
       intro={
         <>
           <p>
-            This Privacy Policy explains how <strong>{BRAND.displayName}</strong>{" "}
-            collects, uses, stores, discloses, and otherwise handles personal
-            information when you visit our website, create an account, place an
-            order, contact us, submit a return request, subscribe to updates, or
-            otherwise interact with our services.
+            This Privacy Policy explains how <strong>{legalEntityName}</strong>{" "}
+            operating <strong>{BRAND.displayName}</strong> collects, uses,
+            stores, discloses, and otherwise handles personal information when
+            you visit our website, create an account, place an order, contact
+            us, submit a return request, subscribe to updates, or otherwise
+            interact with our services.
           </p>
           <p>
             This storefront currently provides sales and delivery only within{" "}
@@ -45,7 +54,11 @@ export default function PrivacyPage() {
             This Privacy Policy is intended to operate in a way that is
             consistent with applicable privacy requirements in{" "}
             <strong>{legalRegionLabel}</strong>, while also reflecting the way
-            this storefront is actually operated.
+            this storefront is actually operated at{" "}
+            <a href={siteUrl} className="font-semibold underline">
+              {siteUrl}
+            </a>
+            .
           </p>
         </>
       }
@@ -152,6 +165,11 @@ export default function PrivacyPage() {
           measure engagement, and help protect the website from abuse.
         </p>
         <p>
+          Depending on the storefront configuration and the legal requirements
+          that apply, some non-essential cookies or similar technologies may be
+          used only where an appropriate consent setting has been recorded.
+        </p>
+        <p>
           For more detail, please see our{" "}
           <a href={POLICY_LINKS.cookies} className="font-semibold underline">
             Cookie Policy
@@ -173,6 +191,12 @@ export default function PrivacyPage() {
           or comply with law.
         </p>
         <p>
+          Depending on the storefront and the law that applies, we may also be
+          required or permitted to provide additional notice about categories of
+          recipients, service providers, operational partners, or other
+          disclosures connected with the handling of personal information.
+        </p>
+        <p>
           We do not sell personal information in the ordinary sense of selling
           customer lists for unrelated third-party marketing.
         </p>
@@ -183,15 +207,18 @@ export default function PrivacyPage() {
           8. Cross-border handling and service providers
         </h2>
         <p>
-          Depending on how our systems and providers are configured, personal
-          information may be processed, stored, backed up, transmitted, or
-          accessed outside the country in which the storefront is primarily
-          operated.
+          Depending on how our systems, hosting arrangements, payment providers,
+          logistics providers, customer support tools, and other service
+          providers are configured, personal information may be processed,
+          stored, backed up, transmitted, or accessed outside the country in
+          which this storefront is primarily operated.
         </p>
         <p>
           Where this occurs, we seek to work with service providers and
           operational arrangements that support reasonable safeguards for the
-          handling of personal information.
+          handling of personal information, taking into account the nature of
+          the information involved and the role performed by the relevant
+          service provider.
         </p>
       </section>
 
@@ -201,16 +228,22 @@ export default function PrivacyPage() {
             9. Australia privacy context
           </h2>
           <p>
-            For customers using this Australia storefront, we intend to manage
-            personal information in a manner that is consistent with applicable
+            For customers using this Australia storefront,{" "}
+            <strong>{legalEntityName}</strong> intends to handle personal
+            information in a manner that is consistent with applicable
             Australian privacy obligations, taking into account the nature and
             scale of this business.
           </p>
           <p>
             You may contact us if you would like to request access to personal
-            information we hold about you, request correction of information that
-            is inaccurate, out of date, incomplete, irrelevant, or misleading,
-            or raise a privacy concern.
+            information we hold about you, request correction of information
+            that is inaccurate, out of date, incomplete, irrelevant, or
+            misleading, or raise a privacy concern or complaint.
+          </p>
+          <p>
+            We may need to verify your identity before providing access,
+            making a correction, or otherwise responding to a privacy-related
+            request.
           </p>
         </section>
       ) : isNz ? (
@@ -219,16 +252,121 @@ export default function PrivacyPage() {
             9. New Zealand privacy context
           </h2>
           <p>
-            For customers using this New Zealand storefront, we intend to manage
-            personal information in a manner that is consistent with applicable
-            New Zealand privacy obligations, taking into account the nature and
+            For customers using this New Zealand storefront,{" "}
+            <strong>{legalEntityName}</strong> intends to handle personal
+            information in a manner that is consistent with applicable New
+            Zealand privacy obligations, taking into account the nature and
             scale of this business.
           </p>
           <p>
-            You may contact us to request access to personal information, request
-            correction, or raise a privacy concern. Where required, privacy
-            enquiries may also be handled through the person responsible for the
-            privacy function for this storefront.
+            You may contact us to request access to personal information we
+            hold about you, request correction, or raise a privacy concern or
+            complaint.
+          </p>
+          <p>
+            Where required or appropriate, privacy enquiries may also be handled
+            through the person responsible for the privacy function for this
+            storefront, and we may need to verify your identity before taking
+            action on a request.
+          </p>
+        </section>
+      ) : isEu ? (
+        <section>
+          <h2 className="text-base font-semibold text-foreground">
+            9. European storefront privacy context
+          </h2>
+          <p>
+            For customers using this European storefront, privacy notice,
+            transparency, consent, and individual rights requirements may apply
+            differently depending on the relevant European destination and the
+            circumstances in which personal information is collected and used.
+          </p>
+          <p>
+            The legal entity currently operating this storefront is{" "}
+            <strong>{legalEntityName}</strong> in{" "}
+            <strong>{legalEntityCountry}</strong>.
+          </p>
+          <p>
+            Cookie consent mode for this storefront is currently{" "}
+            <strong>{cookieConsentMode}</strong>. Where consent is required for
+            certain non-essential cookies or similar technologies, we intend to
+            rely on the relevant consent setting before using them.
+          </p>
+          <p>
+            You may contact us to request access, correction, or to raise a
+            privacy concern or complaint. We may also present additional
+            storefront-specific notices at checkout, on forms, or in local
+            policy updates where required.
+          </p>
+        </section>
+      ) : isUs ? (
+        <section>
+          <h2 className="text-base font-semibold text-foreground">
+            9. United States storefront privacy context
+          </h2>
+          <p>
+            For customers using this United States storefront, privacy notice,
+            disclosure, cookie, and consumer rights expectations may vary
+            depending on the state or jurisdiction involved and the way personal
+            information is collected, used, disclosed, retained, or made
+            available to service providers and operational partners.
+          </p>
+          <p>
+            The legal entity currently operating this storefront is{" "}
+            <strong>{legalEntityName}</strong> in{" "}
+            <strong>{legalEntityCountry}</strong>.
+          </p>
+          <p>
+            Cookie consent mode for this storefront is currently{" "}
+            <strong>{cookieConsentMode}</strong>. Where required by applicable
+            law or operational policy, we may present additional notices, opt-out
+            choices, or other privacy-related controls.
+          </p>
+          <p>
+            Depending on the law of the relevant state or jurisdiction, you may
+            also be entitled to receive additional disclosures or exercise
+            additional privacy-related choices in relation to how certain
+            personal information is handled.
+          </p>
+          <p>
+            You may contact us to request access, correction, or to raise a
+            privacy concern or complaint. We may also provide additional
+            storefront-specific or jurisdiction-specific notices where required.
+          </p>
+        </section>
+      ) : isCa ? (
+        <section>
+          <h2 className="text-base font-semibold text-foreground">
+            9. Canada storefront privacy context
+          </h2>
+          <p>
+            For customers using this Canada storefront, privacy notice,
+            transparency, consent, and complaint-handling expectations may vary
+            depending on the province or territory involved and the way personal
+            information is collected, used, disclosed, retained, or handled by
+            service providers acting for this storefront.
+          </p>
+          <p>
+            The legal entity currently operating this storefront is{" "}
+            <strong>{legalEntityName}</strong> in{" "}
+            <strong>{legalEntityCountry}</strong>.
+          </p>
+          <p>
+            Cookie consent mode for this storefront is currently{" "}
+            <strong>{cookieConsentMode}</strong>. Where appropriate, we may
+            provide additional notices, consent prompts, or other privacy-related
+            controls for this storefront.
+          </p>
+          <p>
+            Depending on the law of the relevant province or territory, you may
+            also be entitled to additional transparency, consent, access,
+            correction, or complaint-handling protections in relation to how
+            your personal information is handled.
+          </p>
+          <p>
+            You may contact us to request access, correction, or to raise a
+            privacy concern or complaint. We may also provide additional
+            storefront-specific or province-specific notices where required.
           </p>
         </section>
       ) : (
@@ -241,9 +379,14 @@ export default function PrivacyPage() {
             vary depending on the country or region served by this storefront.
           </p>
           <p>
-            Where storefront-specific privacy wording differs, we may present
-            additional notices at checkout, on forms, or in local policy
-            updates.
+            The legal entity currently operating this storefront is{" "}
+            <strong>{legalEntityName}</strong> in <strong>{legalEntityCountry}</strong>.
+          </p>
+          <p>
+            Cookie consent mode for this storefront is currently{" "}
+            <strong>{cookieConsentMode}</strong>. Where storefront-specific
+            privacy wording differs, we may present additional notices at
+            checkout, on forms, or in local policy updates.
           </p>
         </section>
       )}
@@ -290,11 +433,32 @@ export default function PrivacyPage() {
           privacy concern or complaint.
         </p>
         <p>
-          Support for this storefront is currently managed for{" "}
-          <strong>{supportRegionLabel}</strong>.
+          Privacy support for this storefront is currently managed for{" "}
+          <strong>{supportRegionLabel}</strong> by{" "}
+          <strong>{legalEntityName}</strong>.
+        </p>
+        <p>
+          We may ask you to provide information reasonably necessary to verify
+          your identity before responding to an access, correction, or
+          privacy-related request.
+        </p>
+        <p>
+          Depending on the storefront and the law that applies, you may also
+          have additional rights in relation to how your personal information is
+          handled, and we may provide additional information, disclosures,
+          choices, review pathways, or complaint pathways where required.
         </p>
         <p className="mt-2">
-          <strong>Email:</strong>{" "}
+          <strong>Privacy contact email:</strong>{" "}
+          <a
+            href={`mailto:${privacyContactEmail}`}
+            className="font-semibold underline"
+          >
+            {privacyContactEmail}
+          </a>
+        </p>
+        <p className="mt-2">
+          <strong>General support email:</strong>{" "}
           <a
             href={`mailto:${supportEmail}`}
             className="font-semibold underline"

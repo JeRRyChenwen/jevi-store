@@ -23,6 +23,10 @@ export default function CookiePolicyPage() {
     legalRegionLabel,
     supportRegionLabel,
     supportEmail,
+    siteUrl,
+    legalEntityName,
+    privacyContactEmail,
+    cookieConsentMode,
   } = POLICY;
 
   return (
@@ -32,9 +36,9 @@ export default function CookiePolicyPage() {
       intro={
         <>
           <p>
-            This page explains how <strong>{BRAND.displayName}</strong> may use
-            cookies and similar technologies when you visit, browse, or interact
-            with our website.
+            This page explains how <strong>{legalEntityName}</strong> operating{" "}
+            <strong>{BRAND.displayName}</strong> may use cookies and similar
+            technologies when you visit, browse, or interact with our website.
           </p>
           <p>
             It also allows you to review or update your cookie settings for the
@@ -44,7 +48,11 @@ export default function CookiePolicyPage() {
             Depending on the configuration of this storefront, similar
             technologies may include cookies, pixels, tags, scripts, local
             storage, and related tools used to support site functionality,
-            security, analytics, and user preferences.
+            security, analytics, and user preferences at{" "}
+            <a href={siteUrl} className="font-semibold underline">
+              {siteUrl}
+            </a>
+            .
           </p>
         </>
       }
@@ -135,9 +143,11 @@ export default function CookiePolicyPage() {
             website.
           </p>
           <p>
-            Where available, you may manage cookie preferences through the
-            cookie settings section on this page, a consent banner, browser
-            settings, or other controls made available on the site.
+            Cookie consent mode for this storefront is currently{" "}
+            <strong>{cookieConsentMode}</strong>. Where available, you may
+            manage cookie preferences through the cookie settings section on
+            this page, a consent banner, browser settings, or other controls
+            made available on the site.
           </p>
         </section>
       ) : isAu ? (
@@ -149,6 +159,10 @@ export default function CookiePolicyPage() {
             For this Australia storefront, cookie and tracking practices are
             intended to be disclosed in a way that is consistent with applicable
             privacy expectations and the technologies actually used on the site.
+          </p>
+          <p>
+            Cookie consent mode for this storefront is currently{" "}
+            <strong>{cookieConsentMode}</strong>.
           </p>
           <p>
             If we introduce additional analytics, advertising, or third-party
@@ -167,6 +181,10 @@ export default function CookiePolicyPage() {
             privacy expectations and the technologies actually used on the site.
           </p>
           <p>
+            Cookie consent mode for this storefront is currently{" "}
+            <strong>{cookieConsentMode}</strong>.
+          </p>
+          <p>
             If we introduce additional analytics, advertising, or third-party
             tracking tools in the future, we may update this policy and present
             additional notices or controls where appropriate.
@@ -180,6 +198,10 @@ export default function CookiePolicyPage() {
           <p>
             Cookie and tracking disclosure obligations may vary depending on the
             jurisdiction served by this storefront and the technologies in use.
+          </p>
+          <p>
+            Cookie consent mode for this storefront is currently{" "}
+            <strong>{cookieConsentMode}</strong>.
           </p>
           <p>
             We may provide additional notices, opt-out mechanisms, or controls
@@ -197,6 +219,10 @@ export default function CookiePolicyPage() {
             in use.
           </p>
           <p>
+            Cookie consent mode for this storefront is currently{" "}
+            <strong>{cookieConsentMode}</strong>.
+          </p>
+          <p>
             We may provide additional notices or controls where required by law
             or operational policy.
           </p>
@@ -209,6 +235,10 @@ export default function CookiePolicyPage() {
           <p>
             Cookie, privacy, consent, and tracking disclosure requirements may
             differ depending on the country or region served by this storefront.
+          </p>
+          <p>
+            Cookie consent mode for this storefront is currently{" "}
+            <strong>{cookieConsentMode}</strong>.
           </p>
           <p>
             We may update this policy or provide additional notices where local
@@ -255,10 +285,20 @@ export default function CookiePolicyPage() {
         </h2>
         <p>
           Support for this storefront is currently managed for{" "}
-          <strong>{supportRegionLabel}</strong>.
+          <strong>{supportRegionLabel}</strong> by{" "}
+          <strong>{legalEntityName}</strong>.
         </p>
         <p className="mt-2">
-          <strong>Email:</strong>{" "}
+          <strong>Privacy / cookie contact email:</strong>{" "}
+          <a
+            href={`mailto:${privacyContactEmail}`}
+            className="font-semibold underline"
+          >
+            {privacyContactEmail}
+          </a>
+        </p>
+        <p className="mt-2">
+          <strong>General support email:</strong>{" "}
           <a
             href={`mailto:${supportEmail}`}
             className="font-semibold underline"

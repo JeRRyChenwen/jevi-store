@@ -34,6 +34,12 @@ export type StorefrontPolicyVariant =
 
 export type PaymentMethodCode = "paypal" | "card";
 
+export type CookieConsentMode =
+  | "none"
+  | "optional_settings_only"
+  | "banner_optional"
+  | "eu_strict";
+
 /**
  * ✅ storefront 层：
  * 这才是前台真正应该读的配置。
@@ -110,4 +116,21 @@ export type StorefrontConfig = {
    * ✅ storefront 支持哪些支付方式
    */
   paymentMethods?: readonly PaymentMethodCode[];
+
+  /**
+   * ✅ 法律 / 合规相关字段
+   * 先全部做成可选，避免你现在的 config.ts 立刻报错。
+   * 下一步我们再去逐个 storefront 真正填值。
+   */
+  legalEntityName?: string;
+  legalEntityAddress?: string;
+  legalEntityCountry?: string;
+  companyRegistrationNumber?: string;
+  privacyContactEmail?: string;
+  returnsContactEmail?: string;
+  governingLawLabel?: string;
+  supportedCountriesForStorefront?: readonly CountryCode[];
+  returnWindowDaysChangeOfMind?: number;
+  hasEuWithdrawalRight?: boolean;
+  cookieConsentMode?: CookieConsentMode;
 };

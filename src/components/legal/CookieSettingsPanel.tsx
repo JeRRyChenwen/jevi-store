@@ -23,6 +23,13 @@ function readConsent(): ConsentChoice | null {
     if (raw === "accept_all" || raw === "reject_non_essential") {
       return raw;
     }
+
+    // ✅ 非 EU storefront 默认 accept_all
+    if (!isEuStorefront()) {
+      window.localStorage.setItem(STORAGE_KEY, "accept_all");
+      return "accept_all";
+    }
+
     return null;
   } catch {
     return null;
@@ -86,10 +93,6 @@ export default function CookieSettingsPanel() {
       return <>Loading current cookie setting...</>;
     }
 
-    if (!isEuStorefront()) {
-      return <>This storefront does not currently use the EU cookie consent flow.</>;
-    }
-
     if (consent === "accept_all") {
       return (
         <>
@@ -126,15 +129,19 @@ export default function CookieSettingsPanel() {
   }, [mounted, consent]);
 
   const helperText = useMemo(() => {
-    if (!isEuStorefront()) {
-      return "Cookie settings on this page are primarily intended for the EU storefront.";
+    if (isEuStorefront()) {
+      if (consent === "reject_non_essential" || consent === null) {
+        return "On the EU storefront, rejecting non-essential cookies may disable certain third-party technologies, including PayPal in checkout.";
+      }
+
+      return "Your current EU storefront setting allows non-essential cookies and similar technologies where configured.";
     }
 
-    if (consent === "reject_non_essential" || consent === null) {
-      return "On the EU storefront, rejecting non-essential cookies may disable certain third-party technologies, including PayPal in checkout.";
+    if (consent === "reject_non_essential") {
+      return "Your current storefront setting disables non-essential cookies and similar technologies. This may disable certain third-party technologies, including PayPal in checkout.";
     }
 
-    return "Your current EU storefront setting allows non-essential cookies and similar technologies where configured.";
+    return "Your current storefront setting allows non-essential cookies and similar technologies where configured.";
   }, [consent]);
 
   function handleAcceptAll() {
