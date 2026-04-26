@@ -60,7 +60,6 @@ export default function AdminProtectedLayout({
               Dashboard
             </Link>
 
-            {/* ⭐ NEW Orders */}
             <Link href="/admin/orders" className={linkClass("/admin/orders")}>
               Orders
             </Link>
@@ -74,6 +73,13 @@ export default function AdminProtectedLayout({
               className={linkClass("/admin/inventory")}
             >
               Inventory
+            </Link>
+
+            <Link
+              href="/admin/shipping-fee-calculation"
+              className={linkClass("/admin/shipping-fee-calculation")}
+            >
+              Shipping Fee Calculation
             </Link>
           </nav>
 
