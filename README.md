@@ -1342,3 +1342,15 @@ supplier → 3PL → customer → return → 责任回溯
 eub是什么意思
 
 到时候server是不是也要5个
+
+最下面直接显示全部结果就好，不需要滑轮拉伸
+
+不可送达postcode，高危postcode
+
+未来拓展sql数据库要怎么做
+
+运费价格变动的话，后台要能一键修改才行，手动修改功能，active要设置好
+
+目的地不只是澳大利亚
+
+postcode的范围有点不对

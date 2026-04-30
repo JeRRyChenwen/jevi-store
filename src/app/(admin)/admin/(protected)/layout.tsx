@@ -49,9 +49,7 @@ export default function AdminProtectedLayout({
         <aside className="w-64 border-r bg-white flex flex-col">
           <div className="px-4 py-6 border-b">
             <h1 className="text-lg font-semibold">Admin Console</h1>
-            <p className="text-xs text-slate-500 mt-1">
-              Operations & Support
-            </p>
+            <p className="text-xs text-slate-500 mt-1">Operations & Support</p>
           </div>
 
           {/* menu */}
@@ -80,6 +78,20 @@ export default function AdminProtectedLayout({
               className={linkClass("/admin/shipping-fee-calculation")}
             >
               Shipping Fee Calculation
+            </Link>
+
+            <Link
+              href="/admin/shipping-rules"
+              className={linkClass("/admin/shipping-rules")}
+            >
+              Shipping Rules Management
+            </Link>
+
+            <Link
+              href="/admin/postcode-zone-rules"
+              className={linkClass("/admin/postcode-zone-rules")}
+            >
+              Postcode Zone Rules Management
             </Link>
           </nav>
 
