@@ -832,6 +832,22 @@ cloudflared tunnel --url http://localhost:1337
 
 start-dev.bat
 
+npm run dev -- -p 3001
+
+# ============================================================================
+
+npm run dev
+
+start-dev.bat
+
+wrangler dev --port 8789
+
+npm run develop
+
+npm run dev -- -p 3001
+
+# ============================================================================
+
 修改自动发邮件功能项目之后要重新部署一次：
 cd /d D:\前端练习\mailer-api
 wrangler deploy --env=""
