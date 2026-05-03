@@ -31,12 +31,13 @@ type Props = {
 };
 
 function getApiBase() {
-  const fromEnv =
-    (process.env.NEXT_PUBLIC_WORKER_BASE_URL ||
-      process.env.NEXT_PUBLIC_API_BASE ||
-      "") as string;
+  const fromEnv = (process.env.NEXT_PUBLIC_WORKER_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE ||
+    "") as string;
 
-  const base = String(fromEnv || "").trim().replace(/\/+$/, "");
+  const base = String(fromEnv || "")
+    .trim()
+    .replace(/\/+$/, "");
   if (base) return base;
 
   // ✅ 关键：默认跟你的前端 host 保持一致，避免 localhost/127.0.0.1 cookie 不互通
@@ -122,13 +123,18 @@ function pickReservationId(meta: any): string | null {
  * - 保留后端的 error/message（不再强制 409=out_of_stock）
  * - 永远补上 items fallback（方便 PaymentStep 用 cart/sku 做展示）
  */
-function makeOrdersError(resStatus: number, orderResp: any, fallbackItems: any) {
+function makeOrdersError(
+  resStatus: number,
+  orderResp: any,
+  fallbackItems: any,
+) {
   const backendCode = String(orderResp?.error || orderResp?.code || "").trim();
   const code = backendCode || (resStatus ? `http_${resStatus}` : "http_error");
 
   // ✅ 优先用后端 message（你后端现在会返回 message）
   const backendMsg = String(orderResp?.message || "").trim();
-  const message = backendMsg || (resStatus ? `HTTP ${resStatus}` : "Request failed");
+  const message =
+    backendMsg || (resStatus ? `HTTP ${resStatus}` : "Request failed");
 
   // ✅ detail：优先 detail，其次把整个响应塞进去（方便你调试/前端做 fallback）
   const detail = {
@@ -181,7 +187,8 @@ export default function PayPalBigButton({
   const ordersUrl = useMemo(() => `${apiBase}/orders`, [apiBase]);
 
   const isDisabled = !!disabled;
-  const disabledLabel = (disabledText && String(disabledText).trim()) || "PayPal unavailable";
+  const disabledLabel =
+    (disabledText && String(disabledText).trim()) || "PayPal unavailable";
 
   return (
     <div className="w-full flex justify-end">
@@ -211,7 +218,7 @@ export default function PayPalBigButton({
               tagline: false,
             }}
             forceReRender={[value, currency]}
-            createOrder={async (_data, actions) => {
+            createOrder={async () => {
               // ✅ safety: 如果 disabled 状态被上层瞬间切换，也直接拒绝
               if (isDisabled) {
                 throw makeAbortError("paypal_unavailable");
@@ -246,7 +253,10 @@ export default function PayPalBigButton({
                       status: Number(e?.status || 409) || 409,
                       code: String(e?.code || e?.error || "preflight_failed"),
                       message: String(e?.message || "Stock preflight failed."),
-                      detail: { ...(e?.detail ?? {}), items: preflightItems ?? null },
+                      detail: {
+                        ...(e?.detail ?? {}),
+                        items: preflightItems ?? null,
+                      },
                     };
 
                     onFailed?.(err);
@@ -254,17 +264,28 @@ export default function PayPalBigButton({
                   }
                 }
 
-                return actions.order.create({
-                  intent: "CAPTURE",
-                  purchase_units: [
-                    {
-                      amount: {
-                        value: Number(amount).toFixed(2),
-                        currency_code: currency,
-                      },
-                    },
-                  ],
-                } as any);
+                const { res, data } = await postJson("/api/paypal/orders", {
+                  amount: Number(amount).toFixed(2),
+                  currency: String(currency || "")
+                    .trim()
+                    .toUpperCase(),
+                });
+
+                if (!res.ok || !data?.paypalOrderId) {
+                  const err = {
+                    status: res.status,
+                    code: String(data?.error || "paypal_create_order_failed"),
+                    message:
+                      String(data?.message || "").trim() ||
+                      "Failed to create PayPal order.",
+                    detail: data,
+                  };
+
+                  onFailed?.(err);
+                  throw makeAbortError(err.code, err);
+                }
+
+                return String(data.paypalOrderId);
               } finally {
                 creatingRef.current = false;
               }
@@ -274,13 +295,49 @@ export default function PayPalBigButton({
               approvingRef.current = true;
 
               try {
-                const details = await actions.order?.capture();
+                const paypalOrderId = String(data?.orderID || "").trim();
+
+                if (!paypalOrderId) {
+                  const err = {
+                    status: 400,
+                    code: "missing_paypal_order_id",
+                    message: "Missing PayPal order id after approval.",
+                    detail: { data },
+                  };
+
+                  onFailed?.(err);
+                  approvingRef.current = false;
+                  return;
+                }
+
+                const { res: captureRes, data: captureResp } = await postJson(
+                  `/api/paypal/orders/${encodeURIComponent(paypalOrderId)}/capture`,
+                  {},
+                );
+
+                if (!captureRes.ok || !captureResp?.ok) {
+                  const err = {
+                    status: captureRes.status,
+                    code: String(captureResp?.error || "paypal_capture_failed"),
+                    message:
+                      String(captureResp?.message || "").trim() ||
+                      "PayPal capture failed.",
+                    detail: captureResp,
+                  };
+
+                  onFailed?.(err);
+                  approvingRef.current = false;
+                  return;
+                }
+
+                const details = captureResp?.raw ?? captureResp;
                 const capture =
-                  (details as any)?.purchase_units?.[0]?.payments?.captures?.[0] ?? null;
+                  (details as any)?.purchase_units?.[0]?.payments
+                    ?.captures?.[0] ?? null;
 
                 const paypalPayload = {
                   provider: "paypal",
-                  orderId: data?.orderID ?? (details as any)?.id ?? null,
+                  orderId: paypalOrderId,
                   transactionId: capture?.id ?? null,
                   raw: details ?? null,
                   data,
@@ -290,7 +347,10 @@ export default function PayPalBigButton({
                 const checkoutTotals = successMeta?.checkoutTotals;
                 const itemsFromMeta = checkoutTotals?.items;
 
-                if (!Array.isArray(itemsFromMeta) || itemsFromMeta.length === 0) {
+                if (
+                  !Array.isArray(itemsFromMeta) ||
+                  itemsFromMeta.length === 0
+                ) {
                   const err = {
                     status: 0,
                     code: "missing_items",
@@ -305,7 +365,8 @@ export default function PayPalBigButton({
                   return;
                 }
 
-                const reservation_id = reservedIdRef.current || pickReservationId(successMeta);
+                const reservation_id =
+                  reservedIdRef.current || pickReservationId(successMeta);
 
                 if (!reservation_id) {
                   const err = {
@@ -333,7 +394,7 @@ export default function PayPalBigButton({
                     successMeta?.accountEmail ??
                     successMeta?.email ??
                     successMeta?.address?.email ??
-                    ""
+                    "",
                 )
                   .trim()
                   .toLowerCase();
@@ -343,7 +404,8 @@ export default function PayPalBigButton({
                   const err = {
                     status: 400,
                     code: "missing_email",
-                    message: "Email required for order. Please go back to the Address step and complete your email information.",
+                    message:
+                      "Email required for order. Please go back to the Address step and complete your email information.",
                     detail: { successMeta },
                   };
                   onFailed?.(err);
@@ -355,7 +417,9 @@ export default function PayPalBigButton({
                 }
 
                 const orderBody = {
-                  currency: String(checkoutTotals?.currency || currency).trim().toUpperCase(),
+                  currency: String(checkoutTotals?.currency || currency)
+                    .trim()
+                    .toUpperCase(),
                   items: itemsFromMeta,
 
                   reservation_id,
@@ -396,15 +460,24 @@ export default function PayPalBigButton({
                   },
                 };
 
-                console.log("[paypal] posting /orders with reservation_id =", reservation_id, {
-                  bodyHasReservationId: !!(orderBody as any)?.reservation_id,
-                });
+                console.log(
+                  "[paypal] posting /orders with reservation_id =",
+                  reservation_id,
+                  {
+                    bodyHasReservationId: !!(orderBody as any)?.reservation_id,
+                  },
+                );
 
-                const { res, data: orderResp } = await postJson(ordersUrl, orderBody);
+                const { res, data: orderResp } = await postJson(
+                  ordersUrl,
+                  orderBody,
+                );
 
                 // ✅ 非 2xx：用后端的 error/message（不再强制 409=out_of_stock）
                 if (!res.ok) {
-                  const backendCode = String(orderResp?.error || orderResp?.code || "").trim();
+                  const backendCode = String(
+                    orderResp?.error || orderResp?.code || "",
+                  ).trim();
                   const backendMsg =
                     String(orderResp?.message || "").trim() ||
                     (backendCode ? backendCode : `HTTP ${res.status}`);
@@ -442,7 +515,12 @@ export default function PayPalBigButton({
                     : null;
 
                 const merged = successMeta
-                  ? { ...paypalPayload, successMeta, order: orderResp, createdOrderId }
+                  ? {
+                      ...paypalPayload,
+                      successMeta,
+                      order: orderResp,
+                      createdOrderId,
+                    }
                   : { ...paypalPayload, order: orderResp, createdOrderId };
 
                 // ✅ 只调用一次 onSucceeded（避免重复跳转/重复 setState）

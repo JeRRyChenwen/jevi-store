@@ -69,6 +69,25 @@ export function mapReturnError(raw: string) {
     );
   }
 
+  if (e === "return_qty_exceeds_available") {
+    return (
+      "The quantity you selected is higher than the remaining quantity available for return. " +
+      "Please refresh the order details and choose only the items that are still eligible to be returned."
+    );
+  }
+
+  if (e === "qty_exceeds_original") {
+    return "The return quantity cannot be greater than the quantity originally purchased.";
+  }
+
+  if (e === "invalid_items") {
+    return "Please choose at least one valid item to return.";
+  }
+
+  if (e === "order_items_mismatch") {
+    return "One or more selected items do not belong to this order. Please refresh and try again.";
+  }
+
   // ✅ NEW: 如果 e 不是我们认识的 error code，大概率它已经是“用户可读文案”
   // 比如 lookup 场景里：showError(mapLookupError(...)) 传进来的就是一句完整的英文提示
   return e;

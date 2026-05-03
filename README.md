@@ -844,7 +844,9 @@ wrangler dev --port 8789
 
 npm run develop
 
-npm run dev -- -p 3001
+npm run dev
+
+UPDATE inventory SET on_hand_qty = 44;
 
 # ============================================================================
 
@@ -1374,3 +1376,11 @@ postcode的范围有点不对
 不同国家的postcode具体的详细获取运费
 
 拆分admin平台
+
+网址address改
+
+admin平台，return request 成功之后 order列表里应该就不会出现才对
+
+return第二次进行的时候，可以选择多于总数，而且approve了 return request之后竟然还能再次申请
+
+而且return failed之后竟然前端还是显示的是approved成功

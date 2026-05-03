@@ -98,9 +98,10 @@ export function useReturnsPageFlow() {
 
   const isDuplicateError = errorCode === "duplicate_return_request";
   const isAlreadyReturnedError = errorCode === "item_already_returned";
+  const isReturnQtyExceededError = errorCode === "return_qty_exceeds_available";
 
   useEffect(() => {
-    if (isDuplicateError || isAlreadyReturnedError) {
+    if (isDuplicateError || isAlreadyReturnedError || isReturnQtyExceededError) {
       setErrorCode(null);
       clearAlert();
     }
@@ -229,11 +230,30 @@ export function useReturnsPageFlow() {
       if (!result.ok) {
         if (result.kind === "conflict") {
           setErrorCode(result.errorCode);
+
+          if (result.errorCode === "return_qty_exceeds_available") {
+            const firstViolation = Array.isArray(result.violations)
+              ? result.violations[0]
+              : null;
+
+            const availableQty =
+              firstViolation && typeof firstViolation.available_qty !== "undefined"
+                ? Number(firstViolation.available_qty)
+                : null;
+
+            if (Number.isFinite(availableQty)) {
+              showError(
+                `The quantity you selected is higher than the remaining quantity available for return. You can only return ${availableQty} more of this item.`
+              );
+              return;
+            }
+          }
+
           showError(result.rawErrorCode || result.errorCode);
           return;
         }
 
-        showError(result.errorCode || "Failed to submit return.");
+        showError(result.message || result.errorCode || "Failed to submit return.");
         return;
       }
 
@@ -272,15 +292,17 @@ export function useReturnsPageFlow() {
     resetImages();
   }
 
-  const showInlineBlock = isDuplicateError || isAlreadyReturnedError;
+  const showInlineBlock =
+    isDuplicateError || isAlreadyReturnedError || isReturnQtyExceededError;
 
   const inlineTitle = isAlreadyReturnedError
     ? "Item already returned"
-    : "Return request in review";
+    : isReturnQtyExceededError
+      ? "Return quantity unavailable"
+      : "Return request in review";
 
-  const inlineVariant: "error" | "warning" = isAlreadyReturnedError
-    ? "error"
-    : "warning";
+  const inlineVariant: "error" | "warning" =
+    isAlreadyReturnedError || isReturnQtyExceededError ? "error" : "warning";
 
   const inlineMessage = alert?.message
     ? alert.message

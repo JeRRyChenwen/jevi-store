@@ -5,8 +5,18 @@ const nextConfig = {
 
   images: {
     remotePatterns: [
-      { protocol: "http", hostname: "127.0.0.1", port: "1337", pathname: "/uploads/**" },
-      { protocol: "http", hostname: "localhost", port: "1337", pathname: "/uploads/**" },
+      {
+        protocol: "http",
+        hostname: "127.0.0.1",
+        port: "1337",
+        pathname: "/uploads/**",
+      },
+      {
+        protocol: "http",
+        hostname: "localhost",
+        port: "1337",
+        pathname: "/uploads/**",
+      },
     ],
   },
 
@@ -27,13 +37,21 @@ const nextConfig = {
         destination: "/api/braintree/:path*",
       },
 
-      // ✅ ② Admin API：交给 Next Route Handlers
+      // ✅ ② PayPal：交给 Next API
+      // 这些接口需要读取 PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET，
+      // 不能被转发到 d1-worker。
+      {
+        source: "/api/paypal/:path*",
+        destination: "/api/paypal/:path*",
+      },
+
+      // ✅ ③ Admin API：交给 Next Route Handlers
       {
         source: "/api/admin/:path*",
         destination: "/api/admin/:path*",
       },
 
-      // ✅ ③ 其他 API 才转发到 Worker
+      // ✅ ④ 其他 API 才转发到 Worker
       {
         source: "/api/:path*",
         destination: `${proxy}/:path*`,

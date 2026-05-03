@@ -11,6 +11,12 @@ export type ReturnOrderItem = {
   currency: string | null;
   unit_price_minor: number; // 单价（分）
   line_total_minor: number; // 小计（分）
+
+  // ✅ 后端 lookup 返回：已经进入 return 流程/已经退掉的数量
+  return_occupied_qty?: number | null;
+
+  // ✅ 后端 lookup 返回：当前还能申请 return 的数量
+  available_return_qty?: number | null;
 };
 
 export type ReturnOrderDetail = {
@@ -25,8 +31,14 @@ export type SelectedReturnLine = {
   qty: number; // 用户选择退的数量
 };
 
-export function formatMoney(minor: number, currency: string | null | undefined) {
-  const cur = String(currency || "").trim().toUpperCase() || "AUD";
+export function formatMoney(
+  minor: number,
+  currency: string | null | undefined,
+) {
+  const cur =
+    String(currency || "")
+      .trim()
+      .toUpperCase() || "AUD";
   const major = (minor || 0) / 100;
   return new Intl.NumberFormat("en-AU", {
     style: "currency",
@@ -34,6 +46,40 @@ export function formatMoney(minor: number, currency: string | null | undefined) 
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(major);
+}
+
+function safeInt(v: unknown, fallback = 0) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(0, Math.floor(n));
+}
+
+function getAvailableReturnQty(item: ReturnOrderItem) {
+  const purchasedQty = safeInt(item.qty, 0);
+
+  if (item.available_return_qty != null) {
+    return Math.max(
+      0,
+      Math.min(purchasedQty, safeInt(item.available_return_qty, 0)),
+    );
+  }
+
+  // ✅ 后端还没升级 lookup 前的 fallback：按原购买数量处理
+  return purchasedQty;
+}
+
+function getOccupiedReturnQty(item: ReturnOrderItem) {
+  const purchasedQty = safeInt(item.qty, 0);
+
+  if (item.return_occupied_qty != null) {
+    return Math.max(
+      0,
+      Math.min(purchasedQty, safeInt(item.return_occupied_qty, 0)),
+    );
+  }
+
+  const availableQty = getAvailableReturnQty(item);
+  return Math.max(0, purchasedQty - availableQty);
 }
 
 /**
@@ -57,7 +103,11 @@ function parseVariantTitle(variantTitle?: string | null) {
 
   // ---------- (A) 新格式：包含 "Color:" / "Size:" / "Height:" ----------
   // 例： "Color: chocolate | Size: 40 | Height: +3 cm | chocolate | 40"
-  if (/color\s*:/i.test(raw0) || /size\s*:/i.test(raw0) || /height\s*:/i.test(raw0)) {
+  if (
+    /color\s*:/i.test(raw0) ||
+    /size\s*:/i.test(raw0) ||
+    /height\s*:/i.test(raw0)
+  ) {
     const parts = raw0
       .split("|")
       .map((s) => s.trim())
@@ -81,7 +131,9 @@ function parseVariantTitle(variantTitle?: string | null) {
       }
 
       // Height: +3 cm / Height: 3cm / Height: 0 cm
-      const mHeight = p.match(/^height\s*:\s*\+?\s*([0-9]+(?:\.[0-9]+)?)\s*cm$/i);
+      const mHeight = p.match(
+        /^height\s*:\s*\+?\s*([0-9]+(?:\.[0-9]+)?)\s*cm$/i,
+      );
       if (mHeight && mHeight[1]) {
         const n = Number(mHeight[1]);
         heightCm = Number.isFinite(n) ? n : null;
@@ -144,8 +196,15 @@ export default function ReturnItemsSelector({
     const next: Record<number, number> = {};
     for (const it of order.items) {
       if (!it || typeof it.id !== "number") continue;
-      next[it.id] = it.qty || 1;
+
+      const availableQty = getAvailableReturnQty(it);
+
+      // ✅ 只默认选择仍然可退的商品
+      if (availableQty > 0) {
+        next[it.id] = availableQty;
+      }
     }
+
     setSelected(next);
   }, [order]);
 
@@ -167,6 +226,11 @@ export default function ReturnItemsSelector({
       if (!checked) {
         delete next[itemId];
       } else {
+        if (maxQty <= 0) {
+          delete next[itemId];
+          return next;
+        }
+
         if (!next[itemId] || next[itemId] <= 0) {
           next[itemId] = Math.max(1, Math.min(maxQty, 1));
         }
@@ -178,6 +242,16 @@ export default function ReturnItemsSelector({
   const changeQty = (itemId: number, value: string, maxQty: number) => {
     const n = Number(value.replace(/[^\d]/g, ""));
     if (!Number.isFinite(n)) return;
+
+    if (maxQty <= 0) {
+      setSelected((prev) => {
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      });
+      return;
+    }
+
     const clamped = Math.max(1, Math.min(maxQty, n || 1));
     setSelected((prev) => ({
       ...prev,
@@ -201,14 +275,21 @@ export default function ReturnItemsSelector({
       <div className="space-y-4">
         {order.items.map((item) => {
           const itemId = item.id;
-          const maxQty = item.qty || 1;
-          const checked = selected[itemId] != null;
-          const selectedQty = selected[itemId] || 0;
+          const purchasedQty = safeInt(item.qty, 0);
+          const occupiedQty = getOccupiedReturnQty(item);
+          const maxQty = getAvailableReturnQty(item);
+          const isReturnable = maxQty > 0;
+
+          const checked = isReturnable && selected[itemId] != null;
+          const selectedQty = checked ? selected[itemId] || 0 : 0;
 
           return (
             <div
               key={itemId}
-              className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 border-b last:border-b-0 pb-4 last:pb-0"
+              className={[
+                "flex flex-col md:flex-row md:items-center md:justify-between gap-3 border-b last:border-b-0 pb-4 last:pb-0",
+                !isReturnable ? "opacity-75" : "",
+              ].join(" ")}
             >
               <div className="flex items-start gap-3">
                 {/* ✅ thumbnail（修正 Tailwind 默认尺寸） */}
@@ -227,8 +308,9 @@ export default function ReturnItemsSelector({
 
                 <input
                   type="checkbox"
-                  className="mt-1 h-4 w-4 rounded border-neutral-300"
+                  className="mt-1 h-4 w-4 rounded border-neutral-300 disabled:cursor-not-allowed disabled:opacity-50"
                   checked={checked}
+                  disabled={!isReturnable}
                   onChange={(e) => toggleItem(itemId, e.target.checked, maxQty)}
                 />
 
@@ -238,21 +320,27 @@ export default function ReturnItemsSelector({
                   </div>
 
                   {(() => {
-                    const { color, size, heightCm, raw } = parseVariantTitle(item.variant_title);
+                    const { color, size, heightCm, raw } = parseVariantTitle(
+                      item.variant_title,
+                    );
 
                     return (
                       <>
                         {color && (
                           <div className="text-xs text-neutral-500 mt-0.5">
                             Color:{" "}
-                            <span className="text-neutral-900 font-medium">{color}</span>
+                            <span className="text-neutral-900 font-medium">
+                              {color}
+                            </span>
                           </div>
                         )}
 
                         {size && (
                           <div className="text-xs text-neutral-500 mt-0.5">
                             Size:{" "}
-                            <span className="text-neutral-900 font-medium">{size}</span>
+                            <span className="text-neutral-900 font-medium">
+                              {size}
+                            </span>
                           </div>
                         )}
 
@@ -267,16 +355,42 @@ export default function ReturnItemsSelector({
                         )}
 
                         {!color && !size && heightCm == null && raw && (
-                          <div className="text-xs text-neutral-500 mt-0.5">{raw}</div>
+                          <div className="text-xs text-neutral-500 mt-0.5">
+                            {raw}
+                          </div>
                         )}
                       </>
                     );
                   })()}
 
-                  <div className="mt-1 text-xs text-neutral-500">Ordered qty: {maxQty}</div>
+                  <div className="mt-1 text-xs text-neutral-500">
+                    Ordered qty: {purchasedQty}
+                  </div>
+
+                  <div className="mt-1 text-xs text-neutral-500">
+                    Already in return process: {occupiedQty}
+                  </div>
+
+                  <div
+                    className={[
+                      "mt-1 text-xs font-medium",
+                      isReturnable ? "text-neutral-700" : "text-red-600",
+                    ].join(" ")}
+                  >
+                    Available to return: {maxQty}
+                  </div>
+
+                  {!isReturnable ? (
+                    <div className="mt-1 text-xs text-red-600">
+                      This item is fully returned or already in a return
+                      request.
+                    </div>
+                  ) : null}
+
                   <div className="mt-1 text-xs text-neutral-500">
                     Unit price: {formatMoney(item.unit_price_minor, currency)}
                   </div>
+
                   <div className="mt-1 text-xs text-neutral-500">
                     Line total: {formatMoney(item.line_total_minor, currency)}
                   </div>
@@ -286,7 +400,9 @@ export default function ReturnItemsSelector({
               {/* 数量选择区域 */}
               {checked && (
                 <div className="flex items-center gap-2 md:min-w-[180px]">
-                  <label className="text-xs text-neutral-600">Qty to return</label>
+                  <label className="text-xs text-neutral-600">
+                    Qty to return
+                  </label>
                   <input
                     type="number"
                     min={1}
