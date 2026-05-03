@@ -25,19 +25,19 @@ const nextConfig = {
     if (!proxy) return [];
 
     return [
-      // ✅ 0) Stock API：必须交给 Next Route Handlers（否则 cookie 到不了 Worker）
+      // Stock API：交给 Next Route Handlers，避免直接被兜底代理转发。
       {
         source: "/api/stock/:path*",
         destination: "/api/stock/:path*",
       },
 
-      // ✅ ① Braintree：交给 Next API
+      // Braintree：交给 Next API。
       {
         source: "/api/braintree/:path*",
         destination: "/api/braintree/:path*",
       },
 
-      // ✅ ② PayPal：交给 Next API
+      // PayPal：交给 Next API。
       // 这些接口需要读取 PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET，
       // 不能被转发到 d1-worker。
       {
@@ -45,13 +45,15 @@ const nextConfig = {
         destination: "/api/paypal/:path*",
       },
 
-      // ✅ ③ Admin API：交给 Next Route Handlers
+      // Admin API：交给本地 blocker route。
+      // 注意：social-platform 已经不再提供 admin proxy。
+      // 这里保留本地处理，是为了防止 /api/admin/* 掉到下面的 Worker 兜底代理。
       {
         source: "/api/admin/:path*",
         destination: "/api/admin/:path*",
       },
 
-      // ✅ ④ 其他 API 才转发到 Worker
+      // 其他 API 才转发到 Worker。
       {
         source: "/api/:path*",
         destination: `${proxy}/:path*`,
