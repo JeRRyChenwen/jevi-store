@@ -814,6 +814,30 @@ User API Tokens
 
 # ============================================================================
 
+# ============================================================================
+
+npm run dev
+
+start-dev.bat
+
+wrangler dev --port 8789
+
+npm run develop
+
+npm run dev
+
+UPDATE inventory SET on_hand_qty = 44;
+
+清库
+
+wrangler d1 execute jevi --remote --file=reset.sql
+
+wrangler d1 execute jevi --remote --file migrations/0001_base.sql
+
+# ============================================================================
+
+# ============================================================================
+
 npm run dev
 
 npx wrangler dev --x-remote-bindings
@@ -833,20 +857,6 @@ cloudflared tunnel --url http://localhost:1337
 start-dev.bat
 
 npm run dev -- -p 3001
-
-# ============================================================================
-
-npm run dev
-
-start-dev.bat
-
-wrangler dev --port 8789
-
-npm run develop
-
-npm run dev
-
-UPDATE inventory SET on_hand_qty = 44;
 
 # ============================================================================
 
@@ -1379,8 +1389,4 @@ postcode的范围有点不对
 
 网址address改
 
-admin平台，return request 成功之后 order列表里应该就不会出现才对
-
-return第二次进行的时候，可以选择多于总数，而且approve了 return request之后竟然还能再次申请
-
-而且return failed之后竟然前端还是显示的是approved成功
+By using messaging, you're agreeing that you've understood and committed to our terms and conditions and privacy policy.
