@@ -14,6 +14,44 @@ function buildCountryOptions(codes: readonly CountryCode[]) {
   }));
 }
 
+/**
+ * EU storefront delivery countries.
+ *
+ * Important:
+ * - "EU" is a storefront / regional market code, not a delivery country.
+ * - Checkout, shipping validation, and carrier/CJ API payloads must use
+ *   real destination country codes such as DE, FR, IT, ES, NL, BE, etc.
+ */
+const EU_COUNTRY_CODES = [
+  "AT",
+  "BE",
+  "BG",
+  "HR",
+  "CY",
+  "CZ",
+  "DK",
+  "EE",
+  "FI",
+  "FR",
+  "DE",
+  "GR",
+  "HU",
+  "IE",
+  "IT",
+  "LV",
+  "LT",
+  "LU",
+  "MT",
+  "NL",
+  "PL",
+  "PT",
+  "RO",
+  "SK",
+  "SI",
+  "ES",
+  "SE",
+] as const satisfies readonly CountryCode[];
+
 function envSiteUrl(fallback: string) {
   return (
     process.env.NEXT_PUBLIC_SITE_URL ||
@@ -118,16 +156,16 @@ export const STOREFRONT_CONFIGS: Record<StorefrontCode, StorefrontConfig> = {
     defaultCurrency: "EUR",
     defaultTimezone: "Europe/Berlin",
 
-    checkoutCountryCodes: ["DE", "FR", "IT", "ES", "NL", "BE"],
-    checkoutCountries: buildCountryOptions(["DE", "FR", "IT", "ES", "NL", "BE"]),
+    checkoutCountryCodes: EU_COUNTRY_CODES,
+    checkoutCountries: buildCountryOptions(EU_COUNTRY_CODES),
     primaryCountry: "DE",
 
     shippingCountryErrorMessage:
-      "We currently only ship to selected European destinations for this storefront. Please update your delivery address to continue.",
-    shippingNotice: "Shipping available to selected European destinations only.",
-    checkoutRegionLabel: "selected European destinations",
+      "We currently only ship to EU member countries for this storefront. Please update your delivery address to continue.",
+    shippingNotice: "Shipping available to EU member countries only.",
+    checkoutRegionLabel: "EU member countries",
 
-    legalRegionLabel: "selected European destinations",
+    legalRegionLabel: "EU member countries",
     supportRegionLabel: "Europe",
     policyVariant: "eu",
 
@@ -143,7 +181,7 @@ export const STOREFRONT_CONFIGS: Record<StorefrontCode, StorefrontConfig> = {
     privacyContactEmail: BRAND.privacyContactEmail,
     returnsContactEmail: BRAND.returnsContactEmail,
     governingLawLabel: "Applicable laws governing this European storefront",
-    supportedCountriesForStorefront: ["DE", "FR", "IT", "ES", "NL", "BE"],
+    supportedCountriesForStorefront: EU_COUNTRY_CODES,
     returnWindowDaysChangeOfMind: 14,
     hasEuWithdrawalRight: true,
     cookieConsentMode: "eu_strict",
