@@ -1392,3 +1392,5 @@ postcode的范围有点不对
 By using messaging, you're agreeing that you've understood and committed to our terms and conditions and privacy policy.
 
 ausampling 文件目录结构
+
+不同国家的tier rules 的货币不一样
