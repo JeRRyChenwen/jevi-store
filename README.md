@@ -1394,3 +1394,9 @@ By using messaging, you're agreeing that you've understood and committed to our 
 ausampling 文件目录结构
 
 不同国家的tier rules 的货币不一样
+
+可不可以把每个数据库里的表单独存起来，需要的时候单独删除并重建呢
+
+运费排序
+
+需要的天数
