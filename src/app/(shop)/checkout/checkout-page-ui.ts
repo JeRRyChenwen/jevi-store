@@ -12,12 +12,24 @@ export function getCheckoutAlertVariant(alertType?: string | null) {
 export function getCheckoutContinueButtonState({
   step,
   reserveLoading,
+  quoteLoading,
+  quoteError,
 }: {
   step: StepKey;
   reserveLoading: boolean;
+  quoteLoading?: boolean;
+  quoteError?: string | null;
 }) {
-  const blockContinue = step === "delivery" && reserveLoading;
-  const continueText = blockContinue ? "Reserving..." : "Continue";
+  const blockContinue =
+    step === "delivery" &&
+    (reserveLoading || !!quoteLoading || !!quoteError);
+
+  const continueText =
+    step === "delivery" && reserveLoading
+      ? "Reserving..."
+      : step === "delivery" && quoteLoading
+        ? "Calculating shipping..."
+        : "Continue";
 
   return {
     blockContinue,

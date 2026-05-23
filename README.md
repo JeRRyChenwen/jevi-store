@@ -1395,7 +1395,7 @@ postcode的范围有点不对
 
 By using messaging, you're agreeing that you've understood and committed to our terms and conditions and privacy policy.
 
-Shipping Fee Tier Management 页面tier 排序
+Shipping Fee Tier Management 页面tier 排序, 增加sample的功能
 
 Shipping Rule Drafts 页面draft list 卡片排序，筛选
 Draft 详情里显示tier和运费 eta大类

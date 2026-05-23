@@ -97,6 +97,12 @@ export type PayError =
       status?: number;
     }
   | {
+      type: "shipping_unavailable";
+      message: string;
+      detail?: any;
+      status?: number;
+    }
+  | {
       type: "amount_mismatch";
       message: string;
       detail?: any;

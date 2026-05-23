@@ -1,6 +1,12 @@
 // src/app/(shop)/checkout/shipping-quote-actions.ts
 
-import { buildQuoteRequestInput, fetchOneQuote, type ShippingQuoteAPIResult } from "./shipping-quote";
+import {
+  buildQuoteRequestInput,
+  fetchOneQuote,
+  getShippingQuoteDisplayMessage,
+  isShippingQuoteBlockingError,
+  type ShippingQuoteAPIResult,
+} from "./shipping-quote";
 import type { DeliveryMethod } from "./types";
 
 export async function fetchShippingQuotesBothHelper(args: {
@@ -81,13 +87,20 @@ export async function fetchShippingQuotesBothHelper(args: {
     args.setQuoteByMethod(next);
     args.setLastQuoteMeta(args.deliveryMethod === "express" ? qExpress : qStandard);
 
-    const anyFail = !qStandard.ok || !qExpress.ok;
-    if (anyFail) {
-      const msg =
-        (!qStandard.ok ? `standard: ${qStandard.error || "failed"}` : "") +
-        (!qStandard.ok && !qExpress.ok ? " | " : "") +
-        (!qExpress.ok ? `express: ${qExpress.error || "failed"}` : "");
-      args.setQuoteError(msg || "quote_failed");
+    const failedQuotes = [qStandard, qExpress].filter((q) => !q.ok);
+    const blockingQuote = failedQuotes.find((q) =>
+      isShippingQuoteBlockingError(q.error),
+    );
+
+    if (blockingQuote) {
+      args.setQuoteError(getShippingQuoteDisplayMessage(blockingQuote));
+    } else if (failedQuotes.length > 0) {
+      const msg = failedQuotes
+        .map((q) => getShippingQuoteDisplayMessage(q))
+        .filter(Boolean)
+        .join(" | ");
+
+      args.setQuoteError(msg || "Shipping quote unavailable.");
     } else {
       args.setQuoteError(null);
     }

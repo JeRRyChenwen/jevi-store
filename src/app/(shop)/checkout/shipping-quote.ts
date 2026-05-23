@@ -2,11 +2,26 @@
 
 import type { DeliveryMethod } from "./types";
 
+export type ShippingZoneType =
+  | "tier"
+  | "fallback"
+  | "custom_rate"
+  | "manual_review"
+  | "blocked"
+  | "exception"
+  | "unknown";
+
+export type ShippingAvailability = "available" | "unavailable";
+
 export type ShippingQuoteAPIResult = {
   ok: boolean;
 
   zone_code?: string;
   zone_id?: number;
+  zone_type?: ShippingZoneType;
+  shipping_availability?: ShippingAvailability;
+  customer_message?: string | null;
+
   rule_id?: number;
   tier_id?: number;
 
@@ -28,6 +43,9 @@ export type ShippingQuoteAPIResult = {
   standard_free_threshold_minor?: number;
 
   error?: string;
+  message?: string;
+  detail?: any;
+  status?: number;
 };
 
 export function buildQuoteReqKey(args: {
@@ -62,6 +80,44 @@ export function buildQuoteRequestInput(args: {
     postcode: String(args.postcode || "").trim() || null,
     items_total_minor: Number(args.itemsMinor) || 0,
   };
+}
+
+export function isShippingQuoteBlockingError(code?: string | null) {
+  const normalized = String(code || "").trim();
+
+  return (
+    normalized === "shipping_manual_review_required" ||
+    normalized === "shipping_blocked_destination" ||
+    normalized === "shipping_quote_exception" ||
+    normalized === "shipping_quote_unavailable"
+  );
+}
+
+export function getShippingQuoteDisplayMessage(
+  quote: Partial<ShippingQuoteAPIResult> | null | undefined
+) {
+  const code = String(quote?.error || "").trim();
+  const serverMessage = String(quote?.message || "").trim();
+
+  if (serverMessage) return serverMessage;
+
+  if (code === "shipping_manual_review_required") {
+    return "Shipping to this postcode requires manual confirmation. Please contact support before placing your order.";
+  }
+
+  if (code === "shipping_blocked_destination") {
+    return "Sorry, we currently do not ship to this postcode.";
+  }
+
+  if (code === "shipping_quote_exception") {
+    return "Shipping to this postcode cannot be calculated automatically. Please contact support.";
+  }
+
+  if (code === "shipping_quote_unavailable") {
+    return "Shipping could not be calculated for this address. Please check your postcode or contact support.";
+  }
+
+  return code || "Shipping quote unavailable.";
 }
 
 export async function fetchOneQuote(args: {
@@ -99,6 +155,18 @@ export async function fetchOneQuote(args: {
     return {
       ok: false,
       error: data?.error || `quote_failed_status_${res.status}`,
+      message: data?.message || "",
+      detail: data?.detail ?? null,
+      status: res.status,
+      zone_code: data?.detail?.zone_code ?? data?.zone_code ?? undefined,
+      zone_id: data?.detail?.zone_id ?? data?.zone_id ?? undefined,
+      zone_type: data?.detail?.zone_type ?? data?.zone_type ?? undefined,
+      shipping_availability:
+        data?.detail?.shipping_availability ??
+        data?.shipping_availability ??
+        "unavailable",
+      customer_message:
+        data?.message ?? data?.customer_message ?? data?.detail?.customer_message ?? null,
     };
   }
 

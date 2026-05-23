@@ -11,10 +11,7 @@ import { useCheckoutShippingQuotes } from "./(hooks)/useCheckoutShippingQuotes";
 import { useFormAlert } from "@/hooks/useFormAlert";
 import CheckoutPageView from "./checkout-page-view";
 import PayPalProvider from "@/components/paypal/Provider";
-import type {
-  DeliveryMethod,
-  StepKey,
-} from "./types";
+import type { DeliveryMethod, StepKey } from "./types";
 import type { Currency } from "@/lib/pricing";
 import { countryLabelOf } from "@/lib/country";
 import {
@@ -52,12 +49,13 @@ import {
 
 /* ---------------- 工具：本地 /api 优先（需要远端时单独指定） ---------------- */
 const apiURL = (path: string) => `/api${path}`;
-const REMOTE_BASE = (process.env.NEXT_PUBLIC_API_BASE || "").replace(/\/+$/, "");
+const REMOTE_BASE = (process.env.NEXT_PUBLIC_API_BASE || "").replace(
+  /\/+$/,
+  "",
+);
 
 const COOKIE_CONSENT_KEY = "jevi_cookie_consent_v1";
-const STOREFRONT_CODE = String(
-  process.env.NEXT_PUBLIC_STOREFRONT_CODE || "AU"
-)
+const STOREFRONT_CODE = String(process.env.NEXT_PUBLIC_STOREFRONT_CODE || "AU")
   .trim()
   .toUpperCase();
 
@@ -124,7 +122,9 @@ export default function CheckoutPage() {
   } = useAddress(isLoggedIn);
 
   const countryOptions = allowedCountries.map((code) => {
-    const upper = String(code || "").trim().toUpperCase();
+    const upper = String(code || "")
+      .trim()
+      .toUpperCase();
     return {
       code: upper,
       label: countryLabelOf(upper) || upper,
@@ -132,7 +132,9 @@ export default function CheckoutPage() {
   });
 
   const pricingCurrency: Currency = (() => {
-    const candidate = String(defaultCurrency || "").trim().toUpperCase();
+    const candidate = String(defaultCurrency || "")
+      .trim()
+      .toUpperCase();
 
     if (
       candidate === "AUD" ||
@@ -156,14 +158,18 @@ export default function CheckoutPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [continueErrMsg]);
 
-  const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>("standard");
+  const [deliveryMethod, setDeliveryMethod] =
+    useState<DeliveryMethod>("standard");
   const [isPayProcessing, setIsPayProcessing] = useState(false);
   const [payPersistErrMsg, setPayPersistErrMsg] = useState<string | null>(null);
   const [cookieConsent, setCookieConsent] = useState<
     "accept_all" | "reject_non_essential" | null
   >(null);
 
-  const initialStepFromURL = coerceCheckoutStep(searchParams.get("step"), "bag");
+  const initialStepFromURL = coerceCheckoutStep(
+    searchParams.get("step"),
+    "bag",
+  );
   const [step, setStep] = useState<StepKey>(initialStepFromURL);
 
   // ✅ keep local step state in sync with URL (?step=...)
@@ -187,8 +193,6 @@ export default function CheckoutPage() {
       setPayPersistErrMsg,
     });
   };
-
-
 
   useEffect(() => {
     function syncConsent() {
@@ -229,7 +233,7 @@ export default function CheckoutPage() {
 
     window.addEventListener(
       "jevi-cookie-consent-changed",
-      handleConsentChanged as EventListener
+      handleConsentChanged as EventListener,
     );
 
     window.addEventListener("storage", syncConsent);
@@ -237,7 +241,7 @@ export default function CheckoutPage() {
     return () => {
       window.removeEventListener(
         "jevi-cookie-consent-changed",
-        handleConsentChanged as EventListener
+        handleConsentChanged as EventListener,
       );
       window.removeEventListener("storage", syncConsent);
     };
@@ -261,7 +265,7 @@ export default function CheckoutPage() {
     hasItems,
     pricingCurrency,
     DELIVERY_FREE_THRESHOLD,
-    DELIVERY_FLAT
+    DELIVERY_FLAT,
   );
   const {
     currency,
@@ -271,24 +275,19 @@ export default function CheckoutPage() {
     deliveryFeeMinor: deliveryFeeMinorFallback,
   } = pricing;
 
-  const {
-    quoteLoading,
-    quoteError,
-    quoteByMethod,
-    lastQuoteMeta,
-    cartHash,
-  } = useCheckoutShippingQuotes({
-    hasItems,
-    cart,
-    itemsMinor,
-    address: {
-      ...address,
-      country: address?.country || defaultCountry,
-    },
-    deliveryMethod,
-    remoteBase: REMOTE_BASE,
-    apiURL,
-  });
+  const { quoteLoading, quoteError, quoteByMethod, lastQuoteMeta, cartHash } =
+    useCheckoutShippingQuotes({
+      hasItems,
+      cart,
+      itemsMinor,
+      address: {
+        ...address,
+        country: address?.country || defaultCountry,
+      },
+      deliveryMethod,
+      remoteBase: REMOTE_BASE,
+      apiURL,
+    });
 
   const {
     reserveLoading,
@@ -376,6 +375,8 @@ export default function CheckoutPage() {
       setBillingErrs,
       setAddressShowErrors,
       ensureReserveBeforeNext,
+      quoteLoading,
+      quoteError,
       nextStepCore,
       sendSubscriptionIfNeeded,
     });
@@ -404,13 +405,19 @@ export default function CheckoutPage() {
     });
 
     if (!result.ok) {
-      console.warn("[checkout] finalizeCheckoutPaySuccess failed", { payload, result });
+      console.warn("[checkout] finalizeCheckoutPaySuccess failed", {
+        payload,
+        result,
+      });
       setPayPersistErrMsg(result.error);
       setIsPayProcessing(false);
       return;
     }
 
-    console.log("[checkout] ✅ order already created by PayPalBigButton, redirecting to", CONFIRM_PATH);
+    console.log(
+      "[checkout] ✅ order already created by PayPalBigButton, redirecting to",
+      CONFIRM_PATH,
+    );
   };
 
   const handlePayInitiated = () => {
@@ -426,6 +433,8 @@ export default function CheckoutPage() {
   const { blockContinue, continueText } = getCheckoutContinueButtonState({
     step,
     reserveLoading,
+    quoteLoading,
+    quoteError,
   });
 
   const bagStepProps = buildCheckoutBagStepProps({

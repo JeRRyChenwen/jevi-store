@@ -2,7 +2,8 @@
 "use client";
 
 import React from "react";
-import { Check } from "lucide-react";
+import { AlertCircle, Check } from "lucide-react";
+import { Alert } from "@/components/ui/alert";
 import { CURRENT_STOREFRONT, getShippingNotice } from "@/lib/market/current";
 
 type DeliveryMethod = "standard" | "express";
@@ -36,7 +37,7 @@ type EtaByMethod = Partial<
       max_days?: number | null;
       handling_days?: number | null;
 
-      /** 可选：仓库、物流服务、备注 */
+      /** 可选：仓库、物流服务；eta_note 当前不在前台展示 */
       warehouse_code?: string | null;
       carrier_service?: string | null;
       eta_note?: string | null;
@@ -107,7 +108,7 @@ function formatEtaLine(min: number | null, max: number | null): string | null {
 function formatEtaText(
   method: DeliveryMethod,
   etaByMethod?: EtaByMethod,
-  opts?: { suppressFallback?: boolean }
+  opts?: { suppressFallback?: boolean },
 ): { etaLine: string; noteLine: string | null } {
   const eta = etaByMethod?.[method];
 
@@ -116,10 +117,7 @@ function formatEtaText(
   const maxShip = asPosIntOrNull(eta?.max_days);
   const shipLine = formatEtaLine(minShip, maxShip);
 
-  const noteLine =
-    eta?.eta_note != null && String(eta.eta_note).trim()
-      ? String(eta.eta_note).trim()
-      : null;
+  const noteLine = null;
 
   if (shipLine) {
     return { etaLine: shipLine, noteLine };
@@ -142,6 +140,42 @@ function formatEtaText(
   return { etaLine: METHOD_META[method].eta, noteLine: null };
 }
 
+function getShippingAlertTitle(message: string) {
+  const normalized = String(message || "").toLowerCase();
+
+  if (
+    normalized.includes("manual confirmation") ||
+    normalized.includes("contact support before placing your order")
+  ) {
+    return "Shipping requires manual confirmation";
+  }
+
+  if (
+    normalized.includes("do not ship") ||
+    normalized.includes("shipping is unavailable") ||
+    normalized.includes("currently do not ship")
+  ) {
+    return "Shipping unavailable";
+  }
+
+  if (
+    normalized.includes("cannot be calculated automatically") ||
+    normalized.includes("could not be calculated")
+  ) {
+    return "Shipping quote unavailable";
+  }
+
+  return "Shipping cannot be completed automatically";
+}
+
+function getShippingAlertBody(message: string) {
+  const trimmed = String(message || "").trim();
+
+  if (trimmed) return trimmed;
+
+  return "Shipping could not be calculated for this address. Please check your postcode or contact support.";
+}
+
 const DeliveryStep: React.FC<DeliveryStepProps> = ({
   deliveryMethod,
   setDeliveryMethod,
@@ -155,7 +189,10 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
   quoteError = null,
   quoteMatchedText = null,
 }) => {
-  const cur = String(currency || "").trim().toUpperCase() || "AUD";
+  const cur =
+    String(currency || "")
+      .trim()
+      .toUpperCase() || "AUD";
   const shippingNotice = getShippingNotice(CURRENT_STOREFRONT);
   const shippingRegionLabel = CURRENT_STOREFRONT.label;
 
@@ -180,10 +217,34 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
     return formatMoney(n, cur);
   };
 
-  const statusLine = (() => {
-    if (quoteLoading) return { text: "Calculating shipping…", cls: "text-neutral-500" };
-    if (quoteError) return { text: `Shipping quote unavailable (fallback applied). (${quoteError})`, cls: "text-amber-600" };
-    if (quoteMatchedText) return { text: quoteMatchedText, cls: "text-neutral-500" };
+  const statusAlert = (() => {
+    if (quoteLoading) {
+      return {
+        type: "loading" as const,
+        variant: "info" as const,
+        title: "Calculating shipping",
+        body: "We are checking the available delivery options for your address.",
+      };
+    }
+
+    if (quoteError) {
+      return {
+        type: "error" as const,
+        variant: "error" as const,
+        title: getShippingAlertTitle(quoteError),
+        body: getShippingAlertBody(quoteError),
+      };
+    }
+
+    if (quoteMatchedText) {
+      return {
+        type: "success" as const,
+        variant: "success" as const,
+        title: "Shipping rate applied",
+        body: quoteMatchedText,
+      };
+    }
+
     return null;
   })();
 
@@ -211,7 +272,9 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
                       ({thresholdText})
                     </span>{" "}
                     for{" "}
-                    <span className="font-medium text-neutral-900">Standard</span>{" "}
+                    <span className="font-medium text-neutral-900">
+                      Standard
+                    </span>{" "}
                     delivery.{" "}
                     {expressFeeText ? (
                       <>
@@ -228,7 +291,9 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
                 ) : (
                   <>
                     You&apos;ve reached the free shipping threshold for{" "}
-                    <span className="font-medium text-neutral-900">Standard</span>{" "}
+                    <span className="font-medium text-neutral-900">
+                      Standard
+                    </span>{" "}
                     delivery. Express delivery may still have an additional fee.
                   </>
                 )}
@@ -251,7 +316,8 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
               {shippingNotice}
             </div>
             <div className="mt-1 text-xs text-slate-600">
-              Delivery addresses outside {shippingRegionLabel} are not supported.
+              Delivery addresses outside {shippingRegionLabel} are not
+              supported.
             </div>
           </div>
 
@@ -286,7 +352,9 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
                   <div className="flex items-start gap-3">
                     <div>
                       <div className="flex items-center gap-2">
-                        <div className="font-medium">{METHOD_META[m].label}</div>
+                        <div className="font-medium">
+                          {METHOD_META[m].label}
+                        </div>
 
                         {METHOD_META[m].note ? (
                           <span
@@ -309,18 +377,40 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
                   </div>
 
                   {noteLine ? (
-                    <div className="mt-1 text-xs text-neutral-500">{noteLine}</div>
+                    <div className="mt-1 text-xs text-neutral-500">
+                      {noteLine}
+                    </div>
                   ) : null}
                 </div>
               </label>
             );
           })}
 
-          {statusLine ? (
+          {statusAlert ? (
             <div className="pt-2">
-              <div className={["text-sm", statusLine.cls].join(" ")}>
-                {statusLine.text}
-              </div>
+              <Alert
+                variant={statusAlert.variant}
+                role={statusAlert.type === "error" ? "alert" : "status"}
+                className="flex gap-2"
+              >
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+
+                <div className="flex-1">
+                  <div className="font-medium">{statusAlert.title}</div>
+
+                  <div className="mt-1 text-xs leading-5">
+                    {statusAlert.body}
+                  </div>
+
+                  {statusAlert.type === "error" ? (
+                    <div className="mt-2 text-xs leading-5 opacity-80">
+                      You can go back to Address to check your postcode, or
+                      contact support if you believe this destination should be
+                      serviceable.
+                    </div>
+                  ) : null}
+                </div>
+              </Alert>
             </div>
           ) : null}
         </div>

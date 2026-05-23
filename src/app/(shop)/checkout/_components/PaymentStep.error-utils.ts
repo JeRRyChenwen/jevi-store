@@ -164,7 +164,25 @@ export function mapPayFailure(err: any): PayError {
     };
   }
 
-  // 4) Amount mismatch
+  // 4) Shipping unavailable / manual review / blocked / exception
+  if (
+    code === "shipping_manual_review_required" ||
+    code === "shipping_blocked_destination" ||
+    code === "shipping_quote_exception" ||
+    code === "shipping_quote_unavailable"
+  ) {
+    return {
+      type: "shipping_unavailable",
+      status,
+      message:
+        messageFromServer ||
+        "Shipping could not be calculated for this address. Please check your postcode or contact support.",
+      detail: detail ?? err ?? null,
+    };
+  }
+
+
+  // 5) Amount mismatch
   if (status === 400 && code === "amount_mismatch") {
     return {
       type: "amount_mismatch",
@@ -175,7 +193,7 @@ export function mapPayFailure(err: any): PayError {
     };
   }
 
-  // 5) Server error
+  // 6) Server error
   if (status && status >= 500) {
     return {
       type: "server_error",
@@ -186,7 +204,7 @@ export function mapPayFailure(err: any): PayError {
     };
   }
 
-  // 6) Fallback
+  // 7) Fallback
   return {
     type: "unknown",
     status,

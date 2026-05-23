@@ -17,6 +17,8 @@ type Params = {
   setBillingErrs: (errs: any) => void;
   setAddressShowErrors: (show: boolean) => void;
   ensureReserveBeforeNext: () => Promise<any>;
+  quoteLoading?: boolean;
+  quoteError?: string | null;
   nextStepCore: () => void;
   sendSubscriptionIfNeeded: (emailRaw?: string) => Promise<void>;
 };
@@ -36,6 +38,8 @@ export async function runCheckoutContinue({
   setBillingErrs,
   setAddressShowErrors,
   ensureReserveBeforeNext,
+  quoteLoading = false,
+  quoteError = null,
   nextStepCore,
   sendSubscriptionIfNeeded,
 }: Params) {
@@ -92,6 +96,16 @@ export async function runCheckoutContinue({
   }
 
   if (step === "delivery") {
+    if (quoteLoading) {
+      setContinueErrMsg("Please wait while we calculate shipping for your address.");
+      return;
+    }
+
+    if (quoteError) {
+      setContinueErrMsg(quoteError);
+      return;
+    }
+
     try {
       await ensureReserveBeforeNext();
     } catch {

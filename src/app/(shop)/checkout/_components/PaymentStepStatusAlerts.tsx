@@ -60,8 +60,8 @@ const PaymentStepStatusAlerts: React.FC<Props> = ({
                 </div>
 
                 <div className="mt-2">
-                  Please adjust the quantity or remove the item in your bag, then
-                  try paying again.
+                  Please adjust the quantity or remove the item in your bag,
+                  then try paying again.
                 </div>
               </div>
             )}
@@ -70,7 +70,8 @@ const PaymentStepStatusAlerts: React.FC<Props> = ({
               <div className="mt-2 text-xs leading-5">
                 <div>Your reserved items are no longer held.</div>
                 <div className="mt-1">
-                  Please try paying again before the stock is taken by someone else.
+                  Please try paying again before the stock is taken by someone
+                  else.
                 </div>
               </div>
             )}
@@ -78,10 +79,21 @@ const PaymentStepStatusAlerts: React.FC<Props> = ({
             {payError.type === "reservation_failed" && (
               <div className="mt-2 text-xs leading-5">
                 <div>
-                  This usually happens when the reservation expired, the bag changed,
-                  the reservation was released, or the payment was retried.
+                  This usually happens when the reservation expired, the bag
+                  changed, the reservation was released, or the payment was
+                  retried.
                 </div>
                 <div className="mt-1">Tip: refresh the page and try again.</div>
+              </div>
+            )}
+
+            {payError.type === "shipping_unavailable" && (
+              <div className="mt-2 text-xs leading-5">
+                <div>This address cannot be quoted automatically.</div>
+                <div className="mt-1">
+                  Please go back to Delivery or Address, check your postcode, or
+                  contact support.
+                </div>
               </div>
             )}
 
