@@ -834,6 +834,12 @@ wrangler d1 execute jevi --remote --file=reset.sql
 
 wrangler d1 execute jevi --remote --file migrations/0001_base.sql
 
+同步migration：
+copy /Y "D:\前端练习\d1-worker\schema\current_schema.sql" "D:\前端练习\d1-worker\migrations\0001_base.sql"
+
+检查是否一致：
+fc.exe "D:\前端练习\d1-worker\schema\current_schema.sql" "D:\前端练习\d1-worker\migrations\0001_base.sql"
+
 # ============================================================================
 
 # ============================================================================
@@ -1388,3 +1394,13 @@ postcode的范围有点不对
 网址address改
 
 By using messaging, you're agreeing that you've understood and committed to our terms and conditions and privacy policy.
+
+Shipping Fee Tier Management 页面tier 排序
+
+Shipping Rule Drafts 页面draft list 卡片排序，筛选
+Draft 详情里显示tier和运费 eta大类
+Draft name 生成
+
+fast line 和 ordinary 谁是standard 谁是expresss
+
+尝试别的国家storefront的运费测试结果
