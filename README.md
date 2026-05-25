@@ -840,6 +840,11 @@ copy /Y "D:\前端练习\d1-worker\schema\current_schema.sql" "D:\前端练习\d
 检查是否一致：
 fc.exe "D:\前端练习\d1-worker\schema\current_schema.sql" "D:\前端练习\d1-worker\migrations\0001_base.sql"
 
+CJPacket Fast Ordinary 等于 Express
+CJPacket Fast Line 等于 Standard
+
+长期固定使用 CJPacket Fast Line 作为generate draft的数据
+
 # ============================================================================
 
 # ============================================================================
@@ -1395,12 +1400,34 @@ postcode的范围有点不对
 
 By using messaging, you're agreeing that you've understood and committed to our terms and conditions and privacy policy.
 
-Shipping Fee Tier Management 页面tier 排序, 增加sample的功能
-
-Shipping Rule Drafts 页面draft list 卡片排序，筛选
 Draft 详情里显示tier和运费 eta大类
-Draft name 生成
 
 fast line 和 ordinary 谁是standard 谁是expresss
 
 尝试别的国家storefront的运费测试结果
+
+很好，我按照你给我的代码修改好了，看起来没问题！然后我想优化一下我的 Target shipping method，目前我处于一个困境，就是我的一个quote result可能包含多个 Target shipping method，而我每次只能generate 一个 Target shipping method 的 draft， 而
+
+按照价格显示大类
+
+思考了一下，我觉得应该给价格分成几个大类，然后按顺序加入到tier里
+
+1. Shipping Fee Calculation Dashboard / Main Function 2
+   作用：调用 CJ API，采样不同 postcode 的真实/参考运费成本。
+   结果：得到一批 reference quote run 记录。
+   这些记录本身不会直接影响 checkout。
+
+2. Shipping Rule Drafts
+   作用：把 reference quote run 转换成可 review、可 publish 的 postcode zone member 草稿。
+   结果：生成 draft items，比如：
+   postcode 3000-3002 → AU_CJFO_TIER_3
+   postcode 3999 → AU_CJFO_TIER_5
+   fallback → AU_CJFO_FALLBACK
+   这些 draft 也不会直接影响 checkout，除非 publish。
+
+3. Shipping Fee Tier Management
+   作用：决定每个 zone 顾客最终看到多少钱。
+   结果：shipping_rules / shipping_rule_tiers。
+   checkout 真正使用的是这里的 live rule 价格。
+
+在前端，长期固定使用 CJPacket Fast Line 作为generate draft的数据，写好文案提醒
