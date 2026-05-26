@@ -1431,3 +1431,7 @@ fast line 和 ordinary 谁是standard 谁是expresss
    checkout 真正使用的是这里的 live rule 价格。
 
 在前端，长期固定使用 CJPacket Fast Line 作为generate draft的数据，写好文案提醒
+
+Shipping quote unavailable 的时候不应该显示eta
+
+默认选中fallback
