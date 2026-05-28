@@ -209,9 +209,10 @@ export default function CategoryBar() {
     closeTimer.current = window.setTimeout(() => setOpenSlug(null), 120);
   };
 
-  const currentSubs = openSlug ? childrenMap[openSlug] ?? [] : [];
-  const isLoading =
-    openSlug ? loadingSlug === openSlug && currentSubs.length === 0 : false;
+  const currentSubs = openSlug ? (childrenMap[openSlug] ?? []) : [];
+  const isLoading = openSlug
+    ? loadingSlug === openSlug && currentSubs.length === 0
+    : false;
 
   return (
     // 与 Navbar 同色、同宽，吸顶在 Navbar 下方（Navbar 高度：h-16 md:h-20）
@@ -235,7 +236,7 @@ export default function CategoryBar() {
           <nav
             ref={scrollNavRef}
             aria-label="Shop categories"
-            className="no-scrollbar -mx-2 flex w-full items-center gap-2 overflow-x-auto py-2 px-2 justify-start md:mx-0 md:justify-center md:gap-3 md:overflow-visible md:px-0 md:py-3"
+            className="no-scrollbar -mx-2 flex w-full items-center gap-5 overflow-x-auto px-2 py-3 justify-start md:mx-0 md:justify-center md:gap-9 md:overflow-visible md:px-0 md:py-4"
           >
             {topsLoading ? (
               Array.from({ length: 6 }).map((_, i) => (
@@ -262,7 +263,7 @@ export default function CategoryBar() {
                       aria-current={active ? "page" : undefined}
                       aria-expanded={openSlug === slug}
                       className={[
-                        "inline-flex items-center gap-1 whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm transition-colors",
+                        "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-5 py-2.5 text-[15px] font-medium transition-colors",
                         active
                           ? "bg-black text-white"
                           : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200",

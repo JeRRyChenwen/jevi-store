@@ -1421,3 +1421,24 @@ By using messaging, you're agreeing that you've understood and committed to our 
    checkout 真正使用的是这里的 live rule 价格。
 
 运输时间需要处理
+
+我给你的优先级排序
+P0：必须立刻做
+轮换所有已经暴露的密钥。
+删除 zip/仓库里的 .env、.dev.vars、.git、.wrangler。
+修复 admin Bearer bypass，无条件绕过必须禁止。
+修复 social-platform/src/app/api/orders/orderId]/route.ts 路径问题。
+给 /orders/:id 加鉴权或改成 email/orderNumber/token 校验。
+解决 PayPal capture 成功但 /orders 建单失败的补偿机制。
+P1：上线前必须做
+用私有 env 替代 admin proxy 里的 NEXT_PUBLIC_API_BASE。
+清理所有 placeholder 域名、邮箱、法务主体信息。
+清理 debug log。
+给 admin 操作加 audit log。
+给支付加 reconciliation 表。
+给 inventory reservation 加异常诊断页面。
+P2：中长期优化
+抽出共享 storefront/brand/country config。
+完善 typecheck/lint/build CI。
+写部署和故障处理文档。
+增加 E2E 测试：注册、登录、加入购物袋、运费计算、库存预留、PayPal sandbox 下单、订单确认、退货申请、admin 审批。
