@@ -1400,17 +1400,7 @@ postcode的范围有点不对
 
 By using messaging, you're agreeing that you've understood and committed to our terms and conditions and privacy policy.
 
-Draft 详情里显示tier和运费 eta大类
-
-fast line 和 ordinary 谁是standard 谁是expresss
-
 尝试别的国家storefront的运费测试结果
-
-很好，我按照你给我的代码修改好了，看起来没问题！然后我想优化一下我的 Target shipping method，目前我处于一个困境，就是我的一个quote result可能包含多个 Target shipping method，而我每次只能generate 一个 Target shipping method 的 draft， 而
-
-按照价格显示大类
-
-思考了一下，我觉得应该给价格分成几个大类，然后按顺序加入到tier里
 
 1. Shipping Fee Calculation Dashboard / Main Function 2
    作用：调用 CJ API，采样不同 postcode 的真实/参考运费成本。
@@ -1430,8 +1420,4 @@ fast line 和 ordinary 谁是standard 谁是expresss
    结果：shipping_rules / shipping_rule_tiers。
    checkout 真正使用的是这里的 live rule 价格。
 
-在前端，长期固定使用 CJPacket Fast Line 作为generate draft的数据，写好文案提醒
-
-Shipping quote unavailable 的时候不应该显示eta
-
-默认选中fallback
+运输时间需要处理

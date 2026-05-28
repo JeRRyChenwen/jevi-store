@@ -8,18 +8,13 @@ import { CURRENT_STOREFRONT, getShippingNotice } from "@/lib/market/current";
 
 type DeliveryMethod = "standard" | "express";
 
-const METHOD_META: Record<
-  DeliveryMethod,
-  { label: string; eta: string; note?: string }
-> = {
+const METHOD_META: Record<DeliveryMethod, { label: string; note?: string }> = {
   standard: {
     label: "Standard delivery",
-    eta: "Arrives in 3–5 business days",
     note: "Best value",
   },
   express: {
     label: "Express delivery",
-    eta: "Arrives in 1–2 business days",
     note: "Fastest option",
   },
 };
@@ -108,7 +103,6 @@ function formatEtaLine(min: number | null, max: number | null): string | null {
 function formatEtaText(
   method: DeliveryMethod,
   etaByMethod?: EtaByMethod,
-  opts?: { suppressFallback?: boolean },
 ): { etaLine: string; noteLine: string | null } {
   const eta = etaByMethod?.[method];
 
@@ -123,21 +117,17 @@ function formatEtaText(
     return { etaLine: shipLine, noteLine };
   }
 
-  // ✅ 2) fallback：如果后端没给 min/max，则用 total ETA（含 handling）
+  // ✅ 2) 如果后端没给 min/max，再使用 total ETA（含 handling）
   const minTotal = asPosIntOrNull(eta?.eta_min_total);
   const maxTotal = asPosIntOrNull(eta?.eta_max_total);
   const totalLine = formatEtaLine(minTotal, maxTotal);
+
   if (totalLine) {
     return { etaLine: totalLine, noteLine };
   }
 
-  // ✅ 关键：quoteLoading 时，不要回退到写死 ETA（留空）
-  if (opts?.suppressFallback) {
-    return { etaLine: "", noteLine: null };
-  }
-
-  // ✅ 3) 兜底：写死文案（只在非 loading 时允许）
-  return { etaLine: METHOD_META[method].eta, noteLine: null };
+  // ✅ 3) 没有后端 ETA 时，不显示默认 ETA
+  return { etaLine: "", noteLine: null };
 }
 
 function getShippingAlertTitle(message: string) {
@@ -323,9 +313,7 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
 
           {(["standard", "express"] as DeliveryMethod[]).map((m) => {
             const selected = deliveryMethod === m;
-            const { etaLine, noteLine } = formatEtaText(m, etaByMethod, {
-              suppressFallback: quoteLoading,
-            });
+            const { etaLine, noteLine } = formatEtaText(m, etaByMethod);
 
             const feeText = feeTextOf(m);
 
@@ -372,9 +360,11 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
                     </div>
                   </div>
 
-                  <div className="mt-1 min-h-[20px] text-sm text-neutral-600">
-                    {etaLine ? etaLine : ""}
-                  </div>
+                  {etaLine ? (
+                    <div className="mt-1 text-sm text-neutral-600">
+                      {etaLine}
+                    </div>
+                  ) : null}
 
                   {noteLine ? (
                     <div className="mt-1 text-xs text-neutral-500">
