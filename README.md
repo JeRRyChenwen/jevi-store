@@ -1370,6 +1370,25 @@ supplier → 3PL → customer → return → 责任回溯
 
 ====================================
 
+已完成订单读取安全修复：
+
+1. d1-worker /orders/:idOrNo 增加读取权限校验
+   - admin 可以读取
+   - 登录用户可以读取自己的订单
+   - guest 用户必须提供匹配订单邮箱
+
+2. social-platform /api/orders/[orderId] 支持：
+   - 数字 id
+   - order_number，例如 SP20260528-000001
+   - email/customerEmail 查询参数透传
+
+3. confirmation page 支持：
+   - /order/confirmation?orderId=SP20260528-000001&email=xxx@example.com
+
+4. PayPal 支付成功后跳转 confirmation page 时自动带上 orderId 和 email
+
+====================================
+
 我的品牌服装网站
 
 政策页面需要检查
@@ -1442,3 +1461,9 @@ P2：中长期优化
 完善 typecheck/lint/build CI。
 写部署和故障处理文档。
 增加 E2E 测试：注册、登录、加入购物袋、运费计算、库存预留、PayPal sandbox 下单、订单确认、退货申请、admin 审批。
+
+draft页面里的dashboard需要显示完整的postcode列表，检查3000 是不是 29.95
+
+法律
+
+jevi env NEXT_PUBLIC_STOREFRONT_CODE=AU

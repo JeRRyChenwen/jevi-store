@@ -9,10 +9,7 @@ import {
   type PayError,
 } from "./PaymentStep.helpers";
 import type { PaymentStepProps } from "./PaymentStep.types";
-import {
-  getOutOfStockDisplay,
-  mapPayFailure,
-} from "./PaymentStep.error-utils";
+import { getOutOfStockDisplay, mapPayFailure } from "./PaymentStep.error-utils";
 import { buildCheckoutTotalsMeta } from "./PaymentStep.checkout-meta";
 import { buildPaymentSuccessMeta } from "./PaymentStep.success-meta";
 import { getPayPalUnavailable } from "./PaymentStep.paypal-availability";
@@ -25,7 +22,6 @@ import { usePaymentDerivedState } from "./usePaymentDerivedState";
 import { usePaymentReservationState } from "./usePaymentReservationState";
 import { usePaymentPreflight } from "./usePaymentPreflight";
 import { usePaymentReservationLifecycle } from "./usePaymentReservationLifecycle";
-
 
 const PaymentStep: React.FC<PaymentStepProps> = ({
   visible,
@@ -56,7 +52,9 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
 
   // ✅ Phase 2: reservation state
   const [reservationId, setReservationId] = useState<string | null>(null);
-  const [reservationExpiresAt, setReservationExpiresAt] = useState<number | null>(null);
+  const [reservationExpiresAt, setReservationExpiresAt] = useState<
+    number | null
+  >(null);
 
   // ✅ IMPORTANT: this ref must be kept in sync with state
   const reservationIdRef = useRef<string | null>(null);
@@ -81,31 +79,28 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     address,
   });
 
-  const {
-    reservationSecondsLeft,
-    reservationExpired,
-    payBlockedReason,
-  } = usePaymentReservationState({
-    visible,
-    isPayProcessing,
-    suppressBlockedHint,
-    payError,
+  const { reservationSecondsLeft, reservationExpired, payBlockedReason } =
+    usePaymentReservationState({
+      visible,
+      isPayProcessing,
+      suppressBlockedHint,
+      payError,
 
-    derivedItemsCount,
-    hasAddress: !!hasAddress,
-    effectiveOrderEmail,
-    isLoggedIn,
+      derivedItemsCount,
+      hasAddress: !!hasAddress,
+      effectiveOrderEmail,
+      isLoggedIn,
 
-    preReserveLoading,
-    preReserveError,
+      preReserveLoading,
+      preReserveError,
 
-    preReservationId,
-    preReservationCartHash,
-    preReservationExpiresAtSec,
+      preReservationId,
+      preReservationCartHash,
+      preReservationExpiresAtSec,
 
-    cartHash,
-    derivedTotalMinor,
-  });
+      cartHash,
+      derivedTotalMinor,
+    });
 
   const uiPayBlockedReason = paypalConsentRequired ? null : payBlockedReason;
 
@@ -128,7 +123,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     payError,
     paypalConsentRequired,
   ]);
-
 
   /**
    * ✅ 缺货展示信息：优先从 cart snapshot 取；找不到再用后端 detail
@@ -156,12 +150,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     setPayError,
   });
 
-
-
-
-
-
-
   const handlePaySucceeded = useCallback(
     (payload: any) => {
       setPayError(null);
@@ -172,18 +160,50 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
       setReservationExpiresAt(null);
       reservationIdRef.current = null;
 
-      // ✅ 关键：支付成功后，直接跳转到 confirmation（只出现 Finalizing）
-      const orderId = pickCreatedOrderIdFromPayPalPayload(payload);
+      // ✅ 优先使用订单号，例如 SP20260528-000001
+      // 这样 confirmation page 可以直接按 order_number 查询订单。
+      const orderNumber =
+        payload?.order?.order?.order_number ||
+        payload?.order?.orderNumber ||
+        payload?.order?.order_number ||
+        payload?.orderNumber ||
+        payload?.successMeta?.orderNumber ||
+        null;
 
-      if (orderId) {
-        router.replace(`/order/confirmation?orderId=${orderId}`);
+      // ✅ 兜底：如果拿不到订单号，再使用数字 id
+      const createdOrderId = pickCreatedOrderIdFromPayPalPayload(payload);
+
+      const finalOrderId = String(orderNumber || createdOrderId || "").trim();
+
+      // ✅ confirmation page 读取订单需要 email。
+      // 优先使用当前 PaymentStep 已经计算好的 effectiveOrderEmail。
+      const finalOrderEmail = String(
+        effectiveOrderEmail ||
+          payload?.successMeta?.checkoutEmail ||
+          payload?.successMeta?.accountEmail ||
+          payload?.successMeta?.email ||
+          payload?.successMeta?.address?.email ||
+          "",
+      )
+        .trim()
+        .toLowerCase();
+
+      if (finalOrderId) {
+        const url = new URL("/order/confirmation", window.location.origin);
+        url.searchParams.set("orderId", finalOrderId);
+
+        if (finalOrderEmail) {
+          url.searchParams.set("email", finalOrderEmail);
+        }
+
+        router.replace(`${url.pathname}${url.search}`);
         return;
       }
 
       // 拿不到 orderId 也至少跳过去（会停在 Finalizing）
       router.replace(`/order/confirmation`);
     },
-    [router]
+    [router, effectiveOrderEmail],
   );
 
   /**
@@ -253,7 +273,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     preReservationId,
   ]);
 
-
   return (
     <section
       className="rounded-2xl border bg-white min-h-0 md:min-h-[720px] flex flex-col overflow-hidden"
@@ -302,10 +321,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
            桌面端：保持你原来的双栏逻辑
         ========================== */}
         <div className="md:hidden space-y-4">
-          <PaymentStepMethodPanel
-            method={method}
-            setMethod={setMethod}
-          />
+          <PaymentStepMethodPanel method={method} setMethod={setMethod} />
 
           <PaymentStepSummaryPanel
             address={address}
@@ -346,17 +362,15 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
 
           <div className="pt-1 px-1 space-y-1 text-xs text-gray-500">
             <p>
-              All charges are processed in <b>{safeCurrency}</b>. Your bank or PayPal may apply currency conversion and fees.
+              All charges are processed in <b>{safeCurrency}</b>. Your bank or
+              PayPal may apply currency conversion and fees.
             </p>
           </div>
         </div>
 
         <div className="hidden md:flex md:flex-col md:flex-1">
           <div className="grid items-start gap-4 md:grid-cols-[minmax(0,1.5fr)_minmax(0,2fr)]">
-            <PaymentStepMethodPanel
-              method={method}
-              setMethod={setMethod}
-            />
+            <PaymentStepMethodPanel method={method} setMethod={setMethod} />
 
             <PaymentStepSummaryPanel
               address={address}
@@ -398,7 +412,8 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
 
           <div className="mt-4 pt-4 md:mt-auto md:pt-6 space-y-1 text-xs text-gray-500">
             <p>
-              All charges are processed in <b>{safeCurrency}</b>. Your bank or PayPal may apply currency conversion and fees.
+              All charges are processed in <b>{safeCurrency}</b>. Your bank or
+              PayPal may apply currency conversion and fees.
             </p>
           </div>
         </div>

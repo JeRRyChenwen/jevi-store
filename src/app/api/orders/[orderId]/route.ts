@@ -67,11 +67,12 @@ function buildShippingAddressJson(order: any) {
 
 export async function GET(req: NextRequest, ctx: { params: { orderId: string } }) {
   const rawId = String(ctx?.params?.orderId || "").trim();
-  const orderIdNum = Number(rawId);
 
-  if (!Number.isFinite(orderIdNum) || orderIdNum <= 0) {
+  if (!rawId) {
     return NextResponse.json({ ok: false, error: "invalid_order_id" }, { status: 400 });
   }
+
+  const safeOrderId = encodeURIComponent(rawId);
 
   // 透传 cookie，方便 Worker 做鉴权/关联用户（即使你现在只是本地也更稳）
   const cookieHeader = req.headers.get("cookie") || "";
@@ -84,11 +85,20 @@ export async function GET(req: NextRequest, ctx: { params: { orderId: string } }
   if (spUser.email) extraHeaders["x-sp-user-email"] = spUser.email;
   if (spUser.id != null) extraHeaders["x-sp-user-id"] = String(spUser.id);
 
-  const upstreamUrl = `${API_BASE}/orders/${orderIdNum}`;
+  const url = new URL(req.url);
+  const email =
+    url.searchParams.get("email") ||
+    url.searchParams.get("customerEmail") ||
+    "";
+
+  const upstreamUrl = new URL(`${API_BASE}/orders/${safeOrderId}`);
+  if (email.trim()) {
+    upstreamUrl.searchParams.set("email", email.trim());
+  }
 
   let upstream: Response;
   try {
-    upstream = await fetch(upstreamUrl, {
+    upstream = await fetch(upstreamUrl.toString(), {
       method: "GET",
       headers: {
         accept: "application/json",

@@ -16,9 +16,15 @@ export default function OrderConfirmationPage() {
   const sp = useSearchParams();
 
   const orderId = useMemo(() => {
-    const raw = sp.get("orderId");
-    const n = Number(raw);
-    return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+    const raw = String(sp.get("orderId") || "").trim();
+    return raw || null;
+  }, [sp]);
+
+  const orderEmail = useMemo(() => {
+    const raw =
+      sp.get("email") || sp.get("customerEmail") || sp.get("orderEmail") || "";
+    const email = String(raw).trim().toLowerCase();
+    return email && email.includes("@") ? email : null;
   }, [sp]);
 
   const [loading, setLoading] = useState(true);
@@ -28,7 +34,9 @@ export default function OrderConfirmationPage() {
   useEffect(() => {
     try {
       localStorage.setItem("bag:v1", "[]");
-      window.dispatchEvent(new CustomEvent("bag:count", { detail: { count: 0 } }));
+      window.dispatchEvent(
+        new CustomEvent("bag:count", { detail: { count: 0 } }),
+      );
       window.dispatchEvent(new CustomEvent("bag:updated", { detail: {} }));
     } catch {}
   }, []);
@@ -44,7 +52,16 @@ export default function OrderConfirmationPage() {
       setLoading(true);
 
       try {
-        const res = await fetch(`/api/orders/${orderId}`, {
+        const apiUrl = new URL(
+          `/api/orders/${encodeURIComponent(orderId)}`,
+          window.location.origin,
+        );
+
+        if (orderEmail) {
+          apiUrl.searchParams.set("email", orderEmail);
+        }
+
+        const res = await fetch(apiUrl.toString(), {
           method: "GET",
           credentials: "include",
           headers: { "content-type": "application/json" },
@@ -80,7 +97,7 @@ export default function OrderConfirmationPage() {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [orderId]);
+  }, [orderId, orderEmail]);
 
   if (!orderId) {
     return (
@@ -133,7 +150,8 @@ export default function OrderConfirmationPage() {
                   We’ve emailed your receipt and order details to{" "}
                   <span className="font-medium text-neutral-800 break-all">
                     {emailLine}
-                  </span>.
+                  </span>
+                  .
                 </p>
               ) : null}
 
