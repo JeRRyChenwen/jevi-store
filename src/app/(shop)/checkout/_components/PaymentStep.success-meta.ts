@@ -22,7 +22,7 @@ export function buildPaymentSuccessMeta({
   return {
     checkoutTotals: checkoutTotalsMeta,
 
-    // 给 PayPalBigButton /orders 使用的最终订单邮箱
+    // 给 PayPalBigButton checkout_session 流程使用的最终订单邮箱
     checkoutEmail: effectiveOrderEmail || null,
 
     // 额外保留账户邮箱，作为备用字段

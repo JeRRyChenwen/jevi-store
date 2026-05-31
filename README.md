@@ -1469,3 +1469,5 @@ draft页面里的dashboard需要显示完整的postcode列表，检查3000 是�
 jevi env NEXT_PUBLIC_STOREFRONT_CODE=AU
 
 email api 正式上线
+
+social platform 换名字

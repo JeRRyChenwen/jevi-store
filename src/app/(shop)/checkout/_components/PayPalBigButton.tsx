@@ -10,10 +10,10 @@ type Props = {
 
   onInitiate?: () => void;
 
-  // ✅ 成功：只有当“PayPal capture + 后端建单成功”才会触发
+  // ✅ 成功：只有当“后端 PayPal capture + 后端建单成功”才会触发
   onSucceeded?: (payload: any) => void | Promise<void>;
 
-  // ✅ 失败：包括 409 缺货、400 金额不一致、500 库存更新失败等
+  // ✅ 失败：包括库存预留失败、checkout session 创建失败、PayPal capture 失败等
   onFailed?: (err: any) => void;
 
   confirmPath?: string; // default "/order/confirmation"
@@ -25,9 +25,9 @@ type Props = {
   preflight?: () => Promise<string>;
   preflightItems?: Array<{ sku: string; qty: number }>;
 
-  // ✅ NEW: 上层控制禁用（reservation expired / out_of_stock 时用）
+  // ✅ 上层控制禁用（reservation expired / out_of_stock / cookie 未同意等）
   disabled?: boolean;
-  disabledText?: string; // 默认 "PayPal unavailable"
+  disabledText?: string;
 };
 
 function getApiBase() {
@@ -38,10 +38,10 @@ function getApiBase() {
   const base = String(fromEnv || "")
     .trim()
     .replace(/\/+$/, "");
+
   if (base) return base;
 
-  // ✅ 关键：默认跟你的前端 host 保持一致，避免 localhost/127.0.0.1 cookie 不互通
-  // 你的页面是 localhost:3000，就默认走 localhost:8787
+  // ✅ 本地开发默认直连 d1-worker
   if (typeof window !== "undefined") {
     const h = window.location.hostname;
     if (h === "localhost") return "http://localhost:8787";
@@ -56,10 +56,11 @@ async function postJson(url: string, body: any) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: JSON.stringify(body),
+    body: JSON.stringify(body ?? {}),
   });
 
   let data: any = null;
+
   try {
     data = await res.json();
   } catch {
@@ -80,12 +81,18 @@ const QUIET_CREATE_ORDER_CODES = new Set([
   "stock_lookup_failed",
   "stock_check_failed",
   "missing_items",
+  "missing_email",
+  "missing_reservation_id",
+  "checkout_session_create_failed",
+  "checkout_session_not_found",
+  "checkout_session_expired",
+  "checkout_session_invalid_state",
   "paypal_cancelled",
   "paypal_unavailable",
 ]);
 
 function normalizeErrCode(err: any): string {
-  const code = String(err?.code || "").trim();
+  const code = String(err?.code || err?.error || "").trim();
   if (code) return code;
 
   const name = String(err?.name || "").trim();
@@ -118,36 +125,73 @@ function pickReservationId(meta: any): string | null {
   return s ? s : null;
 }
 
-/**
- * ✅ 统一把后端 /orders 的错误响应转成前端可用 err：
- * - 保留后端的 error/message（不再强制 409=out_of_stock）
- * - 永远补上 items fallback（方便 PaymentStep 用 cart/sku 做展示）
- */
-function makeOrdersError(
-  resStatus: number,
-  orderResp: any,
-  fallbackItems: any,
-) {
-  const backendCode = String(orderResp?.error || orderResp?.code || "").trim();
-  const code = backendCode || (resStatus ? `http_${resStatus}` : "http_error");
+function pickCheckoutEmail(meta: any): string {
+  return String(
+    meta?.checkoutEmail ??
+      meta?.accountEmail ??
+      meta?.email ??
+      meta?.address?.email ??
+      "",
+  )
+    .trim()
+    .toLowerCase();
+}
 
-  // ✅ 优先用后端 message（你后端现在会返回 message）
-  const backendMsg = String(orderResp?.message || "").trim();
-  const message =
-    backendMsg || (resStatus ? `HTTP ${resStatus}` : "Request failed");
+function normalizeCheckoutAddress(address: any, email: string) {
+  const a = address || {};
 
-  // ✅ detail：优先 detail，其次把整个响应塞进去（方便你调试/前端做 fallback）
-  const detail = {
-    ...(orderResp?.detail ?? {}),
-    ...(orderResp ?? {}),
-    items: fallbackItems ?? null,
+  return {
+    email,
+
+    first_name:
+      a.first_name ?? a.firstName ?? a.given_name ?? a.givenName ?? null,
+
+    last_name:
+      a.last_name ??
+      a.lastName ??
+      a.surname ??
+      a.family_name ??
+      a.familyName ??
+      null,
+
+    phone: a.phone ?? a.phone_number ?? a.phoneNumber ?? null,
+
+    line1: a.line1 ?? a.address_line1 ?? a.addressLine1 ?? a.addr_line1 ?? null,
+
+    line2: a.line2 ?? a.address_line2 ?? a.addressLine2 ?? a.addr_line2 ?? "",
+
+    city: a.city ?? a.suburb ?? a.addr_city ?? null,
+
+    state: a.state ?? a.province ?? a.region ?? a.addr_state ?? null,
+
+    postcode:
+      a.postcode ?? a.postal_code ?? a.postalCode ?? a.addr_postcode ?? null,
+
+    country:
+      a.country ?? a.country_code ?? a.countryCode ?? a.addr_country ?? null,
   };
+}
+
+function makeBackendError(
+  resStatus: number,
+  data: any,
+  fallbackCode: string,
+  fallbackMessage: string,
+) {
+  const backendCode = String(data?.error || data?.code || "").trim();
+  const code = backendCode || fallbackCode;
+
+  const backendMsg = String(data?.message || "").trim();
+  const message =
+    backendMsg ||
+    fallbackMessage ||
+    (resStatus ? `HTTP ${resStatus}` : "Request failed");
 
   return {
     status: resStatus || 0,
     code,
     message,
-    detail,
+    detail: data ?? null,
   };
 }
 
@@ -165,9 +209,13 @@ export default function PayPalBigButton({
   disabledText,
 }: Props) {
   const [{ options }, dispatch] = usePayPalScriptReducer();
+
   const approvingRef = useRef(false);
-  const reservedIdRef = useRef<string | null>(null);
   const creatingRef = useRef(false);
+
+  const reservationIdRef = useRef<string | null>(null);
+  const checkoutSessionTokenRef = useRef<string | null>(null);
+  const checkoutSessionRef = useRef<any>(null);
 
   useEffect(() => {
     if (!options || !currency) return;
@@ -184,7 +232,6 @@ export default function PayPalBigButton({
   const value = Number(amount || 0).toFixed(2);
 
   const apiBase = useMemo(() => getApiBase(), []);
-  const ordersUrl = useMemo(() => `${apiBase}/orders`, [apiBase]);
 
   const isDisabled = !!disabled;
   const disabledLabel =
@@ -219,7 +266,6 @@ export default function PayPalBigButton({
             }}
             forceReRender={[value, currency]}
             createOrder={async () => {
-              // ✅ safety: 如果 disabled 状态被上层瞬间切换，也直接拒绝
               if (isDisabled) {
                 throw makeAbortError("paypal_unavailable");
               }
@@ -227,6 +273,7 @@ export default function PayPalBigButton({
               if (creatingRef.current) {
                 throw makeAbortError("create_order_in_progress");
               }
+
               creatingRef.current = true;
 
               try {
@@ -239,15 +286,51 @@ export default function PayPalBigButton({
                     message: `Invalid amount for PayPal: ${amount}`,
                     detail: { amount, currency },
                   };
+
                   onFailed?.(err);
                   throw makeAbortError("invalid_amount", err);
                 }
 
-                // ✅ Phase 2：reserve preflight（由 PaymentStep 实现）
+                const checkoutTotals = successMeta?.checkoutTotals;
+                const itemsFromMeta = checkoutTotals?.items;
+
+                if (
+                  !Array.isArray(itemsFromMeta) ||
+                  itemsFromMeta.length === 0
+                ) {
+                  const err = {
+                    status: 0,
+                    code: "missing_items",
+                    message: "Missing cart items for checkout session.",
+                    detail: { successMeta, preflightItems },
+                  };
+
+                  onFailed?.(err);
+                  throw makeAbortError("missing_items", err);
+                }
+
+                const finalCheckoutEmail = pickCheckoutEmail(successMeta);
+
+                if (!finalCheckoutEmail) {
+                  const err = {
+                    status: 400,
+                    code: "missing_email",
+                    message:
+                      "Email required for order. Please go back to the Address step and complete your email information.",
+                    detail: { successMeta },
+                  };
+
+                  onFailed?.(err);
+                  throw makeAbortError("missing_email", err);
+                }
+
+                // ✅ 1. 先确保库存 reservation 存在
+                let reservationId: string | null = null;
+
                 if (preflight) {
                   try {
                     const rid = await preflight();
-                    reservedIdRef.current = rid || null;
+                    reservationId = String(rid || "").trim() || null;
                   } catch (e: any) {
                     const err = {
                       status: Number(e?.status || 409) || 409,
@@ -264,33 +347,152 @@ export default function PayPalBigButton({
                   }
                 }
 
-                const { res, data } = await postJson("/api/paypal/orders", {
-                  amount: Number(amount).toFixed(2),
-                  currency: String(currency || "")
-                    .trim()
-                    .toUpperCase(),
-                });
+                reservationId = reservationId || pickReservationId(successMeta);
 
-                if (!res.ok || !data?.paypalOrderId) {
+                if (!reservationId) {
                   const err = {
-                    status: res.status,
-                    code: String(data?.error || "paypal_create_order_failed"),
+                    status: 400,
+                    code: "missing_reservation_id",
                     message:
-                      String(data?.message || "").trim() ||
-                      "Failed to create PayPal order.",
-                    detail: data,
+                      "Missing reservation_id when creating checkout session.",
+                    detail: { successMeta },
+                  };
+
+                  onFailed?.(err);
+                  throw makeAbortError("missing_reservation_id", err);
+                }
+
+                reservationIdRef.current = reservationId;
+
+                const normalizedAddress = normalizeCheckoutAddress(
+                  successMeta?.address,
+                  finalCheckoutEmail,
+                );
+
+                const checkoutCurrency = String(
+                  checkoutTotals?.currency || currency || "",
+                )
+                  .trim()
+                  .toUpperCase();
+
+                const deliveryOption = String(
+                  successMeta?.deliveryOption || "standard",
+                )
+                  .trim()
+                  .toLowerCase();
+
+                // ✅ 2. 创建 server-side checkout session
+                const checkoutSessionBody = {
+                  email: finalCheckoutEmail,
+                  currency: checkoutCurrency,
+                  reservation_id: reservationId,
+                  items: itemsFromMeta,
+                  address: normalizedAddress,
+                  shipping_address: normalizedAddress,
+                  delivery_option: deliveryOption,
+
+                  // 可选：方便后端 snapshot/debug
+                  checkout_totals: checkoutTotals ?? null,
+                  meta: {
+                    ...(successMeta?.meta || {}),
+                    __source: "frontend_paypal_button_checkout_session",
+                  },
+                };
+
+                const { res: sessionRes, data: sessionResp } = await postJson(
+                  `${apiBase}/checkout/sessions`,
+                  checkoutSessionBody,
+                );
+
+                if (!sessionRes.ok || !sessionResp?.ok) {
+                  const err = makeBackendError(
+                    sessionRes.status,
+                    sessionResp,
+                    "checkout_session_create_failed",
+                    "Failed to create checkout session.",
+                  );
+
+                  onFailed?.(err);
+                  throw makeAbortError(err.code, err);
+                }
+
+                const checkoutSession =
+                  sessionResp?.checkout_session || sessionResp?.checkoutSession;
+
+                const sessionToken = String(
+                  checkoutSession?.session_token ||
+                    checkoutSession?.sessionToken ||
+                    "",
+                ).trim();
+
+                if (!sessionToken) {
+                  const err = {
+                    status: sessionRes.status || 500,
+                    code: "missing_checkout_session_token",
+                    message:
+                      "Checkout session was created but no session token was returned.",
+                    detail: sessionResp,
                   };
 
                   onFailed?.(err);
                   throw makeAbortError(err.code, err);
                 }
 
-                return String(data.paypalOrderId);
+                checkoutSessionTokenRef.current = sessionToken;
+                checkoutSessionRef.current = checkoutSession;
+
+                // ✅ 3. 让 d1-worker 根据 checkout_session.grand_total_minor 创建 PayPal order
+                const { res: paypalCreateRes, data: paypalCreateResp } =
+                  await postJson(
+                    `${apiBase}/checkout/sessions/${encodeURIComponent(
+                      sessionToken,
+                    )}/paypal/create-order`,
+                    {},
+                  );
+
+                if (!paypalCreateRes.ok || !paypalCreateResp?.ok) {
+                  const err = makeBackendError(
+                    paypalCreateRes.status,
+                    paypalCreateResp,
+                    "paypal_create_order_failed",
+                    "Failed to create PayPal order.",
+                  );
+
+                  onFailed?.(err);
+                  throw makeAbortError(err.code, err);
+                }
+
+                const paypalOrderId = String(
+                  paypalCreateResp?.paypal_order?.id ||
+                    paypalCreateResp?.paypalOrder?.id ||
+                    paypalCreateResp?.paypalOrderId ||
+                    "",
+                ).trim();
+
+                if (!paypalOrderId) {
+                  const err = {
+                    status: paypalCreateRes.status || 500,
+                    code: "missing_paypal_order_id",
+                    message:
+                      "PayPal order was created but no PayPal order id was returned.",
+                    detail: paypalCreateResp,
+                  };
+
+                  onFailed?.(err);
+                  throw makeAbortError(err.code, err);
+                }
+
+                checkoutSessionRef.current =
+                  paypalCreateResp?.checkout_session ||
+                  paypalCreateResp?.checkoutSession ||
+                  checkoutSession;
+
+                return paypalOrderId;
               } finally {
                 creatingRef.current = false;
               }
             }}
-            onApprove={async (data, actions) => {
+            onApprove={async (data) => {
               if (approvingRef.current) return;
               approvingRef.current = true;
 
@@ -310,229 +512,83 @@ export default function PayPalBigButton({
                   return;
                 }
 
-                const { res: captureRes, data: captureResp } = await postJson(
-                  `/api/paypal/orders/${encodeURIComponent(paypalOrderId)}/capture`,
-                  {},
-                );
+                const sessionToken = String(
+                  checkoutSessionTokenRef.current || "",
+                ).trim();
 
-                if (!captureRes.ok || !captureResp?.ok) {
-                  const err = {
-                    status: captureRes.status,
-                    code: String(captureResp?.error || "paypal_capture_failed"),
-                    message:
-                      String(captureResp?.message || "").trim() ||
-                      "PayPal capture failed.",
-                    detail: captureResp,
-                  };
-
-                  onFailed?.(err);
-                  approvingRef.current = false;
-                  return;
-                }
-
-                const details = captureResp?.raw ?? captureResp;
-                const capture =
-                  (details as any)?.purchase_units?.[0]?.payments
-                    ?.captures?.[0] ?? null;
-
-                const paypalPayload = {
-                  provider: "paypal",
-                  orderId: paypalOrderId,
-                  transactionId: capture?.id ?? null,
-                  raw: details ?? null,
-                  data,
-                  details,
-                };
-
-                const checkoutTotals = successMeta?.checkoutTotals;
-                const itemsFromMeta = checkoutTotals?.items;
-
-                if (
-                  !Array.isArray(itemsFromMeta) ||
-                  itemsFromMeta.length === 0
-                ) {
-                  const err = {
-                    status: 0,
-                    code: "missing_items",
-                    message: "Missing cart items for creating order.",
-                    detail: { successMeta },
-                  };
-                  onFailed?.(err);
-                  try {
-                    await (actions as any)?.order?.void?.();
-                  } catch {}
-                  approvingRef.current = false;
-                  return;
-                }
-
-                const reservation_id =
-                  reservedIdRef.current || pickReservationId(successMeta);
-
-                if (!reservation_id) {
+                if (!sessionToken) {
                   const err = {
                     status: 400,
-                    code: "missing_reservation_id",
-                    message: "Missing reservation_id when creating order.",
-                    detail: { successMeta },
-                  };
-                  onFailed?.(err);
-                  try {
-                    await (actions as any)?.order?.void?.();
-                  } catch {}
-                  approvingRef.current = false;
-                  return;
-                }
-
-                // ✅ NEW: 统一订单邮箱来源
-                // 优先级：
-                // 1) PaymentStep 传下来的 checkoutEmail（推荐）
-                // 2) accountEmail（备用命名）
-                // 3) successMeta.email（更老的备用字段）
-                // 4) address.email（游客 checkout）
-                const finalOrderEmail = String(
-                  successMeta?.checkoutEmail ??
-                    successMeta?.accountEmail ??
-                    successMeta?.email ??
-                    successMeta?.address?.email ??
-                    "",
-                )
-                  .trim()
-                  .toLowerCase();
-
-                // ✅ 没有 email 时，前端直接拦住，不再让 /orders 报 400
-                if (!finalOrderEmail) {
-                  const err = {
-                    status: 400,
-                    code: "missing_email",
+                    code: "missing_checkout_session_token",
                     message:
-                      "Email required for order. Please go back to the Address step and complete your email information.",
-                    detail: { successMeta },
-                  };
-                  onFailed?.(err);
-                  try {
-                    await (actions as any)?.order?.void?.();
-                  } catch {}
-                  approvingRef.current = false;
-                  return;
-                }
-
-                const orderBody = {
-                  currency: String(checkoutTotals?.currency || currency)
-                    .trim()
-                    .toUpperCase(),
-                  items: itemsFromMeta,
-
-                  reservation_id,
-
-                  payment: {
-                    provider: "paypal",
-                    provider_txn_id: paypalPayload.transactionId,
-                    amount_minor: Number(checkoutTotals?.total_minor ?? 0) | 0,
-                    status: "captured",
-                    raw: paypalPayload.raw,
-                  },
-
-                  // ✅ 始终带上最终订单邮箱
-                  email: finalOrderEmail,
-
-                  ...(successMeta?.address
-                    ? {
-                        first_name: successMeta.address?.firstName ?? null,
-                        last_name: successMeta.address?.lastName ?? null,
-                        phone: successMeta.address?.phone ?? null,
-                        addr_line1: successMeta.address?.line1 ?? null,
-                        addr_line2: successMeta.address?.line2 ?? null,
-                        addr_city: successMeta.address?.city ?? null,
-                        addr_state: successMeta.address?.state ?? null,
-                        addr_postcode: successMeta.address?.postcode ?? null,
-                        addr_country: successMeta.address?.country ?? null,
-                      }
-                    : {}),
-
-                  ...(successMeta?.deliveryOption
-                    ? { delivery_option: successMeta.deliveryOption }
-                    : {}),
-
-                  meta: {
-                    ...(successMeta?.meta || {}),
-                    __paypal_order_id: paypalPayload.orderId,
-                    __reservation_id: reservation_id,
-                  },
-                };
-
-                console.log(
-                  "[paypal] posting /orders with reservation_id =",
-                  reservation_id,
-                  {
-                    bodyHasReservationId: !!(orderBody as any)?.reservation_id,
-                  },
-                );
-
-                const { res, data: orderResp } = await postJson(
-                  ordersUrl,
-                  orderBody,
-                );
-
-                // ✅ 非 2xx：用后端的 error/message（不再强制 409=out_of_stock）
-                if (!res.ok) {
-                  const backendCode = String(
-                    orderResp?.error || orderResp?.code || "",
-                  ).trim();
-                  const backendMsg =
-                    String(orderResp?.message || "").trim() ||
-                    (backendCode ? backendCode : `HTTP ${res.status}`);
-
-                  // ✅ 只在“后端没给 code”时才兜底
-                  let code = backendCode || "http_error";
-
-                  // ✅ 仅对少数情况做“状态码兜底映射”（可选，但很实用）
-                  if (!backendCode && res.status === 409) code = "conflict";
-
-                  const err = {
-                    status: res.status,
-                    code,
-                    message: backendMsg,
+                      "Missing checkout session token before PayPal capture.",
                     detail: {
-                      ...(orderResp?.detail ?? {}),
-                      ...(orderResp ?? {}),
-                      items: preflightItems ?? null, // 给 PaymentStep 做 fallback 展示
+                      data,
+                      checkoutSession: checkoutSessionRef.current,
                     },
                   };
 
                   onFailed?.(err);
-
-                  try {
-                    await (actions as any)?.order?.void?.();
-                  } catch {}
                   approvingRef.current = false;
                   return;
                 }
 
-                // ✅ 兼容：后端可能返回 ok:true duplicate:true
+                // ✅ 4. 后端 capture PayPal + 后端自动建单
+                const { res: captureRes, data: captureResp } = await postJson(
+                  `${apiBase}/checkout/sessions/${encodeURIComponent(
+                    sessionToken,
+                  )}/paypal/capture`,
+                  {},
+                );
+
+                if (!captureRes.ok || !captureResp?.ok) {
+                  const err = makeBackendError(
+                    captureRes.status,
+                    captureResp,
+                    "paypal_capture_failed",
+                    "PayPal capture failed.",
+                  );
+
+                  onFailed?.(err);
+                  approvingRef.current = false;
+                  return;
+                }
+
                 const createdOrderId =
-                  Number(orderResp?.order?.id ?? orderResp?.id ?? 0) > 0
-                    ? Number(orderResp?.order?.id ?? orderResp?.id)
+                  Number(captureResp?.order?.id ?? captureResp?.order_id ?? 0) >
+                  0
+                    ? Number(captureResp?.order?.id ?? captureResp?.order_id)
                     : null;
 
-                const merged = successMeta
-                  ? {
-                      ...paypalPayload,
-                      successMeta,
-                      order: orderResp,
-                      createdOrderId,
-                    }
-                  : { ...paypalPayload, order: orderResp, createdOrderId };
+                const merged = {
+                  provider: "paypal",
+                  orderId: paypalOrderId,
+                  transactionId:
+                    captureResp?.checkout_session?.paypal_capture_id ??
+                    captureResp?.checkoutSession?.paypalCaptureId ??
+                    captureResp?.paypal_capture_id ??
+                    null,
+                  raw: captureResp,
+                  data,
+                  details: captureResp,
+                  successMeta,
+                  order: captureResp,
+                  createdOrderId,
+                  checkoutSession:
+                    captureResp?.checkout_session ||
+                    captureResp?.checkoutSession ||
+                    null,
+                  checkoutSessionToken: sessionToken,
+                  reservationId: reservationIdRef.current,
+                };
 
-                // ✅ 只调用一次 onSucceeded（避免重复跳转/重复 setState）
                 void Promise.resolve(onSucceeded?.(merged));
 
-                // ✅ 关键：这里不再跳转！！！
-                // ✅ 只通知上层成功，由 PaymentStep 统一负责 router.replace("/order/confirmation")
+                // ✅ 不在这里跳转，由上层 handlePaySucceeded / PaymentStep 统一处理
                 return;
               } catch (e: any) {
                 console.error("[paypal] onApprove/capture failed:", e);
 
-                // ✅ 如果上面已经构造过结构化错误（含 status/code/error），直接透传给 PaymentStep
                 if (e && (e.status || e.code || e.error)) {
                   onFailed?.(e);
                   approvingRef.current = false;
@@ -551,6 +607,7 @@ export default function PayPalBigButton({
             }}
             onError={(err) => {
               const msg = String((err as any)?.message || "");
+
               if (msg.includes(ABORT_SENTINEL)) {
                 approvingRef.current = false;
                 return;

@@ -14,6 +14,30 @@ function toMinorInt(v: any): number {
   return Math.max(0, Math.round(n));
 }
 
+type CartPricingCurrency = "AUD" | "USD" | "EUR" | "GBP" | "CAD";
+
+/**
+ * cartPricing.selectCurrencyAndTotals 目前只支持这几个币种。
+ * Currency 类型里可能包含 NZD，所以这里做一次收窄，避免 TS 报错。
+ */
+function toCartPricingCurrency(currency: Currency): CartPricingCurrency {
+  const c = String(currency || "")
+    .trim()
+    .toUpperCase();
+
+  if (
+    c === "AUD" ||
+    c === "USD" ||
+    c === "EUR" ||
+    c === "GBP" ||
+    c === "CAD"
+  ) {
+    return c;
+  }
+
+  return "AUD";
+}
+
 /**
  * ✅ 从一条 price record 里读取：
  * - baseMinor：原价（minor）
@@ -118,18 +142,20 @@ export function usePricing(
 
   // 2) 计算商品总价（不含运费）
   const itemsTotals = useMemo(() => {
+    const cartPricingCurrency = toCartPricingCurrency(displayCurrency);
+
     if (!pricingInput.length) {
       return {
-        currency: displayCurrency as Currency,
+        currency: cartPricingCurrency as Currency,
         itemsMinor: 0,
       };
     }
 
     const { currency, totalMinor } = selectCurrencyAndTotals(
       pricingInput,
-      displayCurrency,
+      cartPricingCurrency,
       undefined,
-      displayCurrency
+      cartPricingCurrency
     );
 
     return {
