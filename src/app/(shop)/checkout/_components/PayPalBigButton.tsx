@@ -28,6 +28,7 @@ type Props = {
   // ✅ Payment step 可以提前准备 checkout session + PayPal order
   preparedSessionToken?: string | null;
   preparedPayPalOrderId?: string | null;
+  preparedReservationId?: string | null;
   preparedCheckoutSession?: any;
 
   // ✅ 上层控制禁用（reservation expired / out_of_stock / cookie 未同意等）
@@ -212,6 +213,7 @@ export default function PayPalBigButton({
   preflightItems,
   preparedSessionToken,
   preparedPayPalOrderId,
+  preparedReservationId,
   preparedCheckoutSession,
   disabled,
   disabledText,
@@ -234,7 +236,18 @@ export default function PayPalBigButton({
 
     preparedPayPalOrderIdRef.current =
       String(preparedPayPalOrderId || "").trim() || null;
-  }, [preparedSessionToken, preparedPayPalOrderId, preparedCheckoutSession]);
+
+    reservationIdRef.current =
+      String(preparedReservationId || "").trim() ||
+      pickReservationId(successMeta) ||
+      null;
+  }, [
+    preparedSessionToken,
+    preparedPayPalOrderId,
+    preparedReservationId,
+    preparedCheckoutSession,
+    successMeta,
+  ]);
 
   useEffect(() => {
     if (!options || !currency) return;

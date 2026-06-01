@@ -277,6 +277,7 @@ const PaymentStepPayAction: React.FC<Props> = ({
           address: normalizedAddress,
           shipping_address: normalizedAddress,
           delivery_option: deliveryOption,
+          auto_create_paypal_order: true,
 
           checkout_totals: checkoutTotals ?? null,
           meta: {
@@ -316,32 +317,60 @@ const PaymentStepPayAction: React.FC<Props> = ({
           };
         }
 
-        const { res: paypalCreateRes, data: paypalCreateResp } = await postJson(
-          `${apiBase}/checkout/sessions/${encodeURIComponent(
-            sessionToken,
-          )}/paypal/create-order`,
-          {},
-        );
+        let paypalCreateResp: any = sessionResp;
 
-        if (!paypalCreateRes.ok || !paypalCreateResp?.ok) {
-          throw makeBackendError(
-            paypalCreateRes.status,
-            paypalCreateResp,
-            "paypal_create_order_failed",
-            "Failed to create PayPal order.",
-          );
-        }
-
-        const paypalOrderId = String(
-          paypalCreateResp?.paypal_order?.id ||
-            paypalCreateResp?.paypalOrder?.id ||
-            paypalCreateResp?.paypalOrderId ||
+        let paypalOrderId = String(
+          sessionResp?.paypal_order?.id ||
+            sessionResp?.paypalOrder?.id ||
+            sessionResp?.paypalOrderId ||
+            checkoutSession?.paypal_order_id ||
+            checkoutSession?.paypalOrderId ||
             "",
         ).trim();
 
+        let preparedCheckoutSession =
+          sessionResp?.checkout_session ||
+          sessionResp?.checkoutSession ||
+          checkoutSession;
+
+        // Fallback: older backend or failed auto-create path.
+        // Keep the old endpoint as a compatibility fallback.
+        if (!paypalOrderId) {
+          const { res: paypalCreateRes, data: fallbackPayPalCreateResp } =
+            await postJson(
+              `${apiBase}/checkout/sessions/${encodeURIComponent(
+                sessionToken,
+              )}/paypal/create-order`,
+              {},
+            );
+
+          if (!paypalCreateRes.ok || !fallbackPayPalCreateResp?.ok) {
+            throw makeBackendError(
+              paypalCreateRes.status,
+              fallbackPayPalCreateResp,
+              "paypal_create_order_failed",
+              "Failed to create PayPal order.",
+            );
+          }
+
+          paypalCreateResp = fallbackPayPalCreateResp;
+
+          paypalOrderId = String(
+            fallbackPayPalCreateResp?.paypal_order?.id ||
+              fallbackPayPalCreateResp?.paypalOrder?.id ||
+              fallbackPayPalCreateResp?.paypalOrderId ||
+              "",
+          ).trim();
+
+          preparedCheckoutSession =
+            fallbackPayPalCreateResp?.checkout_session ||
+            fallbackPayPalCreateResp?.checkoutSession ||
+            preparedCheckoutSession;
+        }
+
         if (!paypalOrderId) {
           throw {
-            status: paypalCreateRes.status || 500,
+            status: 500,
             code: "missing_paypal_order_id",
             message:
               "PayPal order was created but no PayPal order id returned.",
@@ -355,10 +384,7 @@ const PaymentStepPayAction: React.FC<Props> = ({
           sessionToken,
           paypalOrderId,
           reservationId,
-          checkoutSession:
-            paypalCreateResp?.checkout_session ||
-            paypalCreateResp?.checkoutSession ||
-            checkoutSession,
+          checkoutSession: preparedCheckoutSession,
         });
       } catch (err: any) {
         if (cancelled || prepareRunIdRef.current !== runId) return;
