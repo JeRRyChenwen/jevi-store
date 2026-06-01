@@ -1,4 +1,4 @@
-// D:\前端练习\social-platform\src\app\(shop)\checkout\_components\PaymentStep.tsx
+// D:\前端练习\jevi-store\src\app\(shop)\checkout\_components\PaymentStep.tsx
 "use client";
 
 import React, { useRef, useState, useCallback, useMemo } from "react";

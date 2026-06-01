@@ -1,4 +1,4 @@
-// D:\前端练习\social-platform\src\app\api\orders\[orderId]\route.ts
+// D:\前端练习\jevi-store\src\app\api\orders\[orderId]\route.ts
 import { NextRequest, NextResponse } from "next/server";
 
 const API_BASE =

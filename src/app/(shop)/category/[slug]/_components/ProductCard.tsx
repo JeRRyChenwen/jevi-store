@@ -1,4 +1,4 @@
-// D:\前端练习\social-platform\src\app\(shop)\category\[slug]\_components\ProductCard.tsx
+// D:\前端练习\jevi-store\src\app\(shop)\category\[slug]\_components\ProductCard.tsx
 
 "use client";
 
@@ -38,9 +38,11 @@ type ProductLite = {
   imageUrl?: string;
 };
 
-type PickRes =
-  | { base_minor: number | null; effective_minor: number | null; currency: string }
-  | null;
+type PickRes = {
+  base_minor: number | null;
+  effective_minor: number | null;
+  currency: string;
+} | null;
 
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
@@ -82,13 +84,12 @@ export default function ProductCard({
   const router = useRouter();
   const clickStartRef = useRef<{ x: number; y: number } | null>(null);
 
-  const [selectedColor, setSelectedColor] = useState<string | null>(p.colors?.[0] ?? null);
+  const [selectedColor, setSelectedColor] = useState<string | null>(
+    p.colors?.[0] ?? null,
+  );
 
   // ✅ NEW: 是否显示 NEW（依赖写稳：只跟时间窗相关）
-  const showNew = useMemo(
-    () => isNewActive(p),
-    [p.newStartsAt, p.newEndsAt]
-  );
+  const showNew = useMemo(() => isNewActive(p), [p.newStartsAt, p.newEndsAt]);
 
   // 热度星级（0~5）
   let stars = p.hotScore ?? 0;
@@ -117,7 +118,9 @@ export default function ProductCard({
   // 原价（最小货币单位）
   const baseMinor: number | null =
     pick?.base_minor ??
-    (typeof p.price === "number" ? Math.round(Math.max(0, p.price) * 100) : null);
+    (typeof p.price === "number"
+      ? Math.round(Math.max(0, p.price) * 100)
+      : null);
 
   // 折后价（最小货币单位）
   const effectiveMinor: number | null = pick?.effective_minor ?? baseMinor;
@@ -137,19 +140,19 @@ export default function ProductCard({
   const showCcy = pick?.currency || displayCurrency;
 
   const displayBase =
-    typeof baseMinor === "number" ? formatPriceForCard(baseMinor, showCcy) : null;
+    typeof baseMinor === "number"
+      ? formatPriceForCard(baseMinor, showCcy)
+      : null;
 
   const displayEff =
     typeof effectiveMinor === "number"
       ? formatPriceForCard(effectiveMinor, showCcy)
       : typeof p.price === "number"
-      ? formatPriceForCard(
-          Math.round(Math.max(0, Number(p.price)) * 100),
-          String(p.currency || showCcy || displayCurrency)
-        )
-      : "No price";
-
-
+        ? formatPriceForCard(
+            Math.round(Math.max(0, Number(p.price)) * 100),
+            String(p.currency || showCcy || displayCurrency),
+          )
+        : "No price";
 
   const handleImagePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     clickStartRef.current = { x: e.clientX, y: e.clientY };
@@ -202,7 +205,10 @@ export default function ProductCard({
           />
         )}
 
-        <ImageCarousel urls={urls} alt={p.name || `Image #${start + idx + 1}`} />
+        <ImageCarousel
+          urls={urls}
+          alt={p.name || `Image #${start + idx + 1}`}
+        />
       </div>
 
       <div className="p-3 sm:p-6 md:p-8">
@@ -257,16 +263,18 @@ export default function ProductCard({
                       : "ring-1 ring-black/10 hover:ring-black/30",
                     "transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30",
                   ].join(" ")}
-                  >
-                    <span
-                      className="block h-5 w-5 sm:h-6 sm:w-6 rounded-full"
-                      style={{ backgroundColor: colorNameToCss(normalized) }}
-                    />
-                  </button>
+                >
+                  <span
+                    className="block h-5 w-5 sm:h-6 sm:w-6 rounded-full"
+                    style={{ backgroundColor: colorNameToCss(normalized) }}
+                  />
+                </button>
               );
             })}
             {p.colors.length > 8 && (
-              <span className="text-xs text-neutral-500">+{p.colors.length - 8}</span>
+              <span className="text-xs text-neutral-500">
+                +{p.colors.length - 8}
+              </span>
             )}
           </div>
         )}
@@ -283,7 +291,9 @@ export default function ProductCard({
               </span>
             ))}
             {p.sizes.length > 10 && (
-              <span className="text-xs text-neutral-500">+{p.sizes.length - 10}</span>
+              <span className="text-xs text-neutral-500">
+                +{p.sizes.length - 10}
+              </span>
             )}
           </div>
         )}

@@ -50,7 +50,7 @@ export async function POST(req: Request) {
         currency,
         payment_method_types: ["card"], // 仅卡
         metadata: {
-          app: "social-platform",
+          app: "jevi-store",
           env: process.env.NODE_ENV ?? "development",
           delivery: delivery ?? "n/a",
           cart_len: String(cart.length ?? 0),

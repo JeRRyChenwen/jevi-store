@@ -1,7 +1,13 @@
-// D:\前端练习\social-platform\src\components\home\HomeBannerClient.tsx
+// D:\前端练习\jevi-store\src\components\home\HomeBannerClient.tsx
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import Link from "next/link";
 import type { HomeBannerLite } from "@/lib/strapi";
 
@@ -239,12 +245,13 @@ export default function HomeBannerClient({
         // 某些环境可能不支持，忽略即可
       }
     },
-    [count]
+    [count],
   );
 
   const onPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!pointerDownRef.current) return;
-    if (pointerIdRef.current !== null && e.pointerId !== pointerIdRef.current) return;
+    if (pointerIdRef.current !== null && e.pointerId !== pointerIdRef.current)
+      return;
 
     const dx = e.clientX - pointerStartXRef.current;
     const dy = e.clientY - pointerStartYRef.current;
@@ -259,7 +266,10 @@ export default function HomeBannerClient({
   const onPointerUp = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (!pointerDownRef.current) return;
-      if (pointerIdRef.current !== null && e.pointerId !== pointerIdRef.current) {
+      if (
+        pointerIdRef.current !== null &&
+        e.pointerId !== pointerIdRef.current
+      ) {
         resetPointerState();
         return;
       }
@@ -288,7 +298,7 @@ export default function HomeBannerClient({
         prev();
       }
     },
-    [containerW, next, prev, resetPointerState]
+    [containerW, next, prev, resetPointerState],
   );
 
   const onPointerCancel = useCallback(
@@ -302,7 +312,7 @@ export default function HomeBannerClient({
       }
       resetPointerState();
     },
-    [resetPointerState]
+    [resetPointerState],
   );
 
   // ✅ 只处理轨道自身 transitionend + 回跳用 reflow + 双 rAF

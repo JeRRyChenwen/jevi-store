@@ -1,24 +1,16 @@
-// D:\前端练习\social-platform\src\app\(shop)\checkout\_components\AddressStep.tsx
+// D:\前端练习\jevi-store\src\app\(shop)\checkout\_components\AddressStep.tsx
 "use client";
 
 import React, { useMemo, useRef } from "react";
 import { Alert } from "@/components/ui/alert";
 
-import type {
-  Address,
-  AddressStepProps,
-} from "./address-step.types";
+import type { Address, AddressStepProps } from "./address-step.types";
 
-import {
-  hasAnyErr,
-  fieldErrorText,
-  clsInput,
-} from "./address-step.utils";
+import { hasAnyErr, fieldErrorText, clsInput } from "./address-step.utils";
 
 import { InlineError, RequiredStar } from "./AddressFieldParts";
 import AddressForm from "./AddressForm";
 import BillingForm from "./BillingForm";
-
 
 /* ---------------- AddressStep 主组件 ---------------- */
 const AddressStep: React.FC<AddressStepProps> = ({
@@ -73,17 +65,25 @@ const AddressStep: React.FC<AddressStepProps> = ({
   }, [addressShowErrors, addressErrs, includeEmailErr]);
 
   const showBillingSummary = useMemo(() => {
-    return addressShowErrors && !sameAsDelivery && !useSavedBilling && hasAnyErr(billingErrs, false);
+    return (
+      addressShowErrors &&
+      !sameAsDelivery &&
+      !useSavedBilling &&
+      hasAnyErr(billingErrs, false)
+    );
   }, [addressShowErrors, billingErrs, sameAsDelivery, useSavedBilling]);
 
   return (
     <>
       {(effectiveHasSavedDelivery || effectiveHasSavedBilling) && (
         <section className="rounded-xl border" id="use-saved-addresses">
-          <div className="border-b px-4 py-3 font-semibold">Use Saved Addresses</div>
+          <div className="border-b px-4 py-3 font-semibold">
+            Use Saved Addresses
+          </div>
           <div className="p-4 space-y-3">
             <p className="text-sm text-neutral-600">
-              You can choose to use your saved Delivery and/or Billing addresses below.
+              You can choose to use your saved Delivery and/or Billing addresses
+              below.
             </p>
 
             <div className="flex flex-col gap-2 mt-2">
@@ -163,7 +163,9 @@ const AddressStep: React.FC<AddressStepProps> = ({
               </p>
 
               <div className="rounded-md border bg-neutral-50 px-3 py-2">
-                <div className="text-xs text-neutral-500 mb-1">Account Email</div>
+                <div className="text-xs text-neutral-500 mb-1">
+                  Account Email
+                </div>
                 <div className="text-sm font-medium text-neutral-900 break-all">
                   {accountEmail || "No account email found"}
                 </div>
@@ -176,10 +178,14 @@ const AddressStep: React.FC<AddressStepProps> = ({
           ) : (
             <>
               <p className="text-sm text-neutral-600 mb-3">
-                Please enter your email address, we&apos;ll send your order confirmation here.
+                Please enter your email address, we&apos;ll send your order
+                confirmation here.
               </p>
 
-              <label htmlFor="checkout-account-email" className="block text-sm font-medium mb-1">
+              <label
+                htmlFor="checkout-account-email"
+                className="block text-sm font-medium mb-1"
+              >
                 Email Address <RequiredStar />
               </label>
               <input
@@ -200,7 +206,9 @@ const AddressStep: React.FC<AddressStepProps> = ({
 
                   void sendSubscriptionIfNeeded(v);
                 }}
-                aria-invalid={addressShowErrors && addressErrs.email ? true : undefined}
+                aria-invalid={
+                  addressShowErrors && addressErrs.email ? true : undefined
+                }
                 aria-describedby="err-checkout-account-email"
               />
               <InlineError
@@ -244,7 +252,9 @@ const AddressStep: React.FC<AddressStepProps> = ({
 
       {!(useSavedDelivery && useSavedBilling) && (
         <section className="rounded-xl border pb-8" id="address-section">
-          <div className="border-b px-4 py-3 font-semibold">Address & Billing</div>
+          <div className="border-b px-4 py-3 font-semibold">
+            Address & Billing
+          </div>
 
           <div className="p-4 space-y-6">
             {!useSavedDelivery && (
@@ -252,7 +262,9 @@ const AddressStep: React.FC<AddressStepProps> = ({
                 <div className="flex items-baseline justify-between">
                   <h3 className="text-base font-medium">Delivery Address</h3>
                   {showDeliverySummary ? (
-                    <span className="text-xs text-red-600">Missing or invalid fields</span>
+                    <span className="text-xs text-red-600">
+                      Missing or invalid fields
+                    </span>
                   ) : null}
                 </div>
 
@@ -285,7 +297,8 @@ const AddressStep: React.FC<AddressStepProps> = ({
                   <span>
                     Billing address is the same as delivery address
                     <p className="mt-1 text-xs text-neutral-500">
-                      If unchecked, you can enter a different billing address below.
+                      If unchecked, you can enter a different billing address
+                      below.
                     </p>
                   </span>
                 </label>
@@ -297,7 +310,9 @@ const AddressStep: React.FC<AddressStepProps> = ({
                 <div className="flex items-baseline justify-between">
                   <h3 className="text-base font-medium">Billing Address</h3>
                   {showBillingSummary ? (
-                    <span className="text-xs text-red-600">Missing or invalid fields</span>
+                    <span className="text-xs text-red-600">
+                      Missing or invalid fields
+                    </span>
                   ) : null}
                 </div>
 
@@ -326,7 +341,11 @@ const AddressStep: React.FC<AddressStepProps> = ({
 
                   {saveMsg ? (
                     <div className="mt-1 w-full">
-                      <Alert variant={saveMsg.kind === "success" ? "success" : "error"}>
+                      <Alert
+                        variant={
+                          saveMsg.kind === "success" ? "success" : "error"
+                        }
+                      >
                         <span className="text-sm">{saveMsg.text}</span>
                       </Alert>
                     </div>

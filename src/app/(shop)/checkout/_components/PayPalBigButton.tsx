@@ -1,4 +1,4 @@
-// D:\前端练习\social-platform\src\app\(shop)\checkout\_components\PayPalBigButton.tsx
+// D:\前端练习\jevi-store\src\app\(shop)\checkout\_components\PayPalBigButton.tsx
 "use client";
 
 import { PayPalButtons, usePayPalScriptReducer } from "@paypal/react-paypal-js";

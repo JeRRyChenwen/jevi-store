@@ -280,12 +280,12 @@ Cloudflare D1 数据库（类似 SQLite / PostgreSQL）
     ✅ .env.production
     专门用于生产部署（线上环境）。
     里面写的是你的真实线上 Worker/API 地址，比如：
-    NEXT_PUBLIC_API_BASE=https://social-platform.yourdomain.com
+    NEXT_PUBLIC_API_BASE=https://jevi-store.yourdomain.com
     在部署到 Cloudflare Pages / Vercel / Netlify 等环境时，可以让 CI/CD 自动加载这个文件。
 
     ```
 
-### 6.3 在 前端（social-platform 仓库） 的注册页里调用这个接口并提交到 Worker
+### 6.3 在 前端（jevi-store 仓库） 的注册页里调用这个接口并提交到 Worker
 
     ```bash
     worker 监听下面的网址的请求（调试阶段用本地网址）：
@@ -313,7 +313,7 @@ Cloudflare D1 数据库（类似 SQLite / PostgreSQL）
 
     ```
 
-### 6.5 在 前端（social-platform 仓库） 的注册页里调用这个接口并提交到 Worker
+### 6.5 在 前端（jevi-store 仓库） 的注册页里调用这个接口并提交到 Worker
 
     ```bash
     worker 监听下面的网址的请求（调试阶段用本地网址）：
@@ -433,7 +433,7 @@ Cloudflare D1 数据库（类似 SQLite / PostgreSQL）
 
 # 7. 登录状态功能
 
-### 7.1 下面是一份“从 0 到能用”的登录 + 登录态实现流程说明，覆盖你的两个项目：d1-worker（Cloudflare Worker + D1）和 social-platform（Next.js 前端）
+### 7.1 下面是一份“从 0 到能用”的登录 + 登录态实现流程说明，覆盖你的两个项目：d1-worker（Cloudflare Worker + D1）和 jevi-store（Next.js 前端）
 
     ```bash
     1. 用户在前端 /auth/login 输入邮箱/密码 →
@@ -1085,9 +1085,9 @@ Express delivery 则有更快的速度抵达
 terms and conditions
 ==========================
 
-我有一个前端购物react网站项目，cloudflare的D1数据库项目，以及一个strapi项目（负责用cms管理购物网站上售卖的产品），我想优化一下我的这个项目，你先大致看看我的项目内容吧 social-platform 是我的前端购物react网站项目，你看看我的项目 d1-worker是我的cloudflare的D1数据库项目，你看看我的项目
+我有一个前端购物react网站项目，cloudflare的D1数据库项目，以及一个strapi项目（负责用cms管理购物网站上售卖的产品），我想优化一下我的这个项目，你先大致看看我的项目内容吧 jevi-store 是我的前端购物react网站项目，你看看我的项目 d1-worker是我的cloudflare的D1数据库项目，你看看我的项目
 
-你在解压我的 social-platform.zip 文件的时候可以直接跳转 node_modules/.next 因为我的这个zip比较大
+你在解压我的 jevi-store.zip 文件的时候可以直接跳转 node_modules/.next 因为我的这个zip比较大
 
 ================================================
 
@@ -1145,7 +1145,7 @@ Open Graph (OG Image)，让别人分享你的网站
 
 ===========================================
 
-D:\前端练习\social-platform\src\app\(shop)\returns\page.tsx
+D:\前端练习\jevi-store\src\app\(shop)\returns\page.tsx
 
 If you believe this decision was made in error or you have additional supporting information, please reply to this email so our team can review it further.
 
@@ -1377,7 +1377,7 @@ supplier → 3PL → customer → return → 责任回溯
    - 登录用户可以读取自己的订单
    - guest 用户必须提供匹配订单邮箱
 
-2. social-platform /api/orders/[orderId] 支持：
+2. jevi-store /api/orders/[orderId] 支持：
    - 数字 id
    - order_number，例如 SP20260528-000001
    - email/customerEmail 查询参数透传
@@ -1446,7 +1446,7 @@ P0：必须立刻做
 轮换所有已经暴露的密钥。
 删除 zip/仓库里的 .env、.dev.vars、.git、.wrangler。
 修复 admin Bearer bypass，无条件绕过必须禁止。
-修复 social-platform/src/app/api/orders/orderId]/route.ts 路径问题。
+修复 jevi-store/src/app/api/orders/orderId]/route.ts 路径问题。
 给 /orders/:id 加鉴权或改成 email/orderNumber/token 校验。
 解决 PayPal capture 成功但 /orders 建单失败的补偿机制。
 P1：上线前必须做
@@ -1465,8 +1465,6 @@ P2：中长期优化
 draft页面里的dashboard需要显示完整的postcode列表，检查3000 是不是 29.95
 
 法律
-
-jevi env NEXT_PUBLIC_STOREFRONT_CODE=AU
 
 email api 正式上线
 

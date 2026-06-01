@@ -46,7 +46,7 @@ const nextConfig = {
       },
 
       // Admin API：交给本地 blocker route。
-      // 注意：social-platform 已经不再提供 admin proxy。
+      // 注意：jevi-store 已经不再提供 admin proxy。
       // 这里保留本地处理，是为了防止 /api/admin/* 掉到下面的 Worker 兜底代理。
       {
         source: "/api/admin/:path*",
