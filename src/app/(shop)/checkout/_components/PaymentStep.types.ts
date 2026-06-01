@@ -17,6 +17,7 @@ export type DeliveryMethod = "standard" | "express";
 
 export type PaymentStepProps = {
   visible: boolean;
+  shouldPreparePayPal?: boolean;
 
   amountInMajorUnit: number; // legacy, 不当权威
 

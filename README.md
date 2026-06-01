@@ -1462,10 +1462,6 @@ P2：中长期优化
 写部署和故障处理文档。
 增加 E2E 测试：注册、登录、加入购物袋、运费计算、库存预留、PayPal sandbox 下单、订单确认、退货申请、admin 审批。
 
-draft页面里的dashboard需要显示完整的postcode列表，检查3000 是不是 29.95
-
 法律
 
 email api 正式上线
-
-social platform 换名字

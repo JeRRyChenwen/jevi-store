@@ -25,6 +25,7 @@ import { usePaymentReservationLifecycle } from "./usePaymentReservationLifecycle
 
 const PaymentStep: React.FC<PaymentStepProps> = ({
   visible,
+  shouldPreparePayPal = visible,
   isPayProcessing,
   isLoggedIn,
   accountEmail,
@@ -340,6 +341,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
             actionSlot={
               <PaymentStepPayAction
                 visible={visible}
+                shouldPrepare={shouldPreparePayPal}
                 derivedAmountMajor={derivedAmountMajor}
                 safeCurrency={safeCurrency}
                 isPayProcessing={isPayProcessing}
@@ -389,6 +391,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
               actionSlot={
                 <PaymentStepPayAction
                   visible={visible}
+                  shouldPrepare={shouldPreparePayPal}
                   derivedAmountMajor={derivedAmountMajor}
                   safeCurrency={safeCurrency}
                   isPayProcessing={isPayProcessing}

@@ -25,6 +25,11 @@ type Props = {
   preflight?: () => Promise<string>;
   preflightItems?: Array<{ sku: string; qty: number }>;
 
+  // ✅ Payment step 可以提前准备 checkout session + PayPal order
+  preparedSessionToken?: string | null;
+  preparedPayPalOrderId?: string | null;
+  preparedCheckoutSession?: any;
+
   // ✅ 上层控制禁用（reservation expired / out_of_stock / cookie 未同意等）
   disabled?: boolean;
   disabledText?: string;
@@ -205,6 +210,9 @@ export default function PayPalBigButton({
   successMeta,
   preflight,
   preflightItems,
+  preparedSessionToken,
+  preparedPayPalOrderId,
+  preparedCheckoutSession,
   disabled,
   disabledText,
 }: Props) {
@@ -216,6 +224,17 @@ export default function PayPalBigButton({
   const reservationIdRef = useRef<string | null>(null);
   const checkoutSessionTokenRef = useRef<string | null>(null);
   const checkoutSessionRef = useRef<any>(null);
+  const preparedPayPalOrderIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    checkoutSessionTokenRef.current =
+      String(preparedSessionToken || "").trim() || null;
+
+    checkoutSessionRef.current = preparedCheckoutSession || null;
+
+    preparedPayPalOrderIdRef.current =
+      String(preparedPayPalOrderId || "").trim() || null;
+  }, [preparedSessionToken, preparedPayPalOrderId, preparedCheckoutSession]);
 
   useEffect(() => {
     if (!options || !currency) return;
@@ -278,6 +297,18 @@ export default function PayPalBigButton({
 
               try {
                 onInitiate?.();
+
+                const preparedOrderId = String(
+                  preparedPayPalOrderIdRef.current || "",
+                ).trim();
+
+                const preparedToken = String(
+                  checkoutSessionTokenRef.current || "",
+                ).trim();
+
+                if (preparedOrderId && preparedToken) {
+                  return preparedOrderId;
+                }
 
                 if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) {
                   const err = {

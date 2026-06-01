@@ -503,33 +503,44 @@ export default function CheckoutPage() {
     runCheckoutPagePreconnect();
   }, [canLoadPayPalProvider]);
 
-  const paymentStepProps = buildCheckoutPaymentStepProps({
-    visible: step === "payment",
-    amountInMajorUnit: amountInMajorUnitEffective,
-    isPayProcessing,
-    isLoggedIn,
-    accountEmail,
-    address,
-    deliveryMethod,
-    itemsCount,
-    itemsMinor,
-    deliveryFeeMinor: deliveryFeeMinorEffective,
-    totalMinor: totalMinorEffective,
-    currency,
-    onPayInitiated: handlePayInitiated,
-    onPaySucceeded: handlePaySucceeded,
-    preReservationId: reservationId,
-    preReservationExpiresAtSec: reservationExpiresAtSec,
-    preReservationCartHash: reservationCartHash,
-    preReserveLoading: reserveLoading,
-    preReserveError: reserveErr,
-    cart,
-    onBackToBag: () => setStepAndURL("bag"),
-    paypalConsentRequired,
-    paypalDisabledText: paypalConsentRequired
-      ? "Accept cookies to use PayPal"
-      : undefined,
-  });
+  const shouldPreparePayPal =
+    canLoadPayPalProvider &&
+    hasItems &&
+    amountInMajorUnitEffective > 0 &&
+    !quoteLoading &&
+    !quoteError &&
+    (step === "delivery" || step === "payment");
+
+  const paymentStepProps = {
+    ...buildCheckoutPaymentStepProps({
+      visible: step === "payment",
+      amountInMajorUnit: amountInMajorUnitEffective,
+      isPayProcessing,
+      isLoggedIn,
+      accountEmail,
+      address,
+      deliveryMethod,
+      itemsCount,
+      itemsMinor,
+      deliveryFeeMinor: deliveryFeeMinorEffective,
+      totalMinor: totalMinorEffective,
+      currency,
+      onPayInitiated: handlePayInitiated,
+      onPaySucceeded: handlePaySucceeded,
+      preReservationId: reservationId,
+      preReservationExpiresAtSec: reservationExpiresAtSec,
+      preReservationCartHash: reservationCartHash,
+      preReserveLoading: reserveLoading,
+      preReserveError: reserveErr,
+      cart,
+      onBackToBag: () => setStepAndURL("bag"),
+      paypalConsentRequired,
+      paypalDisabledText: paypalConsentRequired
+        ? "Accept cookies to use PayPal"
+        : undefined,
+    }),
+    shouldPreparePayPal,
+  };
 
   const checkoutView = (
     <CheckoutPageView
