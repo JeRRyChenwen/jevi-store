@@ -201,6 +201,113 @@ function makeBackendError(
   };
 }
 
+function majorToMinor(value: any): number {
+  const n = Number(value);
+
+  if (!Number.isFinite(n) || n <= 0) {
+    return 0;
+  }
+
+  return Math.round(n * 100);
+}
+
+function pickExpectedGrandTotalMinor(input: {
+  amount: number;
+  checkoutTotals: any;
+}) {
+  const fromTotals =
+    input.checkoutTotals?.grand_total_minor ??
+    input.checkoutTotals?.grandTotalMinor ??
+    input.checkoutTotals?.total_minor ??
+    input.checkoutTotals?.totalMinor ??
+    null;
+
+  const n = Number(fromTotals);
+
+  if (Number.isFinite(n) && n > 0) {
+    return Math.round(n);
+  }
+
+  return majorToMinor(input.amount);
+}
+
+function pickSessionGrandTotalMinor(session: any): number {
+  const n = Number(
+    session?.grand_total_minor ??
+      session?.grandTotalMinor ??
+      session?.amount_minor ??
+      session?.amountMinor ??
+      0,
+  );
+
+  return Number.isFinite(n) ? Math.round(n) : 0;
+}
+
+function pickSessionDeliveryOption(session: any): string {
+  return String(session?.delivery_option ?? session?.deliveryOption ?? "")
+    .trim()
+    .toLowerCase();
+}
+
+function pickSessionCurrency(session: any): string {
+  return String(session?.currency || "")
+    .trim()
+    .toUpperCase();
+}
+
+function makePreparedCheckoutMismatchError(input: {
+  preparedCheckoutSession: any;
+  expectedGrandTotalMinor: number;
+  expectedDeliveryOption: string;
+  expectedCurrency: string;
+  paypalOrderId: string;
+}) {
+  const sessionGrandTotalMinor = pickSessionGrandTotalMinor(
+    input.preparedCheckoutSession,
+  );
+
+  const sessionDeliveryOption = pickSessionDeliveryOption(
+    input.preparedCheckoutSession,
+  );
+
+  const sessionCurrency = pickSessionCurrency(input.preparedCheckoutSession);
+
+  const expectedDeliveryOption = String(input.expectedDeliveryOption || "")
+    .trim()
+    .toLowerCase();
+
+  const expectedCurrency = String(input.expectedCurrency || "")
+    .trim()
+    .toUpperCase();
+
+  const mismatch =
+    sessionGrandTotalMinor !== input.expectedGrandTotalMinor ||
+    sessionDeliveryOption !== expectedDeliveryOption ||
+    sessionCurrency !== expectedCurrency;
+
+  if (!mismatch) return null;
+
+  return {
+    status: 409,
+    code: "prepared_checkout_mismatch",
+    message:
+      "Prepared PayPal checkout does not match the current checkout total. Please refresh checkout and try again.",
+    detail: {
+      paypalOrderId: input.paypalOrderId,
+      expected: {
+        grand_total_minor: input.expectedGrandTotalMinor,
+        delivery_option: expectedDeliveryOption,
+        currency: expectedCurrency,
+      },
+      prepared: {
+        grand_total_minor: sessionGrandTotalMinor,
+        delivery_option: sessionDeliveryOption,
+        currency: sessionCurrency,
+      },
+    },
+  };
+}
+
 export default function PayPalBigButton({
   amount,
   currency,
@@ -320,6 +427,41 @@ export default function PayPalBigButton({
                 ).trim();
 
                 if (preparedOrderId && preparedToken) {
+                  const checkoutTotals = successMeta?.checkoutTotals;
+                  const expectedGrandTotalMinor = pickExpectedGrandTotalMinor({
+                    amount,
+                    checkoutTotals,
+                  });
+
+                  const expectedDeliveryOption = String(
+                    successMeta?.deliveryOption || "standard",
+                  )
+                    .trim()
+                    .toLowerCase();
+
+                  const expectedCurrency = String(
+                    checkoutTotals?.currency || currency || "",
+                  )
+                    .trim()
+                    .toUpperCase();
+
+                  const mismatchErr = makePreparedCheckoutMismatchError({
+                    preparedCheckoutSession: checkoutSessionRef.current,
+                    expectedGrandTotalMinor,
+                    expectedDeliveryOption,
+                    expectedCurrency,
+                    paypalOrderId: preparedOrderId,
+                  });
+
+                  if (mismatchErr) {
+                    preparedPayPalOrderIdRef.current = null;
+                    checkoutSessionTokenRef.current = null;
+                    checkoutSessionRef.current = null;
+
+                    onFailed?.(mismatchErr);
+                    throw makeAbortError(mismatchErr.code, mismatchErr);
+                  }
+
                   return preparedOrderId;
                 }
 
@@ -433,7 +575,15 @@ export default function PayPalBigButton({
                   items: itemsFromMeta,
                   address: normalizedAddress,
                   shipping_address: normalizedAddress,
+
+                  // Keep all naming variants in sync because backend pricing helpers
+                  // may read different field names.
                   delivery_option: deliveryOption,
+                  deliveryOption,
+                  delivery_method: deliveryOption,
+                  deliveryMethod: deliveryOption,
+                  shipping_method: deliveryOption,
+                  shippingMethod: deliveryOption,
 
                   // 可选：方便后端 snapshot/debug
                   checkout_totals: checkoutTotals ?? null,

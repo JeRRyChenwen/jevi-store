@@ -141,6 +141,113 @@ function makeBackendError(
   };
 }
 
+function majorToMinor(value: any): number {
+  const n = Number(value);
+
+  if (!Number.isFinite(n) || n <= 0) {
+    return 0;
+  }
+
+  return Math.round(n * 100);
+}
+
+function pickExpectedGrandTotalMinor(input: {
+  checkoutTotals: any;
+  derivedAmountMajor: number;
+}) {
+  const fromTotals =
+    input.checkoutTotals?.grand_total_minor ??
+    input.checkoutTotals?.grandTotalMinor ??
+    input.checkoutTotals?.total_minor ??
+    input.checkoutTotals?.totalMinor ??
+    null;
+
+  const n = Number(fromTotals);
+
+  if (Number.isFinite(n) && n > 0) {
+    return Math.round(n);
+  }
+
+  return majorToMinor(input.derivedAmountMajor);
+}
+
+function pickSessionGrandTotalMinor(session: any): number {
+  const n = Number(
+    session?.grand_total_minor ??
+      session?.grandTotalMinor ??
+      session?.amount_minor ??
+      session?.amountMinor ??
+      0,
+  );
+
+  return Number.isFinite(n) ? Math.round(n) : 0;
+}
+
+function pickSessionDeliveryOption(session: any): string {
+  return String(session?.delivery_option ?? session?.deliveryOption ?? "")
+    .trim()
+    .toLowerCase();
+}
+
+function pickSessionCurrency(session: any): string {
+  return String(session?.currency || "")
+    .trim()
+    .toUpperCase();
+}
+
+function assertPreparedCheckoutMatchesCurrent(input: {
+  preparedCheckoutSession: any;
+  expectedGrandTotalMinor: number;
+  expectedDeliveryOption: string;
+  expectedCurrency: string;
+  paypalOrderId: string;
+}) {
+  const sessionGrandTotalMinor = pickSessionGrandTotalMinor(
+    input.preparedCheckoutSession,
+  );
+
+  const sessionDeliveryOption = pickSessionDeliveryOption(
+    input.preparedCheckoutSession,
+  );
+
+  const sessionCurrency = pickSessionCurrency(input.preparedCheckoutSession);
+
+  const expectedDeliveryOption = String(input.expectedDeliveryOption || "")
+    .trim()
+    .toLowerCase();
+
+  const expectedCurrency = String(input.expectedCurrency || "")
+    .trim()
+    .toUpperCase();
+
+  const mismatch =
+    sessionGrandTotalMinor !== input.expectedGrandTotalMinor ||
+    sessionDeliveryOption !== expectedDeliveryOption ||
+    sessionCurrency !== expectedCurrency;
+
+  if (!mismatch) return;
+
+  throw {
+    status: 409,
+    code: "prepared_checkout_mismatch",
+    message:
+      "Prepared PayPal checkout does not match the current checkout total. Please refresh checkout and try again.",
+    detail: {
+      paypalOrderId: input.paypalOrderId,
+      expected: {
+        grand_total_minor: input.expectedGrandTotalMinor,
+        delivery_option: expectedDeliveryOption,
+        currency: expectedCurrency,
+      },
+      prepared: {
+        grand_total_minor: sessionGrandTotalMinor,
+        delivery_option: sessionDeliveryOption,
+        currency: sessionCurrency,
+      },
+    },
+  };
+}
+
 const PaymentStepPayAction: React.FC<Props> = ({
   visible,
   shouldPrepare = visible,
@@ -169,6 +276,8 @@ const PaymentStepPayAction: React.FC<Props> = ({
     useState<PreparedPayPalCheckout | null>(null);
 
   const prepareRunIdRef = useRef(0);
+  const preparedKeyRef = useRef<string | null>(null);
+  const preparingKeyRef = useRef<string | null>(null);
 
   const prepareKey = useMemo(() => {
     return JSON.stringify({
@@ -206,6 +315,19 @@ const PaymentStepPayAction: React.FC<Props> = ({
       if (preReserveLoading) return;
       if (paypalUnavailable) return;
       if (paypalConsentRequired) return;
+
+      // Avoid duplicate prepare calls for the same checkout snapshot.
+      // This protects against React dev double-effects, rerenders, and
+      // post-capture state changes that may otherwise reuse a consumed reservation.
+      if (preparedKeyRef.current === prepareKey) {
+        return;
+      }
+
+      if (preparingKeyRef.current === prepareKey) {
+        return;
+      }
+
+      preparingKeyRef.current = prepareKey;
 
       setPrepareLoading(true);
       setPrepareError(null);
@@ -276,7 +398,16 @@ const PaymentStepPayAction: React.FC<Props> = ({
           items: itemsFromMeta,
           address: normalizedAddress,
           shipping_address: normalizedAddress,
+
+          // Keep all naming variants in sync because backend pricing helpers
+          // may read different field names.
           delivery_option: deliveryOption,
+          deliveryOption,
+          delivery_method: deliveryOption,
+          deliveryMethod: deliveryOption,
+          shipping_method: deliveryOption,
+          shippingMethod: deliveryOption,
+
           auto_create_paypal_order: true,
 
           checkout_totals: checkoutTotals ?? null,
@@ -378,7 +509,22 @@ const PaymentStepPayAction: React.FC<Props> = ({
           };
         }
 
+        const expectedGrandTotalMinor = pickExpectedGrandTotalMinor({
+          checkoutTotals,
+          derivedAmountMajor,
+        });
+
+        assertPreparedCheckoutMatchesCurrent({
+          preparedCheckoutSession,
+          expectedGrandTotalMinor,
+          expectedDeliveryOption: deliveryOption,
+          expectedCurrency: checkoutCurrency,
+          paypalOrderId,
+        });
+
         if (cancelled || prepareRunIdRef.current !== runId) return;
+
+        preparedKeyRef.current = prepareKey;
 
         setPreparedCheckout({
           sessionToken,
@@ -390,11 +536,22 @@ const PaymentStepPayAction: React.FC<Props> = ({
         if (cancelled || prepareRunIdRef.current !== runId) return;
 
         console.error("[payment] prepare PayPal checkout failed:", err);
-        setPrepareError(err);
+        console.error(
+          "[payment] prepared checkout mismatch detail:",
+          JSON.stringify(err?.detail ?? null, null, 2),
+        );
+
+        preparedKeyRef.current = null;
         setPreparedCheckout(null);
+
+        setPrepareError(err);
 
         await handlePayFailed(err);
       } finally {
+        if (preparingKeyRef.current === prepareKey) {
+          preparingKeyRef.current = null;
+        }
+
         if (!cancelled && prepareRunIdRef.current === runId) {
           setPrepareLoading(false);
         }

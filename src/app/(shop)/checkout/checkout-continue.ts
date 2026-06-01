@@ -88,7 +88,16 @@ export async function runCheckoutContinue({
     setBillingErrs(emptyErr);
 
     if (!isLoggedIn) {
-      await sendSubscriptionIfNeeded();
+      void sendSubscriptionIfNeeded();
+    }
+
+    try {
+      await ensureReserveBeforeNext();
+    } catch {
+      setContinueErrMsg(
+        "Unable to reserve stock right now. Please check your bag and try again.",
+      );
+      return;
     }
 
     nextStepCore();

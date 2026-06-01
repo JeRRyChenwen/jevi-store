@@ -94,7 +94,16 @@ export function useCheckoutReservation({
     reason: string,
     force = false
   ): Promise<ReserveCache | null> {
-    return await prefetchCheckoutReserve({
+    // Share the same in-flight reserve request between:
+    // 1) Address step auto prefetch
+    // 2) Continue button ensureReserveBeforeNext
+    //
+    // This avoids aborting/restarting a reserve request that is already running.
+    if (!force && reservePromiseRef.current) {
+      return await reservePromiseRef.current;
+    }
+
+    const promise = prefetchCheckoutReserve({
       reason,
       force,
       hasItems,
@@ -109,6 +118,16 @@ export function useCheckoutReservation({
       setReservationExpiresAtSec,
       setReservationCartHash,
     });
+
+    reservePromiseRef.current = promise;
+
+    try {
+      return await promise;
+    } finally {
+      if (reservePromiseRef.current === promise) {
+        reservePromiseRef.current = null;
+      }
+    }
   }
 
   // ✅ NEW: Ensure reserve exactly once (mutex) for Address -> Delivery transition

@@ -421,7 +421,7 @@ export default function CheckoutPage() {
   };
 
   const handlePayInitiated = () => {
-    void sendSubscriptionIfNeeded();
+    console.log("[checkout] PayPal payment initiated");
   };
 
   const handleLoginAndContinue = () => {
@@ -511,12 +511,21 @@ export default function CheckoutPage() {
     Number.isFinite(Number(totalMinorEffective)) &&
     totalMinorEffective > 0;
 
+  const reservationReady =
+    !!reservationId &&
+    reservationCartHash === cartHash &&
+    Number.isFinite(Number(reservationExpiresAtSec)) &&
+    Number(reservationExpiresAtSec) * 1000 > Date.now() + 30_000;
+
   const shouldPreparePayPal =
     canLoadPayPalProvider &&
     hasItems &&
     amountInMajorUnitEffective > 0 &&
     !quoteLoading &&
     !quoteError &&
+    !reserveLoading &&
+    !reserveErr &&
+    reservationReady &&
     selectedDeliveryQuoteReady &&
     (step === "delivery" || step === "payment");
 
