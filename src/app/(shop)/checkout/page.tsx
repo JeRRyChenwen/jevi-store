@@ -503,12 +503,21 @@ export default function CheckoutPage() {
     runCheckoutPagePreconnect();
   }, [canLoadPayPalProvider]);
 
+  const selectedDeliveryQuote = quoteByMethod?.[deliveryMethod] || null;
+
+  const selectedDeliveryQuoteReady =
+    !!selectedDeliveryQuote &&
+    Number.isFinite(Number(deliveryFeeMinorEffective)) &&
+    Number.isFinite(Number(totalMinorEffective)) &&
+    totalMinorEffective > 0;
+
   const shouldPreparePayPal =
     canLoadPayPalProvider &&
     hasItems &&
     amountInMajorUnitEffective > 0 &&
     !quoteLoading &&
     !quoteError &&
+    selectedDeliveryQuoteReady &&
     (step === "delivery" || step === "payment");
 
   const paymentStepProps = {

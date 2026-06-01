@@ -1,7 +1,13 @@
 // D:\前端练习\jevi-store\src\app\(shop)\checkout\_components\PaymentStep.tsx
 "use client";
 
-import React, { useRef, useState, useCallback, useMemo } from "react";
+import React, {
+  useRef,
+  useState,
+  useCallback,
+  useMemo,
+  useEffect,
+} from "react";
 import { useRouter } from "next/navigation";
 import { Check } from "lucide-react";
 import {
@@ -22,6 +28,37 @@ import { usePaymentDerivedState } from "./usePaymentDerivedState";
 import { usePaymentReservationState } from "./usePaymentReservationState";
 import { usePaymentPreflight } from "./usePaymentPreflight";
 import { usePaymentReservationLifecycle } from "./usePaymentReservationLifecycle";
+
+function useCheckoutResponsiveLayout() {
+  const [layoutReady, setLayoutReady] = useState(false);
+  const [isDesktopLayout, setIsDesktopLayout] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia("(min-width: 768px)");
+
+    const syncLayout = () => {
+      setIsDesktopLayout(mediaQuery.matches);
+      setLayoutReady(true);
+    };
+
+    syncLayout();
+
+    mediaQuery.addEventListener("change", syncLayout);
+
+    return () => {
+      mediaQuery.removeEventListener("change", syncLayout);
+    };
+  }, []);
+
+  return {
+    layoutReady,
+    isDesktopLayout,
+  };
+}
 
 const PaymentStep: React.FC<PaymentStepProps> = ({
   visible,
@@ -44,6 +81,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   paypalDisabledText,
 }) => {
   const router = useRouter();
+  const { layoutReady, isDesktopLayout } = useCheckoutResponsiveLayout();
 
   const [method, setMethod] = useState<"card" | "paypal">("paypal");
   const [suppressBlockedHint, setSuppressBlockedHint] = useState(false);
@@ -321,57 +359,8 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
            手机端：先支付方式，再订单摘要（含支付按钮），地址放后面
            桌面端：保持你原来的双栏逻辑
         ========================== */}
-        <div className="md:hidden space-y-4">
-          <PaymentStepMethodPanel method={method} setMethod={setMethod} />
-
-          <PaymentStepSummaryPanel
-            address={address}
-            hasAddress={hasAddress}
-            countryDisplay={countryDisplay}
-            effectiveOrderEmail={effectiveOrderEmail}
-            derivedItemsCount={derivedItemsCount}
-            derivedItemsMinor={derivedItemsMinor}
-            deliveryFeeMinor={Number(deliveryFeeMinor) || 0}
-            derivedTotalMinor={derivedTotalMinor}
-            safeCurrency={safeCurrency}
-            visible={visible}
-            reservationId={reservationId}
-            reservationSecondsLeft={reservationSecondsLeft}
-            payError={payError}
-            actionSlot={
-              <PaymentStepPayAction
-                visible={visible}
-                shouldPrepare={shouldPreparePayPal}
-                derivedAmountMajor={derivedAmountMajor}
-                safeCurrency={safeCurrency}
-                isPayProcessing={isPayProcessing}
-                preReserveLoading={preReserveLoading}
-                paypalUnavailable={paypalUnavailable}
-                paypalConsentRequired={paypalConsentRequired}
-                paypalDisabledText={paypalDisabledText}
-                successMetaWithReservation={successMetaWithReservation}
-                stockItems={stockItems}
-                runStockReservePreflight={runStockReservePreflight}
-                reservationIdRef={reservationIdRef}
-                setPayError={setPayError}
-                setSuppressBlockedHint={setSuppressBlockedHint}
-                onPayInitiated={onPayInitiated}
-                handlePaySucceeded={handlePaySucceeded}
-                handlePayFailed={handlePayFailed}
-              />
-            }
-          />
-
-          <div className="pt-1 px-1 space-y-1 text-xs text-gray-500">
-            <p>
-              All charges are processed in <b>{safeCurrency}</b>. Your bank or
-              PayPal may apply currency conversion and fees.
-            </p>
-          </div>
-        </div>
-
-        <div className="hidden md:flex md:flex-col md:flex-1">
-          <div className="grid items-start gap-4 md:grid-cols-[minmax(0,1.5fr)_minmax(0,2fr)]">
+        {layoutReady && !isDesktopLayout ? (
+          <div className="md:hidden space-y-4">
             <PaymentStepMethodPanel method={method} setMethod={setMethod} />
 
             <PaymentStepSummaryPanel
@@ -411,15 +400,68 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                 />
               }
             />
-          </div>
 
-          <div className="mt-4 pt-4 md:mt-auto md:pt-6 space-y-1 text-xs text-gray-500">
-            <p>
-              All charges are processed in <b>{safeCurrency}</b>. Your bank or
-              PayPal may apply currency conversion and fees.
-            </p>
+            <div className="pt-1 px-1 space-y-1 text-xs text-gray-500">
+              <p>
+                All charges are processed in <b>{safeCurrency}</b>. Your bank or
+                PayPal may apply currency conversion and fees.
+              </p>
+            </div>
           </div>
-        </div>
+        ) : null}
+
+        {layoutReady && isDesktopLayout ? (
+          <div className="hidden md:flex md:flex-col md:flex-1">
+            <div className="grid items-start gap-4 md:grid-cols-[minmax(0,1.5fr)_minmax(0,2fr)]">
+              <PaymentStepMethodPanel method={method} setMethod={setMethod} />
+
+              <PaymentStepSummaryPanel
+                address={address}
+                hasAddress={hasAddress}
+                countryDisplay={countryDisplay}
+                effectiveOrderEmail={effectiveOrderEmail}
+                derivedItemsCount={derivedItemsCount}
+                derivedItemsMinor={derivedItemsMinor}
+                deliveryFeeMinor={Number(deliveryFeeMinor) || 0}
+                derivedTotalMinor={derivedTotalMinor}
+                safeCurrency={safeCurrency}
+                visible={visible}
+                reservationId={reservationId}
+                reservationSecondsLeft={reservationSecondsLeft}
+                payError={payError}
+                actionSlot={
+                  <PaymentStepPayAction
+                    visible={visible}
+                    shouldPrepare={shouldPreparePayPal}
+                    derivedAmountMajor={derivedAmountMajor}
+                    safeCurrency={safeCurrency}
+                    isPayProcessing={isPayProcessing}
+                    preReserveLoading={preReserveLoading}
+                    paypalUnavailable={paypalUnavailable}
+                    paypalConsentRequired={paypalConsentRequired}
+                    paypalDisabledText={paypalDisabledText}
+                    successMetaWithReservation={successMetaWithReservation}
+                    stockItems={stockItems}
+                    runStockReservePreflight={runStockReservePreflight}
+                    reservationIdRef={reservationIdRef}
+                    setPayError={setPayError}
+                    setSuppressBlockedHint={setSuppressBlockedHint}
+                    onPayInitiated={onPayInitiated}
+                    handlePaySucceeded={handlePaySucceeded}
+                    handlePayFailed={handlePayFailed}
+                  />
+                }
+              />
+            </div>
+
+            <div className="mt-4 pt-4 md:mt-auto md:pt-6 space-y-1 text-xs text-gray-500">
+              <p>
+                All charges are processed in <b>{safeCurrency}</b>. Your bank or
+                PayPal may apply currency conversion and fees.
+              </p>
+            </div>
+          </div>
+        ) : null}
       </div>
     </section>
   );
