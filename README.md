@@ -845,6 +845,11 @@ CJPacket Fast Line 等于 Standard
 
 长期固定使用 CJPacket Fast Line 作为generate draft的数据
 
+删除wrangler里的secret：
+wrangler secret delete MAILER_INTERNAL_TOKEN
+添加wrangler里的secret：
+wrangler secret put MAILER_INTERNAL_TOKEN
+
 # ============================================================================
 
 # ============================================================================
