@@ -803,426 +803,247 @@ Cloudflare D1 数据库（类似 SQLite / PostgreSQL）
 
     ```
 
-### 12.2 订单储存结构
+# 101. 历史命令记录
 
-# ============================================================================
+### 101.1
 
-# ============================================================================
+    ```bash
+    修改自动发邮件功能项目之后要重新部署一次：
+    cd /d D:\前端练习\mailer-api
+    wrangler deploy --env=""
+    wrangler deploy
 
-User API Tokens
--tesLbMQ9spiOQ4RFcAdgMadNUEQAoo8Ud1C5TFI
+    以及修改了corn 和 schedule之后也要重新在 d1 worker里部署一次：
+    wrangler deploy
 
-# ============================================================================
+    打开浏览器，进入你网站任意页面，按 F12 打开控制台，把你之前点过的 Accept all / Reject non-essential 记录清掉，执行：
+    localStorage.removeItem("jevi_cookie_consent_v1");
 
-# ============================================================================
+    ```
 
-npm run dev
+### 101.2
 
-start-dev.bat
+    ```bash
 
-wrangler dev --port 8789
+    清库
 
-npm run develop
+    wrangler d1 execute jevi --remote --file=reset.sql
 
-npm run dev
+    wrangler d1 execute jevi --remote --file migrations/0001_base.sql
 
-UPDATE inventory SET on_hand_qty = 44;
+    ```
 
-清库
+### 101.3
 
-wrangler d1 execute jevi --remote --file=reset.sql
+    ```bash
+    d1 worker 注入token
 
-wrangler d1 execute jevi --remote --file migrations/0001_base.sql
+    wrangler secret put STRAPI_TOKEN
 
-同步migration：
-copy /Y "D:\前端练习\d1-worker\schema\current_schema.sql" "D:\前端练习\d1-worker\migrations\0001_base.sql"
+    wrangler secret put resend_API_TOKEN
+    ```
 
-检查是否一致：
-fc.exe "D:\前端练习\d1-worker\schema\current_schema.sql" "D:\前端练习\d1-worker\migrations\0001_base.sql"
+### 101.4
 
-CJPacket Fast Ordinary 等于 Express
-CJPacket Fast Line 等于 Standard
+    ```bash
 
-长期固定使用 CJPacket Fast Line 作为generate draft的数据
+    ```
 
-删除wrangler里的secret：
-wrangler secret delete MAILER_INTERNAL_TOKEN
-添加wrangler里的secret：
-wrangler secret put MAILER_INTERNAL_TOKEN
+### 101.5
 
-# ============================================================================
+    ```bash
 
-# ============================================================================
+    ```
 
-npm run dev
+# 102.重要的笔记
 
-npx wrangler dev --x-remote-bindings
-或者
-wrangler dev --remote
-或者
-npx wrangler dev
-或者
-npx wrangler dev --log-level debug
+### 102.1
 
-wrangler dev --port 8789
+    ```bash
 
-npm run develop
+    await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: {'content-type':'application/json'},
+    credentials: 'include', // 一定要有！
+    body: JSON.stringify({ login: 'lancechen1998@gmail.com', password: 'Cwxzhasdk1234' })
+    }).then(r => r.json()).then(console.log)
 
-cloudflared tunnel --url http://localhost:1337
+    最标准的 Braintree Sandbox 测试卡：
+    Card Number：4111111111111111
+    Expiration Date：12/30（任何未来日期都行）
+    CVV：123（任何 3 位数都行）
 
-start-dev.bat
+    其它常用品牌：
+    Visa 4111 1111 1111 1111 任意三位，例如 123
+    MasterCard 5555 5555 5555 4444 任意三位
+    AMEX 3782 822463 10005 任意四位 CVV，例如 1234
 
-npm run dev -- -p 3001
+    ```
 
-# ============================================================================
+### 102.2
 
-修改自动发邮件功能项目之后要重新部署一次：
-cd /d D:\前端练习\mailer-api
-wrangler deploy --env=""
-wrangler deploy
+    ```bash
 
-以及修改了corn 和 schedule之后也要重新在 d1 worker里部署一次：
-wrangler deploy
+    New In, Women, Men, Beauty, Home, Travel & Tech, Kids, Toys, Gifts, Sale, Myer one
 
-打开浏览器，进入你网站任意页面，按 F12 打开控制台，把你之前点过的 Accept all / Reject non-essential 记录清掉，执行：
-localStorage.removeItem("jevi_cookie_consent_v1");
+    Category: Shoes, Bottoms, Tops, Suit, Accessories, Outfit
 
-==============================================================================
+    Sub-Category: Causal, Formal, long sleeve, short sleeve
 
-脚本运行命令：
+    Filter: New Arrival, Sale
 
-npm run gen:variants:dry
+    很好！然后我还想修改一下我的个人资料页面，也就是我的 profile 页面
+    My Fit Preferences
+    Gift Card
 
-npm run gen:variants
+    ```
 
-http://lvh.me:3000/
+### 102.3
 
-ENABLE_STRIPE=false
+    ```bash
 
-如果要在 D1 数据库中建立新的表：
-首先添加新的文件到 migrations 文件夹
 
-关掉正在运行的 dev 进程（如果有）
+    一步步传递」链路就真正闭环了（BagDrawer → Checkout → Bag/Address/Delivery → Payment 都吃同一份 cart/地址/配送选择
+    BagDrawer 显示 real_price ✅
+    Checkout BagStep/Address/Delivery/Payment 全部沿用同一份 cart ✅
+    PaymentStep 的 Subtotal 永远来自 cart（不会再被旧 itemsMinor 污染）✅
+    quote 与订单落库都用同一套 “cart -> itemsMinorEffective” 计算 ✅
+    以后你再改价格字段，也不容易回归 ✅
 
-删除本地 D1 数据库缓存目录（Windows 下在项目根）：
-rmdir /s /q .wrangler\state\v3\d1
+    ```
 
-wrangler d1 migrations apply socialplatform
-wrangler d1 migrations apply socialplatform --remote
-wrangler d1 migrations apply socialplatform --local
+### 102.4
 
-新的执行命令：
-wrangler d1 execute socialplatform --remote --file migrations/0001_base.sql
+    ```bash
 
-查找所有数据库的名字：
-wrangler d1 list
+    客服
 
-让所有stock都为44的命令：
-UPDATE inventory SET on_hand_qty = 44;
+    不同产品，有些产品我只是作为零售商，但是有些产品，我是作为全供应链者去售卖的
 
-检查交易信息：
-https://www.sandbox.paypal.com
-记得登录商家账号
+    主页海报
 
-====================================================================
+    专业电商风格
 
-我的staging database 的内容：
+    social media 微信小红书链接 icon
 
-D:\前端练习\d1-worker>npx wrangler d1 create socialplatform_staging
+    弹出错误提示的时候，统一一下，红色错误提示的 style，还有就是成功提示也要统一一下，把错误提示 UI 改成和你第二张截图一样的 红色提示块（border + bg + padding）
 
-⛅️ wrangler 4.31.0 (update available 4.66.0)
-─────────────────────────────────────────────
-✅ Successfully created DB 'socialplatform_staging' in region OC
-Created your new D1 database.
+    similar product , produtc you may also interest
 
-{
-"d1_databases": [
-{
-"binding": "DB",
-"database_name": "socialplatform_staging",
-"database_id": "dc0640a0-607b-4c76-94a7-df2b64bd443e"
-}
-]
-}
+    用户评论
 
-==================================================================
+    网页下面的邮箱，privacy 条款需要再上线的时候替换成真实的privacy，邮箱
 
-清库
+    手机端
 
-wrangler d1 execute jevi --remote --file=reset.sql
+    群发邮件记得，要筛选，同意email的用户
 
-wrangler d1 execute jevi --remote --file migrations/0001_base.sql
+    远端数据库只储存 1 年，可以储存在本地，定期删掉过期数据，但保留在本地
 
-===================================
+    ```
 
-d1 worker 注入token
+### 102.5
 
-wrangler secret put STRAPI_TOKEN
+    ```bash
 
-wrangler secret put resend_API_TOKEN
+    privacy，注册条款，网站footer条款
 
-==================================================================
+    ios
 
-await fetch('/api/auth/login', {
-method: 'POST',
-headers: {'content-type':'application/json'},
-credentials: 'include', // 一定要有！
-body: JSON.stringify({ login: 'lancechen1998@gmail.com', password: 'Cwxzhasdk1234' })
-}).then(r => r.json()).then(console.log)
+    客户真的下单之后，要怎么通知供货商
 
-最标准的 Braintree Sandbox 测试卡：
-Card Number：4111111111111111
-Expiration Date：12/30（任何未来日期都行）
-CVV：123（任何 3 位数都行）
+    加 “Need help?” 客服区
 
-其它常用品牌：
-Visa 4111 1111 1111 1111 任意三位，例如 123
-MasterCard 5555 5555 5555 4444 任意三位
-AMEX 3782 822463 10005 任意四位 CVV，例如 1234
+    域名弄好了之后
 
-# ============================================================================
+    商业邮箱
 
-# ============================================================================
+    链接供货商的shippment api
 
-### 笔记：
+    email里的图片显示
 
-New In, Women, Men, Beauty, Home, Travel & Tech, Kids, Toys, Gifts, Sale, Myer one
+    浏览器 favicon右边的名字 浏览器标题优化
 
-Category: Shoes, Bottoms, Tops, Suit, Accessories, Outfit
+    footer 可以加上social link：
+    Instagram
+    TikTok
+    YouTube
 
-Sub-Category: Causal, Formal, long sleeve, short sleeve
+    Open Graph (OG Image)，让别人分享你的网站
 
-Filter: New Arrival, Sale
+    网站主域名 和 发邮件专用子域名，把域名加到 Resend
 
-要分割出css文件
 
-deploy 的时候保留本地测试的 localhost
+    If you believe this decision was made in error or you have additional supporting information, please reply to this email so our team can review it further.
 
-很好！然后我还想修改一下我的个人资料页面，也就是我的 profile 页面
-My Fit Preferences
-Gift Card
+    no-reply@jevi.com
 
-一步步传递」链路就真正闭环了（BagDrawer → Checkout → Bag/Address/Delivery → Payment 都吃同一份 cart/地址/配送选择
-BagDrawer 显示 real_price ✅
-Checkout BagStep/Address/Delivery/Payment 全部沿用同一份 cart ✅
-PaymentStep 的 Subtotal 永远来自 cart（不会再被旧 itemsMinor 污染）✅
-quote 与订单落库都用同一套 “cart -> itemsMinorEffective” 计算 ✅
-以后你再改价格字段，也不容易回归 ✅
+    用戶須知半年過後不能退款
 
-# ============================================================================
 
-# ============================================================================
 
-正式上线
+    ```
 
-# ============================================================================
+### 102.6
 
-# ============================================================================
+    ```bash
 
-# ============================================================================
 
-裤子 袜子 暂时不开放，鞋子拆开category，同时他们对应的数据类型，variant title之类的东西要确认
+    先从阿里巴巴找几家供应商拿样。
 
-部署到 Vercel（免费 https），再在该预览域名上测试 PaymentElement。
+    你自己检查质量、尺码、实物和图片差距。
 
-或者用 ngrok 给本地 3000 端口开 https 隧道：
+    选出 1–2 家靠谱的供应商。
 
-用户付款后如何获得用户的邮箱，并发 confirmation email: 1.访客结账时显式收集
-在收货地址 / 联系方式表单里有 “Email（必填）” 一栏；提交订单就带上了。
+    先做少量首批库存。
 
-客服
+    让这批首库存直接发到澳洲 3PL。
 
-不同产品，有些产品我只是作为零售商，但是有些产品，我是作为全供应链者去售卖的
+    后面网站有订单，就由 3PL 发。
 
-主页海报
+    return policy 跟 3pl协商之后定下来
 
-==============================================================================
+    Refund / Returns Policy
 
-==============================================================================
+    Privacy Policy
 
-专业电商风格
+    Contact details
 
-social media 微信小红书链接 icon
+    About / business identity
 
-弹出错误提示的时候，统一一下，红色错误提示的 style，还有就是成功提示也要统一一下，把错误提示 UI 改成和你第二张截图一样的 红色提示块（border + bg + padding）
+    先只卖澳洲
 
-similar product , produtc you may also interest
+    结账页只允许 Australia
 
-用户评论
+    Shipping policy 写明 currently ship within Australia only
 
-网页下面的邮箱，privacy 条款需要再上线的时候替换成真实的privacy，邮箱
+    Returns policy 写明退货地址和流程都在澳洲
 
-手机端
+    实际不要接澳洲以外的订单
 
-群发邮件记得，要筛选，同意email的用户
+    你的政策页、checkout 国家选择、配送规则、PayPal/支付资料、footer 文案，最好统一成同一个版本，不然会自相矛盾
 
-远端数据库只储存 1 年，可以储存在本地，定期删掉过期数据，但保留在本地
+    return 页面需要：
+    问题描述
+    商品整体照
+    缺陷近照
+    外包装照片
+    吊牌/洗标照片
+    收到货后多久发现
 
-==============================================================================
-千万不要修改我原本的代码里的任何逻辑和语法，和原本的代码内容，千万不要做修改
+    paypal
 
-# ============================================================================
+    domain
 
-============================================
+    pack and send (logistic)
 
-很好，然后我想修改 Delivery & Collection 这部分的内容，我希望取消掉 collection，只让用户选择 Standard delivery 或者 Express delivery
+    supplier
 
-然后在 Standard delivery 和 Express delivery 底下分别说明：
+    ```
 
-Standard delivery 是免费的如果消费额度大于或者等于 100
+### 102.7
 
-Express delivery 则有更快的速度抵达
-
-1. domain
-2. fornt end
-3. payment
-4. cloud server
-5. supllier
-6. delivery
-7. text size
-8. mobine end
-9. html email css
-   10，user 注册 协议
-
-生产环境里最好在服务器端根据商品 ID 重新计算总价
-
-==========================
-terms and conditions
-==========================
-
-我有一个前端购物react网站项目，cloudflare的D1数据库项目，以及一个strapi项目（负责用cms管理购物网站上售卖的产品），我想优化一下我的这个项目，你先大致看看我的项目内容吧 jevi-store 是我的前端购物react网站项目，你看看我的项目 d1-worker是我的cloudflare的D1数据库项目，你看看我的项目
-
-你在解压我的 jevi-store.zip 文件的时候可以直接跳转 node_modules/.next 因为我的这个zip比较大
-
-================================================
-
-privacy，注册条款，网站footer条款
-
-ios
-
-客户真的下单之后，要怎么通知供货商
-
-3. 加 “Need help?” 客服区
-
-================================================
-
-比较麻烦的：
-
-order-item 表的variant 字段，material也要存进去
-
-优化admin平台里同步strapi里的数据的功能
-
-退款成功之后是否自动把货物加回inventory 表
-
-你生产准备使用的域名/部署方式（Pages / workers.dev / 自己域名）
-你前端 admin 是从哪个 origin 访问（例如 https://xxx.pages.dev）
-发我一下，我就能把 SameSite / Secure / Domain 的最终策略给你定死，避免上线后“登录偶发掉线/跨域不带 cookie”。
-
-如何获取tracking number 等货物发货信息
-
-专业建议（未来结构升级方案）
-等你上线时，建议这样分层：
-0001_base.sql -> 核心业务表（orders, inventory 等）
-0002_rate_limit.sql -> rate limit 相关表
-0003_indexes.sql -> 后期补索引
-这样你以后就不会因为改 rate limit 而重建所有表。
-
-======================
-
-域名弄好了之后
-
-商业邮箱
-
-链接供货商的shippment api
-
-email里的图片显示
-
-浏览器 favicon右边的名字 浏览器标题优化
-
-footer 可以加上social link：
-Instagram
-TikTok
-YouTube
-
-Open Graph (OG Image)，让别人分享你的网站
-
-网站主域名 和 发邮件专用子域名，把域名加到 Resend
-
-===========================================
-
-D:\前端练习\jevi-store\src\app\(shop)\returns\page.tsx
-
-If you believe this decision was made in error or you have additional supporting information, please reply to this email so our team can review it further.
-
-no-reply@jevi.com
-
-============================================
-
-用戶須知半年過後不能退款
-
-你要的是：
-
-点击某一条订单的 Start Return
-
-只有这一条按钮 变成“按下去 / 阴影加深 / 颜色更深”的状态
-
-reserv time 改成30分鐘
-
-=====================================================
-
-先从阿里巴巴找几家供应商拿样。
-
-你自己检查质量、尺码、实物和图片差距。
-
-选出 1–2 家靠谱的供应商。
-
-先做少量首批库存。
-
-让这批首库存直接发到澳洲 3PL。
-
-后面网站有订单，就由 3PL 发。
-
-return policy 跟 3pl协商之后定下来
-
-Refund / Returns Policy
-
-Privacy Policy
-
-Contact details
-
-About / business identity
-
-先只卖澳洲
-
-结账页只允许 Australia
-
-Shipping policy 写明 currently ship within Australia only
-
-Returns policy 写明退货地址和流程都在澳洲
-
-实际不要接澳洲以外的订单
-
-你的政策页、checkout 国家选择、配送规则、PayPal/支付资料、footer 文案，最好统一成同一个版本，不然会自相矛盾
-
-return 页面需要：
-问题描述
-商品整体照
-缺陷近照
-外包装照片
-吊牌/洗标照片
-收到货后多久发现
-
-======================
-
-paypal
-
-domain
-
-pack and send (logistic)
-
-supplier
-
-==================================
+    ```bash
 
 第一层是 supplier → 3PL 入库证据。
 你应该要求 supplier 或 3PL 在入库时留下至少这些记录：SKU、数量、外箱状态、入库日期、批次/箱号，最好再加抽检照片。因为如果顾客说“你发给我的时候就是坏的”，而你手上连这批货入库时的状态记录都没有，那你很难往前追责任。仓储行业本身也把 quality checks、标准化 pick/pack、记录保存视为基础最佳实践。
@@ -1301,30 +1122,11 @@ supplier
 顾客退回经确认属 manufacturing defect 时，supplier 是否补货或赔偿
 因为从消费者角度，先找的是你；但从商业链路角度，你需要能把已经承担的成本往上游传回去。ACCC 的业务材料就提到，seller 在向消费者提供 remedy 后，可能有权向 manufacturer 请求补偿。
 
-====================================================
+    ```
 
-你真正的风险不在“能不能这样做”
+### 102.8
 
-而在这 4 件事：
-
-库存压太多
-
-SKU 开太多
-
-supplier 与 3PL 之间没有质检与责任边界
-
-退货与售后证据链不完整
-
-5 个款 1 个主流颜色 3 个核心尺码 2 个固定增高度 主推高度2双，次推高度1双 = 45 stock
-
-限制国家发货，sorry 提示
-profile 页面也要修改
-
-加上gst 费用（超过75000再说）
-
-优化AU NZ 的法律
-
-================================================================
+    ```bash
 
 1. 对 3PL 的要求
 
@@ -1359,7 +1161,11 @@ supplier → 3PL → customer → return → 责任回溯
 
 我的paypal 账号需要设置一下接收的币种
 
-====================================
+    ```
+
+### 102.9
+
+    ```bash
 
 1. 商家责任 / 法定退款
 
@@ -1373,26 +1179,11 @@ supplier → 3PL → customer → return → 责任回溯
 
 这类情况下，澳洲和新西兰的消费者法都要求你提供相应救济；在澳洲，如果商品确认有问题，商家还要报销合理的退回成本；在新西兰，商品如果有问题，商家也应偿付退货邮费/配送成本。
 
-====================================
+    ```
 
-已完成订单读取安全修复：
+### 102.10
 
-1. d1-worker /orders/:idOrNo 增加读取权限校验
-   - admin 可以读取
-   - 登录用户可以读取自己的订单
-   - guest 用户必须提供匹配订单邮箱
-
-2. jevi-store /api/orders/[orderId] 支持：
-   - 数字 id
-   - order_number，例如 SP20260528-000001
-   - email/customerEmail 查询参数透传
-
-3. confirmation page 支持：
-   - /order/confirmation?orderId=SP20260528-000001&email=xxx@example.com
-
-4. PayPal 支付成功后跳转 confirmation page 时自动带上 orderId 和 email
-
-====================================
+    ```bash
 
 我的品牌服装网站
 
@@ -1444,7 +1235,12 @@ By using messaging, you're agreeing that you've understood and committed to our 
    结果：shipping_rules / shipping_rule_tiers。
    checkout 真正使用的是这里的 live rule 价格。
 
-运输时间需要处理
+
+    ```
+
+### 102.11
+
+    ```bash
 
 我给你的优先级排序
 P0：必须立刻做
@@ -1467,6 +1263,125 @@ P2：中长期优化
 写部署和故障处理文档。
 增加 E2E 测试：注册、登录、加入购物袋、运费计算、库存预留、PayPal sandbox 下单、订单确认、退货申请、admin 审批。
 
+
+    ```
+
+### 102.12
+
+    ```bash
+
+
+    ```
+
+### 102.13
+
+    ```bash
+
+
+    ```
+
+### 102.14
+
+    ```bash
+
+
+    ```
+
+# ============================================================================
+
+# ============================================================================
+
+User API Tokens
+-tesLbMQ9spiOQ4RFcAdgMadNUEQAoo8Ud1C5TFI
+
+# ============================================================================
+
+旧命令：
+
+start-dev.bat
+
+# ============================================================================
+
+现在使用的命令：
+
+npm run dev
+
+npm run dev
+
+wrangler dev --port 8789
+
+npm run develop
+
+npm run dev
+
+docker start jevi-postgres-dev
+
+docker compose -f docker-compose.local.yml up --build
+
+后台模式：
+docker compose -f docker-compose.local.yml up --build -d
+
+# ============================================================================
+
+常用命令和参数：
+
+pgadmin4数据库验证：
+Username: jevi_api_user
+Password: jevi_api_password
+
+UPDATE inventory SET on_hand_qty = 44;
+
+清库
+
+wrangler d1 execute jevi --remote --file=reset.sql
+
+wrangler d1 execute jevi --remote --file migrations/0001_base.sql
+
+同步migration：
+copy /Y "D:\前端练习\d1-worker\schema\current_schema.sql" "D:\前端练习\d1-worker\migrations\0001_base.sql"
+
+检查是否一致：
+fc.exe "D:\前端练习\d1-worker\schema\current_schema.sql" "D:\前端练习\d1-worker\migrations\0001_base.sql"
+
+CJPacket Fast Ordinary 等于 Express
+CJPacket Fast Line 等于 Standard
+
+长期固定使用 CJPacket Fast Line 作为generate draft的数据
+
+删除wrangler里的secret：
+wrangler secret delete MAILER_INTERNAL_TOKEN
+添加wrangler里的secret：
+wrangler secret put MAILER_INTERNAL_TOKEN
+
+# ============================================================================
+
+# ============================================================================
+
+npm run dev
+
+npx wrangler dev --x-remote-bindings
+或者
+wrangler dev --remote
+或者
+npx wrangler dev
+或者
+npx wrangler dev --log-level debug
+
+wrangler dev --port 8789
+
+npm run develop
+
+cloudflared tunnel --url http://localhost:1337
+
+start-dev.bat
+
+npm run dev -- -p 3001
+
+# ============================================================================
+
+
+运输时间需要处理
+
 法律
 
 email api 正式上线
@@ -1476,3 +1391,13 @@ email api 正式上线
 strapi同步 inventory 新增了内容怎么办
 
 google 网页的标题
+
+STOREFRONT_CODE=AU真的需要吗
+
+邮件的图片，邮件的link tracking package
+
+inventory sync 重复sync是否会更新内容
+
+迁移新的数据库之后运作正常，但email没有自动发送
+
+原本的d1 做好的emial自动发的corn 有没有做好
