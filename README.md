@@ -1235,8 +1235,9 @@ By using messaging, you're agreeing that you've understood and committed to our 
    结果：shipping_rules / shipping_rule_tiers。
    checkout 真正使用的是这里的 live rule 价格。
 
+   ```
 
-    ```
+   ```
 
 ### 102.11
 
@@ -1262,7 +1263,6 @@ P2：中长期优化
 完善 typecheck/lint/build CI。
 写部署和故障处理文档。
 增加 E2E 测试：注册、登录、加入购物袋、运费计算、库存预留、PayPal sandbox 下单、订单确认、退货申请、admin 审批。
-
 
     ```
 
@@ -1300,6 +1300,8 @@ User API Tokens
 
 start-dev.bat
 
+wrangler dev --port 8789
+
 # ============================================================================
 
 现在使用的命令：
@@ -1308,7 +1310,7 @@ npm run dev
 
 npm run dev
 
-wrangler dev --port 8789
+npm run dev
 
 npm run develop
 
@@ -1316,10 +1318,24 @@ npm run dev
 
 docker start jevi-postgres-dev
 
-docker compose -f docker-compose.local.yml up --build
-
-后台模式：
+启动 mailer-api：
+cd /d D:\前端练习\mailer-api
 docker compose -f docker-compose.local.yml up --build -d
+
+启动 jevi-api：
+cd /d D:\前端练习\jevi-api
+docker compose -f docker-compose.local.yml up --build -d
+
+
+# ============================================================================
+
+启动docker容器：
+
+start-dev.bat
+
+wrangler dev --port 8789
+
+# ============================================================================
 
 # ============================================================================
 
@@ -1378,7 +1394,6 @@ start-dev.bat
 npm run dev -- -p 3001
 
 # ============================================================================
-
 
 运输时间需要处理
 
