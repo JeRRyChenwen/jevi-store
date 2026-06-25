@@ -1,6 +1,7 @@
 // src/app/(shop)/returns/page.tsx
 "use client";
 
+import { Suspense } from "react";
 import { Card } from "@/components/ui/card";
 import { Alert } from "@/components/ui/alert";
 import { UserTime } from "@/components/datetime/Time";
@@ -13,7 +14,7 @@ import ReturnsSubmissionCard from "./_components/ReturnsSubmissionCard";
 
 import { useReturnsPageFlow } from "./(hooks)/useReturnsPageFlow";
 
-export default function ReturnsPage() {
+function ReturnsPageContent() {
   const {
     step,
 
@@ -77,18 +78,14 @@ export default function ReturnsPage() {
   return (
     <div className="max-w-3xl mx-auto py-8 px-4">
       <div className="mb-4">
-        <BackButton
-          label="Back"
-          forceHref="/"
-          variant="chip"
-        />
+        <BackButton label="Back" forceHref="/" variant="chip" />
       </div>
 
       <h1 className="text-2xl font-semibold mb-2">Returns &amp; Exchanges</h1>
 
       <p className="text-sm text-muted-foreground mb-4">
-        For information about return eligibility, refunds, exchanges, and your consumer rights,
-        please see our{" "}
+        For information about return eligibility, refunds, exchanges, and your
+        consumer rights, please see our{" "}
         <a href="/returns-policy" className="font-semibold underline">
           Returns Policy
         </a>
@@ -105,11 +102,14 @@ export default function ReturnsPage() {
         </div>
       )}
 
-      {hasAlert && !showInlineBlock && !isLookupCoolingDown && alert?.message && (
-        <div className="mb-4">
-          <Alert variant={alert.type}>{alert.message}</Alert>
-        </div>
-      )}
+      {hasAlert &&
+        !showInlineBlock &&
+        !isLookupCoolingDown &&
+        alert?.message && (
+          <div className="mb-4">
+            <Alert variant={alert.type}>{alert.message}</Alert>
+          </div>
+        )}
 
       {step === 1 && (
         <ReturnsLookupStep
@@ -143,12 +143,17 @@ export default function ReturnsPage() {
           <Card className="p-4">
             <div className="flex justify-between text-sm">
               <div>
-                <div className="font-medium">Order {order.order_number ?? order.id}</div>
+                <div className="font-medium">
+                  Order {order.order_number ?? order.id}
+                </div>
                 <div className="text-muted-foreground">
                   Placed at:{" "}
                   {"created_at_ts" in (order as any) &&
                   typeof (order as any).created_at_ts === "number" ? (
-                    <UserTime ts={(order as any).created_at_ts} fallback="N/A" />
+                    <UserTime
+                      ts={(order as any).created_at_ts}
+                      fallback="N/A"
+                    />
                   ) : (
                     order.created_at_cn || "N/A"
                   )}
@@ -196,5 +201,21 @@ export default function ReturnsPage() {
         />
       )}
     </div>
+  );
+}
+
+export default function ReturnsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="max-w-3xl mx-auto py-8 px-4">
+          <div className="rounded-2xl border bg-card p-8 text-sm text-muted-foreground">
+            Loading returns...
+          </div>
+        </div>
+      }
+    >
+      <ReturnsPageContent />
+    </Suspense>
   );
 }

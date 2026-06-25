@@ -154,11 +154,32 @@ export async function api(path: string, opts: FetchOpts = {}) {
 }
 
 // 拼接媒体文件 URL（后端通常返回相对路径）
+// 注意：API 请求可以用 SERVER_URL / STRAPI_URL；
+// 但图片 URL 会输出给浏览器，所以必须用 PUBLIC_URL / NEXT_PUBLIC_STRAPI_URL。
 export function mediaUrl(url?: string | null) {
   if (!url) return "";
-  return url.startsWith("http")
-    ? url
-    : `${getStrapiURL()}${url.startsWith("/") ? "" : "/"}${url}`;
+
+  const publicBase = (PUBLIC_URL || DEFAULT_URL).replace(/\/+$/, "");
+
+  // 如果 Strapi 返回的是绝对 URL，也把 /uploads/* 统一转成浏览器可访问的 public base。
+  // 例如：
+  // http://host.docker.internal:1337/uploads/a.jpg
+  // -> http://127.0.0.1:1337/uploads/a.jpg
+  if (/^https?:\/\//i.test(url)) {
+    try {
+      const parsed = new URL(url);
+
+      if (parsed.pathname.startsWith("/uploads/")) {
+        return `${publicBase}${parsed.pathname}${parsed.search}${parsed.hash}`;
+      }
+
+      return url;
+    } catch {
+      return url;
+    }
+  }
+
+  return `${publicBase}${url.startsWith("/") ? "" : "/"}${url}`;
 }
 
 /**

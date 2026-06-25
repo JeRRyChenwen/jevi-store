@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import AuthShell from "@/components/auth/AuthShell";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
 
@@ -17,7 +17,8 @@ import { useFormAlert } from "@/hooks/useFormAlert";
 import { FieldMessage } from "@/components/ui/field-message";
 
 const AUTH_BASE = "/api";
-const buildAuth = (p: string) => `${AUTH_BASE}${p.startsWith("/") ? p : `/${p}`}`;
+const buildAuth = (p: string) =>
+  `${AUTH_BASE}${p.startsWith("/") ? p : `/${p}`}`;
 
 const schema = z.object({
   email: z.string().email("Please enter a valid email"),
@@ -38,7 +39,10 @@ type LoginAttemptResult = {
 };
 
 /** 尝试登录（JSON -> 必要时 fallback 到 x-www-form-urlencoded） */
-async function attemptLogin(payload: { login: string; password: string }): Promise<LoginAttemptResult> {
+async function attemptLogin(payload: {
+  login: string;
+  password: string;
+}): Promise<LoginAttemptResult> {
   // ---- 尝试 1：application/json
   let res = await fetch(buildAuth("/auth/login"), {
     method: "POST",
@@ -83,7 +87,7 @@ async function attemptLogin(payload: { login: string; password: string }): Promi
   return { res, body };
 }
 
-export default function LoginPage() {
+function LoginPageContent() {
   const sp = useSearchParams();
   const nextUrl = sp.get("next") || "/";
 
@@ -101,7 +105,10 @@ export default function LoginPage() {
       const s = (raw || "").trim().toLowerCase();
 
       // 常见后端：invalid credentials / invalid email or password
-      if (s.includes("invalid credentials") || s.includes("invalid email or password")) {
+      if (
+        s.includes("invalid credentials") ||
+        s.includes("invalid email or password")
+      ) {
         return "Incorrect email or password. Please try again.";
       }
 
@@ -131,7 +138,8 @@ export default function LoginPage() {
 
       // ✅ 其他非 2xx：当作“系统/请求失败”
       if (!res.ok) {
-        const msg = body?.error || body?.message || `Login failed (${res.status})`;
+        const msg =
+          body?.error || body?.message || `Login failed (${res.status})`;
         throw new Error(msg);
       }
 
@@ -156,7 +164,10 @@ export default function LoginPage() {
 
       // 可选：调试输出（HttpOnly 的 cookie 不会显示在 document.cookie，这是正常的）
       if (process.env.NODE_ENV !== "production") {
-        console.log("[login] success. cookies (non-HttpOnly only):", document.cookie);
+        console.log(
+          "[login] success. cookies (non-HttpOnly only):",
+          document.cookie,
+        );
       }
 
       window.location.href = nextUrl;
@@ -180,26 +191,43 @@ export default function LoginPage() {
         <div className="text-center text-sm text-muted-foreground font-semibold space-y-4">
           <p>
             Don’t have an account?{" "}
-            <a href="/auth/register" className="underline hover:text-primary font-semibold">
+            <a
+              href="/auth/register"
+              className="underline hover:text-primary font-semibold"
+            >
               Create one
             </a>
           </p>
           <div className="h-8" aria-hidden />
           <p>
-            <a href="/auth/forgot-password" className="underline hover:text-primary font-semibold">
+            <a
+              href="/auth/forgot-password"
+              className="underline hover:text-primary font-semibold"
+            >
               Forgot password?
             </a>
           </p>
         </div>
       }
     >
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" autoComplete="on">
+      <form
+        onSubmit={handleSubmit(onSubmit)}
+        className="space-y-5"
+        autoComplete="on"
+      >
         <div className="grid gap-3">
           <Label htmlFor="email" className="block">
             Email
           </Label>
-          <Input id="email" type="email" autoComplete="email" {...register("email", { onChange: () => clear() })} />
-          {errors.email?.message && <FieldMessage variant="error">{errors.email.message}</FieldMessage>}
+          <Input
+            id="email"
+            type="email"
+            autoComplete="email"
+            {...register("email", { onChange: () => clear() })}
+          />
+          {errors.email?.message && (
+            <FieldMessage variant="error">{errors.email.message}</FieldMessage>
+          )}
         </div>
 
         <div className="grid gap-3">
@@ -222,15 +250,27 @@ export default function LoginPage() {
               className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100"
               aria-label={showPassword ? "Hide password" : "Show password"}
             >
-              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              {showPassword ? (
+                <EyeOff className="h-4 w-4" />
+              ) : (
+                <Eye className="h-4 w-4" />
+              )}
             </button>
           </div>
 
-          {errors.password?.message && <FieldMessage variant="error">{errors.password.message}</FieldMessage>}
+          {errors.password?.message && (
+            <FieldMessage variant="error">
+              {errors.password.message}
+            </FieldMessage>
+          )}
         </div>
 
         {/* ✅ 表单级提示块：后续 success 也复用同一组件 */}
-        {alert?.message && <Alert variant={alert.type === "success" ? "success" : "error"}>{alert.message}</Alert>}
+        {alert?.message && (
+          <Alert variant={alert.type === "success" ? "success" : "error"}>
+            {alert.message}
+          </Alert>
+        )}
 
         {/* ⬇️ 两行空白（每行约 2rem） */}
         <div className="h-8" aria-hidden />
@@ -244,5 +284,21 @@ export default function LoginPage() {
         </Button>
       </form>
     </AuthShell>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="mx-auto flex min-h-screen w-full max-w-md items-center justify-center px-4 py-10">
+          <div className="w-full rounded-2xl border bg-card p-6 text-sm text-muted-foreground">
+            Loading login...
+          </div>
+        </main>
+      }
+    >
+      <LoginPageContent />
+    </Suspense>
   );
 }

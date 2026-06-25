@@ -1304,7 +1304,7 @@ wrangler dev --port 8789
 
 # ============================================================================
 
-现在使用的命令：
+以前使用的命令：
 
 npm run dev
 
@@ -1326,6 +1326,48 @@ docker compose -f docker-compose.local.yml up --build -d
 cd /d D:\前端练习\jevi-api
 docker compose -f docker-compose.local.yml up --build -d
 
+启动 jevi-store：
+cd /d D:\前端练习\jevi-store
+docker compose -f docker-compose.local.yml up --build -d
+
+# ============================================================================
+
+最新命令：
+
+docker start jevi-postgres-dev
+
+jevi-store：
+docker compose -f docker-compose.local.yml up -d
+
+jevi-api：
+npm run dev
+
+mailer-api：
+docker compose -f docker-compose.local.yml up --build -d
+
+jevi-strapi：
+docker compose -f docker-compose.postgres.local.yml up -d
+npm run develop
+
+jevi-admin-platform：
+docker compose -f docker-compose.local.yml up -d
+
+# ============================================================================
+
+# ============================================================================
+
+常用命令：
+
+如果你改了 jevi-store 源码、.env.local 里的 NEXT*PUBLIC*\*、next.config.js、public 图片文件，就需要重新 build：
+
+cd /d D:\前端练习\jevi-store
+docker compose -f docker-compose.local.yml down
+rmdir /s /q .next
+npm run build
+docker compose -f docker-compose.local.yml build --no-cache
+docker compose -f docker-compose.local.yml up -d
+
+# ============================================================================
 
 # ============================================================================
 

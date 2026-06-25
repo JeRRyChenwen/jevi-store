@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Search as SearchIcon } from "lucide-react";
@@ -16,7 +16,9 @@ type SearchItem = {
 };
 
 function firstImageFromProduct(attrs: any): string {
-  const colorGalleries = Array.isArray(attrs?.color_galleries) ? attrs.color_galleries : [];
+  const colorGalleries = Array.isArray(attrs?.color_galleries)
+    ? attrs.color_galleries
+    : [];
 
   for (const cg of colorGalleries) {
     const rel = cg?.images;
@@ -44,7 +46,7 @@ function firstImageFromProduct(attrs: any): string {
   return "";
 }
 
-export default function SearchPage() {
+function SearchPageContent() {
   const searchParams = useSearchParams();
   const q = (searchParams.get("q") || "").trim();
 
@@ -92,7 +94,8 @@ export default function SearchPage() {
             const attrs = row?.attributes ?? row ?? {};
             const slug = attrs?.slug ?? "";
             const name = (attrs?.title ?? "").trim();
-            const id = row?.id ?? attrs?.id ?? Math.random().toString(36).slice(2);
+            const id =
+              row?.id ?? attrs?.id ?? Math.random().toString(36).slice(2);
             const imageUrl = firstImageFromProduct(attrs);
 
             return {
@@ -136,7 +139,9 @@ export default function SearchPage() {
 
         {q ? (
           <p className="mt-2 text-sm text-muted-foreground">
-            {loading ? "Searching..." : `${items.length} result${items.length === 1 ? "" : "s"}`}
+            {loading
+              ? "Searching..."
+              : `${items.length} result${items.length === 1 ? "" : "s"}`}
           </p>
         ) : (
           <p className="mt-2 text-sm text-muted-foreground">
@@ -203,5 +208,21 @@ export default function SearchPage() {
         </div>
       )}
     </main>
+  );
+}
+
+export default function SearchPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="mx-auto w-full max-w-7xl px-4 py-6 md:px-6 lg:px-8 md:py-8">
+          <div className="rounded-2xl border bg-card p-8 text-sm text-muted-foreground">
+            Loading search...
+          </div>
+        </main>
+      }
+    >
+      <SearchPageContent />
+    </Suspense>
   );
 }

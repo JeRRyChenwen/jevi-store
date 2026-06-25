@@ -65,8 +65,12 @@ function buildShippingAddressJson(order: any) {
   };
 }
 
-export async function GET(req: NextRequest, ctx: { params: { orderId: string } }) {
-  const rawId = String(ctx?.params?.orderId || "").trim();
+export async function GET(
+  req: NextRequest,
+  ctx: { params: Promise<{ orderId: string }> }
+) {
+  const { orderId } = await ctx.params;
+  const rawId = String(orderId || "").trim();
 
   if (!rawId) {
     return NextResponse.json({ ok: false, error: "invalid_order_id" }, { status: 400 });

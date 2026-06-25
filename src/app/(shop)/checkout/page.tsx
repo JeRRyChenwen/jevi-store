@@ -1,7 +1,7 @@
 // src/app/checkout/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCart } from "./(hooks)/useCart";
 import { usePricing } from "./(hooks)/usePricing";
@@ -64,7 +64,7 @@ function isEuStorefront() {
 }
 
 /* ---------------- Page ---------------- */
-export default function CheckoutPage() {
+function CheckoutPageContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -585,5 +585,21 @@ export default function CheckoutPage() {
     <PayPalProvider>{checkoutView}</PayPalProvider>
   ) : (
     checkoutView
+  );
+}
+
+export default function CheckoutPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="mx-auto w-full max-w-7xl px-4 py-6 md:px-6 lg:px-8 md:py-8">
+          <div className="rounded-2xl border bg-card p-8 text-sm text-muted-foreground">
+            Loading checkout...
+          </div>
+        </main>
+      }
+    >
+      <CheckoutPageContent />
+    </Suspense>
   );
 }

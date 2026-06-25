@@ -1,7 +1,7 @@
 // src/app/auth/reset-password/page.tsx
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { Suspense, useState, useMemo, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
@@ -40,7 +40,7 @@ function extractServerErrorCode(body: any): string {
   return "";
 }
 
-export default function ResetPasswordPage() {
+function ResetPasswordPageContent() {
   const sp = useSearchParams();
   const router = useRouter();
   const token = useMemo(() => sp.get("token")?.trim() || "", [sp]);
@@ -82,7 +82,8 @@ export default function ResetPasswordPage() {
     passwordSameAlert.clear();
 
     try {
-      if (!API_BASE) throw new Error("Missing NEXT_PUBLIC_API_BASE in .env.local.");
+      if (!API_BASE)
+        throw new Error("Missing NEXT_PUBLIC_API_BASE in .env.local.");
       if (!token) throw new Error("Invalid reset link: missing token.");
 
       console.log("[ResetPassword] POST /auth/reset ->", {
@@ -97,14 +98,16 @@ export default function ResetPasswordPage() {
         body: JSON.stringify({ token, password: data.password }),
       });
 
-      const body = await res.json().catch(() => ({} as any));
+      const body = await res.json().catch(() => ({}) as any);
 
       if (!res.ok) {
         const code = extractServerErrorCode(body);
 
         // ✅ 关键：新密码=旧密码时，把错误放到 Update password 按钮上方，并聚焦到 password
         if (code === "PASSWORD_SAME_AS_OLD") {
-          passwordSameAlert.error("New password must be different from the old password.");
+          passwordSameAlert.error(
+            "New password must be different from the old password.",
+          );
           try {
             setFocus("password");
           } catch {}
@@ -157,8 +160,8 @@ export default function ResetPasswordPage() {
                 Reset your password
               </h1>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                This reset link is invalid or incomplete. Please request a new reset
-                link and try again.
+                This reset link is invalid or incomplete. Please request a new
+                reset link and try again.
               </p>
 
               <div className="rounded-lg border bg-white/70 p-4 text-sm text-muted-foreground">
@@ -166,7 +169,10 @@ export default function ResetPasswordPage() {
                   What you can do
                 </div>
                 <ul className="list-disc pl-5 space-y-1">
-                  <li>Go back to the “Forgot password” page and request a new link.</li>
+                  <li>
+                    Go back to the “Forgot password” page and request a new
+                    link.
+                  </li>
                   <li>Make sure the link opens with a token parameter.</li>
                   <li>If the link is old, it may have expired.</li>
                 </ul>
@@ -183,8 +189,13 @@ export default function ResetPasswordPage() {
               </div>
 
               <div className="text-sm">
-                <span className="text-muted-foreground">Already have access?</span>{" "}
-                <Link href="/auth/login" className="underline underline-offset-4">
+                <span className="text-muted-foreground">
+                  Already have access?
+                </span>{" "}
+                <Link
+                  href="/auth/login"
+                  className="underline underline-offset-4"
+                >
                   Back to login
                 </Link>
               </div>
@@ -204,8 +215,13 @@ export default function ResetPasswordPage() {
                   </Alert>
 
                   <div className="flex flex-col gap-2 pt-2">
-                    <Button asChild className="w-full border border-neutral-300">
-                      <Link href="/auth/forgot-password">Request a new link</Link>
+                    <Button
+                      asChild
+                      className="w-full border border-neutral-300"
+                    >
+                      <Link href="/auth/forgot-password">
+                        Request a new link
+                      </Link>
                     </Button>
 
                     <Button asChild variant="outline" className="w-full">
@@ -233,8 +249,8 @@ export default function ResetPasswordPage() {
             </h1>
 
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Choose a strong password you don’t use elsewhere. After updating, you
-              can sign in with your new password immediately.
+              Choose a strong password you don’t use elsewhere. After updating,
+              you can sign in with your new password immediately.
             </p>
 
             <div className="rounded-lg border bg-white/70 p-4 text-sm text-muted-foreground">
@@ -259,7 +275,9 @@ export default function ResetPasswordPage() {
             </div>
 
             <div className="text-sm">
-              <span className="text-muted-foreground">Remember your password?</span>{" "}
+              <span className="text-muted-foreground">
+                Remember your password?
+              </span>{" "}
               <Link href="/auth/login" className="underline underline-offset-4">
                 Back to login
               </Link>
@@ -280,7 +298,8 @@ export default function ResetPasswordPage() {
                   <div className="space-y-4">
                     {/* ✅ 用 Alert 只显示提示条，不把整块面板变绿 */}
                     <Alert variant="success">
-                      Your password has been reset successfully. Please sign in with your new password.
+                      Your password has been reset successfully. Please sign in
+                      with your new password.
                     </Alert>
 
                     <div className="flex flex-col gap-2 pt-2">
@@ -319,7 +338,9 @@ export default function ResetPasswordPage() {
                           type="button"
                           onClick={() => setShowPassword((v) => !v)}
                           className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-neutral-600 hover:bg-neutral-100"
-                          aria-label={showPassword ? "Hide password" : "Show password"}
+                          aria-label={
+                            showPassword ? "Hide password" : "Show password"
+                          }
                         >
                           {showPassword ? (
                             <EyeOff className="h-4 w-4" />
@@ -329,7 +350,9 @@ export default function ResetPasswordPage() {
                         </button>
                       </div>
 
-                      <FieldMessage variant="error">{errors.password?.message}</FieldMessage>
+                      <FieldMessage variant="error">
+                        {errors.password?.message}
+                      </FieldMessage>
                     </div>
 
                     <div className="space-y-2">
@@ -349,7 +372,9 @@ export default function ResetPasswordPage() {
                           type="button"
                           onClick={() => setShowConfirm((v) => !v)}
                           className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-neutral-600 hover:bg-neutral-100"
-                          aria-label={showConfirm ? "Hide password" : "Show password"}
+                          aria-label={
+                            showConfirm ? "Hide password" : "Show password"
+                          }
                         >
                           {showConfirm ? (
                             <EyeOff className="h-4 w-4" />
@@ -359,11 +384,14 @@ export default function ResetPasswordPage() {
                         </button>
                       </div>
 
-                      <FieldMessage variant="error">{errors.confirm?.message}</FieldMessage>
+                      <FieldMessage variant="error">
+                        {errors.confirm?.message}
+                      </FieldMessage>
                     </div>
 
                     {/* ✅ New password == old password (show ABOVE the button with spacing) */}
-                    {passwordSameAlert.hasAlert && passwordSameAlert.alert?.message ? (
+                    {passwordSameAlert.hasAlert &&
+                    passwordSameAlert.alert?.message ? (
                       <Alert variant={passwordSameVariant as any}>
                         {passwordSameAlert.alert.message}
                       </Alert>
@@ -385,12 +413,15 @@ export default function ResetPasswordPage() {
                     </Button>
 
                     <p className="text-xs text-muted-foreground">
-                      If your reset link is expired, request a new one from the forgot password page.
+                      If your reset link is expired, request a new one from the
+                      forgot password page.
                     </p>
 
                     <div className="pt-2 flex flex-col gap-2">
                       <Button asChild variant="outline" className="w-full">
-                        <Link href="/auth/forgot-password">Request a new link</Link>
+                        <Link href="/auth/forgot-password">
+                          Request a new link
+                        </Link>
                       </Button>
                       <Button asChild variant="outline" className="w-full">
                         <Link href="/auth/login">Back to login</Link>
@@ -404,5 +435,23 @@ export default function ResetPasswordPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen bg-muted/30 flex items-start">
+          <div className="mx-auto w-full max-w-5xl px-4 pt-40 pb-16">
+            <div className="rounded-2xl border bg-card p-8 text-sm text-muted-foreground">
+              Loading reset password...
+            </div>
+          </div>
+        </main>
+      }
+    >
+      <ResetPasswordPageContent />
+    </Suspense>
   );
 }
