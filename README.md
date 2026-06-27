@@ -1445,12 +1445,8 @@ email api 正式上线
 
 手机端
 
-strapi同步 inventory 新增了内容怎么办
-
 google 网页的标题
 
 STOREFRONT_CODE=AU真的需要吗
 
 邮件的图片，邮件的link tracking package
-
-inventory sync 重复sync是否会更新内容
