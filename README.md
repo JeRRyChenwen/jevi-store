@@ -1185,63 +1185,62 @@ supplier → 3PL → customer → return → 责任回溯
 
     ```bash
 
-我的品牌服装网站
 
-政策页面需要检查
+    我的品牌服装网站
 
-它们现在是 “结构和口径已经比较稳”，但还不是 “法律层面完全收口的正式最终版”。你现在还差的是一些更偏“经营主体信息”和“实际运营落地”的内容。
+    政策页面需要检查
 
-中国不同的仓库，不同的运输方式
+    它们现在是 “结构和口径已经比较稳”，但还不是 “法律层面完全收口的正式最终版”。你现在还差的是一些更偏“经营主体信息”和“实际运营落地”的内容。
 
-eub是什么意思
+    中国不同的仓库，不同的运输方式
 
-到时候server是不是也要5个
+    eub是什么意思
 
-最下面直接显示全部结果就好，不需要滑轮拉伸
+    到时候server是不是也要5个
 
-不可送达postcode，高危postcode
+    最下面直接显示全部结果就好，不需要滑轮拉伸
 
-未来拓展sql数据库要怎么做
+    不可送达postcode，高危postcode
 
-运费价格变动的话，后台要能一键修改才行，手动修改功能，active要设置好
+    未来拓展sql数据库要怎么做
 
-目的地不只是澳大利亚
+    运费价格变动的话，后台要能一键修改才行，手动修改功能，active要设置好
 
-postcode的范围有点不对
+    目的地不只是澳大利亚
 
-不同国家的postcode具体的详细获取运费
+    postcode的范围有点不对
 
-网址address改
+    不同国家的postcode具体的详细获取运费
 
-By using messaging, you're agreeing that you've understood and committed to our terms and conditions and privacy policy.
+    网址address改
 
-尝试别的国家storefront的运费测试结果
+    By using messaging, you're agreeing that you've understood and committed to our terms and conditions and privacy policy.
 
-1. Shipping Fee Calculation Dashboard / Main Function 2
-   作用：调用 CJ API，采样不同 postcode 的真实/参考运费成本。
-   结果：得到一批 reference quote run 记录。
-   这些记录本身不会直接影响 checkout。
+    尝试别的国家storefront的运费测试结果
 
-2. Shipping Rule Drafts
-   作用：把 reference quote run 转换成可 review、可 publish 的 postcode zone member 草稿。
-   结果：生成 draft items，比如：
-   postcode 3000-3002 → AU_CJFO_TIER_3
-   postcode 3999 → AU_CJFO_TIER_5
-   fallback → AU_CJFO_FALLBACK
-   这些 draft 也不会直接影响 checkout，除非 publish。
+    1. Shipping Fee Calculation Dashboard / Main Function 2
+    作用：调用 CJ API，采样不同 postcode 的真实/参考运费成本。
+    结果：得到一批 reference quote run 记录。
+    这些记录本身不会直接影响 checkout。
 
-3. Shipping Fee Tier Management
-   作用：决定每个 zone 顾客最终看到多少钱。
-   结果：shipping_rules / shipping_rule_tiers。
-   checkout 真正使用的是这里的 live rule 价格。
+    2. Shipping Rule Drafts
+    作用：把 reference quote run 转换成可 review、可 publish 的 postcode zone member 草稿。
+    结果：生成 draft items，比如：
+    postcode 3000-3002 → AU_CJFO_TIER_3
+    postcode 3999 → AU_CJFO_TIER_5
+    fallback → AU_CJFO_FALLBACK
+    这些 draft 也不会直接影响 checkout，除非 publish。
 
-   ```
+    3. Shipping Fee Tier Management
+    作用：决定每个 zone 顾客最终看到多少钱。
+    结果：shipping_rules / shipping_rule_tiers。
+    checkout 真正使用的是这里的 live rule 价格。
 
-   ```
+    ```
 
 ### 102.11
 
-    ```bash
+```bash
 
 我给你的优先级排序
 P0：必须立刻做
@@ -1264,28 +1263,28 @@ P2：中长期优化
 写部署和故障处理文档。
 增加 E2E 测试：注册、登录、加入购物袋、运费计算、库存预留、PayPal sandbox 下单、订单确认、退货申请、admin 审批。
 
-    ```
+```
 
 ### 102.12
 
-    ```bash
+```bash
 
-
-    ```
+123123
+```
 
 ### 102.13
 
-    ```bash
+```bash
 
 
-    ```
+```
 
 ### 102.14
 
-    ```bash
+```bash
 
 
-    ```
+```
 
 # ============================================================================
 
@@ -1344,13 +1343,14 @@ npm run dev
 
 mailer-api：
 docker compose -f docker-compose.local.yml up --build -d
+docker compose -f docker-compose.local.yml up -d
+
+jevi-admin-platform：
+docker compose -f docker-compose.local.yml up -d
 
 jevi-strapi：
 docker compose -f docker-compose.postgres.local.yml up -d
 npm run develop
-
-jevi-admin-platform：
-docker compose -f docker-compose.local.yml up -d
 
 # ============================================================================
 
@@ -1454,7 +1454,3 @@ STOREFRONT_CODE=AU真的需要吗
 邮件的图片，邮件的link tracking package
 
 inventory sync 重复sync是否会更新内容
-
-迁移新的数据库之后运作正常，但email没有自动发送
-
-原本的d1 做好的emial自动发的corn 有没有做好

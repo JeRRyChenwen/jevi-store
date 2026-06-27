@@ -10,10 +10,15 @@ export const runtime = "nodejs";
 
 function getApiBase() {
   return (
+    process.env.API_PROXY ||
+    process.env.AUTH_UPSTREAM ||
+    process.env.D1_WORKER_INTERNAL_BASE ||
     process.env.API_BASE ||
     process.env.NEXT_PUBLIC_API_BASE ||
     ""
-  ).trim().replace(/\/+$/, "");
+  )
+    .trim()
+    .replace(/\/+$/, "");
 }
 
 export async function GET(req: NextRequest) {

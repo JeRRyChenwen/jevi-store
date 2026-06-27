@@ -1,6 +1,7 @@
 // src/app/(shop)/checkout/shipping-quote.ts
 
 import type { DeliveryMethod } from "./types";
+import { normalizeStateForCountry } from "@/lib/address/auStates";
 
 export type ShippingZoneType =
   | "tier"
@@ -56,7 +57,7 @@ export function buildQuoteReqKey(args: {
   postcode?: string | null;
 }): string {
   const country = String(args.country || "").trim();
-  const state = String(args.state || "").trim();
+  const state = normalizeStateForCountry(args.state, country);
   const postcode = String(args.postcode || "").trim();
 
   return JSON.stringify({
@@ -74,9 +75,12 @@ export function buildQuoteRequestInput(args: {
   postcode?: string | null;
   itemsMinor: number;
 }) {
+  const country = String(args.country || "").trim().toUpperCase();
+  const state = normalizeStateForCountry(args.state, country);
+
   return {
-    country: String(args.country || "").trim().toUpperCase(),
-    state: String(args.state || "").trim() || null,
+    country,
+    state: state || null,
     postcode: String(args.postcode || "").trim() || null,
     items_total_minor: Number(args.itemsMinor) || 0,
   };
@@ -117,6 +121,10 @@ export function getShippingQuoteDisplayMessage(
     return "Shipping could not be calculated for this address. Please check your postcode or contact support.";
   }
 
+  if (code === "address_postcode_state_mismatch") {
+    return "Your postcode and state/region do not appear to match. Please go back and check your address.";
+  }
+
   return code || "Shipping quote unavailable.";
 }
 
@@ -130,10 +138,12 @@ export async function fetchOneQuote(args: {
   items_total_minor: number;
   signal: AbortSignal;
 }): Promise<ShippingQuoteAPIResult> {
-  // ✅ 本地开发：优先走 d1-worker（NEXT_PUBLIC_API_BASE），避免 /api/shipping/quote 400
-  const target = args.remoteBase
-    ? `${args.remoteBase}/shipping/quote`
-    : args.apiURL("/shipping/quote");
+  // 浏览器端统一走 Next.js 同源代理，避免直接请求 127.0.0.1:8787 触发 CORS。
+  // 实际转发由 src/app/api/shipping/quote/route.ts 完成。
+  const target = "/api/shipping/quote";
+
+  const country = String(args.country || "").trim().toUpperCase();
+  const state = normalizeStateForCountry(args.state, country);
 
   const res = await fetch(target, {
     method: "POST",
@@ -141,9 +151,9 @@ export async function fetchOneQuote(args: {
     credentials: "include",
     signal: args.signal,
     body: JSON.stringify({
-      country: args.country,
-      state: args.state,
-      postcode: args.postcode,
+      country,
+      state: state || null,
+      postcode: String(args.postcode || "").trim() || null,
       delivery_option: args.delivery_option,
       items_total_minor: args.items_total_minor,
     }),
@@ -166,7 +176,10 @@ export async function fetchOneQuote(args: {
         data?.shipping_availability ??
         "unavailable",
       customer_message:
-        data?.message ?? data?.customer_message ?? data?.detail?.customer_message ?? null,
+        data?.message ??
+        data?.customer_message ??
+        data?.detail?.customer_message ??
+        null,
     };
   }
 

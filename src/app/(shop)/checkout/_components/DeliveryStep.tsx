@@ -130,8 +130,28 @@ function formatEtaText(
   return { etaLine: "", noteLine: null };
 }
 
+function isPostcodeStateMismatchMessage(message: string) {
+  const normalized = String(message || "")
+    .trim()
+    .toLowerCase();
+
+  return (
+    normalized.includes("address_postcode_state_mismatch") ||
+    (normalized.includes("postcode") &&
+      normalized.includes("state") &&
+      (normalized.includes("not") ||
+        normalized.includes("do not appear to match") ||
+        normalized.includes("does not appear to match") ||
+        normalized.includes("appears to be in")))
+  );
+}
+
 function getShippingAlertTitle(message: string) {
   const normalized = String(message || "").toLowerCase();
+
+  if (isPostcodeStateMismatchMessage(message)) {
+    return "Postcode and state do not match";
+  }
 
   if (
     normalized.includes("manual confirmation") ||
@@ -158,12 +178,35 @@ function getShippingAlertTitle(message: string) {
   return "Shipping cannot be completed automatically";
 }
 
+function cleanShippingAlertMessage(message: string) {
+  return String(message || "")
+    .trim()
+    .replace(/\s*\|\s*/g, " ")
+    .replace(/\s+/g, " ");
+}
+
 function getShippingAlertBody(message: string) {
-  const trimmed = String(message || "").trim();
+  const trimmed = cleanShippingAlertMessage(message);
+
+  if (isPostcodeStateMismatchMessage(trimmed)) {
+    if (trimmed && trimmed !== "address_postcode_state_mismatch") {
+      return trimmed;
+    }
+
+    return "Your postcode and state/region do not appear to match. Please go back to Address and check your State/Region or postcode.";
+  }
 
   if (trimmed) return trimmed;
 
   return "Shipping could not be calculated for this address. Please check your postcode or contact support.";
+}
+
+function getShippingAlertHint(message: string) {
+  if (isPostcodeStateMismatchMessage(message)) {
+    return "Go back to Address and select the state/region that matches your postcode, or correct the postcode if it was entered incorrectly.";
+  }
+
+  return "You can go back to Address to check your postcode, or contact support if you believe this destination should be serviceable.";
 }
 
 const DeliveryStep: React.FC<DeliveryStepProps> = ({
@@ -394,9 +437,7 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
 
                   {statusAlert.type === "error" ? (
                     <div className="mt-2 text-xs leading-5 opacity-80">
-                      You can go back to Address to check your postcode, or
-                      contact support if you believe this destination should be
-                      serviceable.
+                      {getShippingAlertHint(statusAlert.body)}
                     </div>
                   ) : null}
                 </div>

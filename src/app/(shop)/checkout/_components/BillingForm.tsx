@@ -3,11 +3,19 @@
 
 import React from "react";
 import CountrySelect from "@/components/address/CountrySelect";
+import {
+  AU_STATE_OPTIONS,
+  isAustraliaCountry,
+  normalizeStateForCountry,
+} from "@/lib/address/auStates";
 import type { Address, AddressErr } from "./address-step.types";
-import { baseInput, hasAnyErr, fieldErrorText, clsInput } from "./address-step.utils";
+import {
+  baseInput,
+  hasAnyErr,
+  fieldErrorText,
+  clsInput,
+} from "./address-step.utils";
 import { InlineError, RequiredStar } from "./AddressFieldParts";
-
-
 
 type BillingFormProps = {
   billing: Address;
@@ -30,15 +38,18 @@ export default function BillingForm({
   title = "Billing Address",
   countryOptions,
 }: BillingFormProps) {
-  const on =
-    (k: keyof Address) =>
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const v = e.target.value;
-      setBilling({ ...billing, [k]: v });
-      if (showErrors) onFieldChange?.(k, v);
-    };
+  const on = (k: keyof Address) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value;
+    setBilling({ ...billing, [k]: v });
+    if (showErrors) onFieldChange?.(k, v);
+  };
 
   const showSummary = showErrors && hasAnyErr(errs, false);
+
+  const isAuBilling = isAustraliaCountry(billing.country);
+  const billingStateValue = isAuBilling
+    ? normalizeStateForCountry(billing.state, billing.country)
+    : String(billing.state || "");
 
   const Inner = (
     <div className="p-4 space-y-6">
@@ -154,13 +165,41 @@ export default function BillingForm({
           <label className="block text-sm font-medium text-neutral-700">
             State/Region <RequiredStar />
           </label>
-          <input
-            className={clsInput(showErrors, errs.state)}
-            value={billing.state || ""}
-            onChange={on("state")}
-            aria-invalid={showErrors && errs.state ? true : undefined}
-            aria-describedby="err-bill-state"
-          />
+
+          {isAuBilling ? (
+            <select
+              className={clsInput(showErrors, errs.state)}
+              value={billingStateValue}
+              onChange={(e) => {
+                const v = e.target.value;
+
+                setBilling({
+                  ...billing,
+                  state: v,
+                });
+
+                if (showErrors) onFieldChange?.("state", v);
+              }}
+              aria-invalid={showErrors && errs.state ? true : undefined}
+              aria-describedby="err-bill-state"
+            >
+              <option value="">Select state/region</option>
+              {AU_STATE_OPTIONS.map((s) => (
+                <option key={s.code} value={s.code}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              className={clsInput(showErrors, errs.state)}
+              value={billing.state || ""}
+              onChange={on("state")}
+              aria-invalid={showErrors && errs.state ? true : undefined}
+              aria-describedby="err-bill-state"
+            />
+          )}
+
           <InlineError
             show={showErrors && errs.state}
             id="err-bill-state"
@@ -194,8 +233,20 @@ export default function BillingForm({
           <CountrySelect
             value={billing.country || ""}
             onChange={(code) => {
-              setBilling({ ...billing, country: code });
-              if (showErrors) onFieldChange?.("country", code);
+              const nextState = isAustraliaCountry(code)
+                ? normalizeStateForCountry(billing.state, code)
+                : String(billing.state || "");
+
+              setBilling({
+                ...billing,
+                country: code,
+                state: nextState,
+              });
+
+              if (showErrors) {
+                onFieldChange?.("country", code);
+                onFieldChange?.("state", nextState);
+              }
             }}
             invalid={!!(showErrors && errs.country)}
             describedById="err-bill-country"

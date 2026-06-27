@@ -46,7 +46,16 @@ const nextConfig = {
   },
 
   async rewrites() {
-    const proxy = process.env.API_PROXY && process.env.API_PROXY.trim();
+    const proxy = (
+      process.env.API_PROXY ||
+      process.env.AUTH_UPSTREAM ||
+      process.env.D1_WORKER_INTERNAL_BASE ||
+      process.env.NEXT_PUBLIC_API_BASE ||
+      ""
+    )
+      .trim()
+      .replace(/\/+$/, "");
+
     if (!proxy) return [];
 
     return [

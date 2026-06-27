@@ -5,6 +5,11 @@ import { useEffect, useMemo } from "react";
 import { Alert } from "@/components/ui/alert";
 import { FieldMessage } from "@/components/ui/field-message";
 import CountrySelect from "@/components/address/CountrySelect";
+import {
+  AU_STATE_OPTIONS,
+  isAustraliaCountry,
+  normalizeStateForCountry,
+} from "@/lib/address/auStates";
 import type { Address, FieldErrors } from "./edit-address-card.types";
 import { countryLabelOf } from "@/lib/country";
 
@@ -26,7 +31,9 @@ function buildEmptyAddressForStorefront(defaultCountry: string): Address {
     city: "",
     state: "",
     postcode: "",
-    country: String(defaultCountry || "").trim().toUpperCase(),
+    country: String(defaultCountry || "")
+      .trim()
+      .toUpperCase(),
     is_default: false,
   };
 }
@@ -71,21 +78,36 @@ export default function AddressSection({
   const countryOptions = useMemo(
     () =>
       allowedCountries.map((code) => {
-        const upper = String(code || "").trim().toUpperCase();
+        const upper = String(code || "")
+          .trim()
+          .toUpperCase();
         return {
           code: upper,
           label: countryLabelOf(upper) || upper,
         };
       }),
-    [allowedCountries]
+    [allowedCountries],
   );
+
+  const isAuAddress = isAustraliaCountry(address.country || defaultCountry);
+  const stateValue = isAuAddress
+    ? normalizeStateForCountry(address.state, address.country || defaultCountry)
+    : String(address.state || "");
 
   useEffect(() => {
     const allowedSet = new Set(
-      allowedCountries.map((x) => String(x || "").trim().toUpperCase()).filter(Boolean)
+      allowedCountries
+        .map((x) =>
+          String(x || "")
+            .trim()
+            .toUpperCase(),
+        )
+        .filter(Boolean),
     );
 
-    const current = String(address.country || "").trim().toUpperCase();
+    const current = String(address.country || "")
+      .trim()
+      .toUpperCase();
 
     if (!current || !allowedSet.has(current)) {
       setAddress((prev) => {
@@ -212,7 +234,9 @@ export default function AddressSection({
         </div>
 
         <div>
-          <label className="text-xs text-neutral-500">Address line 2 (optional)</label>
+          <label className="text-xs text-neutral-500">
+            Address line 2 (optional)
+          </label>
           <input
             disabled={!editing}
             value={address.line2 || ""}
@@ -252,21 +276,48 @@ export default function AddressSection({
             <label className="text-xs text-neutral-500">
               State/Region<span className="text-red-500">*</span>
             </label>
-            <input
-              disabled={!editing}
-              value={address.state || ""}
-              onChange={(e) => {
-                const v = e.target.value;
-                setAddress((prev) => ({ ...prev, state: v }));
-                setErrors((prev) => ({ ...prev, state: undefined }));
-                alert.clear();
-              }}
-              className={
-                baseInputClass +
-                (!editing ? readOnlyClass : "") +
-                (errors.state ? errorClass : "")
-              }
-            />
+
+            {isAuAddress ? (
+              <select
+                disabled={!editing}
+                value={stateValue}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setAddress((prev) => ({ ...prev, state: v }));
+                  setErrors((prev) => ({ ...prev, state: undefined }));
+                  alert.clear();
+                }}
+                className={
+                  baseInputClass +
+                  (!editing ? readOnlyClass : "") +
+                  (errors.state ? errorClass : "")
+                }
+              >
+                <option value="">Select state/region</option>
+                {AU_STATE_OPTIONS.map((s) => (
+                  <option key={s.code} value={s.code}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                disabled={!editing}
+                value={address.state || ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setAddress((prev) => ({ ...prev, state: v }));
+                  setErrors((prev) => ({ ...prev, state: undefined }));
+                  alert.clear();
+                }}
+                className={
+                  baseInputClass +
+                  (!editing ? readOnlyClass : "") +
+                  (errors.state ? errorClass : "")
+                }
+              />
+            )}
+
             <FieldMessage variant="error">{errors.state}</FieldMessage>
           </div>
         </div>
@@ -306,8 +357,24 @@ export default function AddressSection({
                 invalid={!!errors.country}
                 options={countryOptions}
                 onChange={(code) => {
-                  setAddress((prev) => ({ ...prev, country: code }));
-                  setErrors((prev) => ({ ...prev, country: undefined }));
+                  setAddress((prev) => {
+                    const nextState = isAustraliaCountry(code)
+                      ? normalizeStateForCountry(prev.state, code)
+                      : String(prev.state || "");
+
+                    return {
+                      ...prev,
+                      country: code,
+                      state: nextState,
+                    };
+                  });
+
+                  setErrors((prev) => ({
+                    ...prev,
+                    country: undefined,
+                    state: undefined,
+                  }));
+
                   alert.clear();
                 }}
               />
@@ -323,12 +390,20 @@ export default function AddressSection({
               type="button"
               onClick={() => {
                 const allowedSet = new Set(
-                  allowedCountries.map((x) => String(x || "").trim().toUpperCase()).filter(Boolean)
+                  allowedCountries
+                    .map((x) =>
+                      String(x || "")
+                        .trim()
+                        .toUpperCase(),
+                    )
+                    .filter(Boolean),
                 );
 
                 setAddress((prev) => {
                   const next = normalizeAddressForUI(prev);
-                  const current = String(next.country || "").trim().toUpperCase();
+                  const current = String(next.country || "")
+                    .trim()
+                    .toUpperCase();
 
                   if (current && allowedSet.has(current)) {
                     return next;
@@ -375,7 +450,9 @@ export default function AddressSection({
         </div>
 
         {alert.hasAlert && alert.alert?.message ? (
-          <Alert variant={alertVariantOf(alert.alert.type)}>{alert.alert.message}</Alert>
+          <Alert variant={alertVariantOf(alert.alert.type)}>
+            {alert.alert.message}
+          </Alert>
         ) : null}
       </div>
     </section>

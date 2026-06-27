@@ -3,12 +3,19 @@
 
 import React from "react";
 import CountrySelect from "@/components/address/CountrySelect";
+import {
+  AU_STATE_OPTIONS,
+  isAustraliaCountry,
+  normalizeStateForCountry,
+} from "@/lib/address/auStates";
 import type { Address, AddressErr } from "./address-step.types";
-import { baseInput, hasAnyErr, fieldErrorText, clsInput } from "./address-step.utils";
+import {
+  baseInput,
+  hasAnyErr,
+  fieldErrorText,
+  clsInput,
+} from "./address-step.utils";
 import { InlineError, RequiredStar } from "./AddressFieldParts";
-
-
-
 
 type AddressFormProps = {
   address: Address;
@@ -48,6 +55,11 @@ export default function AddressForm({
 
   const showSummary = showErrors && hasAnyErr(errs, !hideYourDetails);
 
+  const isAuAddress = isAustraliaCountry(address.country);
+  const stateValue = isAuAddress
+    ? normalizeStateForCountry(address.state, address.country)
+    : String(address.state || "");
+
   const Inner = (
     <div className="p-4 space-y-6">
       {showSummary && (
@@ -58,7 +70,10 @@ export default function AddressForm({
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-1">
-          <label htmlFor="addr-first" className="block text-sm font-medium text-neutral-700">
+          <label
+            htmlFor="addr-first"
+            className="block text-sm font-medium text-neutral-700"
+          >
             First Name <RequiredStar />
           </label>
           <input
@@ -78,7 +93,10 @@ export default function AddressForm({
         </div>
 
         <div className="space-y-1">
-          <label htmlFor="addr-last" className="block text-sm font-medium text-neutral-700">
+          <label
+            htmlFor="addr-last"
+            className="block text-sm font-medium text-neutral-700"
+          >
             Last Name <RequiredStar />
           </label>
           <input
@@ -98,7 +116,10 @@ export default function AddressForm({
         </div>
 
         <div className="md:col-span-2 space-y-1">
-          <label htmlFor="addr-phone" className="block text-sm font-medium text-neutral-700">
+          <label
+            htmlFor="addr-phone"
+            className="block text-sm font-medium text-neutral-700"
+          >
             Phone <RequiredStar />
           </label>
           <input
@@ -118,7 +139,10 @@ export default function AddressForm({
         </div>
 
         <div className="md:col-span-2 space-y-1">
-          <label htmlFor="addr-line1" className="block text-sm font-medium text-neutral-700">
+          <label
+            htmlFor="addr-line1"
+            className="block text-sm font-medium text-neutral-700"
+          >
             Address Line 1 <RequiredStar />
           </label>
           <input
@@ -138,7 +162,10 @@ export default function AddressForm({
         </div>
 
         <div className="md:col-span-2 space-y-1">
-          <label htmlFor="addr-line2" className="block text-sm font-medium text-neutral-700">
+          <label
+            htmlFor="addr-line2"
+            className="block text-sm font-medium text-neutral-700"
+          >
             Address Line 2 (optional)
           </label>
           <input
@@ -151,7 +178,10 @@ export default function AddressForm({
         </div>
 
         <div className="space-y-1">
-          <label htmlFor="addr-city" className="block text-sm font-medium text-neutral-700">
+          <label
+            htmlFor="addr-city"
+            className="block text-sm font-medium text-neutral-700"
+          >
             City <RequiredStar />
           </label>
           <input
@@ -171,18 +201,47 @@ export default function AddressForm({
         </div>
 
         <div className="space-y-1">
-          <label htmlFor="addr-state" className="block text-sm font-medium text-neutral-700">
+          <label
+            htmlFor="addr-state"
+            className="block text-sm font-medium text-neutral-700"
+          >
             State/Region <RequiredStar />
           </label>
-          <input
-            id="addr-state"
-            className={clsInput(showErrors, errs.state)}
-            autoComplete="address-level1"
-            value={address.state || ""}
-            onChange={on("state")}
-            aria-invalid={showErrors && errs.state ? true : undefined}
-            aria-describedby="err-addr-state"
-          />
+
+          {isAuAddress ? (
+            <select
+              id="addr-state"
+              className={clsInput(showErrors, errs.state)}
+              autoComplete="address-level1"
+              value={stateValue}
+              onChange={(e) => {
+                setAddress({
+                  ...address,
+                  state: e.target.value,
+                });
+              }}
+              aria-invalid={showErrors && errs.state ? true : undefined}
+              aria-describedby="err-addr-state"
+            >
+              <option value="">Select state/region</option>
+              {AU_STATE_OPTIONS.map((s) => (
+                <option key={s.code} value={s.code}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              id="addr-state"
+              className={clsInput(showErrors, errs.state)}
+              autoComplete="address-level1"
+              value={address.state || ""}
+              onChange={on("state")}
+              aria-invalid={showErrors && errs.state ? true : undefined}
+              aria-describedby="err-addr-state"
+            />
+          )}
+
           <InlineError
             show={showErrors && errs.state}
             id="err-addr-state"
@@ -191,7 +250,10 @@ export default function AddressForm({
         </div>
 
         <div className="space-y-1">
-          <label htmlFor="addr-postcode" className="block text-sm font-medium text-neutral-700">
+          <label
+            htmlFor="addr-postcode"
+            className="block text-sm font-medium text-neutral-700"
+          >
             Postcode <RequiredStar />
           </label>
           <input
@@ -211,14 +273,27 @@ export default function AddressForm({
         </div>
 
         <div className="space-y-1">
-          <label htmlFor="addr-country" className="block text-sm font-medium text-neutral-700">
+          <label
+            htmlFor="addr-country"
+            className="block text-sm font-medium text-neutral-700"
+          >
             Country <RequiredStar />
           </label>
 
           <CountrySelect
             id="addr-country"
             value={address.country || ""}
-            onChange={(code) => setAddress({ ...address, country: code })}
+            onChange={(code) => {
+              const nextState = isAustraliaCountry(code)
+                ? normalizeStateForCountry(address.state, code)
+                : String(address.state || "");
+
+              setAddress({
+                ...address,
+                country: code,
+                state: nextState,
+              });
+            }}
             invalid={!!(showErrors && errs.country)}
             describedById="err-addr-country"
             placeholder="Select country"

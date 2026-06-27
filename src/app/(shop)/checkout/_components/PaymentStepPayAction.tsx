@@ -33,23 +33,9 @@ type PreparedPayPalCheckout = {
 };
 
 function getApiBase() {
-  const fromEnv = (process.env.NEXT_PUBLIC_WORKER_BASE_URL ||
-    process.env.NEXT_PUBLIC_API_BASE ||
-    "") as string;
-
-  const base = String(fromEnv || "")
-    .trim()
-    .replace(/\/+$/, "");
-
-  if (base) return base;
-
-  if (typeof window !== "undefined") {
-    const h = window.location.hostname;
-    if (h === "localhost") return "http://localhost:8787";
-    if (h === "127.0.0.1") return "http://127.0.0.1:8787";
-  }
-
-  return "http://localhost:8787";
+  // Browser-side payment requests must go through the Next.js same-origin proxy.
+  // This avoids CORS and lets Next rewrite /api/* to API_PROXY / jevi-api.
+  return "/api";
 }
 
 async function postJson(url: string, body: any) {

@@ -1,9 +1,14 @@
 // src/app/api/addresses/route.ts
 import { NextRequest, NextResponse } from "next/server";
 
-const API_BASE =
-  (process.env.NEXT_PUBLIC_API_BASE || "").replace(/\/+$/, "") ||
-  "http://127.0.0.1:8787";
+const API_BASE = (
+  process.env.API_PROXY ||
+  process.env.AUTH_UPSTREAM ||
+  process.env.D1_WORKER_INTERNAL_BASE ||
+  process.env.API_BASE ||
+  process.env.NEXT_PUBLIC_API_BASE ||
+  "http://127.0.0.1:8787"
+).replace(/\/+$/, "");
 
 // 强制不要缓存（避免地址更新后页面仍读到旧数据）
 export const dynamic = "force-dynamic";
@@ -37,7 +42,8 @@ export async function GET(req: NextRequest) {
     return new NextResponse(text, {
       status: upstream.status,
       headers: {
-        "content-type": upstream.headers.get("content-type") || "application/json",
+        "content-type":
+          upstream.headers.get("content-type") || "application/json",
         "cache-control": "no-store",
       },
     });
@@ -67,7 +73,8 @@ export async function POST(req: NextRequest) {
     return new NextResponse(text, {
       status: upstream.status,
       headers: {
-        "content-type": upstream.headers.get("content-type") || "application/json",
+        "content-type":
+          upstream.headers.get("content-type") || "application/json",
         "cache-control": "no-store",
       },
     });
