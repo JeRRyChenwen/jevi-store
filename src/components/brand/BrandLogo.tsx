@@ -21,7 +21,7 @@ type BrandLogoProps = {
   className?: string;
 
   /**
-   * ✅ 图片本体 className
+   * 图片本体 className
    * 用于像 Navbar 这种场景，单独控制手机 / 桌面端高度
    */
   imageClassName?: string;
@@ -59,9 +59,10 @@ function BrandLogoInner({
       <Image
         src={src}
         alt={logoAlt}
-        width={600}
-        height={350}
+        width={1200}
+        height={103}
         priority={priority}
+        sizes="(max-width: 768px) 120px, 220px"
         className={`object-contain ${imageClassName}`}
         style={
           useResponsiveImageHeight
@@ -85,7 +86,10 @@ export default function BrandLogo({
   }
 
   return (
-    <Link href="/" className="inline-flex items-center transition-opacity hover:opacity-90">
+    <Link
+      href="/"
+      className="inline-flex items-center transition-opacity hover:opacity-90"
+    >
       <BrandLogoInner {...props} />
     </Link>
   );

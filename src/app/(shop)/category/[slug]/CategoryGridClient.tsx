@@ -24,6 +24,7 @@ import {
 type Props = {
   slug: string;
   title: string;
+  description?: string;
   total: number;
   pageSize?: number;
   categoryDocIds?: string[];
@@ -66,6 +67,7 @@ type VirtualFilter =
 export default function CategoryGridClient({
   slug,
   title,
+  description,
   total,
   pageSize = 40,
   categoryDocIds,
@@ -83,8 +85,12 @@ export default function CategoryGridClient({
   // - 这里用 useMemo 固定住，避免每次 re-render now 都变导致无限请求
   const virtualFilter: VirtualFilter = useMemo(() => {
     if (!isVirtualSlug(slug)) return null;
+
     const nowISO = new Date().toISOString();
-    return slug === "new-in" ? { kind: "new-in", nowISO } : { kind: "on-sale", nowISO };
+
+    return slug === "new-in"
+      ? { kind: "new-in", nowISO }
+      : { kind: "on-sale", nowISO };
   }, [slug]);
 
   // === URL query state（抽出）===
@@ -132,6 +138,7 @@ export default function CategoryGridClient({
   // 打开后把焦点放到 Close；Esc 关闭并把焦点还给 Filter
   useEffect(() => {
     if (!open) return;
+
     setTimeout(() => closeBtnRef.current?.focus(), 0);
 
     const onKey = (e: KeyboardEvent) => {
@@ -141,7 +148,9 @@ export default function CategoryGridClient({
         setTimeout(() => triggerBtnRef.current?.focus(), 0);
       }
     };
+
     window.addEventListener("keydown", onKey);
+
     return () => window.removeEventListener("keydown", onKey);
   }, [open, setOpen]);
 
@@ -183,8 +192,12 @@ export default function CategoryGridClient({
   }, [sortKey]);
 
   // products
-  const { loading, list, error, filteredTotal: filteredTotalFromApi } =
-  useCategoryProducts({
+  const {
+    loading,
+    list,
+    error,
+    filteredTotal: filteredTotalFromApi,
+  } = useCategoryProducts({
     slug,
     categoryDocIds,
     page: basePage,
@@ -223,6 +236,7 @@ export default function CategoryGridClient({
 
     const next = new URLSearchParams(sp.toString());
     next.set("page", String(pageCount));
+
     router.replace(`${pathname}?${next.toString()}`);
   }, [pageParam, pageCount, router, pathname, sp]);
 
@@ -276,6 +290,7 @@ export default function CategoryGridClient({
       <CategoryHeader
         title={title}
         slug={slug}
+        description={description}
         resultLabel={resultLabel}
         sortKey={sortKey}
         setSortInUrl={setSortInUrl}

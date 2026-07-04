@@ -1338,19 +1338,19 @@ docker start jevi-postgres-dev
 jevi-store：
 docker compose -f docker-compose.local.yml up -d
 
-jevi-api：
-npm run dev
-
-mailer-api：
-docker compose -f docker-compose.local.yml up --build -d
-docker compose -f docker-compose.local.yml up -d
-
 jevi-admin-platform：
 docker compose -f docker-compose.local.yml up -d
+
+jevi-api：
+npm run dev
 
 jevi-strapi：
 docker compose -f docker-compose.postgres.local.yml up -d
 npm run develop
+
+mailer-api：
+docker compose -f docker-compose.local.yml up --build -d
+docker compose -f docker-compose.local.yml up -d
 
 # ============================================================================
 
@@ -1445,8 +1445,18 @@ email api 正式上线
 
 手机端
 
-google 网页的标题
-
 STOREFRONT_CODE=AU真的需要吗
 
 邮件的图片，邮件的link tracking package
+
+有正式域名之后要把emial里的logo补上
+
+税务数据库处理
+
+链接cj
+
+-P pager=off
+
+footer的logo位置
+
+expense 运费记录（domain费用，自动发邮件软件费用，云数据库费用，进货价格费用，运费价格费用）

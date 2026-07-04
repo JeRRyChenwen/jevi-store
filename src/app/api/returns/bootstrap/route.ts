@@ -1,9 +1,8 @@
 // src/app/api/returns/bootstrap/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { getServerApiBase } from "@/lib/serverApiBase";
 
-const API_BASE =
-  (process.env.NEXT_PUBLIC_API_BASE || "").replace(/\/+$/, "") ||
-  "http://127.0.0.1:8787";
+const API_BASE = getServerApiBase();
 
 // 解析 sp_user（你项目里一直用的 cookie），用于兜底拿 email/id
 function parseSpUserCookie(raw?: string | null): { id?: number | null; email?: string | null } {

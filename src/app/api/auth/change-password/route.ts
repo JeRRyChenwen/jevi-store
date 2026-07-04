@@ -1,9 +1,8 @@
 // src/app/api/auth/change-password/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { getServerApiBase } from "@/lib/serverApiBase";
 
-const WORKER_BASE =
-  (process.env.NEXT_PUBLIC_API_BASE || "").replace(/\/+$/, "") ||
-  "http://127.0.0.1:8787";
+const WORKER_BASE = getServerApiBase();
 
 export async function POST(req: NextRequest) {
   const body = await req.text();

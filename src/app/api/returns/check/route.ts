@@ -1,8 +1,8 @@
-// src/app/api/orders/route.ts
+// src/app/api/returns/check/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { getServerApiBase } from "@/lib/serverApiBase";
 
-const API_BASE =
-  (process.env.NEXT_PUBLIC_API_BASE || "").replace(/\/+$/, "") || "http://127.0.0.1:8787";
+const API_BASE = getServerApiBase();
 
 function parseSpUserCookie(raw?: string | null): { id?: number | null; email?: string | null } {
   if (!raw) return {};

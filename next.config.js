@@ -46,17 +46,25 @@ const nextConfig = {
   },
 
   async rewrites() {
+    /**
+     * 注意：
+     * 这里是 Next.js build 阶段读取的配置。
+     *
+     * 不要用 NEXT_PUBLIC_API_BASE 作为服务端 proxy fallback。
+     * NEXT_PUBLIC_API_BASE 是给浏览器用的，可以是 http://127.0.0.1:8787。
+     *
+     * 但是 jevi-store 跑在 Docker 容器里时，服务端访问宿主机 jevi-api 必须使用：
+     * http://host.docker.internal:8787
+     */
     const proxy = (
       process.env.API_PROXY ||
+      process.env.API_BASE ||
       process.env.AUTH_UPSTREAM ||
       process.env.D1_WORKER_INTERNAL_BASE ||
-      process.env.NEXT_PUBLIC_API_BASE ||
-      ""
+      "http://host.docker.internal:8787"
     )
       .trim()
       .replace(/\/+$/, "");
-
-    if (!proxy) return [];
 
     return [
       {

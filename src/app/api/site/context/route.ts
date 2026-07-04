@@ -1,5 +1,6 @@
 // src/app/api/site/context/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { getServerApiBase } from "@/lib/serverApiBase";
 import {
   FALLBACK_SITE_CONTEXT,
   normalizeSiteContext,
@@ -8,18 +9,7 @@ import { CURRENT_STOREFRONT } from "@/lib/market/current";
 
 export const runtime = "nodejs";
 
-function getApiBase() {
-  return (
-    process.env.API_PROXY ||
-    process.env.AUTH_UPSTREAM ||
-    process.env.D1_WORKER_INTERNAL_BASE ||
-    process.env.API_BASE ||
-    process.env.NEXT_PUBLIC_API_BASE ||
-    ""
-  )
-    .trim()
-    .replace(/\/+$/, "");
-}
+
 
 export async function GET(req: NextRequest) {
   const fallbackContext = {
@@ -28,7 +18,7 @@ export async function GET(req: NextRequest) {
   };
 
   try {
-    const apiBase = getApiBase();
+    const apiBase = getServerApiBase();
 
     // 如果还没配置后端 API_BASE，就先直接返回本地 fallback
     if (!apiBase) {

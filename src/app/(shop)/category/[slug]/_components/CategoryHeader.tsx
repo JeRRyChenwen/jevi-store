@@ -22,7 +22,15 @@ const SORT_LABELS: Record<SortKey, string> = {
 
 export type CategoryHeaderProps = {
   title: string;
+
+  /**
+   * slug 和 description 目前由上层传入。
+   * description 会继续用于 page.tsx 里的 SEO metadata，
+   * 但这里不在页面视觉区域显示。
+   */
   slug: string;
+  description?: string;
+
   resultLabel: string;
 
   sortKey: SortKey;
@@ -34,7 +42,6 @@ export type CategoryHeaderProps = {
 
 export default function CategoryHeader({
   title,
-  slug,
   resultLabel,
   sortKey,
   setSortInUrl,
@@ -46,9 +53,6 @@ export default function CategoryHeader({
       <div className="flex items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">{title}</h1>
-          <p className="text-neutral-600">
-            Category: <code className="font-mono">{slug}</code>
-          </p>
         </div>
 
         <div className="flex items-center gap-3">
@@ -58,7 +62,10 @@ export default function CategoryHeader({
 
           {/* Sort */}
           <div className="hidden sm:flex">
-            <Select value={sortKey} onValueChange={(v) => setSortInUrl(v as SortKey)}>
+            <Select
+              value={sortKey}
+              onValueChange={(v) => setSortInUrl(v as SortKey)}
+            >
               <SelectTrigger
                 className="rounded-full w-[190px] border px-3 py-2 text-sm focus:ring-2 focus:ring-black/10"
                 aria-label="Sort products"
@@ -67,6 +74,7 @@ export default function CategoryHeader({
                   {SORT_LABELS[sortKey] ?? "Sort"}
                 </SelectValue>
               </SelectTrigger>
+
               <SelectContent
                 align="end"
                 className="z-50 rounded-xl border border-neutral-200 bg-white text-neutral-900 shadow-[0_10px_30px_rgba(0,0,0,0.08)]"

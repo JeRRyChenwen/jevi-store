@@ -12,15 +12,20 @@ services:
       PORT: "3000"
       HOSTNAME: "0.0.0.0"
 
-      # 容器服务端访问宿主机服务
+      # 容器服务端访问宿主机上的 jevi-api
       API_PROXY: http://host.docker.internal:8787
+      API_BASE: http://host.docker.internal:8787
       AUTH_UPSTREAM: http://host.docker.internal:8787
+      D1_WORKER_INTERNAL_BASE: http://host.docker.internal:8787
+
+      # 容器服务端访问宿主机上的 Strapi
       STRAPI_URL: http://host.docker.internal:1337
 
       # 浏览器访问宿主机服务
       NEXT_PUBLIC_API_BASE: http://127.0.0.1:8787
       NEXT_PUBLIC_STRAPI_URL: http://127.0.0.1:1337
       NEXT_PUBLIC_STOREFRONT_CODE: AU
+
     ports:
       - "3000:3000"
     restart: "no"

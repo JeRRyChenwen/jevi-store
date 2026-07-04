@@ -1,0 +1,29 @@
+{
+	"folders": [
+		{
+			"path": "../d1-worker"
+		},
+		{
+			"path": "../mailer-api"
+		},
+		{
+			"path": "../scripts"
+		},
+		{
+			"path": "../jevi-admin-platform"
+		},
+		{
+			"path": "."
+		},
+		{
+			"path": "../jevi-strapi"
+		},
+		{
+			"path": "../jevi-api"
+		},
+		{
+			"path": "../jevi-infra"
+		}
+	],
+	"settings": {}
+}

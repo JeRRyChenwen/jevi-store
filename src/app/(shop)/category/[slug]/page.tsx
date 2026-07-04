@@ -1,16 +1,44 @@
-// src/app/category/[slug]/page.tsx
+// src/app/(shop)/category/[slug]/page.tsx
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import CategoryGridClient from "./CategoryGridClient";
 import { api } from "@/lib/strapi";
+import { BRAND } from "@/lib/brand";
 import { CURRENT_STOREFRONT } from "@/lib/market/current";
 
-// 兜底顶级分类（防止没连上 Strapi 时至少有这 6 个）
-const STATIC_SLUGS = ["shoes", "bottoms", "tops", "suit", "accessories", "outfit"];
+// 兜底顶级分类（防止没连上 Strapi 时至少有这些分类页）
+const STATIC_SLUGS = [
+  "shoes",
+  "bottoms",
+  "tops",
+  "suit",
+  "accessories",
+  "outfit",
+  "new-in",
+  "on-sale",
+];
 
-// ✅ 这两个是“聚合页”slug：不按 category 关系过滤
+// 这两个是“聚合页”slug：不按 category 关系过滤
 const PROMO_SLUGS = new Set(["new-in", "on-sale"]);
 const isPromoSlug = (slug: string) => PROMO_SLUGS.has(slug);
+
+type CategoryCurrent = {
+  name: string;
+  slug: string;
+  documentId?: string;
+  description?: string;
+  seo_title?: string;
+  seo_description?: string;
+};
+
+function titleizeSlug(slug: string) {
+  return slug
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
 
 /** 遍历全部分类（不依赖 populate[children]），拿到所有 slug */
 async function fetchAllCategorySlugs(): Promise<string[]> {
@@ -25,7 +53,7 @@ async function fetchAllCategorySlugs(): Promise<string[]> {
           `?fields[0]=slug` +
           `&pagination[page]=${page}&pagination[pageSize]=${pageSize}` +
           `&publicationState=live`,
-        { noCache: true }
+        { noCache: true },
       );
 
       const rows: any[] = json?.data ?? [];
@@ -45,7 +73,7 @@ async function fetchAllCategorySlugs(): Promise<string[]> {
   return Array.from(set);
 }
 
-/** ① 生成静态路径：顶级兜底 + Strapi 返回的所有分类（含子分类） */
+/** 生成静态路径：顶级兜底 + Strapi 返回的所有分类（含子分类） */
 export async function generateStaticParams() {
   try {
     const all = await fetchAllCategorySlugs();
@@ -58,7 +86,7 @@ export async function generateStaticParams() {
 export const dynamic = "force-static";
 
 /**
- * ✅ promo 聚合页过滤：
+ * promo 聚合页过滤：
  * on-sale: sale_starts_at <= now && (sale_ends_at is null || sale_ends_at >= now)
  * new-in:  new_starts_at  <= now && (new_ends_at  is null || new_ends_at  >= now)
  */
@@ -69,7 +97,9 @@ function buildPromoProductFilters(slug: string, nowISO: string): string[] {
     parts.push(`filters[sale_starts_at][$notNull]=true`);
     parts.push(`filters[sale_starts_at][$lte]=${encodeURIComponent(nowISO)}`);
     parts.push(`filters[$or][0][sale_ends_at][$null]=true`);
-    parts.push(`filters[$or][1][sale_ends_at][$gte]=${encodeURIComponent(nowISO)}`);
+    parts.push(
+      `filters[$or][1][sale_ends_at][$gte]=${encodeURIComponent(nowISO)}`,
+    );
     return parts;
   }
 
@@ -77,21 +107,23 @@ function buildPromoProductFilters(slug: string, nowISO: string): string[] {
     parts.push(`filters[new_starts_at][$notNull]=true`);
     parts.push(`filters[new_starts_at][$lte]=${encodeURIComponent(nowISO)}`);
     parts.push(`filters[$or][0][new_ends_at][$null]=true`);
-    parts.push(`filters[$or][1][new_ends_at][$gte]=${encodeURIComponent(nowISO)}`);
+    parts.push(
+      `filters[$or][1][new_ends_at][$gte]=${encodeURIComponent(nowISO)}`,
+    );
     return parts;
   }
 
   return parts;
 }
 
-/** 统计商品总数：支持 slug 或 documentId 列表（$in）；✅ 支持 promo 聚合页 */
+/** 统计商品总数：支持 slug 或 documentId 列表（$in）；支持 promo 聚合页 */
 async function getProductTotal(opts: {
   slug?: string;
   categoryDocIds?: string[];
 }): Promise<number> {
   const { slug, categoryDocIds } = opts;
 
-  // ✅ promo 聚合页：不按 category 过滤
+  // promo 聚合页：不按 category 过滤
   if (slug && isPromoSlug(slug)) {
     const nowISO = new Date().toISOString();
     const parts: string[] = [];
@@ -104,7 +136,7 @@ async function getProductTotal(opts: {
       const json: any = await api(
         `/api/products?${parts.join("&")}` +
           `&fields[0]=id&pagination[pageSize]=1&publicationState=live`,
-        { noCache: true }
+        { noCache: true },
       );
       return Number(json?.meta?.pagination?.total ?? 0);
     } catch {
@@ -112,12 +144,14 @@ async function getProductTotal(opts: {
     }
   }
 
-  // ✅ 普通分类页：按 category 过滤（原逻辑）
+  // 普通分类页：按 category 过滤
   const filterPart = categoryDocIds?.length
     ? categoryDocIds
         .map(
           (id, i) =>
-            `filters[category][documentId][$in][${i}]=${encodeURIComponent(id)}`
+            `filters[category][documentId][$in][${i}]=${encodeURIComponent(
+              id,
+            )}`,
         )
         .join("&")
     : `filters[category][slug][$eq]=${encodeURIComponent(slug || "")}`;
@@ -126,7 +160,7 @@ async function getProductTotal(opts: {
     const json: any = await api(
       `/api/products?${filterPart}` +
         `&fields[0]=id&pagination[pageSize]=1&publicationState=live`,
-      { noCache: true }
+      { noCache: true },
     );
     return Number(json?.meta?.pagination?.total ?? 0);
   } catch {
@@ -136,27 +170,44 @@ async function getProductTotal(opts: {
 
 /** 取“当前分类 + 顶级父分类 documentId”（若当前就是顶级，则父为自身） */
 async function getCurrentAndRootDocId(slug: string): Promise<{
-  current: { name: string; slug: string; documentId?: string };
+  current: CategoryCurrent;
   rootDocId?: string;
 }> {
   try {
     const json: any = await api(
       `/api/categories` +
         `?filters[slug][$eq]=${encodeURIComponent(slug)}` +
-        `&fields[0]=name&fields[1]=slug&fields[2]=documentId` +
+        `&fields[0]=name` +
+        `&fields[1]=slug` +
+        `&fields[2]=documentId` +
+        `&fields[3]=description` +
+        `&fields[4]=seo_title` +
+        `&fields[5]=seo_description` +
         `&populate[parent][fields][0]=documentId` +
         `&populate[parent][fields][1]=slug` +
         `&publicationState=live`,
-      { noCache: true }
+      { noCache: true },
     );
 
     const row = json?.data?.[0];
-    if (!row) return { current: { name: slug, slug } };
 
-    const current = {
-      name: row?.attributes?.name ?? row?.name ?? slug,
+    if (!row) {
+      return {
+        current: {
+          name: titleizeSlug(slug),
+          slug,
+        },
+      };
+    }
+
+    const current: CategoryCurrent = {
+      name: row?.attributes?.name ?? row?.name ?? titleizeSlug(slug),
       slug: row?.attributes?.slug ?? row?.slug ?? slug,
       documentId: row?.attributes?.documentId ?? row?.documentId,
+      description: row?.attributes?.description ?? row?.description ?? "",
+      seo_title: row?.attributes?.seo_title ?? row?.seo_title ?? "",
+      seo_description:
+        row?.attributes?.seo_description ?? row?.seo_description ?? "",
     };
 
     const parentNode =
@@ -174,15 +225,23 @@ async function getCurrentAndRootDocId(slug: string): Promise<{
     const rootDocId = parentDocId || current.documentId;
     return { current, rootDocId };
   } catch {
-    return { current: { name: slug, slug } };
+    return {
+      current: {
+        name: titleizeSlug(slug),
+        slug,
+      },
+    };
   }
 }
 
 /** 根据“顶级父分类 documentId”取它的所有子分类（兄弟） */
-async function getRootChildren(rootDocId?: string): Promise<
+async function getRootChildren(
+  rootDocId?: string,
+): Promise<
   Array<{ name: string; slug: string; documentId?: string; nav_order?: number }>
 > {
   if (!rootDocId) return [];
+
   try {
     const json: any = await api(
       `/api/categories` +
@@ -191,9 +250,11 @@ async function getRootChildren(rootDocId?: string): Promise<
         `&sort[0]=nav_order:asc&sort[1]=name:asc` +
         `&pagination[pageSize]=200` +
         `&publicationState=live`,
-      { noCache: true }
+      { noCache: true },
     );
+
     const list: any[] = json?.data ?? [];
+
     return list.map((c) => ({
       name: c?.attributes?.name ?? c?.name ?? "",
       slug: c?.attributes?.slug ?? c?.slug ?? "",
@@ -205,27 +266,74 @@ async function getRootChildren(rootDocId?: string): Promise<
   }
 }
 
-// 👇 Next 15 的异步 params 需要 await
+// Next 15 的异步 params 需要 await
 type ParamsPromise = Promise<{ slug: string }>;
 
-export default async function CategoryPage({ params }: { params: ParamsPromise }) {
+export async function generateMetadata({
+  params,
+}: {
+  params: ParamsPromise;
+}): Promise<Metadata> {
   const { slug } = await params;
 
-  const [{ current, rootDocId }] = await Promise.all([getCurrentAndRootDocId(slug)]);
+  const { current } = await getCurrentAndRootDocId(slug);
+
+  const name = current?.name || titleizeSlug(slug);
+  const pageSlug = current?.slug || slug;
+
+  const title = current?.seo_title || `${name} | Shop ${name} Online`;
+
+  const description =
+    current?.seo_description ||
+    current?.description ||
+    `Shop ${BRAND.displayName}'s ${name} collection online. Discover modern apparel, footwear and lifestyle essentials.`;
+
+  return {
+    title,
+    description,
+    alternates: {
+      canonical: `/category/${pageSlug}`,
+    },
+    openGraph: {
+      title,
+      description,
+      url: `/category/${pageSlug}`,
+      type: "website",
+      siteName: BRAND.displayName,
+    },
+  };
+}
+
+export default async function CategoryPage({
+  params,
+}: {
+  params: ParamsPromise;
+}) {
+  const { slug } = await params;
+
+  const [{ current, rootDocId }] = await Promise.all([
+    getCurrentAndRootDocId(slug),
+  ]);
+
   if (!current?.slug) notFound();
 
-  // ✅ promo 聚合页：不展示 siblings（也不需要组 docIds）
+  // promo 聚合页：不展示 siblings（也不需要组 docIds）
   const promo = isPromoSlug(slug);
   const siblings = promo ? [] : await getRootChildren(rootDocId);
 
   let categoryDocIds: string[] | undefined;
+
   const isTop =
-    !promo && current.documentId && rootDocId && current.documentId === rootDocId;
+    !promo &&
+    current.documentId &&
+    rootDocId &&
+    current.documentId === rootDocId;
 
   if (isTop) {
     const childIds = siblings
       .map((s) => s.documentId)
       .filter((x): x is string => Boolean(x));
+
     categoryDocIds = [current.documentId!, ...childIds];
   }
 
@@ -249,6 +357,7 @@ export default async function CategoryPage({ params }: { params: ParamsPromise }
             const cls = active
               ? `${base} bg-black text-white border-black`
               : `${base} border-neutral-300 text-neutral-800 hover:bg-neutral-50`;
+
             return (
               <Link
                 key={s.slug}
@@ -267,6 +376,7 @@ export default async function CategoryPage({ params }: { params: ParamsPromise }
         <CategoryGridClient
           slug={slug}
           title={current.name}
+          description={current.description}
           total={totalForUI}
           pageSize={40}
           categoryDocIds={categoryDocIds}

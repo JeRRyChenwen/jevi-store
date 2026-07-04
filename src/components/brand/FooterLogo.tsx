@@ -8,11 +8,13 @@ import BrandLogo from "@/components/brand/BrandLogo";
  */
 export default function FooterLogo() {
   return (
-    <BrandLogo
-      src="/brand/logo-horizontal.png"
-      height={42}
-      clickable={false}
-      priority={false}
-    />
+    <div className="-ml-7 inline-flex items-center justify-start">
+      <BrandLogo
+        src="/brand/logo-horizontal.png"
+        height={42}
+        clickable={false}
+        priority={false}
+      />
+    </div>
   );
 }

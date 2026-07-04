@@ -1,9 +1,8 @@
-// src/app/api/orders/lookup/route.ts
+// src/app/api/returns/lookup/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { getServerApiBase } from "@/lib/serverApiBase";
 
-const API_BASE =
-  (process.env.NEXT_PUBLIC_API_BASE || "").replace(/\/+$/, "") ||
-  "http://127.0.0.1:8787";
+const API_BASE = getServerApiBase();
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
