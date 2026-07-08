@@ -1339,6 +1339,9 @@ jevi-store：
 docker compose -f docker-compose.local.yml up -d
 
 jevi-admin-platform：
+npm run build
+docker compose -f docker-compose.local.yml down
+docker compose -f docker-compose.local.yml up -d --build
 docker compose -f docker-compose.local.yml up -d
 
 jevi-api：
@@ -1457,6 +1460,33 @@ STOREFRONT_CODE=AU真的需要吗
 
 -P pager=off
 
-footer的logo位置
-
 expense 运费记录（domain费用，自动发邮件软件费用，云数据库费用，进货价格费用，运费价格费用）
+
+3pl 物流 email track
+
+migration文件整合
+
+运往世界各地
+
+==================================================================
+
+CJ的测试数据
+
+==================================================================
+
+cj_pid = 1364450963733221376
+cj_vid = 1364450965092175872
+cj_variant_sku = CJPB101986806FU
+
+variantKey = Black-35
+variantNameEn = Little white shoes women summer 2020 new wild Korean autumn thick-soled casual shoes mesh breathable increased sports shoes Black 35
+variantWeight = 700
+variantSellPrice = 5.37
+
+fulfillment_provider = cj
+fulfillment_enabled = true
+requires_manual_review = false
+
+cj_pid = 1364450963733221376
+cj_vid = 1364450965092175872
+cj_variant_sku = CJPB101986806FU
