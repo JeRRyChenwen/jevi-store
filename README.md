@@ -1279,10 +1279,57 @@ P2：中长期优化
 
 ```
 
-### 102.14
+# 102.重点流程记录
+
+### 入库和出库流程
 
 ```bash
 
+入库流程：
+CJ Dashboard
+→ Service
+→ 3PL Fulfillment Service
+→ Product
+→ Add Service Product / Import by Excel
+
+出库流程：
+
+
+```
+
+### 自动发邮件，域名邮件流程
+
+```bash
+
+顾客发邮件：
+customer@gmail.com
+→ support@jevi.com
+
+Cloudflare 转发：
+support@jevi.com
+→ 你的私人 Gmail
+
+你在 Gmail 阅读并调用Resend 用 support@jevi.com 回复回复：
+→ Resend API
+→ 顾客邮箱
+你不在 Gmail 里直接点击“回复”，而是在你自己的系统里填写回复内容，再由 mailer-api 调用 Resend，把邮件以 support@jevi.com 的名义发给顾客。
+
+和顾客沟通的email：
+support@jeviapparelstudio.com
+
+自动发消息的email：
+
+
+
+support@jeviapparelstudio.com
+既作为 Resend 发件地址
+也作为顾客回复地址
+
+Resend 发件时
+→ 顾客收到
+→ 同时 BCC 一份到你的私人 Gmail
+
+并且希望顾客和你的邮件保持在同一个会话线程里。
 
 ```
 
@@ -1416,75 +1463,26 @@ wrangler secret put MAILER_INTERNAL_TOKEN
 
 # ============================================================================
 
-# ============================================================================
-
-npm run dev
-
-npx wrangler dev --x-remote-bindings
-或者
-wrangler dev --remote
-或者
-npx wrangler dev
-或者
-npx wrangler dev --log-level debug
-
-wrangler dev --port 8789
-
-npm run develop
-
-cloudflared tunnel --url http://localhost:1337
-
-start-dev.bat
-
-npm run dev -- -p 3001
+入库和出库流程
 
 # ============================================================================
 
-运输时间需要处理
+入库流程：
+CJ Dashboard
+→ Service
+→ 3PL Fulfillment Service
+→ Product
+→ Add Service Product / Import by Excel
 
-法律
+出库流程：
 
-email api 正式上线
+# ============================================================================
 
-手机端
-
-STOREFRONT_CODE=AU真的需要吗
-
-邮件的图片，邮件的link tracking package
-
-有正式域名之后要把emial里的logo补上
-
-税务数据库处理
-
-链接cj
-
--P pager=off
-
-expense 运费记录（domain费用，自动发邮件软件费用，云数据库费用，进货价格费用，运费价格费用）
-
-3pl 物流 email track
-
-migration文件整合
-
-运往世界各地
-
-有些文件太庞大，需要拆分
-
-admin平台左侧的入库，出库相关tab需要合并到一起，分成好几大类
-
-入库流程学习
-
-email注册
-
-email template修改
-
-resend api注册
-
-==================================================================
+# ============================================================================
 
 CJ的测试数据
 
-==================================================================
+# ============================================================================
 
 cj_pid = 1364450963733221376
 cj_vid = 1364450965092175872
@@ -1502,3 +1500,70 @@ requires_manual_review = false
 cj_pid = 1364450963733221376
 cj_vid = 1364450965092175872
 cj_variant_sku = CJPB101986806FU
+
+# ============================================================================
+
+我有一个名为 jevi-store 的前端react品牌服装网站项目，一个名为jevi-api的后端项目，一个名为jevi-admin-platform的项目的admin平台（负责管理名为 social-platform 的前端react品牌服装网站和数据库），以及一个strapi项目（负责用cms管理购物网站上售卖的产品）， 和 一个名为 mailer-api 的自动发邮件的项目，我以后打算把这些项目都放到一个云服务器里运行部署（目前还在开发阶段），目前是正在使用docker来进行开发 我目前已经把我的项目基本做好了，不过还是有一个问题，就是我目前打算使用cjdropshipping （也就是这个 https://cjdropshipping.com/ 网站）作为我的3pl，也就是第三方物流，但我想了想，我希望可以实现自动化流程，我目前只是初步想法，我希望客户在我的网站上下单之后，可以自动触发cjdropshipping 的api去开始发货到客户给我的地址，然后或许还能自动把package tracking link发给我，然后还能自动记录发货的状态（类似货物有无损坏，发错货之类的问题），总而言之就是一个自动接收订单，发货的流程，你能帮我看看怎么做吗，我打算分成入库和出库两部分，入库我还没开始做，我打算先做好出库的逻辑再做入库的逻辑，下面是我目前的进度： P8-G1 outbound/create integration ✅ P8-G2 后端真实创建 Route 待 typecheck 确认 P8-G2 状态与库存 Safety Gate ✅ P8-G2 15 分钟库存新鲜度检查 ✅ P8-G2 并发创建锁 ✅ P8-G2 submit=false ✅ Admin 真实创建按钮 尚未添加 Create Progress 查询 尚未添加 Outbound Submit 尚未添加 mailer-api 是我的自动发邮件的项目 jevi-api是我的后端项目 jevi-store 是我的前端购物react网站项目（你在解压我的 jevi-store.zip 文件的时候可以直接跳过 node_modules/.next 因为我的这个zip比较大，你直接看我的 jevi-store\src 文件夹里的内容就好了） jevi-admin-platform是我的admin平台项目（负责管理名为 jevi-admin-platform 的前端react品牌服装网站和数据库
+
+# ============================================================================
+
+运输时间需要处理
+
+法律
+
+email api 正式上线
+
+手机端
+
+STOREFRONT_CODE=AU真的需要吗
+
+邮件的图片，邮件的link tracking package
+
+有正式域名之后要把emial里的logo补上
+
+链接cj
+
+-P pager=off
+
+expense 运费记录（domain费用，自动发邮件软件费用，云数据库费用，进货价格费用，运费价格费用）
+
+3pl 物流 email track
+
+运往世界各地
+
+入库流程学习
+
+email注册
+
+email template修改
+
+resend api注册
+
+域名
+
+paypal
+
+business name
+
+我建议加入一个延迟发送窗口，例如管理员点击发送后，不立即调用 Resend，而是：
+点击 Send reply
+→ 状态变成 scheduled
+→ 等待 30 秒
+→ 30 秒内允许 Undo
+→ 超过 30 秒再真正发送
+
+这样管理员发现写错时，可以点：
+Undo send
+在邮件尚未提交给 Resend 前取消。
+
+# 问 supplier 和 paypal 域名
+
+paypal live mode 前提：
+
+1.创建business account：
+
+logo版权，是不是在paypal business account 里选择了自己的名字，然后我的网站上的logo和名字没有和现有的任何注册的business name 重合就可以了
+
+关税
+
+store 项目里 NEXT_PUBLIC_PAYPAL_CLIENT_ID 和 PAYPAL_CLIENT_ID 是一样的

@@ -43,12 +43,12 @@ export const BRAND = {
   /**
    * 隐私联系邮箱
    */
-  privacyContactEmail: "privacy@jeviapparelstudio.com",
+  privacyContactEmail: "support@jeviapparelstudio.com",
 
   /**
    * 售后 / 退货联系邮箱
    */
-  returnsContactEmail: "returns@jeviapparelstudio.com",
+  returnsContactEmail: "support@jeviapparelstudio.com",
 
   /**
    * 法务页 / footer 用的版权名
