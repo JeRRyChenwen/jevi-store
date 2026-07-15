@@ -1545,6 +1545,8 @@ paypal
 
 business name
 
+migration整合
+
 我建议加入一个延迟发送窗口，例如管理员点击发送后，不立即调用 Resend，而是：
 点击 Send reply
 → 状态变成 scheduled
