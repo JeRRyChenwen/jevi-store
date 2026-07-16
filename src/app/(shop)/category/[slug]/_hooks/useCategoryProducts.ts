@@ -217,6 +217,7 @@ export function useCategoryProducts({
           `&fields[2]=hot_score&fields[3]=priority` +
           `&fields[4]=new_starts_at&fields[5]=new_ends_at` +
           `&populate[color_galleries][fields][0]=color` +
+          `&populate[color_galleries][populate][card_image]=true` +
           `&populate[color_galleries][populate][images]=true` +
           `&populate[variants][fields][0]=color&populate[variants][fields][1]=size` +
           `&populate[prices]=*` +

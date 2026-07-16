@@ -1,55 +1,128 @@
 // src/lib/colors.ts
-/** 统一颜色名：去空格、转小写、把空格换成连字符，并做少量同义词兼容 */
-export function normalizeColorName(s: any): string {
-  const v = String(s ?? "").trim().toLowerCase().replace(/\s+/g, "-");
-  if (v === "gray") return "grey";
-  if (v === "darkbrown") return "dark-brown";
-  return v;
-}
 
-/** 判断字符串本身是不是一个可用的 CSS 颜色（命名色 / #hex / rgb() / hsl()） */
-export function isCssColorLiteral(s: string): boolean {
-  const v = (s || "").trim().toLowerCase();
-  if (!v) return false;
-  if (/^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/.test(v)) return true;
-  if (/^(?:rgb|hsl)a?\(/.test(v)) return true;
-  // 只有纯字母且不带连字符的，当作命名色
-  if (/^[a-z]+$/.test(v) && !v.includes("-")) return true;
-  return false;
+/**
+ * 统一颜色名：
+ * - 去除首尾空格
+ * - 转为小写
+ * - 空格和下划线统一转成连字符
+ * - 兼容 gray / grey
+ * - 兼容 darkbrown / lightbrown 等无连字符写法
+ */
+export function normalizeColorName(input: unknown): string {
+  const value = String(input ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  const aliases: Record<string, string> = {
+    gray: "grey",
+    "light-gray": "light-grey",
+    "dark-gray": "dark-grey",
+
+    lightgray: "light-grey",
+    darkgray: "dark-grey",
+    lightgrey: "light-grey",
+    darkgrey: "dark-grey",
+
+    lightbrown: "light-brown",
+    darkbrown: "dark-brown",
+  };
+
+  return aliases[value] ?? value;
 }
 
 /**
- * 你在分类页里用到的“品牌色映射表”——请把分类页里那份拷贝过来。
- * 我先放一份常用且较接近电商视觉的默认值；如果你分类页已经有自己的表，
- * 替换成你的即可，这样两边会 100% 一致。
+ * 判断字符串本身是不是一个可用的 CSS 颜色：
+ * - #hex
+ * - rgb()/rgba()
+ * - hsl()/hsla()
+ * - 不带连字符的 CSS 命名色
+ */
+export function isCssColorLiteral(input: string): boolean {
+  const value = String(input || "")
+    .trim()
+    .toLowerCase();
+
+  if (!value) {
+    return false;
+  }
+
+  if (
+    /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/.test(
+      value,
+    )
+  ) {
+    return true;
+  }
+
+  if (/^(?:rgb|hsl)a?\(/.test(value)) {
+    return true;
+  }
+
+  /*
+   * CSS 命名色一般不带连字符。
+   * light-grey / dark-brown 这类业务颜色由 PRESET 映射。
+   */
+  return /^[a-z]+$/.test(value);
+}
+
+/**
+ * 商品颜色映射表。
+ *
+ * Strapi 中保存的是业务颜色名称，
+ * 这里统一映射成用于颜色圆点展示的 CSS 色值。
  */
 const PRESET: Record<string, string> = {
   black: "#000000",
-  white: "#ffffff",
+  white: "#FFFFFF",
+
   grey: "#808080",
-  // 棕系（可按你项目中的视觉替换）
+  "light-grey": "#D3D3D3",
+  "dark-grey": "#4A4A4A",
+
   brown: "#6B4226",
+  "light-brown": "#B88963",
   "dark-brown": "#4E342E",
-  chocolate: "#4E342E", // 不用浏览器自带的 #D2691E（太橘），用深棕以贴近商品
+
+  chocolate: "#5A3825",
   coffee: "#5C4033",
   mocha: "#6D4C41",
   camel: "#C19A6B",
-  tan: "#C69C6D", // 比浏览器的 tan(#D2B48C) 稍深一点，更接近皮鞋“tan”
+  tan: "#C69C6D",
   beige: "#F5F5DC",
   khaki: "#BDB76B",
+
   navy: "#001F3F",
 };
 
-/** 把 Strapi 的颜色名映射为最终用于渲染的 CSS 颜色值 */
-export function colorNameToCss(input?: string): string | undefined {
-  const n = normalizeColorName(input);
-  if (!n) return undefined;
+/**
+ * 把 Strapi 的颜色名映射为最终用于渲染的 CSS 颜色值。
+ */
+export function colorNameToCss(
+  input?: string,
+): string | undefined {
+  const normalized =
+    normalizeColorName(input);
 
-  // 先看预设表
-  if (PRESET[n]) return PRESET[n];
+  if (!normalized) {
+    return undefined;
+  }
 
-  // 兜底：如果它本身就是 CSS 颜色（命名色/hex/rgb/hsl），就直接用
-  if (isCssColorLiteral(n)) return n;
+  const preset = PRESET[normalized];
 
-  return undefined; // 最终仍然未知就交由上层决定（比如用 #ddd）
+  if (preset) {
+    return preset;
+  }
+
+  /*
+   * 输入本身如果就是 CSS 合法色值，
+   * 例如 red、#ffffff、rgb(...)，则直接使用。
+   */
+  if (isCssColorLiteral(normalized)) {
+    return normalized;
+  }
+
+  return undefined;
 }

@@ -97,7 +97,7 @@ export default function ImageCarousel({ urls, alt }: ImageCarouselProps) {
         prev();
       }
     },
-    [count, next, prev, resetDragState]
+    [count, next, prev, resetDragState],
   );
 
   // ===== Touch =====
@@ -111,7 +111,7 @@ export default function ImageCarousel({ urls, alt }: ImageCarouselProps) {
       dragStartYRef.current = t.clientY;
       draggingRef.current = true;
     },
-    [count]
+    [count],
   );
 
   const onTouchMove = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
@@ -141,7 +141,7 @@ export default function ImageCarousel({ urls, alt }: ImageCarouselProps) {
       }
       handleSwipeEnd(t.clientX, t.clientY);
     },
-    [handleSwipeEnd, resetDragState]
+    [handleSwipeEnd, resetDragState],
   );
 
   const onTouchCancel = useCallback(() => {
@@ -158,7 +158,7 @@ export default function ImageCarousel({ urls, alt }: ImageCarouselProps) {
       dragStartYRef.current = e.clientY;
       draggingRef.current = true;
     },
-    [count]
+    [count],
   );
 
   const onMouseUp = useCallback(
@@ -166,7 +166,7 @@ export default function ImageCarousel({ urls, alt }: ImageCarouselProps) {
       if (!draggingRef.current) return;
       handleSwipeEnd(e.clientX, e.clientY);
     },
-    [handleSwipeEnd]
+    [handleSwipeEnd],
   );
 
   const onMouseLeave = useCallback(
@@ -174,7 +174,7 @@ export default function ImageCarousel({ urls, alt }: ImageCarouselProps) {
       if (!draggingRef.current) return;
       handleSwipeEnd(e.clientX, e.clientY);
     },
-    [handleSwipeEnd]
+    [handleSwipeEnd],
   );
 
   const onTransitionEnd = (e: React.TransitionEvent<HTMLDivElement>) => {
@@ -254,7 +254,7 @@ export default function ImageCarousel({ urls, alt }: ImageCarouselProps) {
             <img
               alt={alt}
               src={url}
-              className="h-full w-full object-cover"
+              className="h-full w-full object-contain p-3"
               loading="lazy"
               draggable={false}
             />

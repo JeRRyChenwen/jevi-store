@@ -60,8 +60,12 @@ const LOW_STOCK_THRESHOLD = 20;
  * ✅ 从 D1 worker 获取库存（统一用 /inventory/bulk）
  * 返回：{ [sku]: stock }
  */
-async function fetchStockBySkus(skus: string[]): Promise<Record<string, number>> {
-  const uniq = Array.from(new Set(skus.map((s) => String(s || "").trim()).filter(Boolean)));
+async function fetchStockBySkus(
+  skus: string[],
+): Promise<Record<string, number>> {
+  const uniq = Array.from(
+    new Set(skus.map((s) => String(s || "").trim()).filter(Boolean)),
+  );
   if (!uniq.length) {
     console.log("[PDP][INV] fetchStockBySkus: empty skus");
     return {};
@@ -69,7 +73,8 @@ async function fetchStockBySkus(skus: string[]): Promise<Record<string, number>>
 
   const baseRaw =
     (process.env.API_PROXY && process.env.API_PROXY.trim()) ||
-    (process.env.NEXT_PUBLIC_API_BASE && process.env.NEXT_PUBLIC_API_BASE.trim()) ||
+    (process.env.NEXT_PUBLIC_API_BASE &&
+      process.env.NEXT_PUBLIC_API_BASE.trim()) ||
     "";
 
   const base = baseRaw.replace(/\/+$/, "");
@@ -83,7 +88,12 @@ async function fetchStockBySkus(skus: string[]): Promise<Record<string, number>>
   console.log("[PDP][INV] baseRaw =", baseRaw);
   console.log("[PDP][INV] base =", base);
   console.log("[PDP][INV] url =", url);
-  console.log("[PDP][INV] skuCount =", uniq.length, "sample =", uniq.slice(0, 5));
+  console.log(
+    "[PDP][INV] skuCount =",
+    uniq.length,
+    "sample =",
+    uniq.slice(0, 5),
+  );
 
   try {
     const r = await fetch(url, { cache: "no-store" });
@@ -114,7 +124,10 @@ async function fetchStockBySkus(skus: string[]): Promise<Record<string, number>>
 
     const maxSku = Object.keys(out)[0];
     console.log("[PDP][INV] parsed stocks count =", Object.keys(out).length);
-    console.log("[PDP][INV] sample stock =", maxSku ? { sku: maxSku, stock: out[maxSku] } : null);
+    console.log(
+      "[PDP][INV] sample stock =",
+      maxSku ? { sku: maxSku, stock: out[maxSku] } : null,
+    );
 
     return out;
   } catch (e: any) {
@@ -142,6 +155,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     `&fields[3]=new_starts_at&fields[4]=new_ends_at` +
     `&populate[color_galleries][fields][0]=color` +
     `&populate[color_galleries][populate][images]=true` +
+    `&populate[variants][filters][is_showed][$eq]=true` +
     `&populate[variants][fields][0]=color` +
     `&populate[variants][fields][1]=size` +
     `&populate[variants][fields][3]=height_increase_cm` +
@@ -167,15 +181,19 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const category = extractCategory(attrs);
   const categorySlug = category?.slug;
   const categoryLabel = category?.label;
-  const categoryRootSlug = category?.parentSlug ? category.parentSlug : category?.slug;
-  const categoryLeafSlug = category?.parentSlug ? (category?.slug ?? null) : null;
+  const categoryRootSlug = category?.parentSlug
+    ? category.parentSlug
+    : category?.slug;
+  const categoryLeafSlug = category?.parentSlug
+    ? (category?.slug ?? null)
+    : null;
 
   // ---- pricing (STOREFRONT-driven) ----
   const prices = getPrices(attrs);
 
   const displayPrice = resolveDisplayPrice(
     prices,
-    CURRENT_STOREFRONT.defaultCurrency
+    CURRENT_STOREFRONT.defaultCurrency,
   );
 
   const currency = displayPrice.currency;
@@ -199,7 +217,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
 
   const colorParamRaw = Array.isArray(sp.color) ? sp.color[0] : sp.color;
   const colorParam = normalizeColor(colorParamRaw);
-  const currentColor = colorKeys.find((k) => k === colorParam) ?? colorKeys[0] ?? undefined;
+  const currentColor =
+    colorKeys.find((k) => k === colorParam) ?? colorKeys[0] ?? undefined;
 
   let images: string[] = [];
   if (currentColor) {
@@ -214,7 +233,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   let selected = 0;
   const rawIdx = Array.isArray(sp.img) ? sp.img[0] : sp.img;
   const idxNum = Number(rawIdx);
-  if (Number.isFinite(idxNum) && idxNum >= 0 && idxNum < total) selected = idxNum;
+  if (Number.isFinite(idxNum) && idxNum >= 0 && idxNum < total)
+    selected = idxNum;
 
   const rating = Math.max(0, Math.min(5, Number(attrs.hot_score) || 0));
 
@@ -232,29 +252,45 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     "[PDP][variants] sku null ratio =",
     variantMeta.filter((v) => !v.sku).length,
     "/",
-    variantMeta.length
+    variantMeta.length,
   );
 
-  const skus = variantMeta.map((v) => v.sku).filter((s): s is string => Boolean(s));
-  console.log("[PDP][INV] skus (count/sample) =", skus.length, skus.slice(0, 5));
+  const skus = variantMeta
+    .map((v) => v.sku)
+    .filter((s): s is string => Boolean(s));
+  console.log(
+    "[PDP][INV] skus (count/sample) =",
+    skus.length,
+    skus.slice(0, 5),
+  );
 
   const stockBySku = await fetchStockBySkus(skus);
 
   console.log("[PDP][INV] stockBySku keys =", Object.keys(stockBySku).length);
-  console.log("[PDP][INV] stockBySku sample =", Object.entries(stockBySku).slice(0, 5));
-
-  // ---- variants stock + sku (computed from D1) ----
-  const { stock3, sku3, sizesSum, heightSum, colorSum } =
-    getStockByColorSizeHeightFromD1(variantMeta, stockBySku);
-
-  console.log("[PDP][AGG] currentColor =", currentColor);
-  console.log("[PDP][AGG] sizesSum keys =", currentColor ? Object.keys(sizesSum[currentColor] ?? {}) : []);
   console.log(
-    "[PDP][AGG] sizesSum for currentColor =",
-    currentColor ? sizesSum[currentColor] : null
+    "[PDP][INV] stockBySku sample =",
+    Object.entries(stockBySku).slice(0, 5),
   );
 
-  const sizesForColor = currentColor ? Object.keys(sizesSum[currentColor] ?? {}) : [];
+  // ---- variants stock + sku (computed from D1) ----
+  const { stock3, sku3, sizesSum, heightSum } = getStockByColorSizeHeightFromD1(
+    variantMeta,
+    stockBySku,
+  );
+
+  console.log("[PDP][AGG] currentColor =", currentColor);
+  console.log(
+    "[PDP][AGG] sizesSum keys =",
+    currentColor ? Object.keys(sizesSum[currentColor] ?? {}) : [],
+  );
+  console.log(
+    "[PDP][AGG] sizesSum for currentColor =",
+    currentColor ? sizesSum[currentColor] : null,
+  );
+
+  const sizesForColor = currentColor
+    ? Object.keys(sizesSum[currentColor] ?? {})
+    : [];
 
   const sizeParamRaw = Array.isArray(sp.size) ? sp.size[0] : sp.size;
   const currentSize =
@@ -273,66 +309,94 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const heightParamRaw = Array.isArray((sp as any).height)
     ? (sp as any).height[0]
     : (sp as any).height;
-  const parsedHeight = Number(heightParamRaw);
-  const heightFromUrl = Number.isFinite(parsedHeight) ? parsedHeight : 0;
 
-  const heightsAllForColor = currentColor ? heightSum[currentColor] ?? {} : {};
+  const parsedHeight = Number(heightParamRaw);
+
+  const heightFromUrl = Number.isFinite(parsedHeight)
+    ? parsedHeight
+    : undefined;
+
+  const heightsAllForColor = currentColor
+    ? (heightSum[currentColor] ?? {})
+    : {};
+
   const realHeightsAll = Object.keys(heightsAllForColor)
-    .map((k) => Number(k))
-    .filter((v) => Number.isFinite(v) && v > 0)
+    .map((key) => Number(key))
+    .filter((value) => Number.isFinite(value) && value > 0)
     .sort((a, b) => a - b);
 
   const heightsForCurrentSize =
-    currentColor && currentSize ? stock3[currentColor]?.[currentSize] ?? {} : {};
+    currentColor && currentSize
+      ? (stock3[currentColor]?.[currentSize] ?? {})
+      : {};
 
   const realHeightsForSize = Object.keys(heightsForCurrentSize)
-    .map((k) => Number(k))
-    .filter((v) => Number.isFinite(v) && v > 0)
+    .map((key) => Number(key))
+    .filter((value) => Number.isFinite(value) && value > 0)
     .sort((a, b) => a - b);
 
-  const stockZeroForSize =
-    currentColor && currentSize
-      ? (stock3[currentColor]?.[currentSize]?.[0] ??
-          sizesSum[currentColor]?.[currentSize] ??
-          0)
-      : 0;
-
+  /*
+   * 高度选项完全由当前有效 Variant 动态生成。
+   *
+   * 不再人工添加 0cm：
+   * - 当前已选尺码时，只显示该颜色 + 尺码实际存在的高度；
+   * - 尚未选择尺码时，显示该颜色实际存在的所有高度。
+   */
   const heightOptions =
     currentColor && currentSize
-      ? [
-          { value: 0, stock: stockZeroForSize },
-          ...realHeightsForSize.map((h) => ({ value: h, stock: heightsForCurrentSize[h] ?? 0 })),
-        ]
+      ? realHeightsForSize.map((height) => ({
+          value: height,
+          stock: heightsForCurrentSize[height] ?? 0,
+        }))
       : currentColor
-      ? [
-          { value: 0, stock: colorSum[currentColor] ?? 0 },
-          ...realHeightsAll.map((h) => ({ value: h, stock: heightsAllForColor[h] ?? 0 })),
-        ]
-      : [{ value: 0, stock: 0 }];
+        ? realHeightsAll.map((height) => ({
+            value: height,
+            stock: heightsAllForColor[height] ?? 0,
+          }))
+        : [];
 
-  let validHeight = heightFromUrl;
-  if (currentColor && currentSize) {
-    if (validHeight !== 0 && !realHeightsForSize.includes(validHeight)) validHeight = 0;
-  } else {
-    if (!heightOptions.some((o) => o.value === validHeight)) validHeight = 0;
-  }
+  /*
+   * URL 中的高度有效时继续使用。
+   *
+   * URL 没有高度，或者高度已经无效时：
+   * - 优先选择第一个有库存的高度；
+   * - 如果所有高度暂时都没有库存，选择第一个真实高度；
+   * - 完全没有高度选项时才回退为 0。
+   */
+  const defaultHeight =
+    heightOptions.find((option) => option.stock > 0)?.value ??
+    heightOptions[0]?.value ??
+    0;
+
+  const validHeight =
+    typeof heightFromUrl === "number" &&
+    heightOptions.some((option) => option.value === heightFromUrl)
+      ? heightFromUrl
+      : defaultHeight;
 
   const stockForCurrent =
     currentColor && currentSize
-      ? validHeight === 0
-        ? (stock3[currentColor]?.[currentSize]?.[0] ??
-            sizesSum[currentColor]?.[currentSize] ??
-            0)
-        : stock3[currentColor]?.[currentSize]?.[validHeight] ?? 0
+      ? (stock3[currentColor]?.[currentSize]?.[validHeight] ?? 0)
       : 0;
 
-  console.log("[PDP][UI] currentSize =", currentSize, "validHeight =", validHeight, "stockForCurrent =", stockForCurrent);
+  console.log(
+    "[PDP][UI] currentSize =",
+    currentSize,
+    "validHeight =",
+    validHeight,
+    "stockForCurrent =",
+    stockForCurrent,
+  );
 
-  const shouldShowHeightPicker = Boolean(currentColor) && realHeightsAll.length > 0;
+  const shouldShowHeightPicker =
+    Boolean(currentColor) && realHeightsAll.length > 0;
 
   return (
     <main className="w-full px-2 sm:px-4 md:px-6 lg:px-0 py-8 overflow-x-hidden">
-      <nav className="flex items-center text-sm text-neutral-500 mb-4" aria-label="Breadcrumb">
+      <nav
+        className="flex items-center text-sm text-neutral-500 mb-4"
+        aria-label="Breadcrumb"
+      >
         <Link
           href="/"
           className="font-medium text-neutral-700 hover:text-neutral-900 hover:underline visited:text-neutral-700"
@@ -391,7 +455,13 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
             "
           >
             {isNew ? (
-              <CornerRibbon variant="top" text="NEW" tone="new" height={50} className="top-2" />
+              <CornerRibbon
+                variant="top"
+                text="NEW"
+                tone="new"
+                height={50}
+                className="top-2"
+              />
             ) : null}
 
             {total > 0 ? (
@@ -411,7 +481,9 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
         <section className="order-3 lg:order-3 lg:pl-20 xl:pl-24 2xl:pl-20 lg:sticky lg:top-12 self-start overflow-x-clip">
           <div className="px-1 sm:px-2">
             <div className="space-y-3">
-              <h2 className="text-2xl font-bold leading-snug tracking-tight">{title}</h2>
+              <h2 className="text-2xl font-bold leading-snug tracking-tight">
+                {title}
+              </h2>
 
               <div className="text-neutral-800">
                 <Stars value={rating} />
@@ -435,7 +507,9 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                   </div>
                 </div>
               ) : (
-                <div className="text-xl font-semibold">{formatPriceVal(price, currency)}</div>
+                <div className="text-xl font-semibold">
+                  {formatPriceVal(price, currency)}
+                </div>
               )}
             </div>
 
@@ -495,7 +569,6 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                         </div>
                       </div>
                     </div>
-
                   ) : stockForCurrent <= CRITICAL_STOCK_THRESHOLD ? (
                     /* Extremely low stock → show exact remaining quantity */
                     <div className="flex items-center justify-between gap-3">
@@ -508,7 +581,6 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                         left
                       </div>
                     </div>
-
                   ) : stockForCurrent <= LOW_STOCK_THRESHOLD ? (
                     /* Low inventory but not critical → no exact number */
                     <div className="flex items-center justify-between gap-3">
@@ -517,7 +589,6 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                         Low stock
                       </div>
                     </div>
-
                   ) : (
                     /* Inventory is healthy */
                     <div className="flex items-center justify-between gap-3">
@@ -529,7 +600,9 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                   )
                 ) : (
                   /* User has not selected a size yet */
-                  <FieldMessage variant="muted">Please select a size</FieldMessage>
+                  <FieldMessage variant="muted">
+                    Please select a size
+                  </FieldMessage>
                 )}
               </div>
 

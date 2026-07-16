@@ -34,7 +34,13 @@ type ProductLite = {
 
   colors?: string[];
   sizes?: string[];
+
+  /** 商品详情完整画廊，兼容旧商品主图兜底 */
   variantsByColor: Record<string, string[]>;
+
+  /** 分类商品卡专用主图：每个颜色对应一张 */
+  cardImagesByColor?: Record<string, string>;
+
   imageUrl?: string;
 };
 
@@ -96,21 +102,51 @@ export default function ProductCard({
   if (stars > 5) stars = Math.round(clamp(stars, 0, 100) / 20);
   stars = clamp(Math.round(stars), 0, 5);
 
-  // 图片选择
+  // 商品卡图片选择：每种颜色只显示一张 card_image
   const colorKey = selectedColor ? normalizeColorName(selectedColor) : null;
-  const byColor = colorKey && p.variantsByColor[colorKey];
-  const anyColor =
-    byColor && byColor.length
-      ? byColor
-      : (() => {
-          for (const arr of Object.values(p.variantsByColor)) {
-            if (arr?.length) return arr;
-          }
-          return [];
-        })();
-  const urls =
-    (byColor && byColor.length ? byColor : anyColor) ||
-    (p.imageUrl ? [p.imageUrl] : []);
+
+  /**
+   * 兜底顺序：
+   * 1. 当前颜色的 card_image
+   * 2. 当前颜色完整画廊中的第一张
+   * 3. 任意颜色的 card_image
+   * 4. 任意颜色完整画廊中的第一张
+   * 5. Product 默认 imageUrl
+   */
+  let cardImageUrl: string | undefined;
+
+  if (colorKey) {
+    cardImageUrl = p.cardImagesByColor?.[colorKey];
+
+    if (!cardImageUrl) {
+      cardImageUrl = p.variantsByColor?.[colorKey]?.[0];
+    }
+  }
+
+  if (!cardImageUrl) {
+    for (const url of Object.values(p.cardImagesByColor ?? {})) {
+      if (url) {
+        cardImageUrl = url;
+        break;
+      }
+    }
+  }
+
+  if (!cardImageUrl) {
+    for (const galleryImages of Object.values(p.variantsByColor ?? {})) {
+      if (galleryImages?.[0]) {
+        cardImageUrl = galleryImages[0];
+        break;
+      }
+    }
+  }
+
+  if (!cardImageUrl) {
+    cardImageUrl = p.imageUrl;
+  }
+
+  // ImageCarousel 只收到一张图，因此不会显示箭头、圆点或轮播
+  const cardUrls = cardImageUrl ? [cardImageUrl] : [];
 
   // ✅ 选中币种并计算原价/折后价
   const pick = pickPriceForCurrency(p.prices, displayCurrency) || null;
@@ -206,7 +242,7 @@ export default function ProductCard({
         )}
 
         <ImageCarousel
-          urls={urls}
+          urls={cardUrls}
           alt={p.name || `Image #${start + idx + 1}`}
         />
       </div>

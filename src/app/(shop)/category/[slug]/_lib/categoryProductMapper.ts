@@ -33,7 +33,12 @@ export type ProductLite = {
   colors?: string[];
   sizes?: string[];
 
+  /** PDP/旧分类轮播使用的完整图片列表 */
   variantsByColor: Record<string, string[]>;
+
+  /** 分类商品卡专用主图，每种颜色一张 */
+  cardImagesByColor: Record<string, string>;
+
   imageUrl?: string;
 };
 
@@ -97,6 +102,29 @@ export function getVariantColors(attrs: any): string[] {
   return Array.from(set);
 }
 
+
+function getMediaImageUrl(media: any): string | undefined {
+  const node =
+    media?.data?.attributes ??
+    media?.data ??
+    media?.attributes ??
+    media ??
+    null;
+
+  if (!node) return undefined;
+
+  const url =
+    node?.formats?.large?.url ??
+    node?.formats?.medium?.url ??
+    node?.formats?.small?.url ??
+    node?.formats?.thumbnail?.url ??
+    node?.url;
+
+  return typeof url === "string" && url.trim()
+    ? mediaUrl(url)
+    : undefined;
+}
+
 export function getImagesByColorFromProduct(attrs: any): Record<string, string[]> {
   const arr: any[] = Array.isArray(attrs?.color_galleries)
     ? attrs.color_galleries
@@ -129,6 +157,35 @@ export function getImagesByColorFromProduct(attrs: any): Record<string, string[]
   }
   return out;
 }
+
+
+export function getCardImagesByColorFromProduct(
+  attrs: any
+): Record<string, string> {
+  const arr: any[] = Array.isArray(attrs?.color_galleries)
+    ? attrs.color_galleries
+    : Array.isArray(attrs?.color_galleries?.data)
+    ? attrs.color_galleries.data
+    : [];
+
+  const out: Record<string, string> = {};
+
+  for (const cg of arr) {
+    const component = cg?.attributes ?? cg ?? {};
+
+    const color = normalizeColorName(component?.color);
+    if (!color) continue;
+
+    const cardImageUrl = getMediaImageUrl(component?.card_image);
+
+    if (cardImageUrl) {
+      out[color] = cardImageUrl;
+    }
+  }
+
+  return out;
+}
+
 
 /**
  * ✅ 读取 Product.prices component（Strapi）
@@ -337,18 +394,50 @@ export function normalizeProduct(row: any): ProductLite {
   );
 
   const variantsByColor = getImagesByColorFromProduct(attrs);
+  const explicitCardImagesByColor =
+    getCardImagesByColorFromProduct(attrs);
 
-  const set = new Set<string>(Object.keys(variantsByColor));
+  /**
+   * 分类卡主图兜底规则：
+   * 1. 优先使用 Strapi 中明确设置的 card_image
+   * 2. 若该颜色未设置，则回退到该颜色 images[0]
+   */
+  const cardImagesByColor: Record<string, string> = {
+    ...explicitCardImagesByColor,
+  };
+
+  for (const [color, urls] of Object.entries(variantsByColor)) {
+    if (!cardImagesByColor[color] && urls?.[0]) {
+      cardImagesByColor[color] = urls[0];
+    }
+  }
+
+  const set = new Set<string>([
+    ...Object.keys(variantsByColor),
+    ...Object.keys(cardImagesByColor),
+  ]);
   for (const c of getVariantColors(attrs)) set.add(c);
   const colors = Array.from(set);
 
   const sizes = getVariantSizes(attrs);
 
   let imageUrl: string | undefined;
-  for (const k of Object.keys(variantsByColor)) {
-    if (variantsByColor[k]?.[0]) {
-      imageUrl = variantsByColor[k][0];
+
+  // 优先使用第一张可用的商品卡主图
+  for (const color of Object.keys(cardImagesByColor)) {
+    if (cardImagesByColor[color]) {
+      imageUrl = cardImagesByColor[color];
       break;
+    }
+  }
+
+  // 最后兜底到完整画廊第一张
+  if (!imageUrl) {
+    for (const color of Object.keys(variantsByColor)) {
+      if (variantsByColor[color]?.[0]) {
+        imageUrl = variantsByColor[color][0];
+        break;
+      }
     }
   }
 
@@ -398,6 +487,7 @@ export function normalizeProduct(row: any): ProductLite {
     colors,
     sizes,
     variantsByColor,
+    cardImagesByColor,
     imageUrl,
   };
 }

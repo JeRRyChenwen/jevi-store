@@ -1588,8 +1588,6 @@ strapi商家货物，运输时间，库存数量
 
 图片放大功能
 
-strapi里product collection里有2个sales start
-
 <!-- 每个商品应该要有一个主视图，显示在网页的product card里 -->
 
 home banner 修改
@@ -1597,3 +1595,13 @@ home banner 修改
 自适应显示满图片的功能
 
 颜色
+
+库存更新机制
+
+shoes pants tops 各自需要一个自动生成variant的功能
+
+在sync variant的时候不要全部删掉重新建立，不然我原本的某些variant里储存了CJ 信息相关的内容也会被删掉，能不能直接在原有的内容里新增内容
+
+例如，我原本商品 A 有 黑白黄 3种颜色，我目前已经有黑白的variant了，然后黑白的variant里也有cj相关的信息，那么只需要添加黄色相关的这个product的Variant就好
+
+inventry sync 不改变原本的内容的情况下，把新的variants加入数据库（如果sku为随机数字，在inventry sync的时候如果找不到此sku就会新增对应的inventory数据到数据库中，而不是删除原本的sku为随机数字的数据）
