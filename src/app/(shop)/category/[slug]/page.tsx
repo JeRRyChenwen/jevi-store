@@ -87,19 +87,42 @@ export const dynamic = "force-static";
 
 /**
  * promo 聚合页过滤：
- * on-sale: sale_starts_at <= now && (sale_ends_at is null || sale_ends_at >= now)
- * new-in:  new_starts_at  <= now && (new_ends_at  is null || new_ends_at  >= now)
+ * on-sale:
+ *   当前币种的 prices.sale_starts_at <= now
+ *   且 prices.sale_ends_at 为空或 >= now
+ *
+ * new-in:
+ *   Product.new_starts_at <= now
+ *   且 Product.new_ends_at 为空或 >= now
  */
-function buildPromoProductFilters(slug: string, nowISO: string): string[] {
+function buildPromoProductFilters(
+  slug: string,
+  nowISO: string,
+  currencyCode: string,
+): string[] {
   const parts: string[] = [];
 
   if (slug === "on-sale") {
-    parts.push(`filters[sale_starts_at][$notNull]=true`);
-    parts.push(`filters[sale_starts_at][$lte]=${encodeURIComponent(nowISO)}`);
-    parts.push(`filters[$or][0][sale_ends_at][$null]=true`);
+    const currency = String(currencyCode || "AUD")
+      .trim()
+      .toUpperCase();
+
     parts.push(
-      `filters[$or][1][sale_ends_at][$gte]=${encodeURIComponent(nowISO)}`,
+      `filters[$and][0][prices][currency][$eq]=${encodeURIComponent(currency)}`,
     );
+    parts.push(`filters[$and][0][prices][sale_starts_at][$notNull]=true`);
+    parts.push(
+      `filters[$and][0][prices][sale_starts_at][$lte]=${encodeURIComponent(
+        nowISO,
+      )}`,
+    );
+    parts.push(`filters[$and][0][$or][0][prices][sale_ends_at][$null]=true`);
+    parts.push(
+      `filters[$and][0][$or][1][prices][sale_ends_at][$gte]=${encodeURIComponent(
+        nowISO,
+      )}`,
+    );
+
     return parts;
   }
 
@@ -110,6 +133,7 @@ function buildPromoProductFilters(slug: string, nowISO: string): string[] {
     parts.push(
       `filters[$or][1][new_ends_at][$gte]=${encodeURIComponent(nowISO)}`,
     );
+
     return parts;
   }
 
@@ -130,7 +154,13 @@ async function getProductTotal(opts: {
 
     // 只展示「被上架显示」的商品
     parts.push(`filters[is_showed][$eq]=true`);
-    parts.push(...buildPromoProductFilters(slug, nowISO));
+    parts.push(
+      ...buildPromoProductFilters(
+        slug,
+        nowISO,
+        CURRENT_STOREFRONT.defaultCurrency,
+      ),
+    );
 
     try {
       const json: any = await api(

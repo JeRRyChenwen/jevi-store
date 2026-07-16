@@ -1595,3 +1595,5 @@ strapi里product collection里有2个sales start
 home banner 修改
 
 自适应显示满图片的功能
+
+颜色

@@ -33,23 +33,43 @@ function sortSizes(arr: string[]) {
 type UseCategoryFacetsArgs = {
   slug: string;
   categoryDocIds?: string[];
+  displayCurrency: string;
   devLogPrefix?: string;
 
-  // ✅ 由外层传入；当前这个 hook 里暂时不直接使用，只是为了让调用处类型通过
   virtualFilter?: unknown;
 };
 
 const PROMO_SLUGS = new Set(["new-in", "on-sale"]);
 const isPromoSlug = (slug: string) => PROMO_SLUGS.has(slug);
 
-function buildPromoFiltersForProducts(slug: string, nowISO: string): string[] {
+function buildPromoFiltersForProducts(
+  slug: string,
+  nowISO: string,
+  currencyCode: string
+): string[] {
   const parts: string[] = [];
 
   if (slug === "on-sale") {
-    parts.push(`filters[sale_starts_at][$notNull]=true`);
-    parts.push(`filters[sale_starts_at][$lte]=${encodeURIComponent(nowISO)}`);
-    parts.push(`filters[$or][0][sale_ends_at][$null]=true`);
-    parts.push(`filters[$or][1][sale_ends_at][$gte]=${encodeURIComponent(nowISO)}`);
+    const currency = String(currencyCode || "AUD").trim().toUpperCase();
+
+    parts.push(
+      `filters[$and][0][prices][currency][$eq]=${encodeURIComponent(currency)}`
+    );
+    parts.push(
+      `filters[$and][0][prices][sale_starts_at][$notNull]=true`
+    );
+    parts.push(
+      `filters[$and][0][prices][sale_starts_at][$lte]=${encodeURIComponent(nowISO)}`
+    );
+    parts.push(
+      `filters[$and][0][$or][0][prices][sale_ends_at][$null]=true`
+    );
+    parts.push(
+      `filters[$and][0][$or][1][prices][sale_ends_at][$gte]=${encodeURIComponent(
+        nowISO
+      )}`
+    );
+
     return parts;
   }
 
@@ -57,29 +77,63 @@ function buildPromoFiltersForProducts(slug: string, nowISO: string): string[] {
     parts.push(`filters[new_starts_at][$notNull]=true`);
     parts.push(`filters[new_starts_at][$lte]=${encodeURIComponent(nowISO)}`);
     parts.push(`filters[$or][0][new_ends_at][$null]=true`);
-    parts.push(`filters[$or][1][new_ends_at][$gte]=${encodeURIComponent(nowISO)}`);
+    parts.push(
+      `filters[$or][1][new_ends_at][$gte]=${encodeURIComponent(nowISO)}`
+    );
+
     return parts;
   }
 
   return parts;
 }
 
-function buildPromoFiltersForVariantsProduct(slug: string, nowISO: string): string[] {
+function buildPromoFiltersForVariantsProduct(
+  slug: string,
+  nowISO: string,
+  currencyCode: string
+): string[] {
   const parts: string[] = [];
 
   if (slug === "on-sale") {
-    parts.push(`filters[product][sale_starts_at][$notNull]=true`);
-    parts.push(`filters[product][sale_starts_at][$lte]=${encodeURIComponent(nowISO)}`);
-    parts.push(`filters[$or][0][product][sale_ends_at][$null]=true`);
-    parts.push(`filters[$or][1][product][sale_ends_at][$gte]=${encodeURIComponent(nowISO)}`);
+    const currency = String(currencyCode || "AUD").trim().toUpperCase();
+
+    parts.push(
+      `filters[$and][0][product][prices][currency][$eq]=${encodeURIComponent(
+        currency
+      )}`
+    );
+    parts.push(
+      `filters[$and][0][product][prices][sale_starts_at][$notNull]=true`
+    );
+    parts.push(
+      `filters[$and][0][product][prices][sale_starts_at][$lte]=${encodeURIComponent(
+        nowISO
+      )}`
+    );
+    parts.push(
+      `filters[$and][0][$or][0][product][prices][sale_ends_at][$null]=true`
+    );
+    parts.push(
+      `filters[$and][0][$or][1][product][prices][sale_ends_at][$gte]=${encodeURIComponent(
+        nowISO
+      )}`
+    );
+
     return parts;
   }
 
   if (slug === "new-in") {
     parts.push(`filters[product][new_starts_at][$notNull]=true`);
-    parts.push(`filters[product][new_starts_at][$lte]=${encodeURIComponent(nowISO)}`);
+    parts.push(
+      `filters[product][new_starts_at][$lte]=${encodeURIComponent(nowISO)}`
+    );
     parts.push(`filters[$or][0][product][new_ends_at][$null]=true`);
-    parts.push(`filters[$or][1][product][new_ends_at][$gte]=${encodeURIComponent(nowISO)}`);
+    parts.push(
+      `filters[$or][1][product][new_ends_at][$gte]=${encodeURIComponent(
+        nowISO
+      )}`
+    );
+
     return parts;
   }
 
@@ -89,6 +143,7 @@ function buildPromoFiltersForVariantsProduct(slug: string, nowISO: string): stri
 export function useCategoryFacets({
   slug,
   categoryDocIds,
+  displayCurrency,
   devLogPrefix = "Facets",
 }: UseCategoryFacetsArgs) {
   const DEV = process.env.NODE_ENV !== "production";
@@ -127,8 +182,17 @@ export function useCategoryFacets({
         }
       } else {
         // promo：全站聚合（挂在 product 上）
-        partsForProducts.push(...buildPromoFiltersForProducts(slug, nowISO));
-        partsForVariants.push(...buildPromoFiltersForVariantsProduct(slug, nowISO));
+        partsForProducts.push(
+          ...buildPromoFiltersForProducts(slug, nowISO, displayCurrency)
+        );
+
+        partsForVariants.push(
+          ...buildPromoFiltersForVariantsProduct(
+            slug,
+            nowISO,
+            displayCurrency
+          )
+        );
       }
 
       // 仅统计/展示「被上架显示」的商品
@@ -199,7 +263,11 @@ export function useCategoryFacets({
     return () => {
       aborted = true;
     };
-  }, [slug, JSON.stringify(categoryDocIds)]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [
+    slug,
+    JSON.stringify(categoryDocIds),
+    displayCurrency,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     facetMaterials,

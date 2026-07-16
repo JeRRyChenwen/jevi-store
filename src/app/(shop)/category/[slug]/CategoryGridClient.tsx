@@ -165,6 +165,7 @@ export default function CategoryGridClient({
   } = useCategoryFacets({
     slug,
     categoryDocIds,
+    displayCurrency,
     devLogPrefix: "GridFacets",
     // ✅ NEW：虚拟分类过滤（让 hook 内改用时间窗 filters，而不是 category slug）
     virtualFilter,

@@ -35,22 +35,48 @@ export type UseCategoryProductsArgs = {
 const PROMO_SLUGS = new Set(["new-in", "on-sale"]);
 const isPromoSlug = (slug: string) => PROMO_SLUGS.has(slug);
 
-function buildPromoProductFilters(slug: string, nowISO: string): string[] {
+function buildPromoProductFilters(
+  slug: string,
+  nowISO: string,
+  currencyCode: string
+): string[] {
   const parts: string[] = [];
 
   if (slug === "on-sale") {
-    parts.push(`filters[sale_starts_at][$notNull]=true`);
-    parts.push(`filters[sale_starts_at][$lte]=${encodeURIComponent(nowISO)}`);
-    parts.push(`filters[$or][0][sale_ends_at][$null]=true`);
-    parts.push(`filters[$or][1][sale_ends_at][$gte]=${encodeURIComponent(nowISO)}`);
+    const currency = String(currencyCode || "AUD").trim().toUpperCase();
+
+    // 促销时间已移动到 Product.prices repeatable component。
+    // 使用 $and 包裹，避免与后面的颜色 $or 筛选发生索引冲突。
+    parts.push(
+      `filters[$and][0][prices][currency][$eq]=${encodeURIComponent(currency)}`
+    );
+    parts.push(
+      `filters[$and][0][prices][sale_starts_at][$notNull]=true`
+    );
+    parts.push(
+      `filters[$and][0][prices][sale_starts_at][$lte]=${encodeURIComponent(nowISO)}`
+    );
+    parts.push(
+      `filters[$and][0][$or][0][prices][sale_ends_at][$null]=true`
+    );
+    parts.push(
+      `filters[$and][0][$or][1][prices][sale_ends_at][$gte]=${encodeURIComponent(
+        nowISO
+      )}`
+    );
+
     return parts;
   }
 
   if (slug === "new-in") {
+    // New In 仍然属于整个 Product，因此继续使用 Product 顶层字段。
     parts.push(`filters[new_starts_at][$notNull]=true`);
     parts.push(`filters[new_starts_at][$lte]=${encodeURIComponent(nowISO)}`);
     parts.push(`filters[$or][0][new_ends_at][$null]=true`);
-    parts.push(`filters[$or][1][new_ends_at][$gte]=${encodeURIComponent(nowISO)}`);
+    parts.push(
+      `filters[$or][1][new_ends_at][$gte]=${encodeURIComponent(nowISO)}`
+    );
+
     return parts;
   }
 
@@ -117,7 +143,13 @@ export function useCategoryProducts({
         } else {
           // promo：加 sale/new 时间窗口过滤
           const nowISO = new Date().toISOString();
-          parts.push(...buildPromoProductFilters(slug, nowISO));
+          parts.push(
+            ...buildPromoProductFilters(
+              slug,
+              nowISO,
+              String(displayCurrency || "AUD")
+            )
+          );
         }
 
         // 仅展示「被上架显示」的商品
@@ -182,8 +214,8 @@ export function useCategoryProducts({
         const qs =
           `/api/products?${parts.join("&")}` +
           `&fields[0]=title&fields[1]=slug` +
-          `&fields[2]=sale_starts_at&fields[3]=sale_ends_at&fields[4]=hot_score&fields[5]=priority` +
-          `&fields[6]=new_starts_at&fields[7]=new_ends_at` +
+          `&fields[2]=hot_score&fields[3]=priority` +
+          `&fields[4]=new_starts_at&fields[5]=new_ends_at` +
           `&populate[color_galleries][fields][0]=color` +
           `&populate[color_galleries][populate][images]=true` +
           `&populate[variants][fields][0]=color&populate[variants][fields][1]=size` +
