@@ -1558,6 +1558,8 @@ migration整合
 Undo send
 在邮件尚未提交给 Resend 前取消。
 
+google标题足够吸引客户，增高鞋
+
 # 问 supplier 和 paypal 域名
 
 paypal live mode 前提：
@@ -1569,3 +1571,27 @@ logo版权，是不是在paypal business account 里选择了自己的名字，�
 关税
 
 store 项目里 NEXT_PUBLIC_PAYPAL_CLIENT_ID 和 PAYPAL_CLIENT_ID 是一样的
+
+===========
+
+收件地址是不是就是这里？
+
+fw是什么
+
+贴在哪里
+
+CJ id 是不是这个
+
+贴在哪里
+
+strapi商家货物，运输时间，库存数量
+
+图片放大功能
+
+strapi里product collection里有2个sales start
+
+<!-- 每个商品应该要有一个主视图，显示在网页的product card里 -->
+
+home banner 修改
+
+自适应显示满图片的功能
