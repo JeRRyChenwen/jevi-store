@@ -61,7 +61,7 @@ export type PromoTileProps = {
 
 function overlayClass(
   mode: NonNullable<PromoTileProps["overlay"]>,
-  textIsDark: boolean
+  textIsDark: boolean,
 ) {
   if (mode === "none") return "bg-transparent";
 
@@ -95,14 +95,14 @@ export function PromoTile({
     align === "center"
       ? "items-center text-center"
       : align === "right"
-      ? "items-end text-right"
-      : "items-start text-left";
+        ? "items-end text-right"
+        : "items-start text-left";
 
   const rootClassName = cx(
-    "group relative overflow-hidden rounded-2xl shadow-sm",
-    "ring-1 ring-black/10 dark:ring-white/10 bg-neutral-200",
+    "group relative overflow-hidden rounded-2xl bg-[#f4f0e6] shadow-sm",
+    "ring-1 ring-black/10 dark:ring-white/10",
     cardClickable ? "focus:outline-none focus:ring-2 focus:ring-primary" : "",
-    className
+    className,
   );
 
   // ✅ 核心：永远只使用一个图片源（避免“双层图”）
@@ -115,9 +115,7 @@ export function PromoTile({
   // - textOn="light" => 白色文字
   // - auto => 有背景图默认白字；无背景图默认黑字
   const textIsDark =
-    !!darkText ||
-    textOn === "dark" ||
-    (textOn === "auto" ? !hasBg : false);
+    !!darkText || textOn === "dark" || (textOn === "auto" ? !hasBg : false);
 
   const eyebrowCls = textIsDark ? "text-neutral-800" : "text-white/80";
   const titleCls = textIsDark ? "text-neutral-900" : "text-white";
@@ -136,7 +134,7 @@ export function PromoTile({
         <img
           src={bg}
           alt={title}
-          className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+          className="absolute inset-0 h-full w-full object-fill"
           draggable={false}
         />
       ) : null}
@@ -146,15 +144,30 @@ export function PromoTile({
         className={cx("absolute inset-0", overlayClass(overlay, textIsDark))}
       />
 
-      <div className={cx("relative z-10 flex h-full w-full p-6 sm:p-8", contentAlign)}>
+      <div
+        className={cx(
+          "relative z-10 flex h-full w-full p-6 sm:p-8",
+          contentAlign,
+        )}
+      >
         <div className="max-w-[32rem] space-y-2">
           {eyebrow && (
-            <div className={cx("text-xs font-semibold uppercase tracking-wide", eyebrowCls)}>
+            <div
+              className={cx(
+                "text-xs font-semibold uppercase tracking-wide",
+                eyebrowCls,
+              )}
+            >
               {eyebrow}
             </div>
           )}
 
-          <h3 className={cx("font-bold leading-tight text-2xl sm:text-3xl lg:text-4xl", titleCls)}>
+          <h3
+            className={cx(
+              "font-bold leading-tight text-2xl sm:text-3xl lg:text-4xl",
+              titleCls,
+            )}
+          >
             {title}
           </h3>
 
@@ -165,9 +178,21 @@ export function PromoTile({
           {/* ✅ CTA：cardClickable=true 时 CTA 只是外观（span）；false 时 CTA 才是 Link */}
           {ctaLabel ? (
             cardClickable ? (
-              <span className={cx(ctaBase, ctaColors, "group-hover:-translate-y-0.5")}>
+              <span
+                className={cx(
+                  ctaBase,
+                  ctaColors,
+                  "group-hover:-translate-y-0.5",
+                )}
+              >
                 {ctaLabel}
-                <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" className="opacity-80">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  className="opacity-80"
+                >
                   <path
                     fill="currentColor"
                     d="M13.172 12l-4.95-4.95 1.414-1.414L16 12l-6.364 6.364-1.414-1.414z"
@@ -181,7 +206,13 @@ export function PromoTile({
                 className={cx(ctaBase, ctaColors, "hover:-translate-y-0.5")}
               >
                 {ctaLabel}
-                <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" className="opacity-80">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  className="opacity-80"
+                >
                   <path
                     fill="currentColor"
                     d="M13.172 12l-4.95-4.95 1.414-1.414L16 12l-6.364 6.364-1.414-1.414z"

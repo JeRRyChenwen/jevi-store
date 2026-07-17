@@ -17,15 +17,8 @@ export default function CompactSearch({
 }: Props) {
   const router = useRouter();
 
-  const {
-    query,
-    setQuery,
-    items,
-    loading,
-    opened,
-    setOpened,
-    error,
-  } = useProductSearch();
+  const { query, setQuery, items, loading, opened, setOpened, error } =
+    useProductSearch();
 
   const [active, setActive] = useState(0);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -83,7 +76,12 @@ export default function CompactSearch({
   const ariaProps: React.InputHTMLAttributes<HTMLInputElement> = {
     "aria-autocomplete": "list",
     "aria-controls": "search-suggestions",
-    ...(visible ? { "aria-expanded": true, "aria-activedescendant": `search-item-${active}` } : {}),
+    ...(visible
+      ? {
+          "aria-expanded": true,
+          "aria-activedescendant": `search-item-${active}`,
+        }
+      : {}),
   };
 
   return (
@@ -98,7 +96,7 @@ export default function CompactSearch({
           "border border-black/15 focus-within:border-black",
           "focus-within:ring-2 focus-within:ring-black/10",
           "transition-colors",
-          className
+          className,
         )}
       >
         <input
@@ -121,7 +119,11 @@ export default function CompactSearch({
           aria-label="Search"
           className="m-1 inline-flex h-9 w-9 items-center justify-center rounded-full hover:bg-neutral-100 active:bg-neutral-200"
         >
-          {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <SearchIcon className="h-5 w-5" />}
+          {loading ? (
+            <Loader2 className="h-5 w-5 animate-spin" />
+          ) : (
+            <SearchIcon className="h-5 w-5" />
+          )}
         </button>
       </form>
 
@@ -129,7 +131,7 @@ export default function CompactSearch({
         <div
           className={cn(
             "absolute left-0 mt-2 w-[32rem] max-w-[90vw]",
-            "rounded-xl border border-black/10 bg-white shadow-lg z-50"
+            "rounded-xl border border-black/10 bg-white shadow-lg z-50",
           )}
           onMouseDown={(e) => {
             // 防止点选触发 input 的 blur 造成提前关闭
@@ -156,7 +158,7 @@ export default function CompactSearch({
                     onClick={() => setOpened(false)}
                     className={cn(
                       "flex items-center gap-3 px-3 py-2 text-sm hover:bg-neutral-100",
-                      idx === active && "bg-neutral-100"
+                      idx === active && "bg-neutral-100",
                     )}
                     onMouseEnter={() => setActive(idx)}
                   >
@@ -167,7 +169,8 @@ export default function CompactSearch({
                           alt={it.name}
                           width={40}
                           height={40}
-                          className="h-10 w-10 object-cover"
+                          unoptimized
+                          className="h-10 w-10 object-contain"
                         />
                       ) : null}
                     </div>
@@ -182,7 +185,9 @@ export default function CompactSearch({
           )}
 
           {loading ? (
-            <div className="p-2 text-xs text-neutral-500">正在搜索 “{query}” …</div>
+            <div className="p-2 text-xs text-neutral-500">
+              正在搜索 “{query}” …
+            </div>
           ) : null}
         </div>
       )}

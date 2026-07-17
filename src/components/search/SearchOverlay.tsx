@@ -17,23 +17,16 @@ export default function SearchOverlay({
 }) {
   const router = useRouter();
 
-  const {
-    query,
-    setQuery,
-    items,
-    loading,
-    opened,
-    setOpened,
-    error,
-  } = useProductSearch();
+  const { query, setQuery, items, loading, opened, setOpened, error } =
+    useProductSearch();
 
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const visible =
-  opened &&
-  query.trim().length >= 2 &&
-  (loading || !!error || items.length >= 0);
+    opened &&
+    query.trim().length >= 2 &&
+    (loading || !!error || items.length >= 0);
 
   useEffect(() => {
     if (open) {
@@ -118,7 +111,9 @@ export default function SearchOverlay({
               aria-autocomplete="list"
               aria-controls="mobile-search-suggestions"
               aria-expanded={visible}
-              aria-activedescendant={visible ? `mobile-search-item-${active}` : undefined}
+              aria-activedescendant={
+                visible ? `mobile-search-item-${active}` : undefined
+              }
             />
 
             <button
@@ -127,7 +122,11 @@ export default function SearchOverlay({
               className="absolute right-2 top-2 h-10 w-10 rounded-full bg-primary text-primary-foreground
                          flex items-center justify-center"
             >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-5 w-5" />}
+              {loading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Search className="h-5 w-5" />
+              )}
             </button>
 
             <button
@@ -144,20 +143,25 @@ export default function SearchOverlay({
             <div
               className={cn(
                 "absolute left-0 right-0 mt-2",
-                "rounded-2xl border border-black/10 bg-white shadow-xl z-50 overflow-hidden"
+                "rounded-2xl border border-black/10 bg-white shadow-xl z-50 overflow-hidden",
               )}
               onMouseDown={(e) => {
                 e.preventDefault();
               }}
             >
               {error ? (
-                <div className="p-4 text-sm text-red-600">Search failed: {error}</div>
+                <div className="p-4 text-sm text-red-600">
+                  Search failed: {error}
+                </div>
               ) : !loading && items.length === 0 ? (
                 <div className="p-4 text-sm text-neutral-500">
                   No products found for “{query}”
                 </div>
               ) : (
-                <ul id="mobile-search-suggestions" className="max-h-[60vh] overflow-auto py-1">
+                <ul
+                  id="mobile-search-suggestions"
+                  className="max-h-[60vh] overflow-auto py-1"
+                >
                   {items.map((it, idx) => (
                     <li
                       key={it.id}
@@ -173,7 +177,7 @@ export default function SearchOverlay({
                         }}
                         className={cn(
                           "flex items-center gap-3 px-4 py-3 text-sm hover:bg-neutral-100",
-                          idx === active && "bg-neutral-100"
+                          idx === active && "bg-neutral-100",
                         )}
                         onMouseEnter={() => setActive(idx)}
                       >
@@ -184,7 +188,8 @@ export default function SearchOverlay({
                               alt={it.name}
                               width={48}
                               height={48}
-                              className="h-12 w-12 object-cover"
+                              unoptimized
+                              className="h-12 w-12 object-contain"
                             />
                           ) : null}
                         </div>

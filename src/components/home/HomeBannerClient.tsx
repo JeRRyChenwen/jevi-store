@@ -38,7 +38,7 @@ function mod(n: number, m: number) {
 export default function HomeBannerClient({
   banners,
   intervalMs = 8000,
-  heightClassName = "h-[320px] sm:h-[380px] md:h-[460px] lg:h-[520px]",
+  heightClassName = "h-[220px] sm:h-[280px] md:h-[360px] lg:h-[420px]",
   transitionMs = 650,
 }: Props) {
   const slides = useMemo(() => (banners ?? []).filter(Boolean), [banners]);
@@ -445,18 +445,17 @@ export default function HomeBannerClient({
                 return (
                   <div
                     key={`${s.documentId || "x"}-${i}`}
-                    className="relative h-full basis-full shrink-0 bg-neutral-100"
+                    className="relative h-full basis-full shrink-0 overflow-hidden"
                   >
-                    <picture>
+                    <picture className="absolute inset-0 block h-full w-full">
                       {mobileSrc ? (
                         <source media="(max-width: 640px)" srcSet={mobileSrc} />
                       ) : null}
 
-                      {/* ✅ desktopSrc 必须有；没有的话用空字符串避免报错，但你服务端应已过滤 */}
                       <img
                         src={desktopSrc}
                         alt={s.title || "Banner"}
-                        className="h-full w-full object-cover object-bottom"
+                        className="block h-full w-full object-fill"
                         loading={i === idx ? "eager" : "lazy"}
                         decoding="async"
                         draggable={false}
