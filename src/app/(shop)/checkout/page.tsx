@@ -347,10 +347,12 @@ function CheckoutPageContent() {
   const {
     showFreeShipping,
     deliveryFeeMinorByMethod,
+    shippingPromotionByMethod,
     etaByMethod,
     quoteMatchedText,
   } = getCheckoutDeliveryViewModel({
     hasItems,
+    itemsMinor,
     deliveryMethod,
     quoteByMethod,
     quoteLoading,
@@ -486,11 +488,12 @@ function CheckoutPageContent() {
     showFreeShipping,
     standardFreeThresholdMinor,
     currency,
+    itemsMinor,
     deliveryFeeMinorByMethod,
+    shippingPromotionByMethod,
     etaByMethod,
     quoteLoading,
     quoteError,
-    quoteMatchedText,
   });
 
   const paypalConsentRequired = cookieConsent !== "accept_all";

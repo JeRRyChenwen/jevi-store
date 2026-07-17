@@ -1677,3 +1677,5 @@ home banner 修改
 shoes pants tops 各自需要一个自动生成variant的功能（因为size不一样37,38,39 和 m,l,xl）
 
 价格 和 库存数量
+
+有没有办法快速找到半边括号的另一边括号在哪里

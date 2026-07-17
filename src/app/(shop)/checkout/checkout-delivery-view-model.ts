@@ -7,6 +7,7 @@ type QuoteMap = Partial<Record<DeliveryMethod, ShippingQuoteAPIResult>>;
 
 type Params = {
   hasItems: boolean;
+  itemsMinor: number;
   deliveryMethod: DeliveryMethod;
   quoteByMethod: QuoteMap;
   quoteLoading: boolean;
@@ -17,6 +18,7 @@ type Params = {
 
 export function getCheckoutDeliveryViewModel({
   hasItems,
+  itemsMinor,
   deliveryMethod,
   quoteByMethod,
   quoteLoading,
@@ -45,6 +47,130 @@ export function getCheckoutDeliveryViewModel({
       ? Number(quoteByMethod.express.delivery_fee_minor ?? 0)
       : null,
   };
+
+
+  const shippingPromotionByMethod = {
+    standard: quoteByMethod?.standard?.ok
+      ? {
+          unlocked:
+            quoteByMethod.standard.shipping_promotion_unlocked === true,
+
+          discountPercent:
+            Number(
+              quoteByMethod.standard.shipping_discount_percent ?? 0
+            ) || 0,
+
+          kind:
+            quoteByMethod.standard.shipping_promotion_kind ?? "none",
+
+          reason:
+            quoteByMethod.standard.shipping_promotion_reason ?? null,
+
+          thresholdMinor:
+            typeof quoteByMethod.standard
+              .shipping_promotion_threshold_minor === "number"
+              ? Number(
+                  quoteByMethod.standard
+                    .shipping_promotion_threshold_minor
+                )
+              : null,
+
+          originalFeeMinor:
+            typeof quoteByMethod.standard
+              .original_delivery_fee_minor === "number"
+              ? Number(
+                  quoteByMethod.standard.original_delivery_fee_minor
+                )
+              : null,
+
+          discountMinor:
+            typeof quoteByMethod.standard
+              .shipping_discount_minor === "number"
+              ? Number(
+                  quoteByMethod.standard.shipping_discount_minor
+                )
+              : null,
+
+          finalFeeMinor:
+            typeof quoteByMethod.standard.delivery_fee_minor ===
+            "number"
+              ? Number(
+                  quoteByMethod.standard.delivery_fee_minor
+                )
+              : null,
+
+          zoneName:
+            quoteByMethod.standard.zone_name ?? null,
+
+          zoneType:
+            quoteByMethod.standard.zone_type ?? null,
+
+          currency:
+            quoteByMethod.standard.currency ?? currency,
+        }
+      : undefined,
+
+    express: quoteByMethod?.express?.ok
+      ? {
+          unlocked:
+            quoteByMethod.express.shipping_promotion_unlocked === true,
+
+          discountPercent:
+            Number(
+              quoteByMethod.express.shipping_discount_percent ?? 0
+            ) || 0,
+
+          kind:
+            quoteByMethod.express.shipping_promotion_kind ?? "none",
+
+          reason:
+            quoteByMethod.express.shipping_promotion_reason ?? null,
+
+          thresholdMinor:
+            typeof quoteByMethod.express
+              .shipping_promotion_threshold_minor === "number"
+              ? Number(
+                  quoteByMethod.express
+                    .shipping_promotion_threshold_minor
+                )
+              : null,
+
+          originalFeeMinor:
+            typeof quoteByMethod.express
+              .original_delivery_fee_minor === "number"
+              ? Number(
+                  quoteByMethod.express.original_delivery_fee_minor
+                )
+              : null,
+
+          discountMinor:
+            typeof quoteByMethod.express
+              .shipping_discount_minor === "number"
+              ? Number(
+                  quoteByMethod.express.shipping_discount_minor
+                )
+              : null,
+
+          finalFeeMinor:
+            typeof quoteByMethod.express.delivery_fee_minor ===
+            "number"
+              ? Number(
+                  quoteByMethod.express.delivery_fee_minor
+                )
+              : null,
+
+          zoneName:
+            quoteByMethod.express.zone_name ?? null,
+
+          zoneType:
+            quoteByMethod.express.zone_type ?? null,
+
+          currency:
+            quoteByMethod.express.currency ?? currency,
+        }
+      : undefined,
+  };
+
 
   const etaByMethod = {
     standard: quoteByMethod?.standard?.ok
@@ -91,6 +217,8 @@ export function getCheckoutDeliveryViewModel({
     showFreeShipping,
     standardFreeThresholdMinor,
     deliveryFeeMinorByMethod,
+    shippingPromotionByMethod,
+    itemsMinor,
     etaByMethod,
     quoteMatchedText,
   };

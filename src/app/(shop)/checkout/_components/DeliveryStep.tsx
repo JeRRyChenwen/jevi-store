@@ -40,6 +40,33 @@ type EtaByMethod = Partial<
   >
 >;
 
+type ShippingPromotionByMethod = Partial<
+  Record<
+    DeliveryMethod,
+    {
+      unlocked: boolean;
+      discountPercent: number;
+
+      kind: "none" | "free_shipping" | "half_price_shipping";
+
+      reason:
+        | null
+        | "au_standard_delivery"
+        | "au_express_delivery"
+        | "au_tier_3_destination"
+        | "au_fallback_destination";
+
+      thresholdMinor: number | null;
+      originalFeeMinor: number | null;
+      discountMinor: number | null;
+      finalFeeMinor: number | null;
+      zoneName: string | null;
+      zoneType: string | null;
+      currency: string | null;
+    }
+  >
+>;
+
 type DeliveryStepProps = {
   deliveryMethod: DeliveryMethod;
   setDeliveryMethod: (v: DeliveryMethod) => void;
@@ -50,6 +77,10 @@ type DeliveryStepProps = {
   currency?: string | null;
 
   deliveryFeeMinorByMethod?: Partial<Record<DeliveryMethod, number | null>>;
+
+  itemsMinor?: number;
+
+  shippingPromotionByMethod?: ShippingPromotionByMethod;
 
   /**
    * ✅ 后端 ETA
@@ -67,7 +98,6 @@ type DeliveryStepProps = {
    */
   quoteLoading?: boolean;
   quoteError?: string | null;
-  quoteMatchedText?: string | null;
 };
 
 function formatMoney(minor: number, currency: string) {
@@ -215,12 +245,13 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
   showFreeShipping,
   standardFreeThresholdMinor = null,
   currency = null,
+  itemsMinor = 0,
   deliveryFeeMinorByMethod = {},
+  shippingPromotionByMethod = {},
   etaByMethod,
 
   quoteLoading = false,
   quoteError = null,
-  quoteMatchedText = null,
 }) => {
   const cur =
     String(currency || "")
@@ -229,26 +260,97 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
   const shippingNotice = getShippingNotice(CURRENT_STOREFRONT);
   const shippingRegionLabel = CURRENT_STOREFRONT.label;
 
-  const thresholdText =
-    standardFreeThresholdMinor != null
-      ? formatMoney(standardFreeThresholdMinor, cur)
-      : null;
+  const feeTextOf = (method: DeliveryMethod) => {
+    const value = deliveryFeeMinorByMethod?.[method];
 
-  const expressFeeMinor =
-    deliveryFeeMinorByMethod.express != null
-      ? Number(deliveryFeeMinorByMethod.express)
-      : null;
+    if (value == null) {
+      return null;
+    }
 
-  const expressFeeText =
-    expressFeeMinor != null ? formatMoney(expressFeeMinor, cur) : null;
+    const minor = Number(value);
 
-  const feeTextOf = (m: DeliveryMethod) => {
-    const v = deliveryFeeMinorByMethod?.[m];
-    if (v == null) return null;
-    const n = Number(v);
-    if (!Number.isFinite(n)) return null;
-    return formatMoney(n, cur);
+    if (!Number.isFinite(minor)) {
+      return null;
+    }
+
+    return formatMoney(minor, cur);
   };
+
+  const selectedPromotion = shippingPromotionByMethod?.[deliveryMethod];
+
+  const promotionThresholdMinor =
+    selectedPromotion?.thresholdMinor ?? standardFreeThresholdMinor ?? null;
+
+  const remainingToPromotionMinor =
+    promotionThresholdMinor != null
+      ? Math.max(
+          0,
+          promotionThresholdMinor - Math.max(0, Number(itemsMinor) || 0),
+        )
+      : null;
+
+  const promotionUnlocked =
+    selectedPromotion?.unlocked === true ||
+    (deliveryMethod === "standard" && showFreeShipping);
+
+  const discountPercent = Number(selectedPromotion?.discountPercent ?? 0) || 0;
+
+  const promotionTitle =
+    promotionUnlocked && discountPercent === 100
+      ? "Free standard shipping unlocked"
+      : promotionUnlocked && discountPercent === 50
+        ? deliveryMethod === "express"
+          ? "50% Express shipping discount unlocked"
+          : "50% shipping discount unlocked"
+        : null;
+
+  const promotionBody = (() => {
+    if (
+      !promotionUnlocked &&
+      remainingToPromotionMinor != null &&
+      remainingToPromotionMinor > 0
+    ) {
+      return `Add ${formatMoney(
+        remainingToPromotionMinor,
+        cur,
+      )} more to unlock your shipping discount.`;
+    }
+
+    if (promotionUnlocked && discountPercent === 100) {
+      return "Your order has reached AUD 200.00 and this destination is eligible for free Standard delivery.";
+    }
+
+    if (
+      promotionUnlocked &&
+      discountPercent === 50 &&
+      deliveryMethod === "express"
+    ) {
+      return "Your order has reached AUD 200.00. Express delivery receives a 50% shipping discount.";
+    }
+
+    if (
+      promotionUnlocked &&
+      discountPercent === 50 &&
+      selectedPromotion?.reason === "au_tier_3_destination"
+    ) {
+      return "Your order has reached AUD 200.00. Tier 3 destinations receive 50% off Standard delivery.";
+    }
+
+    if (
+      promotionUnlocked &&
+      discountPercent === 50 &&
+      selectedPromotion?.reason === "au_fallback_destination"
+    ) {
+      return "Your order has reached AUD 200.00. Australia Fallback destinations receive 50% off Standard delivery.";
+    }
+
+    return null;
+  })();
+
+  const finalFeeText =
+    selectedPromotion?.finalFeeMinor != null
+      ? formatMoney(selectedPromotion.finalFeeMinor, cur)
+      : null;
 
   const statusAlert = (() => {
     if (quoteLoading) {
@@ -269,73 +371,42 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
       };
     }
 
-    if (quoteMatchedText) {
-      return {
-        type: "success" as const,
-        variant: "success" as const,
-        title: "Shipping rate applied",
-        body: quoteMatchedText,
-      };
-    }
-
     return null;
   })();
 
   return (
     <>
-      {showFreeShipping && (
+      {(promotionTitle || promotionBody) && (
         <div
           role="status"
           aria-live="polite"
-          className="rounded-xl border px-4 py-3 text-sm"
+          className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm"
         >
-          <div className="flex items-start gap-2">
-            <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-white">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white">
               <Check className="h-3.5 w-3.5" />
             </span>
 
-            <div className="flex-1">
-              <div className="font-medium">Free shipping unlocked</div>
-
-              <div className="text-neutral-600">
-                {thresholdText ? (
-                  <>
-                    You&apos;ve reached the free shipping threshold{" "}
-                    <span className="font-medium text-neutral-900">
-                      ({thresholdText})
-                    </span>{" "}
-                    for{" "}
-                    <span className="font-medium text-neutral-900">
-                      Standard
-                    </span>{" "}
-                    delivery.{" "}
-                    {expressFeeText ? (
-                      <>
-                        Express delivery may still have a fee (currently{" "}
-                        <span className="font-medium text-neutral-900">
-                          {expressFeeText}
-                        </span>
-                        ).
-                      </>
-                    ) : (
-                      <>Express delivery may still have an additional fee.</>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    You&apos;ve reached the free shipping threshold for{" "}
-                    <span className="font-medium text-neutral-900">
-                      Standard
-                    </span>{" "}
-                    delivery. Express delivery may still have an additional fee.
-                  </>
-                )}
+            <div className="min-w-0 flex-1">
+              <div className="font-medium text-emerald-950">
+                {promotionTitle || "Shipping offer available"}
               </div>
 
-              <div className="mt-2 h-1 w-full overflow-hidden rounded bg-neutral-200">
-                <div className="h-full w-full bg-emerald-600" />
-              </div>
+              {!promotionUnlocked && promotionBody ? (
+                <div className="mt-0.5 text-xs text-emerald-900/75">
+                  {promotionBody}
+                </div>
+              ) : null}
             </div>
+
+            {promotionUnlocked && finalFeeText ? (
+              <div className="shrink-0 text-right">
+                <div className="text-[11px] text-emerald-900/60">Shipping</div>
+                <div className="font-semibold text-emerald-950">
+                  {finalFeeText}
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       )}
@@ -380,7 +451,7 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
                 />
 
                 <div className="flex-1">
-                  <div className="flex items-start gap-3">
+                  <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="flex items-center gap-2">
                         <div className="font-medium">
@@ -401,6 +472,12 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
                         ) : null}
                       </div>
                     </div>
+
+                    {feeText ? (
+                      <div className="shrink-0 font-medium text-neutral-900">
+                        {feeText}
+                      </div>
+                    ) : null}
                   </div>
 
                   {etaLine ? (

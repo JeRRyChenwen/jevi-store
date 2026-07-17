@@ -18,6 +18,7 @@ export type ShippingQuoteAPIResult = {
   ok: boolean;
 
   zone_code?: string;
+  zone_name?: string;
   zone_id?: number;
   zone_type?: ShippingZoneType;
   shipping_availability?: ShippingAvailability;
@@ -27,6 +28,37 @@ export type ShippingQuoteAPIResult = {
   tier_id?: number;
 
   currency?: string;
+
+  /**
+   * 优惠前基础运费。
+   */
+  original_delivery_fee_minor?: number;
+
+  /**
+   * 本次减免金额。
+   */
+  shipping_discount_minor?: number;
+
+  shipping_discount_percent?: 0 | 50 | 100;
+
+  shipping_promotion_kind?:
+    | "none"
+    | "free_shipping"
+    | "half_price_shipping";
+
+  shipping_promotion_reason?:
+    | null
+    | "au_standard_delivery"
+    | "au_express_delivery"
+    | "au_tier_3_destination"
+    | "au_fallback_destination";
+
+  shipping_promotion_threshold_minor?: number | null;
+  shipping_promotion_unlocked?: boolean;
+
+  /**
+   * 优惠后客户实际支付的运费。
+   */
   delivery_fee_minor?: number;
 
   // ✅ ETA（后端返回）

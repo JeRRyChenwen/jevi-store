@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { ChevronDown, Info } from "lucide-react";
 import { Alert } from "@/components/ui/alert";
 import {
   LargeBackButton,
@@ -33,92 +35,284 @@ export default function CheckoutFooterActions({
   formAlertMessage,
   alertVariant,
 }: CheckoutFooterActionsProps) {
+  const [showShippingPromotionDetails, setShowShippingPromotionDetails] =
+    useState(false);
+
   if (step === "payment") return null;
 
   return (
     <>
-      <div className="mt-6 flex justify-end">
-        {step === "bag" ? (
-          <>
-            {/* =========================
-                手机端：
-                - 统一使用两列 grid
-                - 已登录：左空右 Continue
-                - 未登录：左 Login / Sign up，右 Continue
-                桌面端：保持你原来的宽度逻辑
-            ========================== */}
-            <div className="grid grid-cols-2 gap-3 w-full md:hidden">
-              {!isLoggedIn ? (
-                <>
-                  <LargeGhostButton onClick={handleLoginAndContinue}>
-                    Login / Sign up and Continue
-                  </LargeGhostButton>
-
-                  <LargePrimaryButton onClick={handleContinue}>
-                    Continue
-                  </LargePrimaryButton>
-                </>
-              ) : (
-                <>
-                  <div />
-                  <LargePrimaryButton onClick={handleContinue}>
-                    Continue
-                  </LargePrimaryButton>
-                </>
-              )}
-            </div>
-
-            <div
+      {step === "delivery" ? (
+        <>
+          {/* =========================
+              手机端：
+              Details
+              展开说明
+              Back / Continue
+          ========================== */}
+          <div className="mt-6 md:hidden">
+            <button
+              type="button"
+              onClick={() =>
+                setShowShippingPromotionDetails((current) => !current)
+              }
+              aria-expanded={showShippingPromotionDetails}
               className={[
-                "hidden md:flex",
-                isLoggedIn
-                  ? "w-[320px] max-w-full"
-                  : "w-[660px] max-w-full gap-3 justify-end",
+                "inline-flex w-fit items-center gap-1.5 rounded-md px-1 py-1",
+                "text-sm text-neutral-600 transition-colors",
+                "hover:text-neutral-900",
+                "focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400",
               ].join(" ")}
             >
-              {!isLoggedIn && (
-                <div className="w-[320px]">
-                  <LargeGhostButton onClick={handleLoginAndContinue}>
-                    Login / Sign up and Continue
-                  </LargeGhostButton>
-                </div>
-              )}
+              <Info className="h-4 w-4 shrink-0" />
 
-              <div className="w-[320px]">
-                <LargePrimaryButton onClick={handleContinue}>
-                  Continue
+              <span>Shipping promotion details</span>
+
+              <ChevronDown
+                className={[
+                  "h-4 w-4 shrink-0 transition-transform",
+                  showShippingPromotionDetails ? "rotate-180" : "",
+                ].join(" ")}
+              />
+            </button>
+
+            {showShippingPromotionDetails ? (
+              <div className="mt-3">
+                <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3">
+                  <div className="flex items-start gap-2">
+                    <Info className="mt-0.5 h-4 w-4 shrink-0 text-neutral-600" />
+
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium text-neutral-900">
+                        Shipping promotion
+                      </div>
+
+                      <div className="mt-3 space-y-3 text-xs leading-5 text-neutral-600">
+                        <div>
+                          <div className="font-medium text-neutral-900">
+                            Standard delivery
+                          </div>
+
+                          <div className="mt-1">
+                            Tier 1–2: Free shipping on orders of AUD 200 or
+                            more.
+                          </div>
+
+                          <div>
+                            Tier 3 and Australia Fallback: 50% off shipping on
+                            orders of AUD 200 or more.
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="font-medium text-neutral-900">
+                            Express delivery
+                          </div>
+
+                          <div className="mt-1">
+                            50% off shipping on orders of AUD 200 or more for
+                            eligible Australian destinations.
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 border-t border-neutral-200 pt-2 text-[11px] leading-4 text-neutral-500">
+                        This promotion applies only to eligible Australian
+                        orders charged in AUD.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="mt-3 grid w-full grid-cols-2 gap-3">
+              <LargeBackButton onClick={prevStep} />
+
+              <LargePrimaryButton
+                onClick={handleContinue}
+                disabled={blockContinue}
+              >
+                {continueText}
+              </LargePrimaryButton>
+            </div>
+          </div>
+
+          {/* =========================
+              电脑端：
+              Details + Back / Continue 同一行
+              展开说明在整行下方
+          ========================== */}
+          <div className="mt-6 hidden md:block">
+            <div className="flex items-center justify-between gap-4">
+              <button
+                type="button"
+                onClick={() =>
+                  setShowShippingPromotionDetails((current) => !current)
+                }
+                aria-expanded={showShippingPromotionDetails}
+                className={[
+                  "inline-flex w-fit items-center gap-1.5 rounded-md px-1 py-1",
+                  "text-sm text-neutral-600 transition-colors",
+                  "hover:text-neutral-900",
+                  "focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400",
+                ].join(" ")}
+              >
+                <Info className="h-4 w-4 shrink-0" />
+
+                <span>Shipping promotion details</span>
+
+                <ChevronDown
+                  className={[
+                    "h-4 w-4 shrink-0 transition-transform",
+                    showShippingPromotionDetails ? "rotate-180" : "",
+                  ].join(" ")}
+                />
+              </button>
+
+              <div className="flex w-[660px] max-w-full justify-end gap-3">
+                <LargeBackButton onClick={prevStep} />
+
+                <LargePrimaryButton
+                  onClick={handleContinue}
+                  disabled={blockContinue}
+                >
+                  {continueText}
                 </LargePrimaryButton>
               </div>
             </div>
-          </>
-        ) : (
-          <>
-            {/* 手机端：统一两列，Back / Continue */}
-            <div className="grid grid-cols-2 gap-3 w-full md:hidden">
-              <LargeBackButton onClick={prevStep} />
 
-              <LargePrimaryButton
-                onClick={handleContinue}
-                disabled={blockContinue}
+            {showShippingPromotionDetails ? (
+              <div className="mt-3">
+                <div className="max-w-[760px] rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3">
+                  <div className="flex items-start gap-2">
+                    <Info className="mt-0.5 h-4 w-4 shrink-0 text-neutral-600" />
+
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium text-neutral-900">
+                        Shipping promotion
+                      </div>
+
+                      <div className="mt-2 grid gap-3 text-xs leading-5 text-neutral-600 sm:grid-cols-2">
+                        <div>
+                          <div className="font-medium text-neutral-900">
+                            Standard delivery
+                          </div>
+
+                          <div className="mt-1">
+                            Tier 1–2: Free shipping on orders of AUD 200 or
+                            more.
+                          </div>
+
+                          <div>
+                            Tier 3 and Australia Fallback: 50% off shipping on
+                            orders of AUD 200 or more.
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="font-medium text-neutral-900">
+                            Express delivery
+                          </div>
+
+                          <div className="mt-1">
+                            50% off shipping on orders of AUD 200 or more for
+                            eligible Australian destinations.
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-2 border-t border-neutral-200 pt-2 text-[11px] leading-4 text-neutral-500">
+                        This promotion applies only to eligible Australian
+                        orders charged in AUD.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </>
+      ) : (
+        <div className="mt-6 flex justify-end">
+          {step === "bag" ? (
+            <>
+              {/* 手机端 Bag */}
+              <div className="grid w-full grid-cols-2 gap-3 md:hidden">
+                {!isLoggedIn ? (
+                  <>
+                    <LargeGhostButton onClick={handleLoginAndContinue}>
+                      Login / Sign up and Continue
+                    </LargeGhostButton>
+
+                    <LargePrimaryButton onClick={handleContinue}>
+                      Continue
+                    </LargePrimaryButton>
+                  </>
+                ) : (
+                  <>
+                    <div />
+
+                    <LargePrimaryButton onClick={handleContinue}>
+                      Continue
+                    </LargePrimaryButton>
+                  </>
+                )}
+              </div>
+
+              {/* 电脑端 Bag */}
+              <div
+                className={[
+                  "hidden md:flex",
+                  isLoggedIn
+                    ? "w-[320px] max-w-full"
+                    : "w-[660px] max-w-full justify-end gap-3",
+                ].join(" ")}
               >
-                {continueText}
-              </LargePrimaryButton>
-            </div>
+                {!isLoggedIn ? (
+                  <div className="w-[320px]">
+                    <LargeGhostButton onClick={handleLoginAndContinue}>
+                      Login / Sign up and Continue
+                    </LargeGhostButton>
+                  </div>
+                ) : null}
 
-            {/* 桌面端：保持原样 */}
-            <div className="hidden md:flex w-[660px] max-w-full gap-3 justify-end">
-              <LargeBackButton onClick={prevStep} />
+                <div className="w-[320px]">
+                  <LargePrimaryButton onClick={handleContinue}>
+                    Continue
+                  </LargePrimaryButton>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* 手机端 Address */}
+              <div className="grid w-full grid-cols-2 gap-3 md:hidden">
+                <LargeBackButton onClick={prevStep} />
 
-              <LargePrimaryButton
-                onClick={handleContinue}
-                disabled={blockContinue}
-              >
-                {continueText}
-              </LargePrimaryButton>
-            </div>
-          </>
-        )}
-      </div>
+                <LargePrimaryButton
+                  onClick={handleContinue}
+                  disabled={blockContinue}
+                >
+                  {continueText}
+                </LargePrimaryButton>
+              </div>
+
+              {/* 电脑端 Address */}
+              <div className="hidden w-[660px] max-w-full justify-end gap-3 md:flex">
+                <LargeBackButton onClick={prevStep} />
+
+                <LargePrimaryButton
+                  onClick={handleContinue}
+                  disabled={blockContinue}
+                >
+                  {continueText}
+                </LargePrimaryButton>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {(step === "bag" || step === "address") &&
       formAlertHasAlert &&
@@ -127,13 +321,11 @@ export default function CheckoutFooterActions({
           <div
             className={
               step === "bag"
-                ? "w-full md:w-[320px] max-w-full"
-                : "w-full md:w-[660px] max-w-full"
+                ? "w-full max-w-full md:w-[320px]"
+                : "w-full max-w-full md:w-[660px]"
             }
           >
-            <Alert variant={alertVariant as any}>
-              {formAlertMessage}
-            </Alert>
+            <Alert variant={alertVariant as any}>{formAlertMessage}</Alert>
           </div>
         </div>
       ) : null}
