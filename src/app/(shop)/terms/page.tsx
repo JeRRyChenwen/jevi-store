@@ -86,15 +86,21 @@ export default function TermsPage() {
           .
         </p>
         <p>
-          <strong>Legal entity country:</strong> {legalEntityCountry}
+          <strong>Operator location:</strong> {legalEntityCountry}
         </p>
-        <p>
-          <strong>Business address:</strong> {legalEntityAddress}
-        </p>
-        <p>
-          <strong>Registration / business number:</strong>{" "}
-          {companyRegistrationNumber}
-        </p>
+
+        {legalEntityAddress ? (
+          <p>
+            <strong>Business address:</strong> {legalEntityAddress}
+          </p>
+        ) : null}
+
+        {companyRegistrationNumber ? (
+          <p>
+            <strong>Registration / business number:</strong>{" "}
+            {companyRegistrationNumber}
+          </p>
+        ) : null}
         <p>
           References in these Terms &amp; Conditions to “we”, “us”, and “our”
           refer to <strong>{legalEntityName}</strong>.
@@ -207,9 +213,9 @@ export default function TermsPage() {
         <p>
           Where delivery cannot be completed because of incorrect customer
           information or another issue attributable to the customer, we may
-          contact you to resolve the issue before re-dispatching, cancelling,
-          or otherwise managing the order in accordance with applicable law and
-          our operational requirements.
+          contact you to resolve the issue before re-dispatching, cancelling, or
+          otherwise managing the order in accordance with applicable law and our
+          operational requirements.
         </p>
       </section>
 
@@ -435,7 +441,7 @@ export default function TermsPage() {
           </a>
         </p>
         <p className="mt-2">
-          <strong>Governing law:</strong> {governingLawLabel}
+          <strong>Applicable law:</strong> {governingLawLabel}
         </p>
         <p className="mt-2">
           Depending on the storefront and the destination country, state,

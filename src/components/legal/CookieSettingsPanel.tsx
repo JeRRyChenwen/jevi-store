@@ -5,9 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 type ConsentChoice = "accept_all" | "reject_non_essential";
 
 const STORAGE_KEY = "jevi_cookie_consent_v1";
-const STOREFRONT_CODE = String(
-  process.env.NEXT_PUBLIC_STOREFRONT_CODE || "AU"
-)
+const STOREFRONT_CODE = String(process.env.NEXT_PUBLIC_STOREFRONT_CODE || "AU")
   .trim()
   .toUpperCase();
 
@@ -20,14 +18,9 @@ function readConsent(): ConsentChoice | null {
 
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
+
     if (raw === "accept_all" || raw === "reject_non_essential") {
       return raw;
-    }
-
-    // ✅ 非 EU storefront 默认 accept_all
-    if (!isEuStorefront()) {
-      window.localStorage.setItem(STORAGE_KEY, "accept_all");
-      return "accept_all";
     }
 
     return null;
@@ -44,7 +37,7 @@ function writeConsent(value: ConsentChoice) {
     window.dispatchEvent(
       new CustomEvent("jevi-cookie-consent-changed", {
         detail: { value },
-      })
+      }),
     );
   } catch {}
 }
@@ -75,14 +68,14 @@ export default function CookieSettingsPanel() {
 
     window.addEventListener(
       "jevi-cookie-consent-changed",
-      handleConsentChanged as EventListener
+      handleConsentChanged as EventListener,
     );
     window.addEventListener("storage", handleStorageChange);
 
     return () => {
       window.removeEventListener(
         "jevi-cookie-consent-changed",
-        handleConsentChanged as EventListener
+        handleConsentChanged as EventListener,
       );
       window.removeEventListener("storage", handleStorageChange);
     };
@@ -131,7 +124,7 @@ export default function CookieSettingsPanel() {
   const helperText = useMemo(() => {
     if (isEuStorefront()) {
       if (consent === "reject_non_essential" || consent === null) {
-        return "On the EU storefront, rejecting non-essential cookies may disable certain third-party technologies, including PayPal in checkout.";
+        return "On the EU storefront, non-essential cookies and similar technologies remain disabled unless you choose to allow them. This may affect certain third-party technologies, including PayPal in checkout.";
       }
 
       return "Your current EU storefront setting allows non-essential cookies and similar technologies where configured.";
@@ -141,7 +134,11 @@ export default function CookieSettingsPanel() {
       return "Your current storefront setting disables non-essential cookies and similar technologies. This may disable certain third-party technologies, including PayPal in checkout.";
     }
 
-    return "Your current storefront setting allows non-essential cookies and similar technologies where configured.";
+    if (consent === "accept_all") {
+      return "Your current storefront setting allows non-essential cookies and similar technologies where configured.";
+    }
+
+    return "No cookie preference has been saved yet. You can use the setting below to allow or reject non-essential cookies and similar technologies.";
   }, [consent]);
 
   function handleAcceptAll() {
@@ -168,6 +165,7 @@ export default function CookieSettingsPanel() {
             type="button"
             role="switch"
             aria-checked={consent === "accept_all"}
+            aria-label="Allow non-essential cookies and similar technologies"
             onClick={() => {
               if (consent === "accept_all") {
                 handleRejectNonEssential();
@@ -177,11 +175,9 @@ export default function CookieSettingsPanel() {
             }}
             className={[
               "relative inline-flex h-8 w-14 shrink-0 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-neutral-400 focus:ring-offset-2",
-              consent === "accept_all"
-                ? "bg-neutral-900"
-                : "bg-neutral-300",
+              consent === "accept_all" ? "bg-neutral-900" : "bg-neutral-300",
             ].join(" ")}
-            title="Accepted all cookies and similar technologies"
+            title="Allow non-essential cookies and similar technologies"
           >
             <span
               className={[
@@ -193,7 +189,7 @@ export default function CookieSettingsPanel() {
 
           <p className="text-sm leading-6 text-neutral-700">
             <span className="font-semibold text-neutral-900">
-              Accepted all cookies and similar technologies.
+              Allow non-essential cookies and similar technologies.
             </span>
           </p>
         </div>

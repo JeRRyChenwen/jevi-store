@@ -717,7 +717,12 @@ export default function PayPalBigButton({
                   `${apiBase}/checkout/sessions/${encodeURIComponent(
                     sessionToken,
                   )}/paypal/capture`,
-                  {},
+                  {
+                    policy_acceptance: {
+                      accepted: true,
+                      source: "paypal_button_clickwrap",
+                    },
+                  },
                 );
 
                 if (!captureRes.ok || !captureResp?.ok) {

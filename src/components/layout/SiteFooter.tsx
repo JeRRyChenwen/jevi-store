@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BRAND } from "@/lib/brand";
+import { POLICY_LINKS } from "@/lib/legal/policy-links";
 import FooterLogo from "@/components/brand/FooterLogo";
 
 export function SiteFooter() {
@@ -33,40 +34,53 @@ export function SiteFooter() {
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li>
                 <Link
-                  href="/returns"
-                  className="hover:text-foreground transition-colors"
+                  href={POLICY_LINKS.returnsRequest}
+                  className="transition-colors hover:text-foreground"
                 >
                   Returns &amp; Exchanges
                 </Link>
               </li>
+
               <li>
                 <Link
-                  href="/returns-policy"
-                  className="hover:text-foreground transition-colors"
+                  href={POLICY_LINKS.shippingPolicy}
+                  className="transition-colors hover:text-foreground"
+                >
+                  Shipping Policy
+                </Link>
+              </li>
+
+              <li>
+                <Link
+                  href={POLICY_LINKS.returnsPolicy}
+                  className="transition-colors hover:text-foreground"
                 >
                   Returns Policy
                 </Link>
               </li>
+
               <li>
                 <Link
-                  href="/privacy"
-                  className="hover:text-foreground transition-colors"
+                  href={POLICY_LINKS.privacy}
+                  className="transition-colors hover:text-foreground"
                 >
                   Privacy Policy
                 </Link>
               </li>
+
               <li>
                 <Link
-                  href="/terms"
-                  className="hover:text-foreground transition-colors"
+                  href={POLICY_LINKS.terms}
+                  className="transition-colors hover:text-foreground"
                 >
                   Terms &amp; Conditions
                 </Link>
               </li>
+
               <li>
                 <Link
-                  href="/cookies"
-                  className="hover:text-foreground transition-colors"
+                  href={POLICY_LINKS.cookies}
+                  className="transition-colors hover:text-foreground"
                 >
                   Cookie Policy &amp; Cookie Settings
                 </Link>
@@ -82,9 +96,18 @@ export function SiteFooter() {
 
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li>
+                <Link
+                  href={POLICY_LINKS.contact}
+                  className="transition-colors hover:text-foreground"
+                >
+                  Contact Us
+                </Link>
+              </li>
+
+              <li>
                 <a
                   href={`mailto:${BRAND.supportEmail}`}
-                  className="hover:text-foreground transition-colors"
+                  className="transition-colors hover:text-foreground"
                 >
                   {BRAND.supportEmail}
                 </a>

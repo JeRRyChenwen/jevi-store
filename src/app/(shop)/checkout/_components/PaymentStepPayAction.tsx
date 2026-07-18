@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { POLICY_LINKS } from "@/lib/legal/policy-links";
 import PayPalBigButton from "./PayPalBigButton";
 import type { PayError, StockCheckItem } from "./PaymentStep.helpers";
 
@@ -576,96 +577,147 @@ const PaymentStepPayAction: React.FC<Props> = ({
     (prepareLoading || !preparedCheckout);
 
   return (
-    <div className="w-full md:w-[260px] max-w-full">
-      {isPayProcessing ? (
-        <button
-          type="button"
-          disabled
-          className="w-full rounded-full px-6 py-3.5 text-sm font-semibold bg-[#FFC439] text-[#111827] opacity-70 cursor-not-allowed shadow-sm"
-        >
-          Processing payment...
-        </button>
-      ) : preReserveLoading ? (
-        <button
-          type="button"
-          disabled
-          className="w-full rounded-full px-6 py-3.5 text-sm font-semibold bg-[#FFC439] text-[#111827] opacity-70 cursor-not-allowed shadow-sm"
-        >
-          Preparing PayPal...
-        </button>
-      ) : paypalConsentRequired ? (
-        <div className="space-y-2">
+    <div className="w-full max-w-full space-y-3">
+      <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+        <p className="text-xs leading-5 text-neutral-700">
+          By clicking{" "}
+          <span className="font-semibold text-neutral-900">
+            Pay with PayPal
+          </span>
+          , you agree to the Terms &amp; Conditions and acknowledge that you
+          have reviewed the Privacy Policy, Shipping Policy, and Returns Policy.
+        </p>
+
+        <p className="mt-2 text-xs leading-5 text-neutral-600">
+          <a
+            href={POLICY_LINKS.terms}
+            target="_blank"
+            rel="noreferrer"
+            className="font-medium underline underline-offset-2 transition hover:text-neutral-900"
+          >
+            Terms &amp; Conditions
+          </a>
+          {" · "}
+          <a
+            href={POLICY_LINKS.privacy}
+            target="_blank"
+            rel="noreferrer"
+            className="font-medium underline underline-offset-2 transition hover:text-neutral-900"
+          >
+            Privacy Policy
+          </a>
+          {" · "}
+          <a
+            href={POLICY_LINKS.shippingPolicy}
+            target="_blank"
+            rel="noreferrer"
+            className="font-medium underline underline-offset-2 transition hover:text-neutral-900"
+          >
+            Shipping Policy
+          </a>
+          {" · "}
+          <a
+            href={POLICY_LINKS.returnsPolicy}
+            target="_blank"
+            rel="noreferrer"
+            className="font-medium underline underline-offset-2 transition hover:text-neutral-900"
+          >
+            Returns Policy
+          </a>
+        </p>
+      </div>
+
+      <div className="w-full md:ml-auto md:w-[260px]">
+        {isPayProcessing ? (
           <button
             type="button"
             disabled
-            className="w-full rounded-full px-6 py-3.5 text-sm font-semibold bg-neutral-200 text-neutral-500 cursor-not-allowed shadow-sm"
-            title={paypalDisabledText || "Accept cookies to use PayPal"}
+            className="w-full cursor-not-allowed rounded-full bg-[#FFC439] px-6 py-3.5 text-sm font-semibold text-[#111827] opacity-70 shadow-sm"
           >
-            {paypalDisabledText || "Accept cookies to use PayPal"}
+            Processing payment...
           </button>
-
-          <p className="text-xs leading-5 text-neutral-500">
-            PayPal is unavailable because your current cookie settings disable
-            non-essential cookies and similar technologies.
-          </p>
-
-          <a
-            href="/cookies"
-            className="inline-block text-xs font-medium text-neutral-700 underline underline-offset-2 transition hover:text-neutral-900"
+        ) : preReserveLoading ? (
+          <button
+            type="button"
+            disabled
+            className="w-full cursor-not-allowed rounded-full bg-[#FFC439] px-6 py-3.5 text-sm font-semibold text-[#111827] opacity-70 shadow-sm"
           >
-            Change cookie settings
-          </a>
-        </div>
-      ) : prepareError ? (
-        <button
-          type="button"
-          disabled
-          className="w-full rounded-full px-6 py-3.5 text-sm font-semibold bg-neutral-200 text-neutral-500 cursor-not-allowed shadow-sm"
-          title={
-            prepareError?.message ||
-            "PayPal checkout could not be prepared. Please check your checkout information."
-          }
-        >
-          PayPal unavailable
-        </button>
-      ) : showPreparing ? (
-        <button
-          type="button"
-          disabled
-          className="w-full rounded-full px-6 py-3.5 text-sm font-semibold bg-[#FFC439] text-[#111827] opacity-70 cursor-not-allowed shadow-sm"
-        >
-          Preparing secure checkout...
-        </button>
-      ) : (
-        <PayPalBigButton
-          disabled={paypalUnavailable || !preparedCheckout}
-          disabledText="PayPal unavailable"
-          amount={derivedAmountMajor}
-          currency={safeCurrency}
-          successMeta={successMetaWithReservation}
-          preflight={runStockReservePreflight}
-          preflightItems={stockItems}
-          preparedSessionToken={preparedCheckout?.sessionToken || null}
-          preparedPayPalOrderId={preparedCheckout?.paypalOrderId || null}
-          preparedReservationId={preparedCheckout?.reservationId || null}
-          preparedCheckoutSession={preparedCheckout?.checkoutSession || null}
-          onInitiate={() => {
-            console.log(
-              "[payment] initiating paypal with prepared reservationId =",
-              reservationIdRef.current,
-            );
-            setPayError(null);
-            setSuppressBlockedHint(true);
-            onPayInitiated();
-          }}
-          onSucceeded={(paypalPayload) => {
-            handlePaySucceeded(paypalPayload);
-          }}
-          onFailed={(err: any) => {
-            void handlePayFailed(err);
-          }}
-        />
-      )}
+            Preparing PayPal...
+          </button>
+        ) : paypalConsentRequired ? (
+          <div className="space-y-2">
+            <button
+              type="button"
+              disabled
+              className="w-full cursor-not-allowed rounded-full bg-neutral-200 px-6 py-3.5 text-sm font-semibold text-neutral-500 shadow-sm"
+              title={paypalDisabledText || "Accept cookies to use PayPal"}
+            >
+              {paypalDisabledText || "Accept cookies to use PayPal"}
+            </button>
+
+            <p className="text-xs leading-5 text-neutral-500">
+              PayPal is unavailable because your current cookie settings disable
+              non-essential cookies and similar technologies.
+            </p>
+
+            <a
+              href={POLICY_LINKS.cookies}
+              className="inline-block text-xs font-medium text-neutral-700 underline underline-offset-2 transition hover:text-neutral-900"
+            >
+              Change cookie settings
+            </a>
+          </div>
+        ) : prepareError ? (
+          <button
+            type="button"
+            disabled
+            className="w-full cursor-not-allowed rounded-full bg-neutral-200 px-6 py-3.5 text-sm font-semibold text-neutral-500 shadow-sm"
+            title={
+              prepareError?.message ||
+              "PayPal checkout could not be prepared. Please check your checkout information."
+            }
+          >
+            PayPal unavailable
+          </button>
+        ) : showPreparing ? (
+          <button
+            type="button"
+            disabled
+            className="w-full cursor-not-allowed rounded-full bg-[#FFC439] px-6 py-3.5 text-sm font-semibold text-[#111827] opacity-70 shadow-sm"
+          >
+            Preparing secure checkout...
+          </button>
+        ) : (
+          <PayPalBigButton
+            disabled={paypalUnavailable || !preparedCheckout}
+            disabledText="PayPal unavailable"
+            amount={derivedAmountMajor}
+            currency={safeCurrency}
+            successMeta={successMetaWithReservation}
+            preflight={runStockReservePreflight}
+            preflightItems={stockItems}
+            preparedSessionToken={preparedCheckout?.sessionToken || null}
+            preparedPayPalOrderId={preparedCheckout?.paypalOrderId || null}
+            preparedReservationId={preparedCheckout?.reservationId || null}
+            preparedCheckoutSession={preparedCheckout?.checkoutSession || null}
+            onInitiate={() => {
+              console.log(
+                "[payment] initiating paypal with prepared reservationId =",
+                reservationIdRef.current,
+              );
+              setPayError(null);
+              setSuppressBlockedHint(true);
+              onPayInitiated();
+            }}
+            onSucceeded={(paypalPayload) => {
+              handlePaySucceeded(paypalPayload);
+            }}
+            onFailed={(err: any) => {
+              void handlePayFailed(err);
+            }}
+          />
+        )}
+      </div>
     </div>
   );
 };

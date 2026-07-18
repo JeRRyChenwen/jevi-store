@@ -27,9 +27,10 @@ type EtaByMethod = Partial<
       eta_min_total?: number | null;
       eta_max_total?: number | null;
 
-      /** ✅ 数据库里通常是这三个（不含 total） */
+      /** 客户侧预计送达时间，表示下单至送达的总工作日范围 */
       min_days?: number | null;
       max_days?: number | null;
+      /** 仅供内部参考，不参与客户侧 ETA 计算或展示 */
       handling_days?: number | null;
 
       /** 可选：仓库、物流服务；eta_note 当前不在前台展示 */
@@ -281,6 +282,11 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
   const promotionThresholdMinor =
     selectedPromotion?.thresholdMinor ?? standardFreeThresholdMinor ?? null;
 
+  const promotionThresholdText =
+    promotionThresholdMinor != null
+      ? formatMoney(promotionThresholdMinor, cur)
+      : null;
+
   const remainingToPromotionMinor =
     promotionThresholdMinor != null
       ? Math.max(
@@ -317,7 +323,9 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
     }
 
     if (promotionUnlocked && discountPercent === 100) {
-      return "Your order has reached AUD 200.00 and this destination is eligible for free Standard delivery.";
+      return promotionThresholdText
+        ? `Your order has reached ${promotionThresholdText} and this destination is eligible for free Standard delivery.`
+        : "This destination is eligible for free Standard delivery.";
     }
 
     if (
@@ -325,7 +333,9 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
       discountPercent === 50 &&
       deliveryMethod === "express"
     ) {
-      return "Your order has reached AUD 200.00. Express delivery receives a 50% shipping discount.";
+      return promotionThresholdText
+        ? `Your order has reached ${promotionThresholdText}. Express delivery receives a 50% shipping discount.`
+        : "Express delivery receives a 50% shipping discount.";
     }
 
     if (
@@ -333,7 +343,9 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
       discountPercent === 50 &&
       selectedPromotion?.reason === "au_tier_3_destination"
     ) {
-      return "Your order has reached AUD 200.00. Tier 3 destinations receive 50% off Standard delivery.";
+      return promotionThresholdText
+        ? `Your order has reached ${promotionThresholdText}. Tier 3 destinations receive 50% off Standard delivery.`
+        : "Tier 3 destinations receive 50% off Standard delivery.";
     }
 
     if (
@@ -341,7 +353,9 @@ const DeliveryStep: React.FC<DeliveryStepProps> = ({
       discountPercent === 50 &&
       selectedPromotion?.reason === "au_fallback_destination"
     ) {
-      return "Your order has reached AUD 200.00. Australia Fallback destinations receive 50% off Standard delivery.";
+      return promotionThresholdText
+        ? `Your order has reached ${promotionThresholdText}. Australia Fallback destinations receive 50% off Standard delivery.`
+        : "Australia Fallback destinations receive 50% off Standard delivery.";
     }
 
     return null;

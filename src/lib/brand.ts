@@ -56,26 +56,28 @@ export const BRAND = {
   legalName: "JEVI | APPAREL STUDIO",
 
   /**
-   * 经营主体默认名称
+   * 网站经营者名称
    */
-  legalEntityName: "Wenxuan Chen trading as JEVI | APPAREL STUDIO",
+  legalEntityName: "Wenxuan Chen, operating JEVI | APPAREL STUDIO",
 
   /**
-   * 经营主体默认国家
+   * 网站经营者所在国家
    */
-  legalEntityCountry: "Australia",
+  legalEntityCountry: "China",
 
   /**
-   * 经营主体默认地址
-   * 上线前再替换成你愿意公开展示的真实商业地址。
+   * 当前没有单独公开的商业地址。
+   *
+   * 保持为空时，Terms 页面不会显示 Business address。
    */
-  legalEntityAddress: "Business address to be provided before launch",
+  legalEntityAddress: "",
 
   /**
-   * 注册号 / ABN / company number
-   * 上线前建议替换成真实 ABN 或注册信息。
+   * 当前没有澳大利亚 ABN 或其他需要公开展示的注册号码。
+   *
+   * 保持为空时，Terms 页面不会显示 Registration / business number。
    */
-  companyRegistrationNumber: "ABN / registration number to be provided before launch",
+  companyRegistrationNumber: "",
 
   /**
    * 默认适用法标签

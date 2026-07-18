@@ -34,16 +34,15 @@ export default function PrivacyPage() {
   return (
     <LegalShell
       title="Privacy Policy"
-      updatedAt="2026-04-17"
+      updatedAt="2026-07-19"
       intro={
         <>
           <p>
             This Privacy Policy explains how <strong>{legalEntityName}</strong>{" "}
-            operating <strong>{BRAND.displayName}</strong> collects, uses,
-            stores, discloses, and otherwise handles personal information when
-            you visit our website, create an account, place an order, contact
-            us, submit a return request, subscribe to updates, or otherwise
-            interact with our services.
+            collects, uses, stores, discloses, and otherwise handles personal
+            information when you visit our website, create an account, place an
+            order, contact us, submit a return request, subscribe to updates, or
+            otherwise interact with our services.
           </p>
           <p>
             This storefront currently provides sales and delivery only within{" "}
@@ -67,7 +66,10 @@ export default function PrivacyPage() {
         <h2 className="text-base font-semibold text-foreground">
           1. What information we may collect
         </h2>
-        <p>Depending on how you interact with us, we may collect information such as:</p>
+        <p>
+          Depending on how you interact with us, we may collect information such
+          as:
+        </p>
         <ul className="list-disc pl-5 space-y-1">
           <li>your name;</li>
           <li>email address;</li>
@@ -78,8 +80,14 @@ export default function PrivacyPage() {
           <li>payment status and limited payment-related metadata;</li>
           <li>communications with us, including customer support messages;</li>
           <li>return, refund, exchange, and complaint details;</li>
-          <li>photos, descriptions, or other evidence you provide in support of a claim; and</li>
-          <li>technical, device, browser, usage, and analytics-related information from website use.</li>
+          <li>
+            photos, descriptions, or other evidence you provide in support of a
+            claim; and
+          </li>
+          <li>
+            technical, device, browser, usage, and analytics-related information
+            from website use.
+          </li>
         </ul>
       </section>
 
@@ -93,9 +101,14 @@ export default function PrivacyPage() {
           <li>create an account, sign in, or manage account details;</li>
           <li>add items to cart or begin checkout;</li>
           <li>place or attempt to place an order;</li>
-          <li>request a cancellation, return, refund, replacement, or exchange;</li>
+          <li>
+            request a cancellation, return, refund, replacement, or exchange;
+          </li>
           <li>contact customer support or send us an enquiry;</li>
-          <li>subscribe to newsletters, product updates, or marketing, where offered;</li>
+          <li>
+            subscribe to newsletters, product updates, or marketing, where
+            offered;
+          </li>
           <li>enter a promotion, campaign, or other optional activity; or</li>
           <li>interact with cookies or similar technologies on our site.</li>
         </ul>
@@ -112,45 +125,107 @@ export default function PrivacyPage() {
           <li>arrange shipping and delivery;</li>
           <li>provide customer service and after-sales support;</li>
           <li>handle returns, refunds, exchanges, complaints, and disputes;</li>
-          <li>send transactional emails such as account notices, order confirmations, shipment updates, and return updates;</li>
-          <li>detect, prevent, or investigate fraud, abuse, security incidents, or other misuse;</li>
+          <li>
+            send transactional emails such as account notices, order
+            confirmations, shipment updates, and return updates;
+          </li>
+          <li>
+            detect, prevent, or investigate fraud, abuse, security incidents, or
+            other misuse;
+          </li>
           <li>analyse site performance and customer interactions;</li>
           <li>maintain business records and internal administration; and</li>
-          <li>comply with legal, tax, accounting, regulatory, and enforcement obligations.</li>
+          <li>
+            comply with legal, tax, accounting, regulatory, and enforcement
+            obligations.
+          </li>
         </ul>
       </section>
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          4. Payment and transaction information
+          4. Payment and PayPal information
         </h2>
         <p>
-          Payments may be processed through third-party payment providers. We do
-          not necessarily store full payment card details on our own systems.
+          Payments available through this storefront are processed using PayPal.
+          When you choose PayPal at checkout, information required to complete
+          and manage the transaction may be provided to PayPal.
         </p>
         <p>
-          We may retain transaction identifiers, payment status, fraud-screening
-          outcomes, chargeback or dispute information, and related order
-          metadata where reasonably necessary for payment processing, fraud
-          prevention, accounting, record-keeping, and customer support.
+          This information may include your name, email address, billing or
+          shipping address, order value, currency, purchased items, shipping
+          information, transaction references, and other information reasonably
+          required to process the payment, prevent fraud, manage disputes, and
+          provide PayPal services.
+        </p>
+        <p>
+          We do not intentionally receive or store your PayPal account password
+          or full payment card number on our own systems. We may retain PayPal
+          order or transaction identifiers, payment and capture status, refund
+          information, dispute or chargeback information, fraud-screening
+          outcomes, and related order metadata where reasonably necessary for
+          payment processing, accounting, record-keeping, fraud prevention, and
+          customer support.
+        </p>
+        <p>
+          PayPal handles personal information in accordance with its own terms
+          and privacy practices. You can review the{" "}
+          <a
+            href="https://www.paypal.com/au/legalhub/paypal/privacy-full"
+            target="_blank"
+            rel="noreferrer"
+            className="font-semibold underline"
+          >
+            PayPal Privacy Statement
+          </a>
+          .
         </p>
       </section>
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          5. Shipping, returns, and support data
+          5. Shipping, CJdropshipping, returns, and support data
         </h2>
         <p>
-          To fulfil orders and provide after-sales service, we may share
-          relevant information with delivery providers, logistics partners,
-          returns handlers, customer service tools, and other service providers
-          involved in order processing, fulfilment, returns, and support.
+          We may use CJdropshipping as a third-party logistics, warehousing, and
+          fulfilment provider for eligible orders. To prepare, dispatch, track,
+          and deliver an order, we may provide CJdropshipping with information
+          reasonably required for fulfilment.
         </p>
         <p>
-          Where you submit a return, refund, or other claim, we may collect and
-          review supporting information such as item photos, packaging photos,
-          issue descriptions, and correspondence relevant to assessing the
-          request.
+          This information may include the recipient&apos;s name, delivery
+          address, suburb or city, state or region, postcode, country, telephone
+          number, email address where required, ordered products, product
+          variants, quantities, order references, selected shipping method,
+          tracking information, and relevant delivery instructions.
+        </p>
+        <p>
+          CJdropshipping, delivery carriers, warehouse providers, and other
+          logistics partners may use this information to process and pack the
+          order, arrange transportation, provide tracking, complete delivery,
+          investigate delivery issues, and assist with returns, reshipments,
+          refunds, or fulfilment disputes.
+        </p>
+        <p>
+          Where you submit a return, refund, replacement, or other claim, we may
+          collect and review supporting information such as item photos,
+          packaging photos, shipping labels, issue descriptions, and
+          correspondence. Relevant information may be shared with
+          CJdropshipping, the warehouse, or the delivery carrier where
+          reasonably necessary to investigate and resolve the request.
+        </p>
+        <p>
+          CJdropshipping handles personal information in accordance with its own
+          terms and privacy practices. You can review the{" "}
+          <a
+            href="https://cjdropshipping.com/privacyPolicy"
+            target="_blank"
+            rel="noreferrer"
+            className="font-semibold underline"
+          >
+            CJdropshipping Privacy Policy
+          </a>
+          .
         </p>
       </section>
 
@@ -180,15 +255,49 @@ export default function PrivacyPage() {
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          7. When we may disclose information
+          7. Email communications, Resend, and service providers
         </h2>
         <p>
-          We may disclose personal information to service providers, technology
-          vendors, payment processors, hosting providers, cloud infrastructure
-          providers, shipping partners, professional advisers, and regulators or
-          authorities where reasonably necessary to operate the storefront,
-          fulfil orders, manage disputes, enforce our terms, protect our rights,
-          or comply with law.
+          We use Resend as an email delivery service provider to send
+          transactional communications such as account notices, order
+          confirmations, payment updates, shipment notifications, return
+          updates, and customer support messages.
+        </p>
+        <p>
+          Where configured, Resend may also be used to receive, route, or
+          process customer support emails and replies. Information processed
+          through Resend may include your name, email address, message subject,
+          message content, attachments, message identifiers, delivery status,
+          bounce or complaint information, and other email-related metadata.
+        </p>
+        <p>
+          If you subscribe to marketing communications, Resend may also be used
+          to deliver those communications. Depending on the features enabled,
+          email-related metadata may include information about delivery,
+          opening, or interaction with links. You can unsubscribe from marketing
+          communications using the unsubscribe method provided in the relevant
+          message.
+        </p>
+        <p>
+          Resend handles personal information in accordance with its own terms
+          and privacy practices. You can review the{" "}
+          <a
+            href="https://resend.com/legal/privacy-policy"
+            target="_blank"
+            rel="noreferrer"
+            className="font-semibold underline"
+          >
+            Resend Privacy Policy
+          </a>
+          .
+        </p>
+        <p>
+          We may also disclose personal information to service providers,
+          technology vendors, payment processors, hosting providers, cloud
+          infrastructure providers, shipping partners, professional advisers,
+          and regulators or authorities where reasonably necessary to operate
+          the storefront, fulfil orders, manage disputes, enforce our terms,
+          protect our rights, or comply with law.
         </p>
         <p>
           Depending on the storefront and the law that applies, we may also be
@@ -204,21 +313,59 @@ export default function PrivacyPage() {
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          8. Cross-border handling and service providers
+          8. Cloudflare, hosting, and cross-border processing
         </h2>
         <p>
-          Depending on how our systems, hosting arrangements, payment providers,
-          logistics providers, customer support tools, and other service
-          providers are configured, personal information may be processed,
-          stored, backed up, transmitted, or accessed outside the country in
-          which this storefront is primarily operated.
+          We use or may use Cloudflare to provide domain name services, content
+          delivery, website performance, traffic management, security
+          protection, and related network services.
         </p>
         <p>
-          Where this occurs, we seek to work with service providers and
-          operational arrangements that support reasonable safeguards for the
-          handling of personal information, taking into account the nature of
-          the information involved and the role performed by the relevant
-          service provider.
+          When you access the website, Cloudflare and related infrastructure
+          providers may process technical information such as your IP address,
+          requested URL, browser and device information, request time, network
+          information, security signals, and other data reasonably required to
+          deliver and protect the website.
+        </p>
+        <p>
+          Our storefront, administration platform, application programming
+          interfaces, content management system, databases, email systems,
+          uploaded files, logs, and backups may be hosted or operated using
+          third-party virtual private servers, cloud infrastructure, database
+          services, storage providers, or other technology providers.
+        </p>
+        <p>
+          Information stored or processed through these systems may include
+          account details, order records, delivery information, payment status,
+          customer support communications, return requests, uploaded evidence,
+          security logs, and other information described in this Privacy Policy.
+        </p>
+        <p>
+          Because we operate from China and use international payment,
+          fulfilment, email, hosting, security, and technology providers,
+          personal information may be processed, stored, backed up, transmitted,
+          or accessed outside the country in which you live or place an order.
+          The countries involved may vary according to the provider, service,
+          data centre, backup arrangement, and operational requirements.
+        </p>
+        <p>
+          Where personal information is handled across borders, we seek to use
+          reputable service providers and reasonable technical, organisational,
+          and contractual safeguards appropriate to the nature of the
+          information and the service being provided.
+        </p>
+        <p>
+          Cloudflare handles personal information in accordance with its own
+          terms and privacy practices. You can review the{" "}
+          <a
+            href="https://www.cloudflare.com/privacypolicy/"
+            target="_blank"
+            rel="noreferrer"
+            className="font-semibold underline"
+          >
+            Cloudflare Privacy Policy
+          </a>
+          .
         </p>
       </section>
 
@@ -241,9 +388,8 @@ export default function PrivacyPage() {
             misleading, or raise a privacy concern or complaint.
           </p>
           <p>
-            We may need to verify your identity before providing access,
-            making a correction, or otherwise responding to a privacy-related
-            request.
+            We may need to verify your identity before providing access, making
+            a correction, or otherwise responding to a privacy-related request.
           </p>
         </section>
       ) : isNz ? (
@@ -259,8 +405,8 @@ export default function PrivacyPage() {
             scale of this business.
           </p>
           <p>
-            You may contact us to request access to personal information we
-            hold about you, request correction, or raise a privacy concern or
+            You may contact us to request access to personal information we hold
+            about you, request correction, or raise a privacy concern or
             complaint.
           </p>
           <p>
@@ -319,8 +465,8 @@ export default function PrivacyPage() {
           <p>
             Cookie consent mode for this storefront is currently{" "}
             <strong>{cookieConsentMode}</strong>. Where required by applicable
-            law or operational policy, we may present additional notices, opt-out
-            choices, or other privacy-related controls.
+            law or operational policy, we may present additional notices,
+            opt-out choices, or other privacy-related controls.
           </p>
           <p>
             Depending on the law of the relevant state or jurisdiction, you may
@@ -354,8 +500,8 @@ export default function PrivacyPage() {
           <p>
             Cookie consent mode for this storefront is currently{" "}
             <strong>{cookieConsentMode}</strong>. Where appropriate, we may
-            provide additional notices, consent prompts, or other privacy-related
-            controls for this storefront.
+            provide additional notices, consent prompts, or other
+            privacy-related controls for this storefront.
           </p>
           <p>
             Depending on the law of the relevant province or territory, you may
@@ -380,7 +526,8 @@ export default function PrivacyPage() {
           </p>
           <p>
             The legal entity currently operating this storefront is{" "}
-            <strong>{legalEntityName}</strong> in <strong>{legalEntityCountry}</strong>.
+            <strong>{legalEntityName}</strong> in{" "}
+            <strong>{legalEntityCountry}</strong>.
           </p>
           <p>
             Cookie consent mode for this storefront is currently{" "}
@@ -429,8 +576,8 @@ export default function PrivacyPage() {
         </h2>
         <p>
           You may contact us if you would like to request access to personal
-          information we hold about you, request a correction, or raise a
-          privacy concern or complaint.
+          information we hold about you, request correction of information that
+          is inaccurate or incomplete, or raise a privacy concern or complaint.
         </p>
         <p>
           Privacy support for this storefront is currently managed for{" "}
@@ -439,14 +586,20 @@ export default function PrivacyPage() {
         </p>
         <p>
           We may ask you to provide information reasonably necessary to verify
-          your identity before responding to an access, correction, or
-          privacy-related request.
+          your identity and locate the relevant records before responding to an
+          access, correction, deletion, or privacy-related request.
+        </p>
+        <p>
+          We will review privacy enquiries and complaints in good faith and aim
+          to acknowledge and respond within a reasonable period, taking into
+          account the nature and complexity of the request. If additional time
+          or information is required, we may contact you with an update.
         </p>
         <p>
           Depending on the storefront and the law that applies, you may also
           have additional rights in relation to how your personal information is
-          handled, and we may provide additional information, disclosures,
-          choices, review pathways, or complaint pathways where required.
+          handled. We may provide additional disclosures, choices, review
+          pathways, or complaint pathways where required.
         </p>
         <p className="mt-2">
           <strong>Privacy contact email:</strong>{" "}
@@ -470,17 +623,25 @@ export default function PrivacyPage() {
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          13. Related policies
+          13. Contact and related policies
         </h2>
-        <ul className="list-disc pl-5 space-y-1">
+        <ul className="list-disc space-y-1 pl-5">
+          <li>
+            <a href={POLICY_LINKS.contact} className="font-semibold underline">
+              Contact Us
+            </a>
+          </li>
           <li>
             <a href={POLICY_LINKS.terms} className="font-semibold underline">
               Terms &amp; Conditions
             </a>
           </li>
           <li>
-            <a href={POLICY_LINKS.cookies} className="font-semibold underline">
-              Cookie Policy
+            <a
+              href={POLICY_LINKS.shippingPolicy}
+              className="font-semibold underline"
+            >
+              Shipping Policy
             </a>
           </li>
           <li>
@@ -489,6 +650,11 @@ export default function PrivacyPage() {
               className="font-semibold underline"
             >
               Returns Policy
+            </a>
+          </li>
+          <li>
+            <a href={POLICY_LINKS.cookies} className="font-semibold underline">
+              Cookie Policy
             </a>
           </li>
         </ul>

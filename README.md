@@ -1437,9 +1437,6 @@ jevi-store：
 docker compose -f docker-compose.local.yml up -d
 
 jevi-admin-platform：
-npm run build
-docker compose -f docker-compose.local.yml down
-docker compose -f docker-compose.local.yml up -d --build
 docker compose -f docker-compose.local.yml up -d
 
 jevi-api：
@@ -1450,7 +1447,6 @@ docker compose -f docker-compose.postgres.local.yml up -d
 npm run develop
 
 mailer-api：
-docker compose -f docker-compose.local.yml up --build -d
 docker compose -f docker-compose.local.yml up -d
 
 # ============================================================================
@@ -1689,4 +1685,3 @@ email
 google搜索出来的网页需要写上austrlia 关键词
 
 这个操作是把每个 SKU 的库存设置成 CSV 中的目标数量，不是在原有库存上累加
-migration 整合

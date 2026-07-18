@@ -39,13 +39,14 @@ export default function ReturnsPolicyPage() {
           <p>
             This Returns Policy explains how return requests, refunds,
             replacements, cancellations, and other after-sales outcomes are
-            handled for orders placed through <strong>{BRAND.displayName}</strong>.
+            handled for orders placed through{" "}
+            <strong>{BRAND.displayName}</strong>.
           </p>
           <p>
             This storefront currently accepts orders and offers delivery only
             within <strong>{checkoutRegionLabel}</strong>. Orders placed through
-            this storefront are intended for customers with delivery addresses in
-            that region only.
+            this storefront are intended for customers with delivery addresses
+            in that region only.
           </p>
           <p>
             Supported delivery countries for this storefront are currently{" "}
@@ -90,18 +91,27 @@ export default function ReturnsPolicyPage() {
 
       <section>
         <h2 className="text-base font-semibold text-foreground">
-          2. Items that may not be eligible for return
+          2. Conditions for discretionary change-of-mind exceptions
         </h2>
         <p>
-          We may refuse a return where permitted by law if the item has been
-          worn outside normal try-on, washed, altered, damaged after delivery,
-          is missing tags or original packaging, or is otherwise not in
-          re-saleable condition.
+          If we agree in writing to accept a discretionary change-of-mind
+          return, we may require the item to be unworn other than reasonable
+          indoor try-on, unwashed, unaltered, undamaged after delivery, with
+          tags attached and, where reasonably available, in its original
+          packaging.
         </p>
         <p>
-          We may also refuse change-of-mind returns for final sale, clearance,
-          promotional, personalised, or hygiene-sensitive items where this is
-          clearly stated at the time of purchase or otherwise permitted by law.
+          These conditions apply only to a discretionary change-of-mind return.
+          They do not apply where you are seeking a remedy for goods that are
+          faulty, damaged, incorrect, not as described, or otherwise fail to
+          meet rights that cannot lawfully be excluded. Original packaging is
+          not required to exercise those rights.
+        </p>
+        <p>
+          Final sale, clearance, promotional, personalised, or hygiene-sensitive
+          items are not eligible for discretionary change-of-mind returns unless
+          we expressly agree otherwise in writing. This does not limit any
+          non-excludable rights or remedies under applicable law.
         </p>
       </section>
 
@@ -116,10 +126,10 @@ export default function ReturnsPolicyPage() {
         </p>
         <p>
           Where goods do not meet applicable consumer guarantees, statutory
-          rights, or other non-excludable protections, you may be entitled to
-          an appropriate remedy. Depending on the nature of the issue and the
-          law that applies, this may include repair, replacement, refund, or
-          another remedy required or permitted by law.
+          rights, or other non-excludable protections, you may be entitled to an
+          appropriate remedy. Depending on the nature of the issue and the law
+          that applies, this may include repair, replacement, refund, or another
+          remedy required or permitted by law.
         </p>
         <p>
           We may ask for reasonable supporting information, including your order
@@ -164,10 +174,12 @@ export default function ReturnsPolicyPage() {
         </p>
         <p>
           If we confirm that an item is faulty, damaged, incorrect, or otherwise
-          eligible for a remedy under applicable law, we may provide return
-          instructions, a return label, reimbursement of reasonable return
-          postage, or another suitable return arrangement depending on the
-          circumstances and the law that applies.
+          eligible for a remedy under applicable law, we will provide an
+          appropriate return arrangement where required by law. This may include
+          a prepaid return label, reimbursement of reasonable return postage you
+          have paid, or another suitable return method. Please keep any postage
+          or transport receipt so that eligible reasonable return costs can be
+          reimbursed.
         </p>
         <p>
           Depending on the storefront and the jurisdiction involved, return

@@ -28,7 +28,6 @@ type ReturnsSubmissionCardProps = {
 };
 
 const RETURN_REASON_OPTIONS = [
-  { value: "changed_mind", label: "Changed my mind" },
   { value: "wrong_item", label: "Received wrong item" },
   { value: "faulty", label: "Faulty / damaged" },
   { value: "other", label: "Other" },
@@ -148,7 +147,9 @@ export default function ReturnsSubmissionCard({
                     active
                       ? "border-slate-900 bg-slate-50 text-slate-900"
                       : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:border-slate-300",
-                    submitting || uploading ? "opacity-60 cursor-not-allowed" : "",
+                    submitting || uploading
+                      ? "opacity-60 cursor-not-allowed"
+                      : "",
                   ].join(" ")}
                   aria-pressed={active}
                 >
@@ -181,9 +182,10 @@ export default function ReturnsSubmissionCard({
           <label className="text-sm font-medium">Details (optional)</label>
 
           <p className="text-xs text-muted-foreground leading-5">
-            Please describe the issue clearly. If you are requesting a refund or a replacement for a
-            faulty, damaged, or incorrect item, please provide as much detail as possible and upload
-            supporting photos where available.
+            Please describe the issue clearly. If you are requesting a refund or
+            a replacement for a faulty, damaged, or incorrect item, please
+            provide as much detail as possible and upload supporting photos
+            where available.
           </p>
 
           <textarea
@@ -206,8 +208,8 @@ export default function ReturnsSubmissionCard({
             {submitting
               ? "Submitting..."
               : uploading
-              ? "Uploading images..."
-              : "Submit return request"}
+                ? "Uploading images..."
+                : "Submit return request"}
           </Button>
         </div>
 
@@ -215,7 +217,9 @@ export default function ReturnsSubmissionCard({
           <div className="mt-6">
             <Alert variant={inlineVariant}>
               <div className="font-semibold">{inlineTitle}</div>
-              <div className="mt-1 text-xs leading-relaxed">{inlineMessage}</div>
+              <div className="mt-1 text-xs leading-relaxed">
+                {inlineMessage}
+              </div>
             </Alert>
           </div>
         )}
