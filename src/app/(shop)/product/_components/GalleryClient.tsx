@@ -61,8 +61,8 @@ export default function GalleryClient({
       aria-label="Product image thumbnails"
       role="list"
       className={[
-        "relative max-h-[70vh] overflow-y-auto md:max-h-[76vh]",
-        "flex gap-5 py-1 pl-4 pr-4 md:flex-col md:gap-6 md:py-2 md:pl-6 md:pr-5",
+        "relative flex min-w-0 gap-4 overflow-x-auto py-1 px-1",
+        "lg:max-h-[76vh] lg:flex-col lg:gap-5 lg:overflow-x-hidden lg:overflow-y-auto lg:px-1 lg:py-2",
         "[scrollbar-width:none] [-ms-overflow-style:none]",
         "[&::-webkit-scrollbar]:h-0 [&::-webkit-scrollbar]:w-0 [&::-webkit-scrollbar]:bg-transparent",
       ].join(" ")}
@@ -88,7 +88,7 @@ export default function GalleryClient({
             role="listitem"
             ref={active ? activeRef : undefined}
             className={[
-              "group block w-[140px] shrink-0 select-none overflow-hidden md:w-[160px]",
+              "group block w-[112px] shrink-0 select-none overflow-hidden sm:w-[128px] lg:w-full",
               active
                 ? "ring-2 ring-neutral-900"
                 : "ring-1 ring-neutral-300 hover:ring-neutral-400",

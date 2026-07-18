@@ -2,7 +2,7 @@
 "use client";
 
 import Link from "next/link";
-import HomeProductCard from "@/components/home/HomeProductCard";
+import ProductCard from "@/app/(shop)/category/[slug]/_components/ProductCard";
 import { CURRENT_STOREFRONT } from "@/lib/market/current";
 
 import { useCategoryProducts } from "@/app/(shop)/category/[slug]/_hooks/useCategoryProducts";
@@ -30,7 +30,6 @@ export default function HomeCategorySectionClient({
   pageSize = 5,
   displayCurrency = CURRENT_STOREFRONT.defaultCurrency,
 }: Props) {
-  // 首页固定 hot 排序
   const sortQueryString =
     "&sort[0]=hot_score:desc&sort[1]=priority:asc&sort[2]=updatedAt:desc";
 
@@ -55,13 +54,12 @@ export default function HomeCategorySectionClient({
     devLogPrefix: `HomeSection:${slug}`,
   });
 
-  // ✅ 只对这两个分类改标题
   let displayHeading: string;
 
   if (slug === "new-in") {
     displayHeading = "News In";
   } else if (slug === "on-sale") {
-    displayHeading = "Sales";
+    displayHeading = "On Sale";
   } else {
     displayHeading = `Top Picks for ${title}`;
   }
@@ -69,10 +67,9 @@ export default function HomeCategorySectionClient({
   return (
     <section className="space-y-3">
       <div className="flex items-end justify-between">
-        <div>
-          {/* ✅ 只影响 new-in 和 on-sale */}
-          <h2 className="text-xl font-semibold">{displayHeading}</h2>
-        </div>
+        <h2 className="text-2xl font-bold tracking-tight md:text-3xl">
+          {displayHeading}
+        </h2>
 
         <Link
           href={`/category/${slug}`}
@@ -95,22 +92,23 @@ export default function HomeCategorySectionClient({
       ) : (
         <div
           className="
-            grid gap-3
+            grid
             grid-cols-2
+            gap-3
             sm:grid-cols-3
             lg:grid-cols-4
             xl:grid-cols-5
           "
         >
           {list.map((p: any, idx: number) => (
-            <HomeProductCard
+            <ProductCard
               key={p?.key ?? p?.slug ?? `${slug}-${idx}`}
               p={p}
               idx={idx}
               start={0}
               displayCurrency={displayCurrency}
-              pickPriceForCurrency={pickPriceForCurrency as any}
-              formatPriceForCard={formatPriceForCard as any}
+              pickPriceForCurrency={pickPriceForCurrency}
+              formatPriceForCard={formatPriceForCard}
             />
           ))}
         </div>

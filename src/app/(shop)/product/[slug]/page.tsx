@@ -392,7 +392,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     Boolean(currentColor) && realHeightsAll.length > 0;
 
   return (
-    <main className="w-full px-2 sm:px-4 md:px-6 lg:px-0 py-8 overflow-x-hidden">
+    <main className="mx-auto w-full max-w-[1720px] overflow-x-hidden px-4 py-8 sm:px-6 lg:px-8 xl:px-10 2xl:px-12">
       <nav
         className="flex items-center text-sm text-neutral-500 mb-4"
         aria-label="Breadcrumb"
@@ -426,62 +426,83 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
 
       <div
         className="
-          grid grid-cols-1
-          md:[grid-template-columns:max-content_minmax(0,1fr)]
-          lg:[grid-template-columns:max-content_minmax(0,1fr)_480px]
-          xl:[grid-template-columns:max-content_minmax(0,1fr)_520px]
-          2xl:[grid-template-columns:max-content_minmax(0,1fr)_560px]
-          gap-y-10 md:gap-x-6 lg:gap-x-10 xl:gap-x-12 2xl:gap-x-16
+          grid min-w-0 grid-cols-1 gap-y-10
+          lg:grid-cols-[minmax(0,1.48fr)_minmax(320px,0.72fr)]
+          lg:items-start
+          lg:gap-x-[clamp(24px,3vw,52px)]
+          2xl:grid-cols-[minmax(0,1.58fr)_minmax(380px,0.68fr)]
         "
       >
-        <aside className="order-2 lg:order-1 md:sticky md:top-24 self-start md:pr-0">
-          <GalleryClient
-            images={images}
-            title={title}
-            slug={slug}
-            selectedIndex={selected}
-            color={currentColor}
-          />
-        </aside>
-
-        <section className="order-1 lg:order-2 min-w-0">
+        <section className="min-w-0">
           <div
             className="
-              relative
-              rounded-3xl border bg-white
-              overflow-hidden flex items-center justify-center
-              aspect-[3/4] md:aspect-[2/3] lg:aspect-[3/5]
-              min-h-[560px] md:min-h-[660px] lg:min-h-[760px] xl:min-h-[840px] 2xl:min-h-[920px]
+              grid min-w-0 grid-cols-1 gap-4
+              lg:grid-cols-[clamp(96px,9vw,148px)_minmax(0,1fr)]
+              lg:items-start
+              lg:gap-x-[clamp(14px,1.8vw,28px)]
             "
           >
-            {isNew ? (
-              <CornerRibbon
-                variant="top"
-                text="NEW"
-                tone="new"
-                height={50}
-                className="top-2"
+            <aside
+              className="
+                order-2 min-w-0 self-start
+                lg:order-1
+                lg:sticky lg:top-24
+              "
+            >
+              <GalleryClient
+                images={images}
+                title={title}
+                slug={slug}
+                selectedIndex={selected}
+                color={currentColor}
               />
-            ) : null}
+            </aside>
 
-            {total > 0 ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={images[selected]}
-                src={images[selected]}
-                alt={title}
-                className="w-full h-full object-contain"
-              />
-            ) : (
-              <div className="text-neutral-500">No Image</div>
-            )}
+            <div className="order-1 min-w-0 lg:order-2">
+              <div
+                className="
+                  relative flex w-full min-w-0 items-center justify-center
+                  overflow-hidden rounded-3xl border bg-white
+                  h-[clamp(500px,68vh,860px)]
+                  sm:h-[clamp(540px,70vh,880px)]
+                  lg:h-[clamp(620px,76vh,920px)]
+                "
+              >
+                {isNew ? (
+                  <CornerRibbon
+                    variant="top"
+                    text="NEW"
+                    tone="new"
+                    height={50}
+                    className="top-2"
+                  />
+                ) : null}
+
+                {total > 0 ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    key={images[selected]}
+                    src={images[selected]}
+                    alt={title}
+                    className="h-full w-full object-contain"
+                  />
+                ) : (
+                  <div className="text-neutral-500">No Image</div>
+                )}
+              </div>
+            </div>
           </div>
         </section>
 
-        <section className="order-3 lg:order-3 lg:pl-20 xl:pl-24 2xl:pl-20 lg:sticky lg:top-12 self-start overflow-x-clip">
-          <div className="px-1 sm:px-2">
+        <section
+          className="
+            min-w-0 self-start overflow-visible
+            lg:sticky lg:top-12
+          "
+        >
+          <div className="min-w-0 px-1 sm:px-2 lg:px-0">
             <div className="space-y-3">
-              <h2 className="text-2xl font-bold leading-snug tracking-tight">
+              <h2 className="break-words text-2xl font-bold leading-snug tracking-tight">
                 {title}
               </h2>
 
@@ -492,15 +513,16 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
               {saleActive ? (
                 <div className="space-y-2">
                   {discount ? (
-                    <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 text-xs font-semibold px-2 py-1 w-fit">
+                    <span className="inline-flex w-fit items-center rounded-full bg-green-100 px-2 py-1 text-xs font-semibold text-green-700">
                       {discount}% OFF
                     </span>
                   ) : null}
 
-                  <div className="flex items-baseline gap-3">
+                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <div className="text-sm text-neutral-500 line-through">
                       {formatPriceVal(price, currency)}
                     </div>
+
                     <div className="text-xl font-semibold text-emerald-700">
                       {formatPriceVal(salePrice, currency)}
                     </div>
@@ -529,51 +551,25 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
             <div className="mt-6 space-y-3">
               <div className="rounded-lg border bg-neutral-50 px-3 py-2">
                 {currentSize ? (
-                  /*
-                    ============================================================
-                    Inventory display rules (PDP stock indicator)
-
-                    Only show exact numbers when inventory is very low.
-                    This avoids exposing full inventory while still giving
-                    urgency signals when stock is limited.
-
-                    Rules:
-
-                    stock <= 0                              → Out of stock
-                    stock 1 ~ CRITICAL_STOCK_THRESHOLD      → Only X left
-                    stock above CRITICAL and <= LOW_STOCK   → Low stock
-                    stock > LOW_STOCK_THRESHOLD             → In stock
-
-                    If user hasn't selected a size yet:
-                    → "Please select a size"
-
-                    NOTE:
-                    To change thresholds later, edit ONLY these constants
-                    near the top of this file:
-
-                    - CRITICAL_STOCK_THRESHOLD
-                    - LOW_STOCK_THRESHOLD
-                    ============================================================
-                  */
-
                   stockForCurrent <= 0 ? (
-                    /* No inventory available */
                     <div className="flex items-start justify-between gap-3">
                       <FieldMessage variant="muted">Availability</FieldMessage>
-                      <div className="text-right">
+
+                      <div className="min-w-0 text-right">
                         <div className="text-sm font-medium text-neutral-800">
                           Out of stock
                         </div>
+
                         <div className="mt-1 text-xs text-neutral-500">
                           We’re restocking as quickly as possible.
                         </div>
                       </div>
                     </div>
                   ) : stockForCurrent <= CRITICAL_STOCK_THRESHOLD ? (
-                    /* Extremely low stock → show exact remaining quantity */
                     <div className="flex items-center justify-between gap-3">
                       <FieldMessage variant="muted">Availability</FieldMessage>
-                      <div className="text-sm text-amber-700">
+
+                      <div className="shrink-0 text-sm text-amber-700">
                         Only{" "}
                         <span className="font-semibold text-amber-800">
                           {stockForCurrent}
@@ -582,24 +578,23 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                       </div>
                     </div>
                   ) : stockForCurrent <= LOW_STOCK_THRESHOLD ? (
-                    /* Low inventory but not critical → no exact number */
                     <div className="flex items-center justify-between gap-3">
                       <FieldMessage variant="muted">Availability</FieldMessage>
-                      <div className="text-sm font-medium text-amber-700">
+
+                      <div className="shrink-0 text-sm font-medium text-amber-700">
                         Low stock
                       </div>
                     </div>
                   ) : (
-                    /* Inventory is healthy */
                     <div className="flex items-center justify-between gap-3">
                       <FieldMessage variant="muted">Availability</FieldMessage>
-                      <div className="text-sm font-medium text-neutral-700">
+
+                      <div className="shrink-0 text-sm font-medium text-neutral-700">
                         In stock
                       </div>
                     </div>
                   )
                 ) : (
-                  /* User has not selected a size yet */
                   <FieldMessage variant="muted">
                     Please select a size
                   </FieldMessage>

@@ -21,7 +21,9 @@ function MetaRow({
         <span className="text-neutral-500 font-medium">{label}</span>
         {value ? <span className="text-neutral-400">·</span> : null}
         {value ? (
-          <span className="text-neutral-900 font-semibold truncate">{value}</span>
+          <span className="text-neutral-900 font-semibold truncate">
+            {value}
+          </span>
         ) : null}
       </div>
 
@@ -52,29 +54,41 @@ export default function ProductMeta({
   validHeight,
 }: ProductMetaProps) {
   return (
-    <div className="space-y-6">
-      {colorOptions.length > 0 && (
-        <div className="space-y-2">
+    <div className="space-y-7 overflow-visible">
+      {colorOptions.length > 0 ? (
+        <div className="space-y-2 overflow-visible">
           <MetaRow label="Colors" value={currentColor ?? undefined} />
-          <ColorDotsClient options={colorOptions} current={currentColor} slug={slug} />
-        </div>
-      )}
 
-      {sizeOptions.length > 0 && (
-        <div className="space-y-2">
+          <div className="min-h-11 overflow-visible pb-1">
+            <ColorDotsClient
+              options={colorOptions}
+              current={currentColor}
+              slug={slug}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {sizeOptions.length > 0 ? (
+        <div className="space-y-3 overflow-visible">
           <MetaRow label="Sizes" value={currentSize ?? undefined} />
 
-          <div className="origin-left scale-[1.10] md:scale-[1.14]">
-            <SizeClient options={sizeOptions} current={currentSize} slug={slug} />
+          <div className="min-w-0 overflow-visible">
+            <SizeClient
+              options={sizeOptions}
+              current={currentSize}
+              slug={slug}
+            />
           </div>
 
-          <div className="pt-1 text-[11px] text-neutral-400 flex items-center gap-1">
+          <div className="flex flex-wrap items-center gap-x-1 gap-y-1 pt-1 text-[11px] text-neutral-400">
             <span>Need help choosing your size?</span>
+
             <SizeGuideDialog
               defaultTab="footwear"
               triggerLabel={
                 <span className="group text-neutral-600 hover:text-neutral-900">
-                  <span className="no-underline group-hover:underline underline-offset-2">
+                  <span className="no-underline underline-offset-2 group-hover:underline">
                     Size guide
                   </span>
                 </span>
@@ -82,10 +96,10 @@ export default function ProductMeta({
             />
           </div>
         </div>
-      )}
+      ) : null}
 
       {shouldShowHeightPicker ? (
-        <div className="space-y-2">
+        <div className="space-y-2 overflow-visible">
           <HeightIncreaseClient
             options={heightOptions}
             current={validHeight}

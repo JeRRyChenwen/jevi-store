@@ -1679,3 +1679,14 @@ shoes pants tops 各自需要一个自动生成variant的功能（因为size不�
 价格 和 库存数量
 
 有没有办法快速找到半边括号的另一边括号在哪里
+
+admin平台里，tier rules 费用和时间的那个页面，能不能一次性全部save（还有inventory sync页面也是）
+
+email
+
+如果stock可以让顾客选择有货通知自己
+
+google搜索出来的网页需要写上austrlia 关键词
+
+这个操作是把每个 SKU 的库存设置成 CSV 中的目标数量，不是在原有库存上累加
+migration 整合

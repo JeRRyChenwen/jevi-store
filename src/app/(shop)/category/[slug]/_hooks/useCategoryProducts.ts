@@ -45,22 +45,37 @@ function buildPromoProductFilters(
   if (slug === "on-sale") {
     const currency = String(currencyCode || "AUD").trim().toUpperCase();
 
-    // 促销时间已移动到 Product.prices repeatable component。
-    // 使用 $and 包裹，避免与后面的颜色 $or 筛选发生索引冲突。
+    /*
+    * On Sale 规则：
+    * 1. 必须存在当前币种的价格记录；
+    * 2. discount 小于 100，表示实际存在折扣；
+    * 3. sale_starts_at 为空时立即生效，否则必须已经开始；
+    * 4. sale_ends_at 为空时长期有效，否则必须尚未结束。
+    */
     parts.push(
       `filters[$and][0][prices][currency][$eq]=${encodeURIComponent(currency)}`
     );
+
     parts.push(
-      `filters[$and][0][prices][sale_starts_at][$notNull]=true`
+      `filters[$and][1][prices][discount][$lt]=100`
     );
+
     parts.push(
-      `filters[$and][0][prices][sale_starts_at][$lte]=${encodeURIComponent(nowISO)}`
+      `filters[$and][2][$or][0][prices][sale_starts_at][$null]=true`
     );
+
     parts.push(
-      `filters[$and][0][$or][0][prices][sale_ends_at][$null]=true`
+      `filters[$and][2][$or][1][prices][sale_starts_at][$lte]=${encodeURIComponent(
+        nowISO
+      )}`
     );
+
     parts.push(
-      `filters[$and][0][$or][1][prices][sale_ends_at][$gte]=${encodeURIComponent(
+      `filters[$and][3][$or][0][prices][sale_ends_at][$null]=true`
+    );
+
+    parts.push(
+      `filters[$and][3][$or][1][prices][sale_ends_at][$gte]=${encodeURIComponent(
         nowISO
       )}`
     );
