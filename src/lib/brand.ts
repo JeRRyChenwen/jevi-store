@@ -1,5 +1,31 @@
 // src/lib/brand.ts
 
+
+function requirePublicEnv(
+  name: string,
+  value: string | undefined
+): string {
+  const normalizedValue = value?.trim();
+
+  if (!normalizedValue) {
+    throw new Error(
+      `[brand] Missing required environment variable: ${name}`
+    );
+  }
+
+  return normalizedValue;
+}
+
+const SITE_URL = requirePublicEnv(
+  "NEXT_PUBLIC_SITE_URL",
+  process.env.NEXT_PUBLIC_SITE_URL
+).replace(/\/+$/, "");
+
+const SUPPORT_EMAIL = requirePublicEnv(
+  "NEXT_PUBLIC_SUPPORT_EMAIL",
+  process.env.NEXT_PUBLIC_SUPPORT_EMAIL
+);
+
 /**
  * 前端品牌中心
  * 品牌名、支持邮箱、站点描述、法务页联系邮箱、SEO 站点 URL，统一从这里取。
@@ -33,22 +59,23 @@ export const BRAND = {
    * 现在先使用符合品牌名的临时邮箱占位。
    * 等你买好真实域名并配置邮箱后，再替换成真实邮箱。
    */
-  supportEmail: "support@jeviapparelstudio.com",
+  supportEmail: SUPPORT_EMAIL,
 
   /**
    * 联系邮箱
    */
-  contactEmail: "support@jeviapparelstudio.com",
+  contactEmail: SUPPORT_EMAIL,
+
 
   /**
    * 隐私联系邮箱
    */
-  privacyContactEmail: "support@jeviapparelstudio.com",
+  privacyContactEmail: SUPPORT_EMAIL,
 
   /**
    * 售后 / 退货联系邮箱
    */
-  returnsContactEmail: "support@jeviapparelstudio.com",
+  returnsContactEmail: SUPPORT_EMAIL,
 
   /**
    * 法务页 / footer 用的版权名
@@ -92,5 +119,5 @@ export const BRAND = {
    * 现在先用符合 JEVI | APPAREL STUDIO 品牌名的临时正式域名占位。
    * 等你买好真实域名后，必须改成你的真实域名。
    */
-  siteUrl: "https://www.jeviapparelstudio.com",
+  siteUrl: SITE_URL,
 } as const;

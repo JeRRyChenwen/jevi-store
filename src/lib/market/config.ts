@@ -52,18 +52,6 @@ const EU_COUNTRY_CODES = [
   "SE",
 ] as const satisfies readonly CountryCode[];
 
-function envSiteUrl(fallback: string) {
-  return (
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    process.env.NEXT_PUBLIC_APP_URL ||
-    fallback
-  );
-}
-
-function envSupportEmail(fallback: string) {
-  return process.env.NEXT_PUBLIC_SUPPORT_EMAIL || fallback;
-}
-
 /**
  * ✅ storefront 层：
  * 这才是前台真正应该读取的配置。
@@ -91,8 +79,8 @@ export const STOREFRONT_CONFIGS: Record<StorefrontCode, StorefrontConfig> = {
     supportRegionLabel: "Australia",
     policyVariant: "au",
 
-    siteUrl: envSiteUrl("https://au.example.com"),
-    supportEmail: envSupportEmail(BRAND.supportEmail),
+    siteUrl: BRAND.siteUrl,
+    supportEmail: BRAND.supportEmail,
 
     paymentMethods: ["paypal", "card"],
 
@@ -131,8 +119,8 @@ export const STOREFRONT_CONFIGS: Record<StorefrontCode, StorefrontConfig> = {
     supportRegionLabel: "New Zealand",
     policyVariant: "nz",
 
-    siteUrl: envSiteUrl("https://nz.example.com"),
-    supportEmail: envSupportEmail(BRAND.supportEmail),
+    siteUrl: BRAND.siteUrl,
+    supportEmail: BRAND.supportEmail,
 
     paymentMethods: ["paypal", "card"],
 
@@ -170,8 +158,8 @@ export const STOREFRONT_CONFIGS: Record<StorefrontCode, StorefrontConfig> = {
     supportRegionLabel: "Europe",
     policyVariant: "eu",
 
-    siteUrl: envSiteUrl("https://eu.example.com"),
-    supportEmail: envSupportEmail(BRAND.supportEmail),
+    siteUrl: BRAND.siteUrl,
+    supportEmail: BRAND.supportEmail,
 
     paymentMethods: ["paypal", "card"],
 
@@ -209,8 +197,8 @@ export const STOREFRONT_CONFIGS: Record<StorefrontCode, StorefrontConfig> = {
     supportRegionLabel: "the United States",
     policyVariant: "us",
 
-    siteUrl: envSiteUrl("https://us.example.com"),
-    supportEmail: envSupportEmail(BRAND.supportEmail),
+    siteUrl: BRAND.siteUrl,
+    supportEmail: BRAND.supportEmail,
 
     paymentMethods: ["paypal", "card"],
 
@@ -248,8 +236,8 @@ export const STOREFRONT_CONFIGS: Record<StorefrontCode, StorefrontConfig> = {
     supportRegionLabel: "Canada",
     policyVariant: "ca",
 
-    siteUrl: envSiteUrl("https://ca.example.com"),
-    supportEmail: envSupportEmail(BRAND.supportEmail),
+    siteUrl: BRAND.siteUrl,
+    supportEmail: BRAND.supportEmail,
 
     paymentMethods: ["paypal", "card"],
 

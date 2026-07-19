@@ -1,60 +1,86 @@
 // next.config.js
+
+/**
+ * Convert a Strapi base URL into a Next.js remote image pattern.
+ *
+ * Examples:
+ * - http://127.0.0.1:1337
+ * - http://host.docker.internal:1337
+ * - https://cms.jeviapparelstudio.com
+ */
+function createStrapiRemotePattern(rawUrl) {
+  const normalizedUrl = String(rawUrl ?? "").trim();
+
+  if (!normalizedUrl) {
+    return null;
+  }
+
+  let parsedUrl;
+
+  try {
+    parsedUrl = new URL(normalizedUrl);
+  } catch {
+    throw new Error(
+      `[next.config] Invalid Strapi URL: ${normalizedUrl}`
+    );
+  }
+
+  if (
+    parsedUrl.protocol !== "http:" &&
+    parsedUrl.protocol !== "https:"
+  ) {
+    throw new Error(
+      `[next.config] Unsupported Strapi URL protocol: ${parsedUrl.protocol}`
+    );
+  }
+
+  return {
+    protocol: parsedUrl.protocol.replace(":", ""),
+    hostname: parsedUrl.hostname,
+    port: parsedUrl.port,
+    pathname: "/uploads/**",
+  };
+}
+
+const strapiRemotePatterns = [
+  // Local Strapi
+  "http://127.0.0.1:1337",
+  "http://localhost:1337",
+
+  // Docker local
+  "http://host.docker.internal:1337",
+
+  // Environment-specific public Strapi URL
+  process.env.NEXT_PUBLIC_STRAPI_URL,
+]
+  .map(createStrapiRemotePattern)
+  .filter(Boolean);
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: false,
 
-  // Docker / VPS 部署需要 standalone 输出
+  // Docker / VPS deployment requires standalone output.
   output: "standalone",
 
-  // 当前项目已有大量历史 ESLint 问题；
-  // P1-4 阶段先不要让 lint 阻塞 production build。
+  // The project currently contains historical ESLint issues.
+  // Do not allow lint to block the production build yet.
   eslint: {
     ignoreDuringBuilds: true,
   },
 
   images: {
-    remotePatterns: [
-      // Local Strapi
-      {
-        protocol: "http",
-        hostname: "127.0.0.1",
-        port: "1337",
-        pathname: "/uploads/**",
-      },
-      {
-        protocol: "http",
-        hostname: "localhost",
-        port: "1337",
-        pathname: "/uploads/**",
-      },
-
-      // Docker local：jevi-store 容器访问宿主机 Strapi 图片时可能用到
-      {
-        protocol: "http",
-        hostname: "host.docker.internal",
-        port: "1337",
-        pathname: "/uploads/**",
-      },
-
-      // Production Strapi
-      {
-        protocol: "https",
-        hostname: "cms.jevi.com",
-        pathname: "/uploads/**",
-      },
-    ],
+    remotePatterns: strapiRemotePatterns,
   },
 
   async rewrites() {
     /**
-     * 注意：
-     * 这里是 Next.js build 阶段读取的配置。
+     * This configuration is evaluated during the Next.js build.
      *
-     * 不要用 NEXT_PUBLIC_API_BASE 作为服务端 proxy fallback。
-     * NEXT_PUBLIC_API_BASE 是给浏览器用的，可以是 http://127.0.0.1:8787。
+     * NEXT_PUBLIC_API_BASE is intended for browser-side requests.
      *
-     * 但是 jevi-store 跑在 Docker 容器里时，服务端访问宿主机 jevi-api 必须使用：
-     * http://host.docker.internal:8787
+     * When jevi-store runs inside Docker, server-side requests should
+     * use an internal Docker or host address instead.
      */
     const proxy = (
       process.env.API_PROXY ||
