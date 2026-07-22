@@ -1710,3 +1710,8 @@ This is an automated email. Please do not reply to this message.
 稍等，所以我原本的这个 jevi posgres dev 的server就已经是没用的了吗
 
 怎么看我的网站的浏览次数
+
+C:\Users\lance\.ssh 整个文件压缩备份
+
+不带 .pub 的是私钥，绝对不要发给我或上传到普通代码仓库；
+带 .pub 的是公钥，下一步会添加到 VPS
