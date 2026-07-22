@@ -1,0 +1,159 @@
+# syntax=docker/dockerfile:1.7
+
+# =========================================================
+# 1. Install dependencies
+# =========================================================
+
+FROM node:20-bookworm-slim AS deps
+
+WORKDIR /app
+
+ENV NEXT_TELEMETRY_DISABLED=1
+
+COPY package.json package-lock.json ./
+
+RUN npm ci --no-audit --no-fund
+
+
+# =========================================================
+# 2. Build Next.js standalone application
+# =========================================================
+
+FROM node:20-bookworm-slim AS builder
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json package-lock.json ./
+COPY next.config.js ./
+COPY next-env.d.ts ./
+COPY tsconfig.json ./
+COPY postcss.config.js ./
+COPY postcss.config.mjs ./
+COPY tailwind.config.js ./
+COPY components.json ./
+COPY public ./public
+COPY src ./src
+
+
+# ---------------------------------------------------------
+# Public variables
+#
+# NEXT_PUBLIC_* values are written into the browser bundle
+# during `next build`, so they must be provided at build time.
+# ---------------------------------------------------------
+
+ARG NEXT_PUBLIC_SITE_URL
+ARG NEXT_PUBLIC_SUPPORT_EMAIL
+ARG NEXT_PUBLIC_STOREFRONT_CODE=AU
+ARG NEXT_PUBLIC_DEFAULT_CURRENCY=AUD
+ARG NEXT_PUBLIC_DEMO_MODE=0
+
+ARG NEXT_PUBLIC_API_BASE
+ARG NEXT_PUBLIC_D1_WORKER_URL
+ARG NEXT_PUBLIC_STRAPI_URL
+
+ARG NEXT_PUBLIC_PAYPAL_CLIENT_ID
+ARG NEXT_PUBLIC_ENABLE_STRIPE=false
+
+
+ENV NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL}
+ENV NEXT_PUBLIC_SUPPORT_EMAIL=${NEXT_PUBLIC_SUPPORT_EMAIL}
+ENV NEXT_PUBLIC_STOREFRONT_CODE=${NEXT_PUBLIC_STOREFRONT_CODE}
+ENV NEXT_PUBLIC_DEFAULT_CURRENCY=${NEXT_PUBLIC_DEFAULT_CURRENCY}
+ENV NEXT_PUBLIC_DEMO_MODE=${NEXT_PUBLIC_DEMO_MODE}
+
+ENV NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE}
+ENV NEXT_PUBLIC_D1_WORKER_URL=${NEXT_PUBLIC_D1_WORKER_URL}
+ENV NEXT_PUBLIC_STRAPI_URL=${NEXT_PUBLIC_STRAPI_URL}
+
+ENV NEXT_PUBLIC_PAYPAL_CLIENT_ID=${NEXT_PUBLIC_PAYPAL_CLIENT_ID}
+ENV NEXT_PUBLIC_ENABLE_STRIPE=${NEXT_PUBLIC_ENABLE_STRIPE}
+
+
+# ---------------------------------------------------------
+# Build-time server addresses
+#
+# API_UPSTREAM is only embedded into Next.js build-time
+# rewrites. It does not need to be reachable while building.
+#
+# STRAPI_BUILD_URL must be reachable during the build because
+# this project reads Strapi data while generating pages.
+# ---------------------------------------------------------
+
+ARG API_UPSTREAM=http://jevi-api:8787
+ARG STRAPI_BUILD_URL
+
+ENV API_PROXY=${API_UPSTREAM}
+ENV API_BASE=${API_UPSTREAM}
+ENV AUTH_UPSTREAM=${API_UPSTREAM}
+ENV D1_WORKER_INTERNAL_BASE=${API_UPSTREAM}
+
+ENV STRAPI_URL=${STRAPI_BUILD_URL}
+
+
+# ---------------------------------------------------------
+# Fail early when required public configuration is missing.
+# ---------------------------------------------------------
+
+RUN test -n "${NEXT_PUBLIC_SITE_URL}" \
+    && test -n "${NEXT_PUBLIC_SUPPORT_EMAIL}" \
+    && test -n "${NEXT_PUBLIC_API_BASE}" \
+    && test -n "${NEXT_PUBLIC_STRAPI_URL}" \
+    && test -n "${STRAPI_BUILD_URL}"
+
+
+# ---------------------------------------------------------
+# STRAPI_API_TOKEN is passed as a BuildKit secret.
+#
+# It is available only during this RUN instruction and is not
+# stored as an ARG, ENV variable or image layer.
+# ---------------------------------------------------------
+
+RUN --mount=type=secret,id=strapi_api_token,required=true \
+    STRAPI_API_TOKEN="$(cat /run/secrets/strapi_api_token)" \
+    npm run build
+
+
+# =========================================================
+# 3. Production runtime
+# =========================================================
+
+FROM node:20-bookworm-slim AS runner
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+
+RUN groupadd --system --gid 1001 nodejs \
+    && useradd --system --uid 1001 --gid nodejs nextjs
+
+COPY --from=builder \
+    --chown=nextjs:nodejs \
+    /app/.next/standalone \
+    ./
+
+COPY --from=builder \
+    --chown=nextjs:nodejs \
+    /app/.next/static \
+    ./.next/static
+
+COPY --from=builder \
+    --chown=nextjs:nodejs \
+    /app/public \
+    ./public
+
+USER nextjs
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD node -e "fetch('http://127.0.0.1:3000/robots.txt').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+CMD ["node", "server.js"]

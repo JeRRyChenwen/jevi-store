@@ -13,6 +13,15 @@ declare global {
   var __btGateway: braintree.BraintreeGateway | undefined;
 }
 
+
+function isBraintreeEnabled(): boolean {
+  return (
+    String(process.env.ENABLE_BRAINTREE ?? "")
+      .trim()
+      .toLowerCase() === "true"
+  );
+}
+
 function getGateway(): braintree.BraintreeGateway {
   if (global.__btGateway) return global.__btGateway;
 
@@ -43,6 +52,20 @@ function getGateway(): braintree.BraintreeGateway {
 }
 
 export async function GET() {
+  if (!isBraintreeEnabled()) {
+    return NextResponse.json(
+      {
+        error: "braintree_disabled",
+      },
+      {
+        status: 404,
+        headers: {
+          "Cache-Control": "no-store",
+        },
+      }
+    );
+  }
+
   try {
     const gateway = getGateway();
     const { clientToken } = await gateway.clientToken.generate({});

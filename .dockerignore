@@ -1,22 +1,57 @@
+# =========================================================
+# Dependencies and generated build output
+# =========================================================
+
 node_modules
+.next
+dist
+build
+out
+coverage
+*.tsbuildinfo
+
+
+# =========================================================
+# Logs
+# =========================================================
+
 npm-debug.log*
+yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+*.log
+
+
+# =========================================================
+# Private environment files
+# =========================================================
 
 .env
 .env.*
 !.env.example
 !.env.production.example
 
+
+# =========================================================
+# Git and editor files
+# =========================================================
+
 .git
 .gitignore
+.vscode
+.idea
+
+
+# =========================================================
+# Deployment-platform output
+# =========================================================
 
 .vercel
 .wrangler
 
-coverage
-dist
-build
-out
+
+# =========================================================
+# Files not required inside the Docker build context
+# =========================================================
 
 README.md

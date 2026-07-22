@@ -144,16 +144,34 @@ export function useCategoryProducts({
         const parts: string[] = [];
         const promo = isPromoSlug(slug);
 
-        // ✅ 分类：promo 聚合页不按 category 过滤
+        // 分类：promo 聚合页不按 category 过滤
         if (!promo) {
           if (categoryDocIds?.length) {
-            categoryDocIds.forEach((id, i) =>
+            categoryDocIds.forEach((id, i) => {
+              const encodedId = encodeURIComponent(id);
+
+              // 商品直接关联当前分类
               parts.push(
-                `filters[category][documentId][$in][${i}]=${encodeURIComponent(id)}`
-              )
-            );
+                `filters[$and][0][$or][0][category][documentId][$in][${i}]=${encodedId}`
+              );
+
+              // 商品关联当前分类的子分类
+              parts.push(
+                `filters[$and][0][$or][1][category][parent][documentId][$in][${i}]=${encodedId}`
+              );
+            });
           } else {
-            parts.push(`filters[category][slug][$eq]=${encodeURIComponent(slug)}`);
+            const encodedSlug = encodeURIComponent(slug);
+
+            // 商品直接关联当前分类
+            parts.push(
+              `filters[$and][0][$or][0][category][slug][$eq]=${encodedSlug}`
+            );
+
+            // 商品关联当前分类的子分类
+            parts.push(
+              `filters[$and][0][$or][1][category][parent][slug][$eq]=${encodedSlug}`
+            );
           }
         } else {
           // promo：加 sale/new 时间窗口过滤

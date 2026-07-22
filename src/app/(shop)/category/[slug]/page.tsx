@@ -23,6 +23,13 @@ const STATIC_SLUGS = [
 const PROMO_SLUGS = new Set(["new-in", "on-sale"]);
 const isPromoSlug = (slug: string) => PROMO_SLUGS.has(slug);
 
+type CategoryNavItem = {
+  name: string;
+  slug: string;
+  documentId?: string;
+  nav_order?: number;
+};
+
 type CategoryCurrent = {
   name: string;
   slug: string;
@@ -30,6 +37,7 @@ type CategoryCurrent = {
   description?: string;
   seo_title?: string;
   seo_description?: string;
+  children?: CategoryNavItem[];
 };
 
 function titleizeSlug(slug: string) {
@@ -215,6 +223,10 @@ async function getCurrentAndRootDocId(slug: string): Promise<{
         `&fields[5]=seo_description` +
         `&populate[parent][fields][0]=documentId` +
         `&populate[parent][fields][1]=slug` +
+        `&populate[children][fields][0]=name` +
+        `&populate[children][fields][1]=slug` +
+        `&populate[children][fields][2]=documentId` +
+        `&populate[children][fields][3]=nav_order` +
         `&publicationState=live`,
       { noCache: true },
     );
@@ -230,6 +242,33 @@ async function getCurrentAndRootDocId(slug: string): Promise<{
       };
     }
 
+    const rawChildren =
+      row?.attributes?.children?.data ??
+      row?.children?.data ??
+      row?.attributes?.children ??
+      row?.children ??
+      [];
+
+    const children: CategoryNavItem[] = Array.isArray(rawChildren)
+      ? rawChildren
+          .map((child: any) => ({
+            name:
+              child?.attributes?.name ??
+              child?.name ??
+              titleizeSlug(child?.attributes?.slug ?? child?.slug ?? ""),
+            slug: child?.attributes?.slug ?? child?.slug ?? "",
+            documentId: child?.attributes?.documentId ?? child?.documentId,
+            nav_order: child?.attributes?.nav_order ?? child?.nav_order,
+          }))
+          .filter((child) => Boolean(child.slug))
+          .sort(
+            (a, b) =>
+              (a.nav_order ?? Number.MAX_SAFE_INTEGER) -
+                (b.nav_order ?? Number.MAX_SAFE_INTEGER) ||
+              a.name.localeCompare(b.name),
+          )
+      : [];
+
     const current: CategoryCurrent = {
       name: row?.attributes?.name ?? row?.name ?? titleizeSlug(slug),
       slug: row?.attributes?.slug ?? row?.slug ?? slug,
@@ -238,6 +277,7 @@ async function getCurrentAndRootDocId(slug: string): Promise<{
       seo_title: row?.attributes?.seo_title ?? row?.seo_title ?? "",
       seo_description:
         row?.attributes?.seo_description ?? row?.seo_description ?? "",
+      children,
     };
 
     const parentNode =
@@ -347,9 +387,22 @@ export default async function CategoryPage({
 
   if (!current?.slug) notFound();
 
-  // promo 聚合页：不展示 siblings（也不需要组 docIds）
+  // promo 聚合页：不展示子分类导航
   const promo = isPromoSlug(slug);
-  const siblings = promo ? [] : await getRootChildren(rootDocId);
+
+  let siblings: CategoryNavItem[] = [];
+
+  if (!promo) {
+    if (current.children?.length) {
+      // 当前是父分类，例如 Shoes：
+      // 直接使用当前分类返回的 children。
+      siblings = current.children;
+    } else if (rootDocId && rootDocId !== current.documentId) {
+      // 当前是子分类，例如 Casual Shoes：
+      // 获取同一个父分类下的兄弟分类。
+      siblings = await getRootChildren(rootDocId);
+    }
+  }
 
   let categoryDocIds: string[] | undefined;
 

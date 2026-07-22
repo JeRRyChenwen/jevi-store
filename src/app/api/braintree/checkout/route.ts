@@ -1,13 +1,49 @@
 // src/app/api/braintree/checkout/route.ts
 import { NextResponse } from "next/server";
-import braintree, { Environment } from "braintree";
+import braintree from "braintree";
 
-const gateway = new braintree.BraintreeGateway({
-  environment: Environment.Sandbox, // 👈 生产环境再改成 Environment.Production
-  merchantId: process.env.BT_MERCHANT_ID!,
-  publicKey: process.env.BT_PUBLIC_KEY!,
-  privateKey: process.env.BT_PRIVATE_KEY!,
-});
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+function isBraintreeEnabled(): boolean {
+  return (
+    String(process.env.ENABLE_BRAINTREE ?? "")
+      .trim()
+      .toLowerCase() === "true"
+  );
+}
+
+function getGateway(): braintree.BraintreeGateway {
+  const {
+    BT_MERCHANT_ID,
+    BT_PUBLIC_KEY,
+    BT_PRIVATE_KEY,
+    BT_ENV,
+  } = process.env;
+
+  if (
+    !BT_MERCHANT_ID ||
+    !BT_PUBLIC_KEY ||
+    !BT_PRIVATE_KEY
+  ) {
+    throw new Error(
+      "Missing Braintree env vars: BT_MERCHANT_ID/BT_PUBLIC_KEY/BT_PRIVATE_KEY"
+    );
+  }
+
+  const environment =
+    BT_ENV?.trim().toLowerCase() === "production" ||
+    BT_ENV?.trim().toLowerCase() === "prod"
+      ? braintree.Environment.Production
+      : braintree.Environment.Sandbox;
+
+  return new braintree.BraintreeGateway({
+    environment,
+    merchantId: BT_MERCHANT_ID,
+    publicKey: BT_PUBLIC_KEY,
+    privateKey: BT_PRIVATE_KEY,
+  });
+}
 
 // 各币种小数位
 const DECIMALS: Record<string, number> = {
@@ -33,7 +69,18 @@ function formatAmount(n: number, currency: string) {
 }
 
 export async function POST(req: Request) {
+  if (!isBraintreeEnabled()) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "braintree_disabled",
+      },
+      { status: 404 }
+    );
+  }
+
   try {
+    const gateway = getGateway();
     const body = await req.json();
     const nonce: string = body?.nonce;
     const currency = String(body?.currency || "").trim().toUpperCase();
