@@ -1710,3 +1710,5 @@ This is an automated email. Please do not reply to this message.
 稍等，所以我原本的这个 jevi posgres dev 的server就已经是没用的了吗
 
 怎么看我的网站的浏览次数
+
+不进行pull request还能自动部署吗
