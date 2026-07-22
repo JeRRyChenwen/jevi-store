@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.7
+﻿# syntax=docker/dockerfile:1.7
 
 # =========================================================
 # 1. Install dependencies
@@ -29,7 +29,6 @@ ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json package-lock.json ./
 COPY next.config.js ./
-COPY next-env.d.ts ./
 COPY tsconfig.json ./
 COPY postcss.config.js ./
 COPY postcss.config.mjs ./
