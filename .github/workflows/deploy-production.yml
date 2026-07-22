@@ -1,0 +1,258 @@
+name: Deploy jevi-store to production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jevi-store-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy production storefront
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout deployment commit
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          set -Eeuo pipefail
+
+          install -d -m 700 "$HOME/.ssh"
+
+          printf '%s\n' "$SSH_PRIVATE_KEY" \
+            > "$HOME/.ssh/id_ed25519"
+
+          chmod 600 "$HOME/.ssh/id_ed25519"
+
+          printf '%s\n' "$VPS_KNOWN_HOSTS" \
+            > "$HOME/.ssh/known_hosts"
+
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Package source code
+        run: |
+          set -Eeuo pipefail
+
+          tar \
+            --exclude='./.git' \
+            --exclude='./.github' \
+            --exclude='./node_modules' \
+            --exclude='./.next' \
+            --exclude='./coverage' \
+            --exclude='./.env' \
+            --exclude='./.env.*' \
+            --exclude='./*.log' \
+            -czf /tmp/jevi-store.tar.gz \
+            .
+
+      - name: Upload source package
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          set -Eeuo pipefail
+
+          scp \
+            -i "$HOME/.ssh/id_ed25519" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            /tmp/jevi-store.tar.gz \
+            "${VPS_USER}@${VPS_HOST}:jevi-store-${GITHUB_SHA}.tar.gz"
+
+      - name: Build and deploy
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          set -Eeuo pipefail
+
+          ssh \
+            -i "$HOME/.ssh/id_ed25519" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            "${VPS_USER}@${VPS_HOST}" \
+            "DEPLOY_SHA='${GITHUB_SHA}' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+
+          archive="$HOME/jevi-store-${DEPLOY_SHA}.tar.gz"
+          current_dir="/opt/jevi/jevi-store"
+          new_dir="/opt/jevi/jevi-store.new"
+          previous_dir="/opt/jevi/jevi-store.previous"
+          deployment_dir="/opt/jevi/jevi-deployment"
+
+          compose=(
+            docker compose
+            --env-file .env.production
+            -f docker-compose.prod.yml
+          )
+
+          cleanup_archive() {
+            rm -f "$archive"
+          }
+
+          restore_previous_source() {
+            rm -rf "$current_dir"
+
+            if [ -d "$previous_dir" ]; then
+              mv "$previous_dir" "$current_dir"
+            fi
+          }
+
+          rollback_container() {
+            if docker image inspect jevi-store:rollback \
+              >/dev/null 2>&1
+            then
+              echo "Rolling back to the previous production image."
+
+              docker image tag \
+                jevi-store:rollback \
+                jevi-store:prod
+
+              (
+                cd "$deployment_dir"
+
+                "${compose[@]}" up \
+                  -d \
+                  --no-deps \
+                  --force-recreate \
+                  jevi-store
+              ) || true
+            fi
+          }
+
+          trap cleanup_archive EXIT
+
+          test -f "$archive"
+          test -f "$deployment_dir/.env.production"
+          test -f "$deployment_dir/docker-compose.prod.yml"
+
+          rm -rf "$new_dir"
+          mkdir -p "$new_dir"
+
+          tar -xzf "$archive" -C "$new_dir"
+
+          # Preserve any VPS-only environment files if they exist.
+          if [ -d "$current_dir" ]; then
+            find "$current_dir" \
+              -maxdepth 1 \
+              -type f \
+              -name '.env*' \
+              -exec cp -p '{}' "$new_dir/" ';'
+          fi
+
+          rm -rf "$previous_dir"
+
+          if [ -d "$current_dir" ]; then
+            mv "$current_dir" "$previous_dir"
+          fi
+
+          mv "$new_dir" "$current_dir"
+
+          cd "$deployment_dir"
+
+          "${compose[@]}" config --quiet
+
+          if docker image inspect jevi-store:prod \
+            >/dev/null 2>&1
+          then
+            docker image tag \
+              jevi-store:prod \
+              jevi-store:rollback
+          fi
+
+          if ! "${compose[@]}" build jevi-store; then
+            echo "Docker build failed. Restoring previous source."
+            restore_previous_source
+            exit 1
+          fi
+
+          if ! "${compose[@]}" up \
+            -d \
+            --no-deps \
+            --force-recreate \
+            jevi-store
+          then
+            echo "Container recreation failed."
+            restore_previous_source
+            rollback_container
+            exit 1
+          fi
+
+          status=""
+
+          for attempt in $(seq 1 36); do
+            status="$(
+              docker inspect \
+                -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
+                jevi-store-prod \
+                2>/dev/null ||
+                true
+            )"
+
+            echo "Container status: ${status:-not-found} (${attempt}/36)"
+
+            case "$status" in
+              healthy|running)
+                break
+                ;;
+
+              unhealthy|exited|dead)
+                docker logs \
+                  --tail=120 \
+                  jevi-store-prod ||
+                  true
+
+                restore_previous_source
+                rollback_container
+                exit 1
+                ;;
+            esac
+
+            sleep 5
+          done
+
+          if [ "$status" != "healthy" ] &&
+             [ "$status" != "running" ]
+          then
+            echo "Timed out waiting for jevi-store."
+
+            docker logs \
+              --tail=120 \
+              jevi-store-prod ||
+              true
+
+            restore_previous_source
+            rollback_container
+            exit 1
+          fi
+
+          curl \
+            --fail \
+            --silent \
+            --show-error \
+            --retry 10 \
+            --retry-delay 3 \
+            --retry-all-errors \
+            https://jeviapparelstudio.com/ \
+            >/dev/null
+
+          "${compose[@]}" ps jevi-store
+
+          echo "jevi-store production deployment completed."
+          REMOTE
