@@ -1446,10 +1446,10 @@ docker compose -f docker-compose.local.yml up --build -d
 docker start jevi-postgres-dev
 
 jevi-store：
-docker compose -f docker-compose.local.yml up -d
+docker compose -f docker-compose.local.yml up -d --build
 
 jevi-admin-platform：
-docker compose -f docker-compose.local.yml up -d
+docker compose -f docker-compose.local.yml up -d --build
 
 jevi-api：
 npm run dev
@@ -1459,7 +1459,16 @@ docker compose -f docker-compose.postgres.local.yml up -d
 npm run develop
 
 mailer-api：
-docker compose -f docker-compose.local.yml up -d
+docker compose -f docker-compose.local.yml up -d --build
+
+| 项目                | 地址                           |
+| ------------------- | ------------------------------ |
+| jevi-store          | `http://127.0.0.1:3000`        |
+| jevi-admin-platform | `http://127.0.0.1:3001`        |
+| jevi-api health     | `http://127.0.0.1:8787/health` |
+| jevi-api ready      | `http://127.0.0.1:8787/ready`  |
+| Strapi              | `http://127.0.0.1:1337/admin`  |
+| mailer-api          | `http://127.0.0.1:8789/ready`  |
 
 启动vps：
 ssh deploy@46.250.240.212
@@ -1715,3 +1724,7 @@ C:\Users\lance\.ssh 整个文件压缩备份
 
 不带 .pub 的是私钥，绝对不要发给我或上传到普通代码仓库；
 带 .pub 的是公钥，下一步会添加到 VPS
+
+email显示Jevi logo，商品图片
+
+本地测试

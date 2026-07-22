@@ -14,9 +14,9 @@ import CornerRibbon from "@/components/badges/CornerRibbon";
 
 import ProductMeta from "../_components/ProductMeta";
 import Stars from "../_components/Stars";
-
 import {
   getImagesByColorFromProduct,
+  getCardImagesByColorFromProduct,
   getVariantMetaList,
   getStockByColorSizeHeightFromD1,
   formatPriceVal,
@@ -154,6 +154,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     `&fields[0]=title&fields[1]=slug&fields[2]=hot_score` +
     `&fields[3]=new_starts_at&fields[4]=new_ends_at` +
     `&populate[color_galleries][fields][0]=color` +
+    `&populate[color_galleries][populate][card_image]=true` +
     `&populate[color_galleries][populate][images]=true` +
     `&populate[variants][filters][is_showed][$eq]=true` +
     `&populate[variants][fields][0]=color` +
@@ -212,7 +213,14 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
       : null;
 
   // ---- media / colors ----
+
+  // 商品详情页 Gallery 使用 color_galleries.images。
   const byColor = getImagesByColorFromProduct(attrs);
+
+  // Shopping Bag、Checkout 和订单快照使用
+  // 当前颜色对应的 color_galleries.card_image。
+  const cardImagesByColor = getCardImagesByColorFromProduct(attrs);
+
   const colorKeys = Object.keys(byColor);
 
   const colorParamRaw = Array.isArray(sp.color) ? sp.color[0] : sp.color;
@@ -608,6 +616,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                 salePrice={saleActive ? (salePrice ?? null) : null}
                 currency={currency}
                 imagesByColor={byColor}
+                cardImagesByColor={cardImagesByColor}
                 stockMap={sizesSum}
                 fallbackColor={currentColor}
                 heightIncreaseCm={validHeight}

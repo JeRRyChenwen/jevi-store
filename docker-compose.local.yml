@@ -2,30 +2,47 @@ services:
   jevi-store:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.local
+
     image: jevi-store:local
     container_name: jevi-store-local
+
     env_file:
       - .env.local
+
     environment:
-      NODE_ENV: production
+      NODE_ENV: development
       PORT: "3000"
       HOSTNAME: "0.0.0.0"
 
-      # 容器服务端访问宿主机上的 jevi-api
+      # Windows Docker Desktop 文件监听
+      WATCHPACK_POLLING: "true"
+
+      # Next.js 容器服务端访问宿主机上的 jevi-api
       API_PROXY: http://host.docker.internal:8787
       API_BASE: http://host.docker.internal:8787
       AUTH_UPSTREAM: http://host.docker.internal:8787
       D1_WORKER_INTERNAL_BASE: http://host.docker.internal:8787
 
-      # 容器服务端访问宿主机上的 Strapi
+      # Next.js 容器服务端访问宿主机上的 Strapi
       STRAPI_URL: http://host.docker.internal:1337
 
-      # 浏览器访问宿主机服务
+      # 浏览器直接访问宿主机服务
       NEXT_PUBLIC_API_BASE: http://127.0.0.1:8787
+      NEXT_PUBLIC_D1_WORKER_URL: http://127.0.0.1:8787
       NEXT_PUBLIC_STRAPI_URL: http://127.0.0.1:1337
       NEXT_PUBLIC_STOREFRONT_CODE: AU
 
     ports:
       - "3000:3000"
+
+    volumes:
+      - .:/app
+      - jevi_store_node_modules:/app/node_modules
+      - jevi_store_next:/app/.next
+
     restart: "no"
+
+volumes:
+  jevi_store_node_modules:
+  jevi_store_next:
