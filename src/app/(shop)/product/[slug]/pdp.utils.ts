@@ -1,6 +1,6 @@
 // src/app/(shop)/product/[slug]/pdp.utils.ts
 
-import { mediaUrl } from "@/lib/strapi";
+import { mediaUrl, resolveMediaURL } from "@/lib/strapi";
 import { normalizeColorName } from "@/lib/colors";
 import { type PriceRec } from "@/lib/pricing";
 
@@ -8,7 +8,9 @@ export function normalizeColor(s: any) {
   return normalizeColorName(s);
 }
 
-export function getImagesByColorFromProduct(attrs: any): Record<string, string[]> {
+export function getImagesByColorFromProduct(
+  attrs: any
+): Record<string, string[]> {
   const arr: any[] = Array.isArray(attrs?.color_galleries)
     ? attrs.color_galleries
     : Array.isArray(attrs?.color_galleries?.data)
@@ -18,31 +20,71 @@ export function getImagesByColorFromProduct(attrs: any): Record<string, string[]
   const out: Record<string, string[]> = {};
 
   for (const cg of arr) {
-    const colorRaw = (cg?.color ?? cg?.attributes?.color) as string | undefined;
+    const component = cg?.attributes ?? cg ?? {};
+
+    const colorRaw = component?.color as string | undefined;
     const color = normalizeColor(colorRaw);
     if (!color) continue;
 
-    const imgs: any[] = Array.isArray(cg?.images?.data)
-      ? cg.images.data
-      : Array.isArray(cg?.images)
-        ? cg.images
+    const imgs: any[] = Array.isArray(component?.images?.data)
+      ? component.images.data
+      : Array.isArray(component?.images)
+        ? component.images
         : [];
 
     const urls: string[] = [];
-    for (const im of imgs) {
-      const m = im?.attributes ?? im ?? {};
-      const u =
-        m?.formats?.large?.url ??
-        m?.formats?.medium?.url ??
-        m?.formats?.small?.url ??
-        m?.formats?.thumbnail?.url ??
-        m?.url;
 
-      if (typeof u === "string") urls.push(mediaUrl(u));
+    for (const im of imgs) {
+      const media = im?.attributes ?? im ?? {};
+
+      const url =
+        media?.formats?.large?.url ??
+        media?.formats?.medium?.url ??
+        media?.formats?.small?.url ??
+        media?.formats?.thumbnail?.url ??
+        media?.url;
+
+      if (typeof url === "string" && url.trim()) {
+        urls.push(mediaUrl(url));
+      }
     }
 
-    if (!(color in out)) out[color] = urls;
-    else if (urls.length) out[color] = urls;
+    if (!(color in out)) {
+      out[color] = urls;
+    } else if (urls.length) {
+      out[color] = urls;
+    }
+  }
+
+  return out;
+}
+
+export function getCardImagesByColorFromProduct(
+  attrs: any
+): Record<string, string> {
+  const arr: any[] = Array.isArray(attrs?.color_galleries)
+    ? attrs.color_galleries
+    : Array.isArray(attrs?.color_galleries?.data)
+      ? attrs.color_galleries.data
+      : [];
+
+  const out: Record<string, string> = {};
+
+  for (const cg of arr) {
+    const component = cg?.attributes ?? cg ?? {};
+
+    const colorRaw = component?.color as string | undefined;
+    const color = normalizeColor(colorRaw);
+    if (!color) continue;
+
+    const cardImageUrl = resolveMediaURL(
+      component?.card_image,
+      "medium"
+    );
+
+    if (cardImageUrl) {
+      out[color] = cardImageUrl;
+    }
   }
 
   return out;

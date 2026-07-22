@@ -9,6 +9,7 @@ type StockMap = Record<string, Record<string, number>>;
 type Stock3 = Record<string, Record<string, Record<number, number>>>;
 type Sku3 = Record<string, Record<string, Record<number, string | null>>>;
 type ImagesByColor = Record<string, string[]>;
+type CardImagesByColor = Record<string, string>;
 
 type Props = {
   slug: string;
@@ -19,7 +20,12 @@ type Props = {
   salePrice: number | null; // effective major
   currency: string;
 
+  /** 商品详情页 Gallery 使用 color_galleries.images */
   imagesByColor: ImagesByColor;
+
+  /** Shopping Bag、Checkout 和订单使用 color_galleries.card_image */
+  cardImagesByColor: CardImagesByColor;
+
   stockMap: StockMap;
   stock3: Stock3;
   sku3?: Sku3;
@@ -41,6 +47,7 @@ export default function AddToBagClient({
   salePrice,
   currency,
   imagesByColor,
+  cardImagesByColor,
   stockMap,
   stock3,
   sku3,
@@ -53,9 +60,18 @@ export default function AddToBagClient({
 
   const currentColor = useMemo(() => {
     const fromUrl = sp.get("color") || undefined;
-    const first = Object.keys(imagesByColor)[0];
-    return fromUrl || fallbackColor || first || undefined;
-  }, [sp, fallbackColor, imagesByColor]);
+
+    const firstGalleryColor = Object.keys(imagesByColor)[0];
+    const firstCardImageColor = Object.keys(cardImagesByColor)[0];
+
+    return (
+      fromUrl ||
+      fallbackColor ||
+      firstGalleryColor ||
+      firstCardImageColor ||
+      undefined
+    );
+  }, [sp, fallbackColor, imagesByColor, cardImagesByColor]);
 
   const currentSize = useMemo(() => sp.get("size") || undefined, [sp]);
 
@@ -79,9 +95,10 @@ export default function AddToBagClient({
     const h =
       typeof heightFromUrl === "number" && Number.isFinite(heightFromUrl)
         ? heightFromUrl
-        : typeof heightIncreaseCm === "number" && Number.isFinite(heightIncreaseCm)
-        ? heightIncreaseCm
-        : 0;
+        : typeof heightIncreaseCm === "number" &&
+            Number.isFinite(heightIncreaseCm)
+          ? heightIncreaseCm
+          : 0;
 
     return typeof h === "number" && Number.isFinite(h) ? h : 0;
   }, [heightFromUrl, heightIncreaseCm]);
@@ -106,6 +123,7 @@ export default function AddToBagClient({
 
     const stockExact =
       stock3[currentColor]?.[currentSize]?.[pickedHeightForLookup];
+
     if (typeof stockExact === "number" && Number.isFinite(stockExact)) {
       return stockExact;
     }
@@ -117,15 +135,47 @@ export default function AddToBagClient({
   // ✅ 当前变体 SKU（用于下单后扣库存）
   const variantSku = useMemo(() => {
     if (!currentColor || !currentSize) return null;
+
     const sku = sku3?.[currentColor]?.[currentSize]?.[pickedHeightForLookup];
+
     return typeof sku === "string" && sku.trim() ? sku.trim() : null;
   }, [currentColor, currentSize, pickedHeightForLookup, sku3]);
 
   const preview = useMemo(() => {
-    if (currentColor) return imagesByColor[currentColor]?.[0];
-    const any = Object.values(imagesByColor)[0]?.[0];
-    return any;
-  }, [currentColor, imagesByColor]);
+    if (currentColor) {
+      // 1. 优先使用当前颜色对应的 card_image。
+      const cardImage = cardImagesByColor[currentColor];
+
+      if (typeof cardImage === "string" && cardImage.trim()) {
+        return cardImage;
+      }
+
+      // 2. 如果当前颜色没有设置 card_image，
+      //    回退到商品详情页 Gallery 的第一张图片。
+      const galleryImage = imagesByColor[currentColor]?.[0];
+
+      if (typeof galleryImage === "string" && galleryImage.trim()) {
+        return galleryImage;
+      }
+    }
+
+    // 3. 如果没有有效的当前颜色，尝试使用任意一个 card_image。
+    const firstCardImage = Object.values(cardImagesByColor).find(
+      (value) => typeof value === "string" && value.trim(),
+    );
+
+    if (firstCardImage) {
+      return firstCardImage;
+    }
+
+    // 4. 最后再回退到任意颜色的 Gallery 第一张图片。
+    const firstGalleryImages = Object.values(imagesByColor).find(
+      (value) =>
+        Array.isArray(value) && typeof value[0] === "string" && value[0].trim(),
+    );
+
+    return firstGalleryImages?.[0];
+  }, [currentColor, cardImagesByColor, imagesByColor]);
 
   /** ✅ unitPrice 仍然是 major（元） */
   const unitPriceMajor = salePrice ?? price ?? 0;
@@ -133,7 +183,10 @@ export default function AddToBagClient({
 
   // ✅ disabled：由 color/size/stock/price 决定
   const disabled =
-    !currentColor || !currentSize || stockForCurrent <= 0 || unitPriceMajor <= 0;
+    !currentColor ||
+    !currentSize ||
+    stockForCurrent <= 0 ||
+    unitPriceMajor <= 0;
 
   const onAdd = () => {
     if (disabled) return;
@@ -142,7 +195,10 @@ export default function AddToBagClient({
     const heightPart = String(pickedHeightForLookup);
 
     // ✅ 关键：同时写入 prices[]（minor, 分）——让 cart/checkout 统一走 minor 路径
-    const ccy = String(currency || "").trim().toUpperCase() || "AUD";
+    const ccy =
+      String(currency || "")
+        .trim()
+        .toUpperCase() || "AUD";
 
     const baseMinor = toMinor2(basePriceMajor);
     const effMinor = toMinor2(unitPriceMajor);
