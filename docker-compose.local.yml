@@ -25,12 +25,23 @@ services:
       D1_WORKER_INTERNAL_BASE: http://host.docker.internal:8787
 
       # Next.js 容器服务端访问宿主机上的 Strapi
-      STRAPI_URL: http://host.docker.internal:1337
+      # STRAPI_URL: http://host.docker.internal:1337
 
       # 浏览器直接访问宿主机服务
+      # NEXT_PUBLIC_API_BASE: http://127.0.0.1:8787
+      # NEXT_PUBLIC_D1_WORKER_URL: http://127.0.0.1:8787
+      # NEXT_PUBLIC_STRAPI_URL: http://127.0.0.1:1337
+      # NEXT_PUBLIC_STOREFRONT_CODE: AU
+
+      #=================================================
+
+      # Next.js 容器服务端读取云端 Strapi
+      STRAPI_URL: https://cms.jeviapparelstudio.com
+
+      # 浏览器访问本地 API，但商品和图片读取云端 Strapi
       NEXT_PUBLIC_API_BASE: http://127.0.0.1:8787
       NEXT_PUBLIC_D1_WORKER_URL: http://127.0.0.1:8787
-      NEXT_PUBLIC_STRAPI_URL: http://127.0.0.1:1337
+      NEXT_PUBLIC_STRAPI_URL: https://cms.jeviapparelstudio.com
       NEXT_PUBLIC_STOREFRONT_CODE: AU
 
     ports:

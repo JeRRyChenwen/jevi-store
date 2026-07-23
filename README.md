@@ -1396,6 +1396,42 @@ CJ Dashboard
 
 ```
 
+# 106.开启完整下单流程测试模式
+
+登录 VPS 后执行：
+
+```bash
+
+cd /opt/jevi/jevi-deployment
+
+sed -i \
+  's/^LIVE_CHECKOUT_TEST_ENABLED=.*/LIVE_CHECKOUT_TEST_ENABLED=true/' \
+  .env.production
+
+docker compose \
+  --env-file .env.production \
+  -f docker-compose.prod.yml \
+  up -d --force-recreate jevi-api
+
+```
+
+检查容器是否确实读取到测试配置：
+
+```bash
+
+docker exec jevi-api-prod sh -lc \
+  'printenv | grep "^LIVE_CHECKOUT_TEST_" | sort'
+
+```
+
+再检查 API：
+
+```bash
+
+curl -fsS https://api.jeviapparelstudio.com/ready
+
+```
+
 # ============================================================================
 
 # ============================================================================
@@ -1405,39 +1441,7 @@ User API Tokens
 
 # ============================================================================
 
-旧命令：
-
-start-dev.bat
-
-wrangler dev --port 8789
-
 # ============================================================================
-
-以前使用的命令：
-
-npm run dev
-
-npm run dev
-
-npm run dev
-
-npm run develop
-
-npm run dev
-
-docker start jevi-postgres-dev
-
-启动 mailer-api：
-cd /d D:\前端练习\mailer-api
-docker compose -f docker-compose.local.yml up --build -d
-
-启动 jevi-api：
-cd /d D:\前端练习\jevi-api
-docker compose -f docker-compose.local.yml up --build -d
-
-启动 jevi-store：
-cd /d D:\前端练习\jevi-store
-docker compose -f docker-compose.local.yml up --build -d
 
 # ============================================================================
 
@@ -1477,60 +1481,23 @@ ssh deploy@46.250.240.212
 
 # ============================================================================
 
-常用命令：
+专门为 PayPal Live 小额真实下单测试增加的临时功能，不是 PayPal Sandbox，也不是跳过付款。
 
-如果你改了 jevi-store 源码、.env.local 里的 NEXT*PUBLIC*\*、next.config.js、public 图片文件，就需要重新 build：
+开启时，满足测试条件的订单会变成：
 
-cd /d D:\前端练习\jevi-store
-docker compose -f docker-compose.local.yml down
-rmdir /s /q .next
-npm run build
-docker compose -f docker-compose.local.yml build --no-cache
-docker compose -f docker-compose.local.yml up -d
-
-# ============================================================================
-
-# ============================================================================
-
-启动docker容器：
-
-start-dev.bat
-
-wrangler dev --port 8789
+商品：JEVI-LIVE-TEST-001
+数量：1
+商品小计：AUD 1.00
+运费：AUD 0.00
+总计：AUD 1.00
 
 # ============================================================================
 
 # ============================================================================
 
-常用命令和参数：
+# ============================================================================
 
-pgadmin4数据库验证：
-Username: jevi_api_user
-Password: jevi_api_password
-
-UPDATE inventory SET on_hand_qty = 44;
-
-清库
-
-wrangler d1 execute jevi --remote --file=reset.sql
-
-wrangler d1 execute jevi --remote --file migrations/0001_base.sql
-
-同步migration：
-copy /Y "D:\前端练习\d1-worker\schema\current_schema.sql" "D:\前端练习\d1-worker\migrations\0001_base.sql"
-
-检查是否一致：
-fc.exe "D:\前端练习\d1-worker\schema\current_schema.sql" "D:\前端练习\d1-worker\migrations\0001_base.sql"
-
-CJPacket Fast Ordinary 等于 Express
-CJPacket Fast Line 等于 Standard
-
-长期固定使用 CJPacket Fast Line 作为generate draft的数据
-
-删除wrangler里的secret：
-wrangler secret delete MAILER_INTERNAL_TOKEN
-添加wrangler里的secret：
-wrangler secret put MAILER_INTERNAL_TOKEN
+# ============================================================================
 
 # ============================================================================
 
@@ -1728,3 +1695,10 @@ C:\Users\lance\.ssh 整个文件压缩备份
 email显示Jevi logo，商品图片
 
 本地测试
+
+运费 商品费用
+
+先关闭生产测试开关
+因为你准备暂停付款测试，不要让免运费测试开关一直保持开启。
+
+around
