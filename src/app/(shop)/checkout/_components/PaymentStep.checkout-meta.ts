@@ -45,7 +45,7 @@ export function buildCheckoutTotalsMeta({
     const nextSnap = {
       ...prevSnap,
       image: prevSnap?.image ?? rawImage ?? null,
-      image_url: prevSnap?.image_url ?? computedImageUrl ?? null,
+      image_url: computedImageUrl || null,
       attrs: {
         ...(prevSnap?.attrs ?? {}),
         ...(it as any)?.attrs,
@@ -59,7 +59,7 @@ export function buildCheckoutTotalsMeta({
       line_total_minor: lineMinor,
 
       image: (it as any)?.image ?? rawImage ?? null,
-      image_url: (it as any)?.image_url ?? computedImageUrl ?? null,
+      image_url: computedImageUrl || null,
 
       snapshot: nextSnap,
     };
