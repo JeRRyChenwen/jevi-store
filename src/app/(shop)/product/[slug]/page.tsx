@@ -7,6 +7,7 @@ import { ChevronRight } from "lucide-react";
 import { api } from "@/lib/strapi";
 import GalleryClient from "../_components/GalleryClient";
 import AddToBagClient from "../_components/AddToBagClient";
+import ProductDetails from "../_components/ProductDetails";
 import { colorNameToCss } from "@/lib/colors";
 import { FieldMessage } from "@/components/ui/field-message";
 import { resolveDisplayPrice } from "@/lib/pricing";
@@ -269,6 +270,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     `/api/products?filters[slug][$eq]=${encodeURIComponent(slug)}` +
     `&fields[0]=title&fields[1]=slug&fields[2]=hot_score` +
     `&fields[3]=new_starts_at&fields[4]=new_ends_at` +
+    `&fields[5]=description` +
     `&populate[color_galleries][fields][0]=color` +
     `&populate[color_galleries][populate][card_image]=true` +
     `&populate[color_galleries][populate][images]=true` +
@@ -292,6 +294,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
 
   const attrs = row?.attributes ?? row ?? {};
   const title: string = attrs.title ?? attrs.name ?? "Product";
+  const description = attrs.description;
   const isNew = isNewProduct(attrs);
 
   // 面包屑
@@ -740,6 +743,14 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                 sku3={sku3}
                 categoryRootSlug={categoryRootSlug ?? "uncategorized"}
                 categoryLeafSlug={categoryLeafSlug ?? null}
+              />
+
+              <ProductDetails
+                description={description}
+                sizes={sizesForColor}
+                heights={realHeightsAll}
+                categoryRootSlug={categoryRootSlug}
+                categoryLeafSlug={categoryLeafSlug}
               />
             </div>
           </div>
