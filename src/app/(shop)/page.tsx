@@ -10,9 +10,22 @@ import HomeBanner from "@/components/home/HomeBanner";
 import HomeMarketingSection from "@/components/home/HomeMarketingSection";
 import HomeCategorySectionClient from "@/components/home/HomeCategorySectionClient";
 
+const HOME_DESCRIPTION =
+  "Shop discreet elevator shoes and height-increasing sneakers at JEVI APPAREL STUDIO, with styles designed for everyday wear and delivery across Australia.";
+
 export const metadata: Metadata = {
+  title: "Height Increasing & Elevator Shoes Australia",
+  description: HOME_DESCRIPTION,
+
   alternates: {
     canonical: "/",
+  },
+
+  openGraph: {
+    title: "Height Increasing & Elevator Shoes Australia | JEVI APPAREL STUDIO",
+    description: HOME_DESCRIPTION,
+    url: "/",
+    type: "website",
   },
 };
 
@@ -131,6 +144,17 @@ export default async function HomePage() {
     <main className="w-full max-w-none pb-10">
       <section className="px-4 md:px-6 lg:px-8 pt-2 md:pt-3 space-y-6">
         <HomeBanner intervalMs={7000} />
+
+        <section className="mx-auto max-w-3xl px-4 py-4 text-center">
+          <h1 className="text-2xl font-semibold tracking-tight text-neutral-900 md:text-3xl">
+            Height Increasing &amp; Elevator Shoes Australia
+          </h1>
+
+          <p className="mt-3 text-sm leading-6 text-neutral-600 md:text-base">
+            Discover discreet height-increasing shoes and sneakers designed to
+            add height while maintaining everyday comfort and style.
+          </p>
+        </section>
 
         <div className="h-px bg-neutral-200" />
 

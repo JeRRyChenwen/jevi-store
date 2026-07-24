@@ -10,6 +10,8 @@ import { CURRENT_STOREFRONT } from "@/lib/market/current";
 // 兜底顶级分类（防止没连上 Strapi 时至少有这些分类页）
 const STATIC_SLUGS = [
   "shoes",
+  "casual-shoes",
+  "formal-shoes",
   "bottoms",
   "tops",
   "suit",
@@ -22,6 +24,54 @@ const STATIC_SLUGS = [
 // 这两个是“聚合页”slug：不按 category 关系过滤
 const PROMO_SLUGS = new Set(["new-in", "on-sale"]);
 const isPromoSlug = (slug: string) => PROMO_SLUGS.has(slug);
+
+type CategorySeoContent = {
+  title: string;
+  description: string;
+  introduction: string;
+};
+
+const CATEGORY_SEO_CONTENT: Record<string, CategorySeoContent> = {
+  shoes: {
+    title: "Elevator & Height Increasing Shoes Australia",
+    description:
+      "Shop elevator shoes and height-increasing sneakers designed for discreet added height, everyday comfort and modern style, with delivery across Australia.",
+    introduction:
+      "Explore our collection of discreet elevator shoes and height-increasing sneakers designed for comfortable everyday wear.",
+  },
+
+  "new-in": {
+    title: "New Height Increasing & Elevator Shoes",
+    description:
+      "Discover the latest elevator shoes and height-increasing sneakers from JEVI APPAREL STUDIO, with new styles available for delivery across Australia.",
+    introduction:
+      "Explore our latest height-increasing shoes, including newly arrived sneakers, boots and everyday elevator styles.",
+  },
+
+  "on-sale": {
+    title: "Height Increasing & Elevator Shoes Sale",
+    description:
+      "Shop selected elevator shoes and height-increasing sneakers on sale at JEVI APPAREL STUDIO, with delivery available across Australia.",
+    introduction:
+      "Discover selected height-increasing shoes and elevator sneakers at reduced prices while available.",
+  },
+
+  "casual-shoes": {
+    title: "Casual Height Increasing & Elevator Shoes",
+    description:
+      "Shop casual height-increasing shoes and discreet elevator sneakers designed for comfort, everyday wear and delivery across Australia.",
+    introduction:
+      "Discover casual elevator shoes and height-increasing sneakers designed to add discreet height to everyday outfits.",
+  },
+
+  "formal-shoes": {
+    title: "Formal Height Increasing & Elevator Shoes",
+    description:
+      "Shop formal elevator shoes designed to provide discreet added height with a polished appearance for work, events and special occasions.",
+    introduction:
+      "Explore formal height-increasing shoes designed for discreet elevation and a polished, confident appearance.",
+  },
+};
 
 type CategoryNavItem = {
   name: string;
@@ -351,9 +401,13 @@ export async function generateMetadata({
   const name = current?.name || titleizeSlug(slug);
   const pageSlug = current?.slug || slug;
 
-  const title = current?.seo_title || `${name} | Shop ${name} Online`;
+  const seoContent = CATEGORY_SEO_CONTENT[pageSlug];
+
+  const title =
+    seoContent?.title || current?.seo_title || `${name} | Shop ${name} Online`;
 
   const description =
+    seoContent?.description ||
     current?.seo_description ||
     current?.description ||
     `Shop ${BRAND.displayName}'s ${name} collection online. Discover modern apparel, footwear and lifestyle essentials.`;
@@ -386,6 +440,8 @@ export default async function CategoryPage({
   ]);
 
   if (!current?.slug) notFound();
+
+  const seoContent = CATEGORY_SEO_CONTENT[current.slug];
 
   // promo 聚合页：不展示子分类导航
   const promo = isPromoSlug(slug);
@@ -459,7 +515,7 @@ export default async function CategoryPage({
         <CategoryGridClient
           slug={slug}
           title={current.name}
-          description={current.description}
+          description={seoContent?.introduction || current.description}
           total={totalForUI}
           pageSize={40}
           categoryDocIds={categoryDocIds}
