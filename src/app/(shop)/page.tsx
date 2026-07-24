@@ -11,10 +11,10 @@ import HomeMarketingSection from "@/components/home/HomeMarketingSection";
 import HomeCategorySectionClient from "@/components/home/HomeCategorySectionClient";
 
 const HOME_DESCRIPTION =
-  "Shop discreet elevator shoes and height-increasing sneakers at JEVI APPAREL STUDIO, with styles designed for everyday wear and delivery across Australia.";
+  "Shop add height shoes, hidden-lift shoes and elevator shoes in Australia at JEVI APPAREL STUDIO. Explore height increasing sneakers and dress shoes.";
 
 export const metadata: Metadata = {
-  title: "Height Increasing & Elevator Shoes Australia",
+  title: "Add Height Shoes Australia | Hidden-Lift Shoes",
   description: HOME_DESCRIPTION,
 
   alternates: {
@@ -22,7 +22,8 @@ export const metadata: Metadata = {
   },
 
   openGraph: {
-    title: "Height Increasing & Elevator Shoes Australia | JEVI APPAREL STUDIO",
+    title:
+      "Add Height Shoes Australia | Hidden-Lift Shoes | JEVI APPAREL STUDIO",
     description: HOME_DESCRIPTION,
     url: "/",
     type: "website",
@@ -145,12 +146,14 @@ export default async function HomePage() {
       <section className="px-4 md:px-6 lg:px-8 pt-2 md:pt-3 space-y-6">
         <section className="mx-auto max-w-4xl px-4 pb-3 pt-1 text-center">
           <h1 className="font-serif text-xl font-normal tracking-[0.035em] text-neutral-900 md:text-2xl">
-            Height Increasing &amp; Elevator Shoes Australia
+            Hidden-Lift, Elevator &amp; Height Increasing Shoes in Australia
           </h1>
 
           <p className="mx-auto mt-2 max-w-3xl text-xs leading-5 tracking-[0.015em] text-neutral-600 md:text-sm">
-            Discover discreet height-increasing shoes and sneakers designed to
-            add height while maintaining everyday comfort and style.
+            Searching for add height shoes in Australia? Discover hidden-lift
+            shoes, elevator shoes and height increasing sneakers from JEVI
+            APPAREL STUDIO, designed to add height discreetly while maintaining
+            everyday comfort, natural proportions and versatile style.
           </p>
         </section>
 

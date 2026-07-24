@@ -10,6 +10,7 @@ import {
   normalizeProduct,
   type ProductLite,
 } from "./_lib/categoryProductMapper";
+import CategoryBuyingGuide from "./_components/CategoryBuyingGuide";
 
 // 兜底顶级分类（防止没连上 Strapi 时至少有这些分类页）
 const STATIC_SLUGS = [
@@ -32,48 +33,54 @@ const isPromoSlug = (slug: string) => PROMO_SLUGS.has(slug);
 type CategorySeoContent = {
   title: string;
   description: string;
+  heading: string;
   introduction: string;
 };
 
 const CATEGORY_SEO_CONTENT: Record<string, CategorySeoContent> = {
   shoes: {
-    title: "Elevator & Height Increasing Shoes Australia",
+    title: "Add Height Shoes & Elevator Shoes Australia",
     description:
-      "Shop elevator shoes and height-increasing sneakers designed for discreet added height, everyday comfort and modern style, with delivery across Australia.",
+      "Shop add height shoes, elevator shoes and hidden-lift sneakers designed for discreet elevation, everyday comfort and delivery across Australia.",
+    heading: "Add Height, Elevator & Hidden-Lift Shoes",
     introduction:
-      "Explore our collection of discreet elevator shoes and height-increasing sneakers designed for comfortable everyday wear.",
+      "Explore our complete collection of add height shoes, elevator shoes and hidden-lift sneakers designed to provide discreet elevation for everyday and formal wear.",
   },
 
   "new-in": {
-    title: "New Height Increasing & Elevator Shoes",
+    title: "New Add Height & Hidden-Lift Shoes",
     description:
-      "Discover the latest elevator shoes and height-increasing sneakers from JEVI APPAREL STUDIO, with new styles available for delivery across Australia.",
+      "Discover new add height shoes, hidden-lift sneakers and elevator footwear from JEVI APPAREL STUDIO, with delivery available across Australia.",
+    heading: "New Add Height & Hidden-Lift Shoes",
     introduction:
-      "Explore our latest height-increasing shoes, including newly arrived sneakers, boots and everyday elevator styles.",
+      "Explore our latest add height shoes, hidden-lift sneakers and newly arrived elevator styles designed for discreet elevation, modern comfort and everyday wear.",
   },
 
   "on-sale": {
-    title: "Height Increasing & Elevator Shoes Sale",
+    title: "Add Height & Elevator Shoes Sale",
     description:
-      "Shop selected elevator shoes and height-increasing sneakers on sale at JEVI APPAREL STUDIO, with delivery available across Australia.",
+      "Shop selected add height shoes, elevator shoes and hidden-lift sneakers on sale at JEVI APPAREL STUDIO, with delivery across Australia.",
+    heading: "Add Height & Elevator Shoes on Sale",
     introduction:
-      "Discover selected height-increasing shoes and elevator sneakers at reduced prices while available.",
+      "Discover selected add height shoes, hidden-lift sneakers and elevator footwear at reduced prices while available.",
   },
 
   "casual-shoes": {
-    title: "Casual Height Increasing & Elevator Shoes",
+    title: "Casual Add Height Shoes & Hidden-Lift Sneakers",
     description:
-      "Shop casual height-increasing shoes and discreet elevator sneakers designed for comfort, everyday wear and delivery across Australia.",
+      "Shop casual add height shoes and hidden-lift sneakers designed for discreet elevation, everyday comfort and versatile styling.",
+    heading: "Casual Add Height Shoes & Hidden-Lift Sneakers",
     introduction:
-      "Discover casual elevator shoes and height-increasing sneakers designed to add discreet height to everyday outfits.",
+      "Discover casual add height shoes and hidden-lift sneakers designed to provide discreet elevation for everyday outfits, weekends and relaxed workplaces.",
   },
 
   "formal-shoes": {
-    title: "Formal Height Increasing & Elevator Shoes",
+    title: "Formal Add Height & Hidden-Lift Dress Shoes",
     description:
-      "Shop formal elevator shoes designed to provide discreet added height with a polished appearance for work, events and special occasions.",
+      "Shop formal add height shoes and hidden-lift dress shoes designed for discreet elevation and a polished appearance at work, weddings and events.",
+    heading: "Formal Add Height & Hidden-Lift Dress Shoes",
     introduction:
-      "Explore formal height-increasing shoes designed for discreet elevation and a polished, confident appearance.",
+      "Explore formal add height shoes and hidden-lift dress shoes designed to provide discreet elevation and a polished appearance for business wear, weddings and special occasions.",
   },
 };
 
@@ -474,6 +481,8 @@ export async function generateMetadata({
   const title =
     seoContent?.title || current?.seo_title || `${name} | Shop ${name} Online`;
 
+  const fullTitle = `${title} | JEVI APPAREL STUDIO`;
+
   const description =
     seoContent?.description ||
     current?.seo_description ||
@@ -487,7 +496,7 @@ export async function generateMetadata({
       canonical: `/category/${pageSlug}`,
     },
     openGraph: {
-      title,
+      title: fullTitle,
       description,
       url: `/category/${pageSlug}`,
       type: "website",
@@ -591,9 +600,8 @@ export default async function CategoryPage({
 
       <div className="mt-2">
         <CategoryGridClient
-          key={slug}
           slug={slug}
-          title={current.name}
+          title={seoContent?.heading || current.name}
           description={seoContent?.introduction || current.description}
           total={totalForUI}
           initialProducts={initialProducts}
@@ -602,6 +610,8 @@ export default async function CategoryPage({
           displayCurrency={CURRENT_STOREFRONT.defaultCurrency}
         />
       </div>
+
+      <CategoryBuyingGuide slug={slug} />
     </main>
   );
 }

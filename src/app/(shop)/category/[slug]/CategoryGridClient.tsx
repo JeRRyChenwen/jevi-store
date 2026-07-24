@@ -245,15 +245,10 @@ export default function CategoryGridClient({
 
   const start = (page - 1) * pageSize;
 
-  // === 固定“画布高度”：按 40 个商品、4 列来估算一页高度 ===
-  const desktopColumns = 4;
-  const rowsForFullPage = Math.ceil(pageSize / desktopColumns);
-  const approxRowHeight = 520;
-  const fullPageHeightPx = rowsForFullPage * approxRowHeight;
-
-  const sectionMinHeightStyle: CSSProperties = {
-    minHeight: fullPageHeightPx,
-  };
+  // 加载时保留适当高度，加载完成后由商品数量决定实际高度
+  const sectionMinHeightStyle: CSSProperties = loading
+    ? { minHeight: 1040 }
+    : {};
 
   // ✅ Pagination 的链接生成：不使用 window，保留现有 query，只替换 page
   const hrefForPage = useMemo(() => {

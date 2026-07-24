@@ -7,8 +7,8 @@ import { BRAND } from "@/lib/brand";
 
 export const metadata: Metadata = {
   title: {
-    default: `${BRAND.displayName} | Official Online Store`,
-    template: `%s | ${BRAND.displayName}`,
+    default: "JEVI APPAREL STUDIO | Official Online Store",
+    template: "%s | JEVI APPAREL STUDIO",
   },
 
   description: BRAND.siteDescription,

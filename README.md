@@ -1465,6 +1465,11 @@ npm run develop
 mailer-api：
 npm run dev
 
+有新内容的时候：
+cd /d "D:\Jevi Apparel Studio\jevi-store"
+docker compose -f docker-compose.local.yml down
+docker compose -f docker-compose.local.yml up -d --build
+
 | 项目                | 地址                           |
 | ------------------- | ------------------------------ |
 | jevi-store          | `http://127.0.0.1:3000`        |
@@ -1731,8 +1736,9 @@ robots.ts 当前配置正确，不需要修改。
 
 =====================
 
-https://jeviapparelstudio.com/category/shoes
-https://jeviapparelstudio.com/category/new-in
-https://jeviapparelstudio.com/category/on-sale
-https://jeviapparelstudio.com/category/casual-shoes
-https://jeviapparelstudio.com/category/formal-shoes
+"https://jeviapparelstudio.com",
+"https://jeviapparelstudio.com/category/shoes",
+"https://jeviapparelstudio.com/category/new-in",
+"https://jeviapparelstudio.com/category/on-sale",
+"https://jeviapparelstudio.com/category/casual-shoes",
+"https://jeviapparelstudio.com/category/formal-shoes"
