@@ -10,6 +10,7 @@ import {
   normalizeProduct,
   type ProductLite,
 } from "./_lib/categoryProductMapper";
+import CategoryBuyingGuide from "./_components/CategoryBuyingGuide";
 
 // 兜底顶级分类（防止没连上 Strapi 时至少有这些分类页）
 const STATIC_SLUGS = [
@@ -591,7 +592,6 @@ export default async function CategoryPage({
 
       <div className="mt-2">
         <CategoryGridClient
-          key={slug}
           slug={slug}
           title={current.name}
           description={seoContent?.introduction || current.description}
@@ -602,6 +602,8 @@ export default async function CategoryPage({
           displayCurrency={CURRENT_STOREFRONT.defaultCurrency}
         />
       </div>
+
+      <CategoryBuyingGuide slug={slug} />
     </main>
   );
 }
