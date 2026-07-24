@@ -1,9 +1,20 @@
 // src/app/(shop)/page.tsx
-import { api, fetchSubcategoriesByParentId, resolveMediaURL } from "@/lib/strapi";
+import type { Metadata } from "next";
+import {
+  api,
+  fetchSubcategoriesByParentId,
+  resolveMediaURL,
+} from "@/lib/strapi";
 import { CURRENT_STOREFRONT } from "@/lib/market/current";
 import HomeBanner from "@/components/home/HomeBanner";
 import HomeMarketingSection from "@/components/home/HomeMarketingSection";
 import HomeCategorySectionClient from "@/components/home/HomeCategorySectionClient";
+
+export const metadata: Metadata = {
+  alternates: {
+    canonical: "/",
+  },
+};
 
 export const revalidate = 0;
 
@@ -110,7 +121,7 @@ export default async function HomePage() {
         title: cat.title,
         categoryDocIds: [cat.documentId, ...childIds] as string[],
       };
-    })
+    }),
   );
 
   // ✅ 读取 Mid Banner 图片
