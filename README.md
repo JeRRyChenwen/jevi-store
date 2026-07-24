@@ -1714,3 +1714,15 @@ around
 你的 PayPal 主币种是 USD
 或
 “收款偏好”设置成了自动兑换为主币种
+
+===================================
+
+因此现在先不要急着向 Google Search Console 提交 sitemap。正确顺序应该是：
+
+修改 sitemap.ts，加入所有已发布、前台显示的商品。
+清理 sitemap 中不销售的旧分类。
+完善 product/[slug]/page.tsx 的 metadata 和 canonical。
+构建、部署并验证。
+最后配置 Google Search Console 并提交 sitemap。
+
+robots.ts 当前配置正确，不需要修改。
