@@ -143,18 +143,18 @@ export default async function HomePage() {
   return (
     <main className="w-full max-w-none pb-10">
       <section className="px-4 md:px-6 lg:px-8 pt-2 md:pt-3 space-y-6">
-        <HomeBanner intervalMs={7000} />
-
-        <section className="mx-auto max-w-3xl px-4 py-4 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight text-neutral-900 md:text-3xl">
+        <section className="mx-auto max-w-4xl px-4 pb-3 pt-1 text-center">
+          <h1 className="font-serif text-xl font-normal tracking-[0.035em] text-neutral-900 md:text-2xl">
             Height Increasing &amp; Elevator Shoes Australia
           </h1>
 
-          <p className="mt-3 text-sm leading-6 text-neutral-600 md:text-base">
+          <p className="mx-auto mt-2 max-w-3xl text-xs leading-5 tracking-[0.015em] text-neutral-600 md:text-sm">
             Discover discreet height-increasing shoes and sneakers designed to
             add height while maintaining everyday comfort and style.
           </p>
         </section>
+
+        <HomeBanner intervalMs={7000} />
 
         <div className="h-px bg-neutral-200" />
 
