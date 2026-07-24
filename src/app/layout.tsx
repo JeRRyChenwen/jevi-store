@@ -15,10 +15,6 @@ export const metadata: Metadata = {
 
   metadataBase: new URL(BRAND.siteUrl),
 
-  alternates: {
-    canonical: "/",
-  },
-
   openGraph: {
     type: "website",
     siteName: BRAND.displayName,

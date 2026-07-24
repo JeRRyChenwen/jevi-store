@@ -8,9 +8,29 @@ import { POLICY_LINKS } from "@/lib/legal/policy-links";
 
 const POLICY = getPolicyContext();
 
+const privacyDescription = `Learn how ${BRAND.displayName} collects, uses, stores, shares, and protects personal information for customers using the ${CURRENT_STOREFRONT.legalRegionLabel} storefront.`;
+
 export const metadata: Metadata = {
-  title: `Privacy Policy | ${BRAND.displayName}`,
-  description: `Learn how ${BRAND.displayName} collects, uses, stores, shares, and protects personal information for customers using the ${CURRENT_STOREFRONT.legalRegionLabel} storefront.`,
+  title: "Privacy Policy",
+  description: privacyDescription,
+
+  alternates: {
+    canonical: "/privacy",
+  },
+
+  openGraph: {
+    type: "website",
+    siteName: BRAND.displayName,
+    title: `Privacy Policy | ${BRAND.displayName}`,
+    description: privacyDescription,
+    url: "/privacy",
+  },
+
+  twitter: {
+    card: "summary",
+    title: `Privacy Policy | ${BRAND.displayName}`,
+    description: privacyDescription,
+  },
 };
 
 export default function PrivacyPage() {

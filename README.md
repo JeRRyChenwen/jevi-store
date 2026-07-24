@@ -1450,20 +1450,20 @@ User API Tokens
 docker start jevi-postgres-dev
 
 jevi-store：
-docker compose -f docker-compose.local.yml up -d --build
+docker compose -f docker-compose.local.yml up -d
 
 jevi-admin-platform：
-docker compose -f docker-compose.local.yml up -d --build
+docker compose -f docker-compose.local.yml up -d
 
 jevi-api：
 npm run dev
 
-jevi-strapi：
+jevi-strapi （暂时不需要启动）：
 docker compose -f docker-compose.postgres.local.yml up -d
 npm run develop
 
 mailer-api：
-docker compose -f docker-compose.local.yml up -d --build
+npm run dev
 
 | 项目                | 地址                           |
 | ------------------- | ------------------------------ |
@@ -1702,3 +1702,15 @@ email显示Jevi logo，商品图片
 因为你准备暂停付款测试，不要让免运费测试开关一直保持开启。
 
 around
+
+其他email template
+
+我明白了，话说我发现一个问题，就是我的order shippment 的email显示的商品图片希望能大一些，图片的宽和高都需要优化
+
+退款功能需要重新做一下
+
+这不是顾客用美元付款，而是 PayPal 在扣除手续费后，把你的 AUD 净收入自动兑换成了美元。最可能的原因是：
+
+你的 PayPal 主币种是 USD
+或
+“收款偏好”设置成了自动兑换为主币种
