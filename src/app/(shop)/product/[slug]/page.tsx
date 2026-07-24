@@ -1,4 +1,6 @@
 // src/app/product/[slug]/page.tsx
+import type { Metadata } from "next";
+import { BRAND } from "@/lib/brand";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
@@ -30,6 +32,57 @@ type PageProps = {
   params: Promise<{ slug: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
+
+type ProductMetadataRow = {
+  title: string;
+  slug: string;
+};
+
+function getProductRowValue(row: any, key: string) {
+  return row?.attributes?.[key] ?? row?.[key] ?? null;
+}
+
+function titleizeProductSlug(slug: string) {
+  return slug
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+async function fetchProductMetadata(
+  slug: string,
+): Promise<ProductMetadataRow | null> {
+  const json: any = await api(
+    `/api/products` +
+      `?filters[slug][$eq]=${encodeURIComponent(slug)}` +
+      `&filters[is_showed][$eq]=true` +
+      `&fields[0]=title` +
+      `&fields[1]=slug` +
+      `&pagination[page]=1` +
+      `&pagination[pageSize]=1` +
+      `&publicationState=live`,
+    { noCache: true },
+  );
+
+  const row = Array.isArray(json?.data) ? json.data[0] : null;
+
+  if (!row) {
+    return null;
+  }
+
+  const title = String(getProductRowValue(row, "title") || "").trim();
+  const productSlug = String(getProductRowValue(row, "slug") || "").trim();
+
+  if (!productSlug) {
+    return null;
+  }
+
+  return {
+    title: title || titleizeProductSlug(productSlug),
+    slug: productSlug,
+  };
+}
 
 export const revalidate = 0;
 
@@ -136,9 +189,72 @@ async function fetchStockBySkus(
   }
 }
 
-export async function generateMetadata({ params }: PageProps) {
+export async function generateMetadata({
+  params,
+}: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  return { title: `Product – ${slug}` };
+
+  try {
+    const product = await fetchProductMetadata(slug);
+
+    if (!product) {
+      return {
+        title: "Product Not Found",
+        robots: {
+          index: false,
+          follow: false,
+        },
+      };
+    }
+
+    const description =
+      `Shop ${product.title} from ${BRAND.displayName}. ` +
+      `Explore available colours, sizes and height-increase options with delivery in Australia.`;
+
+    const canonicalPath = `/product/${product.slug}`;
+    const socialTitle = `${product.title} | ${BRAND.displayName}`;
+
+    return {
+      title: product.title,
+      description,
+
+      alternates: {
+        canonical: canonicalPath,
+      },
+
+      robots: {
+        index: true,
+        follow: true,
+      },
+
+      openGraph: {
+        type: "website",
+        siteName: BRAND.displayName,
+        title: socialTitle,
+        description,
+        url: canonicalPath,
+      },
+
+      twitter: {
+        card: "summary",
+        title: socialTitle,
+        description,
+      },
+    };
+  } catch (error) {
+    console.error("[product metadata] Failed to load product:", error);
+
+    const fallbackTitle = titleizeProductSlug(slug);
+    const canonicalPath = `/product/${slug}`;
+
+    return {
+      title: fallbackTitle,
+      description: `Shop ${fallbackTitle} from ${BRAND.displayName}.`,
+      alternates: {
+        canonical: canonicalPath,
+      },
+    };
+  }
 }
 
 export default async function ProductPage({ params, searchParams }: PageProps) {
