@@ -6,6 +6,10 @@ import CategoryGridClient from "./CategoryGridClient";
 import { api } from "@/lib/strapi";
 import { BRAND } from "@/lib/brand";
 import { CURRENT_STOREFRONT } from "@/lib/market/current";
+import {
+  normalizeProduct,
+  type ProductLite,
+} from "./_lib/categoryProductMapper";
 
 // 兜底顶级分类（防止没连上 Strapi 时至少有这些分类页）
 const STATIC_SLUGS = [
@@ -168,15 +172,22 @@ function buildPromoProductFilters(
     parts.push(
       `filters[$and][0][prices][currency][$eq]=${encodeURIComponent(currency)}`,
     );
-    parts.push(`filters[$and][0][prices][sale_starts_at][$notNull]=true`);
+
+    // discount 小于 100，表示存在有效折扣
+    parts.push(`filters[$and][1][prices][discount][$lt]=100`);
+
+    // sale_starts_at 为空则立即生效，否则必须已经开始
+    parts.push(`filters[$and][2][$or][0][prices][sale_starts_at][$null]=true`);
     parts.push(
-      `filters[$and][0][prices][sale_starts_at][$lte]=${encodeURIComponent(
+      `filters[$and][2][$or][1][prices][sale_starts_at][$lte]=${encodeURIComponent(
         nowISO,
       )}`,
     );
-    parts.push(`filters[$and][0][$or][0][prices][sale_ends_at][$null]=true`);
+
+    // sale_ends_at 为空则长期有效，否则必须尚未结束
+    parts.push(`filters[$and][3][$or][0][prices][sale_ends_at][$null]=true`);
     parts.push(
-      `filters[$and][0][$or][1][prices][sale_ends_at][$gte]=${encodeURIComponent(
+      `filters[$and][3][$or][1][prices][sale_ends_at][$gte]=${encodeURIComponent(
         nowISO,
       )}`,
     );
@@ -253,6 +264,63 @@ async function getProductTotal(opts: {
     return Number(json?.meta?.pagination?.total ?? 0);
   } catch {
     return 0;
+  }
+}
+
+/** 获取首屏商品，使搜索引擎无需等待客户端请求 */
+async function getInitialProducts(opts: {
+  slug?: string;
+  categoryDocIds?: string[];
+  pageSize?: number;
+}): Promise<ProductLite[]> {
+  const { slug, categoryDocIds, pageSize = 40 } = opts;
+  const parts: string[] = [];
+
+  if (slug && isPromoSlug(slug)) {
+    const nowISO = new Date().toISOString();
+
+    parts.push(
+      ...buildPromoProductFilters(
+        slug,
+        nowISO,
+        CURRENT_STOREFRONT.defaultCurrency,
+      ),
+    );
+  } else if (categoryDocIds?.length) {
+    categoryDocIds.forEach((id, index) => {
+      parts.push(
+        `filters[category][documentId][$in][${index}]=${encodeURIComponent(id)}`,
+      );
+    });
+  } else if (slug) {
+    parts.push(`filters[category][slug][$eq]=${encodeURIComponent(slug)}`);
+  }
+
+  parts.push(`filters[is_showed][$eq]=true`);
+
+  const query =
+    `/api/products?${parts.join("&")}` +
+    `&fields[0]=title&fields[1]=slug` +
+    `&fields[2]=hot_score&fields[3]=priority` +
+    `&fields[4]=new_starts_at&fields[5]=new_ends_at` +
+    `&populate[color_galleries][fields][0]=color` +
+    `&populate[color_galleries][populate][card_image]=true` +
+    `&populate[color_galleries][populate][images]=true` +
+    `&populate[variants][fields][0]=color` +
+    `&populate[variants][fields][1]=size` +
+    `&populate[prices]=*` +
+    `&pagination[page]=1&pagination[pageSize]=${pageSize}` +
+    `&sort[0]=priority:asc&sort[1]=updatedAt:desc` +
+    `&publicationState=live`;
+
+  try {
+    const json: any = await api(query, { noCache: true });
+    const rows: any[] = Array.isArray(json?.data) ? json.data : [];
+
+    return rows.map(normalizeProduct);
+  } catch (error) {
+    console.error("[CategoryPage] Failed to load initial products:", error);
+    return [];
   }
 }
 
@@ -476,10 +544,20 @@ export default async function CategoryPage({
     categoryDocIds = [current.documentId!, ...childIds];
   }
 
-  const total = await getProductTotal({
+  const PAGE_SIZE = 40;
+
+  const productQueryOptions = {
     slug: isTop ? undefined : slug,
     categoryDocIds,
-  });
+  };
+
+  const [total, initialProducts] = await Promise.all([
+    getProductTotal(productQueryOptions),
+    getInitialProducts({
+      ...productQueryOptions,
+      pageSize: PAGE_SIZE,
+    }),
+  ]);
 
   const DEMO = process.env.NEXT_PUBLIC_DEMO_MODE === "1";
   const totalForUI = DEMO && total === 0 ? 120 : total;
@@ -513,11 +591,13 @@ export default async function CategoryPage({
 
       <div className="mt-2">
         <CategoryGridClient
+          key={slug}
           slug={slug}
           title={current.name}
           description={seoContent?.introduction || current.description}
           total={totalForUI}
-          pageSize={40}
+          initialProducts={initialProducts}
+          pageSize={PAGE_SIZE}
           categoryDocIds={categoryDocIds}
           displayCurrency={CURRENT_STOREFRONT.defaultCurrency}
         />

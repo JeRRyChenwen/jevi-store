@@ -1728,3 +1728,11 @@ around
 robots.ts 当前配置正确，不需要修改。
 
 布料
+
+=====================
+
+https://jeviapparelstudio.com/category/shoes
+https://jeviapparelstudio.com/category/new-in
+https://jeviapparelstudio.com/category/on-sale
+https://jeviapparelstudio.com/category/casual-shoes
+https://jeviapparelstudio.com/category/formal-shoes
