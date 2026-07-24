@@ -7,6 +7,8 @@ import { api } from "@/lib/strapi";
 type PriceRec = any;
 
 export type UseCategoryProductsArgs = {
+  initialProducts?: any[];
+  initialTotal?: number;
   slug: string;
   categoryDocIds?: string[];
 
@@ -101,6 +103,8 @@ function buildPromoProductFilters(
 export function useCategoryProducts({
   slug,
   categoryDocIds,
+  initialProducts = [],
+  initialTotal = 0,
   page,
   pageSize,
   sortQueryString,
@@ -119,10 +123,14 @@ export function useCategoryProducts({
   const DEV = process.env.NODE_ENV !== "production";
   const dbg = (...args: unknown[]) => DEV && console.debug(`[${devLogPrefix}]`, ...args);
 
+  const hasInitialProducts = initialProducts.length > 0;
+
   const [loading, setLoading] = useState(false);
-  const [list, setList] = useState<any[]>([]);
+  const [list, setList] = useState<any[]>(() => initialProducts);
   const [error, setError] = useState<string | null>(null);
-  const [filteredTotal, setFilteredTotal] = useState<number>(0);
+  const [filteredTotal, setFilteredTotal] = useState<number>(
+    initialTotal || initialProducts.length,
+  );
 
   const categoryKey = useMemo(
     () => JSON.stringify(categoryDocIds ?? []),
@@ -137,7 +145,7 @@ export function useCategoryProducts({
     let aborted = false;
 
     async function run() {
-      setLoading(true);
+      setLoading(!hasInitialProducts);
       setError(null);
 
       try {
@@ -269,9 +277,13 @@ export function useCategoryProducts({
         }
       } catch (e: any) {
         if (!aborted) {
-          setError(e?.message || "Failed to load products");
-          setList([]);
-          setFilteredTotal(0);
+          if (!hasInitialProducts) {
+            setError(e?.message || "Failed to load products");
+            setList([]);
+            setFilteredTotal(0);
+          } else {
+            dbg("client refresh failed; keeping server-rendered products", e);
+          }
         }
       } finally {
         if (!aborted) setLoading(false);

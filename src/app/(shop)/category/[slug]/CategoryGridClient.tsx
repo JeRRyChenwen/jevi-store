@@ -4,21 +4,19 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { CSSProperties } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-
 import Pagination from "@/components/pagination/Pagination";
 import FilterDrawer from "./_components/FilterDrawer";
 import ProductGrid from "./_components/ProductGrid";
 import CategoryHeader from "./_components/CategoryHeader";
-
 import { useCategoryFacets } from "./_hooks/useCategoryFacets";
 import { useCategoryProducts } from "./_hooks/useCategoryProducts";
 import { useCategoryQueryState } from "./_hooks/useCategoryQueryState";
 import { useFilterDraft } from "./_hooks/useFilterDraft";
-
 import {
   normalizeProduct,
   pickPriceForCurrency,
   formatPriceForCard,
+  type ProductLite,
 } from "./_lib/categoryProductMapper";
 
 type Props = {
@@ -26,6 +24,7 @@ type Props = {
   title: string;
   description?: string;
   total: number;
+  initialProducts?: ProductLite[];
   pageSize?: number;
   categoryDocIds?: string[];
   displayCurrency: string;
@@ -69,6 +68,7 @@ export default function CategoryGridClient({
   title,
   description,
   total,
+  initialProducts = [],
   pageSize = 40,
   categoryDocIds,
   displayCurrency,
@@ -201,6 +201,8 @@ export default function CategoryGridClient({
   } = useCategoryProducts({
     slug,
     categoryDocIds,
+    initialProducts,
+    initialTotal: total,
     page: basePage,
     pageSize,
     sortQueryString,
