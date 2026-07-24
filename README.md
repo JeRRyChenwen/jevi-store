@@ -1736,6 +1736,9 @@ robots.ts 当前配置正确，不需要修改。
 
 =====================
 
-下一阶段应该加强分类页正文、商品描述、内部链接以及网站外部提及，而不是继续堆叠标题关键词
-
-add height
+"https://jeviapparelstudio.com",
+"https://jeviapparelstudio.com/category/shoes",
+"https://jeviapparelstudio.com/category/new-in",
+"https://jeviapparelstudio.com/category/on-sale",
+"https://jeviapparelstudio.com/category/casual-shoes",
+"https://jeviapparelstudio.com/category/formal-shoes"
