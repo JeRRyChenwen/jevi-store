@@ -1734,6 +1734,8 @@ robots.ts 当前配置正确，不需要修改。
 
 布料
 
+感觉 有必要运费重新算一遍
+
 =====================
 
 "https://jeviapparelstudio.com",
@@ -1742,6 +1744,7 @@ robots.ts 当前配置正确，不需要修改。
 "https://jeviapparelstudio.com/category/on-sale",
 "https://jeviapparelstudio.com/category/casual-shoes",
 "https://jeviapparelstudio.com/category/formal-shoes"
+https://jeviapparelstudio.com/product/ridge-runner-chunky-sneakers
 
 执行一次 Test Live URL → Request Indexing
 
