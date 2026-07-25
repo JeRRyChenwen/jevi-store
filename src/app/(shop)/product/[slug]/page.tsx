@@ -37,6 +37,8 @@ type PageProps = {
 type ProductMetadataRow = {
   title: string;
   slug: string;
+  seoTitle: string;
+  seoDescription: string;
 };
 
 function getProductRowValue(row: any, key: string) {
@@ -60,6 +62,8 @@ async function fetchProductMetadata(
       `&filters[is_showed][$eq]=true` +
       `&fields[0]=title` +
       `&fields[1]=slug` +
+      `&fields[2]=seo_title` +
+      `&fields[3]=seo_description` +
       `&pagination[page]=1` +
       `&pagination[pageSize]=1` +
       `&publicationState=live`,
@@ -74,6 +78,10 @@ async function fetchProductMetadata(
 
   const title = String(getProductRowValue(row, "title") || "").trim();
   const productSlug = String(getProductRowValue(row, "slug") || "").trim();
+  const seoTitle = String(getProductRowValue(row, "seo_title") || "").trim();
+  const seoDescription = String(
+    getProductRowValue(row, "seo_description") || "",
+  ).trim();
 
   if (!productSlug) {
     return null;
@@ -82,6 +90,8 @@ async function fetchProductMetadata(
   return {
     title: title || titleizeProductSlug(productSlug),
     slug: productSlug,
+    seoTitle,
+    seoDescription,
   };
 }
 
@@ -268,15 +278,18 @@ export async function generateMetadata({
       };
     }
 
+    const metadataTitle = product.seoTitle || product.title;
+
     const description =
+      product.seoDescription ||
       `Shop ${product.title} from ${BRAND.displayName}. ` +
-      `Explore available colours, sizes and height-increase options with delivery in Australia.`;
+        `Explore available colours, sizes and height-increase options with delivery in Australia.`;
 
     const canonicalPath = `/product/${product.slug}`;
-    const socialTitle = `${product.title} | ${BRAND.displayName}`;
+    const socialTitle = `${metadataTitle} | ${BRAND.displayName}`;
 
     return {
-      title: product.title,
+      title: metadataTitle,
       description,
 
       alternates: {
@@ -330,7 +343,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     `/api/products?filters[slug][$eq]=${encodeURIComponent(slug)}` +
     `&fields[0]=title&fields[1]=slug&fields[2]=hot_score` +
     `&fields[3]=new_starts_at&fields[4]=new_ends_at` +
-    `&fields[5]=description` +
+    `&fields[5]=description&fields[6]=seo_title` +
+    `&fields[7]=seo_description&fields[8]=seo_intro` +
     `&populate[color_galleries][fields][0]=color` +
     `&populate[color_galleries][populate][card_image]=true` +
     `&populate[color_galleries][populate][images]=true` +
@@ -355,6 +369,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const attrs = row?.attributes ?? row ?? {};
   const title: string = attrs.title ?? attrs.name ?? "Product";
   const description = attrs.description;
+  const seoDescription = String(attrs.seo_description || "").trim();
+  const seoIntro = String(attrs.seo_intro || "").trim();
   const isNew = isNewProduct(attrs);
 
   // 面包屑
@@ -591,6 +607,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const activeStructuredPrice = saleActive ? (salePrice ?? price) : price;
 
   const plainDescription = toPlainText(description);
+  const structuredDescription = seoDescription || plainDescription;
 
   const allProductImages = Array.from(
     new Set(
@@ -688,7 +705,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
           "@id": `${canonicalUrl}#product-group`,
 
           name: title,
-          description: plainDescription || undefined,
+          description: structuredDescription || undefined,
           url: canonicalUrl,
           image: allProductImages.slice(0, 10),
 
@@ -827,6 +844,12 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
               <h1 className="break-words text-2xl font-bold leading-snug tracking-tight">
                 {title}
               </h1>
+
+              {seoIntro ? (
+                <p className="max-w-prose break-words text-sm leading-6 text-neutral-600">
+                  {seoIntro}
+                </p>
+              ) : null}
 
               <div className="text-neutral-800">
                 <Stars value={rating} />
