@@ -1743,4 +1743,7 @@ robots.ts 当前配置正确，不需要修改。
 "https://jeviapparelstudio.com/category/casual-shoes",
 "https://jeviapparelstudio.com/category/formal-shoes"
 
-做到 https://jeviapparelstudio.com/category/on-sale 的时候 被限制了
+执行一次 Test Live URL → Request Indexing
+
+署 favicon-96.png 并确认线上生效后，建议只针对首页：
+https://jeviapparelstudio.com/

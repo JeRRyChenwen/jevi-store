@@ -1,4 +1,4 @@
-// src/app/product/[slug]/page.tsx
+// src/app/(shop)/product/[slug]/page.tsx
 import type { Metadata } from "next";
 import { BRAND } from "@/lib/brand";
 import { notFound } from "next/navigation";
@@ -109,6 +109,66 @@ export const revalidate = 0;
  */
 const CRITICAL_STOCK_THRESHOLD = 10;
 const LOW_STOCK_THRESHOLD = 20;
+
+const SITE_ORIGIN = (
+  process.env.NEXT_PUBLIC_SITE_URL || "https://jeviapparelstudio.com"
+).replace(/\/+$/, "");
+
+type VariantSkuMap = Record<
+  string,
+  Record<string, Record<string, string | null | undefined>>
+>;
+
+type VariantStockMap = Record<
+  string,
+  Record<string, Record<string, number | null | undefined>>
+>;
+
+/**
+ * 将 Strapi 的字符串或富文本结构转换成适合 JSON-LD 的纯文本。
+ */
+function toPlainText(value: unknown): string {
+  if (typeof value === "string") {
+    return value.replace(/\s+/g, " ").trim();
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map(toPlainText)
+      .filter(Boolean)
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  if (value && typeof value === "object") {
+    const objectValue = value as Record<string, unknown>;
+
+    if (typeof objectValue.text === "string") {
+      return objectValue.text.replace(/\s+/g, " ").trim();
+    }
+
+    if ("children" in objectValue) {
+      return toPlainText(objectValue.children);
+    }
+
+    return Object.values(objectValue)
+      .map(toPlainText)
+      .filter(Boolean)
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  return "";
+}
+
+/**
+ * 防止商品内容中的 "<" 结束 JSON-LD script 标签。
+ */
+function serializeJsonLd(value: unknown): string {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
+}
 
 /**
  * ✅ 从 D1 worker 获取库存（统一用 /inventory/bulk）
@@ -393,6 +453,10 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
 
   const stockBySku = await fetchStockBySkus(skus);
 
+  const inventoryResolved =
+    skus.length > 0 &&
+    skus.every((sku) => Object.prototype.hasOwnProperty.call(stockBySku, sku));
+
   console.log("[PDP][INV] stockBySku keys =", Object.keys(stockBySku).length);
   console.log(
     "[PDP][INV] stockBySku sample =",
@@ -518,8 +582,141 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const shouldShowHeightPicker =
     Boolean(currentColor) && realHeightsAll.length > 0;
 
+  // --------------------------------------------------
+  // Google Product / ProductGroup structured data
+  // --------------------------------------------------
+
+  const canonicalUrl = `${SITE_ORIGIN}/product/${encodeURIComponent(slug)}`;
+
+  const activeStructuredPrice = saleActive ? (salePrice ?? price) : price;
+
+  const plainDescription = toPlainText(description);
+
+  const allProductImages = Array.from(
+    new Set(
+      Object.values(byColor).flatMap((urls) =>
+        Array.isArray(urls) ? urls.filter(Boolean) : [],
+      ),
+    ),
+  );
+
+  const structuredSkuMap = sku3 as VariantSkuMap;
+  const structuredStockMap = stock3 as VariantStockMap;
+
+  const structuredVariants =
+    activeStructuredPrice != null && activeStructuredPrice > 0
+      ? Object.entries(structuredSkuMap).flatMap(([color, sizes]) =>
+          Object.entries(sizes ?? {}).flatMap(([size, heights]) =>
+            Object.entries(heights ?? {}).flatMap(([heightKey, skuValue]) => {
+              const sku = String(skuValue || "").trim();
+              const height = Number(heightKey);
+
+              if (!sku || !Number.isFinite(height)) {
+                return [];
+              }
+
+              const stock = Math.max(
+                0,
+                Math.floor(
+                  Number(structuredStockMap[color]?.[size]?.[heightKey] ?? 0),
+                ),
+              );
+
+              const params = new URLSearchParams({
+                color,
+                size,
+                height: String(height),
+              });
+
+              const variantUrl = `${canonicalUrl}?${params.toString()}`;
+
+              const variantImages = (
+                byColor[color]?.length ? byColor[color] : allProductImages
+              )
+                .filter(Boolean)
+                .slice(0, 5);
+
+              if (!variantImages.length) {
+                return [];
+              }
+
+              return [
+                {
+                  "@type": "Product",
+                  "@id": `${variantUrl}#${encodeURIComponent(sku)}`,
+
+                  name: `${title} – ${color} – EU ${size} – +${height} cm`,
+                  image: variantImages,
+                  sku,
+                  color,
+                  size,
+                  url: variantUrl,
+
+                  additionalProperty: [
+                    {
+                      "@type": "PropertyValue",
+                      name: "Height increase",
+                      value: `${height} cm`,
+                    },
+                  ],
+
+                  offers: {
+                    "@type": "Offer",
+                    url: variantUrl,
+                    price: activeStructuredPrice.toFixed(2),
+                    priceCurrency: String(currency || "AUD").toUpperCase(),
+                    availability:
+                      stock > 0
+                        ? "https://schema.org/InStock"
+                        : "https://schema.org/OutOfStock",
+                    itemCondition: "https://schema.org/NewCondition",
+                  },
+                },
+              ];
+            }),
+          ),
+        )
+      : [];
+
+  const productJsonLd =
+    inventoryResolved &&
+    structuredVariants.length > 0 &&
+    allProductImages.length > 0
+      ? {
+          "@context": "https://schema.org",
+          "@type": "ProductGroup",
+          "@id": `${canonicalUrl}#product-group`,
+
+          name: title,
+          description: plainDescription || undefined,
+          url: canonicalUrl,
+          image: allProductImages.slice(0, 10),
+
+          brand: {
+            "@type": "Brand",
+            name: BRAND.displayName,
+          },
+
+          category: categoryLabel || "Shoes",
+          productGroupID: `JEVI-${slug}`,
+
+          variesBy: ["https://schema.org/color", "https://schema.org/size"],
+
+          hasVariant: structuredVariants,
+        }
+      : null;
+
   return (
     <main className="mx-auto w-full max-w-[1720px] overflow-x-hidden px-4 py-8 sm:px-6 lg:px-8 xl:px-10 2xl:px-12">
+      {productJsonLd ? (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: serializeJsonLd(productJsonLd),
+          }}
+        />
+      ) : null}
+
       <nav
         className="flex items-center text-sm text-neutral-500 mb-4"
         aria-label="Breadcrumb"
@@ -548,8 +745,6 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
 
         <span className="font-semibold text-neutral-900">{title}</span>
       </nav>
-
-      <h1 className="sr-only">{title}</h1>
 
       <div
         className="
@@ -629,9 +824,9 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
         >
           <div className="min-w-0 px-1 sm:px-2 lg:px-0">
             <div className="space-y-3">
-              <h2 className="break-words text-2xl font-bold leading-snug tracking-tight">
+              <h1 className="break-words text-2xl font-bold leading-snug tracking-tight">
                 {title}
-              </h2>
+              </h1>
 
               <div className="text-neutral-800">
                 <Stars value={rating} />
