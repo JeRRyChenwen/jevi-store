@@ -1432,6 +1432,16 @@ curl -fsS https://api.jeviapparelstudio.com/ready
 
 ```
 
+# 106.运费计算
+
+```bash
+
+D:\Jevi Apparel Studio\jevi-api\src\legacy-worker\shipping\postcodeReferences 负责
+main function 2 postcodeReferences 功能
+
+
+```
+
 # ============================================================================
 
 # ============================================================================
@@ -1734,6 +1744,8 @@ robots.ts 当前配置正确，不需要修改。
 
 布料
 
+我确定会把 3,192 条全部跑完，要不我们在 D:\Jevi Apparel Studio\jevi-api\src\legacy-worker\shipping\postcodeReferences\AU.ts 文件的基础上新建一个文件，进行更全面的澳洲全境运费计算吧
+
 =====================
 
 "https://jeviapparelstudio.com",
@@ -1742,6 +1754,7 @@ robots.ts 当前配置正确，不需要修改。
 "https://jeviapparelstudio.com/category/on-sale",
 "https://jeviapparelstudio.com/category/casual-shoes",
 "https://jeviapparelstudio.com/category/formal-shoes"
+https://jeviapparelstudio.com/product/ridge-runner-chunky-sneakers
 
 执行一次 Test Live URL → Request Indexing
 
