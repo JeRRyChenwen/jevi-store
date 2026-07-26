@@ -105,6 +105,28 @@ export default function ProductCard({
   // 商品卡图片选择：每种颜色只显示一张 card_image
   const colorKey = selectedColor ? normalizeColorName(selectedColor) : null;
 
+  // 为图片 alt 保留 Strapi 中原始、可读的颜色名称。
+  // selectedColor 在点击后可能已经被 normalizeColorName() 标准化，
+  // 因此这里重新从 p.colors 中找到对应的原始名称。
+  const selectedColorLabel = useMemo(() => {
+    if (!selectedColor) return null;
+
+    const selectedKey = normalizeColorName(selectedColor);
+
+    const matchingColor = p.colors?.find(
+      (color) => normalizeColorName(color) === selectedKey,
+    );
+
+    const label = String(matchingColor || selectedColor).trim();
+    return label || null;
+  }, [p.colors, selectedColor]);
+
+  const productDisplayName = p.name || `Product #${start + idx + 1}`;
+
+  const cardImageAlt = selectedColorLabel
+    ? `${productDisplayName} in ${selectedColorLabel}`
+    : productDisplayName;
+
   /**
    * 兜底顺序：
    * 1. 当前颜色的 card_image
@@ -241,10 +263,7 @@ export default function ProductCard({
           />
         )}
 
-        <ImageCarousel
-          urls={cardUrls}
-          alt={p.name || `Image #${start + idx + 1}`}
-        />
+        <ImageCarousel urls={cardUrls} alt={cardImageAlt} />
       </div>
 
       <div className="p-3 sm:p-6 md:p-8">
@@ -290,6 +309,7 @@ export default function ProductCard({
                   key={normalized}
                   type="button"
                   title={c}
+                  aria-label={`Show ${productDisplayName} in ${c}`}
                   aria-pressed={active}
                   onClick={() => setSelectedColor(normalized)}
                   className={[
