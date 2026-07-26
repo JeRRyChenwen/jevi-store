@@ -53,6 +53,14 @@ function titleizeProductSlug(slug: string) {
     .join(" ");
 }
 
+function formatColorLabel(value?: string | null) {
+  return String(value || "")
+    .trim()
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
 async function fetchProductMetadata(
   slug: string,
 ): Promise<ProductMetadataRow | null> {
@@ -436,8 +444,21 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   let selected = 0;
   const rawIdx = Array.isArray(sp.img) ? sp.img[0] : sp.img;
   const idxNum = Number(rawIdx);
-  if (Number.isFinite(idxNum) && idxNum >= 0 && idxNum < total)
+
+  if (Number.isFinite(idxNum) && idxNum >= 0 && idxNum < total) {
     selected = idxNum;
+  }
+
+  const currentColorLabel = formatColorLabel(currentColor);
+
+  const selectedImageAltBase = currentColorLabel
+    ? `${title} in ${currentColorLabel}`
+    : title;
+
+  const selectedImageAlt =
+    total > 0
+      ? `${selectedImageAltBase} – image ${selected + 1}`
+      : selectedImageAltBase;
 
   const rating = Math.max(0, Math.min(5, Number(attrs.hot_score) || 0));
 
@@ -822,7 +843,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                   <img
                     key={images[selected]}
                     src={images[selected]}
-                    alt={title}
+                    alt={selectedImageAlt}
                     className="h-full w-full object-contain"
                   />
                 ) : (
