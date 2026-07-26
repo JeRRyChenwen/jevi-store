@@ -54,6 +54,14 @@ function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
 }
 
+function formatColorLabel(value?: string | null) {
+  return String(value || "")
+    .trim()
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
 // ✅ 判断 NEW 是否生效（有窗口才显示，更稳）
 function isNewActive(p: ProductLite) {
   const now = Date.now();
@@ -117,7 +125,7 @@ export default function ProductCard({
       (color) => normalizeColorName(color) === selectedKey,
     );
 
-    const label = String(matchingColor || selectedColor).trim();
+    const label = formatColorLabel(matchingColor || selectedColor);
     return label || null;
   }, [p.colors, selectedColor]);
 

@@ -1,4 +1,4 @@
-// src/app/product/_components/GalleryClient.tsx
+// src/app/(shop)/product/_components/GalleryClient.tsx
 "use client";
 
 import Link from "next/link";
@@ -13,6 +13,14 @@ type Props = {
   color?: string;
 };
 
+function formatColorLabel(value?: string | null) {
+  return String(value || "")
+    .trim()
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
 export default function GalleryClient({
   images,
   title,
@@ -22,6 +30,13 @@ export default function GalleryClient({
 }: Props) {
   const N = images?.length ?? 0;
   const selected = Math.max(0, Math.min(selectedIndex, Math.max(0, N - 1)));
+
+  const productLabel = String(title || "Product").trim() || "Product";
+  const colorLabel = formatColorLabel(color);
+
+  const imageAltBase = colorLabel
+    ? `${productLabel} in ${colorLabel}`
+    : productLabel;
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const activeRef = useRef<HTMLAnchorElement | null>(null);
@@ -83,7 +98,7 @@ export default function GalleryClient({
             href={`/product/${slug}?${qs.toString()}`}
             prefetch
             aria-current={active ? "true" : undefined}
-            aria-label={`Preview ${index + 1}`}
+            aria-label={`View ${imageAltBase}, image ${index + 1} of ${N}`}
             aria-selected={active}
             role="listitem"
             ref={active ? activeRef : undefined}
@@ -101,7 +116,7 @@ export default function GalleryClient({
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={url}
-                alt={`${title} preview ${index + 1}`}
+                alt={`${imageAltBase} – image ${index + 1}`}
                 className="absolute inset-0 h-full w-full object-contain p-2 transition-transform duration-200 group-hover:scale-[1.02]"
                 loading="lazy"
               />
