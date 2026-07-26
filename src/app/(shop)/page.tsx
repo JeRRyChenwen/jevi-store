@@ -118,6 +118,135 @@ async function fetchNavTopCategories(): Promise<
     .filter((x) => x.slug && x.documentId);
 }
 
+const HOME_PROMO_SLUGS = new Set(["new-in", "on-sale"]);
+
+function buildHomePromoProductFilters(
+  slug: string,
+  nowISO: string,
+  currencyCode: string,
+): string[] {
+  const parts: string[] = [];
+
+  if (slug === "on-sale") {
+    const currency = String(currencyCode || "AUD")
+      .trim()
+      .toUpperCase();
+
+    parts.push(
+      `filters[$and][0][prices][currency][$eq]=${encodeURIComponent(currency)}`,
+    );
+
+    parts.push(`filters[$and][1][prices][discount][$lt]=100`);
+
+    parts.push(`filters[$and][2][$or][0][prices][sale_starts_at][$null]=true`);
+
+    parts.push(
+      `filters[$and][2][$or][1][prices][sale_starts_at][$lte]=${encodeURIComponent(
+        nowISO,
+      )}`,
+    );
+
+    parts.push(`filters[$and][3][$or][0][prices][sale_ends_at][$null]=true`);
+
+    parts.push(
+      `filters[$and][3][$or][1][prices][sale_ends_at][$gte]=${encodeURIComponent(
+        nowISO,
+      )}`,
+    );
+
+    return parts;
+  }
+
+  if (slug === "new-in") {
+    parts.push(`filters[new_starts_at][$notNull]=true`);
+    parts.push(`filters[new_starts_at][$lte]=${encodeURIComponent(nowISO)}`);
+    parts.push(`filters[$or][0][new_ends_at][$null]=true`);
+    parts.push(
+      `filters[$or][1][new_ends_at][$gte]=${encodeURIComponent(nowISO)}`,
+    );
+  }
+
+  return parts;
+}
+
+async function fetchHomeSectionProducts({
+  slug,
+  categoryDocIds,
+  pageSize,
+  displayCurrency,
+}: {
+  slug: string;
+  categoryDocIds: string[];
+  pageSize: number;
+  displayCurrency: string;
+}): Promise<{
+  rows: any[];
+  total: number;
+}> {
+  const parts: string[] = [];
+  const isPromo = HOME_PROMO_SLUGS.has(slug);
+
+  if (!isPromo) {
+    if (categoryDocIds.length > 0) {
+      categoryDocIds.forEach((documentId, index) => {
+        const encodedDocumentId = encodeURIComponent(documentId);
+
+        parts.push(
+          `filters[$and][0][$or][0][category][documentId][$in][${index}]=${encodedDocumentId}`,
+        );
+
+        parts.push(
+          `filters[$and][0][$or][1][category][parent][documentId][$in][${index}]=${encodedDocumentId}`,
+        );
+      });
+    } else {
+      const encodedSlug = encodeURIComponent(slug);
+
+      parts.push(
+        `filters[$and][0][$or][0][category][slug][$eq]=${encodedSlug}`,
+      );
+
+      parts.push(
+        `filters[$and][0][$or][1][category][parent][slug][$eq]=${encodedSlug}`,
+      );
+    }
+  } else {
+    parts.push(
+      ...buildHomePromoProductFilters(
+        slug,
+        new Date().toISOString(),
+        displayCurrency,
+      ),
+    );
+  }
+
+  parts.push(`filters[is_showed][$eq]=true`);
+
+  const qs =
+    `/api/products?${parts.join("&")}` +
+    `&fields[0]=title&fields[1]=slug` +
+    `&fields[2]=hot_score&fields[3]=priority` +
+    `&fields[4]=new_starts_at&fields[5]=new_ends_at` +
+    `&populate[color_galleries][fields][0]=color` +
+    `&populate[color_galleries][populate][card_image]=true` +
+    `&populate[color_galleries][populate][images]=true` +
+    `&populate[variants][fields][0]=color` +
+    `&populate[variants][fields][1]=size` +
+    `&populate[prices]=*` +
+    `&pagination[page]=1&pagination[pageSize]=${pageSize}` +
+    `&sort[0]=hot_score:desc` +
+    `&sort[1]=priority:asc` +
+    `&sort[2]=updatedAt:desc` +
+    `&publicationState=live`;
+
+  const json: any = await api(qs, { noCache: true });
+
+  return {
+    rows: Array.isArray(json?.data) ? json.data : [],
+    total: Number(json?.meta?.pagination?.total ?? 0),
+  };
+}
+
 /* -------------------------------------------------------------------------- */
 /*                                Home Page                                   */
 /* -------------------------------------------------------------------------- */
@@ -130,10 +259,21 @@ export default async function HomePage() {
       const children = await fetchSubcategoriesByParentId(cat.documentId);
       const childIds = children.map((c: any) => c?.documentId).filter(Boolean);
 
+      const categoryDocIds = [cat.documentId, ...childIds] as string[];
+
+      const initialProductsResult = await fetchHomeSectionProducts({
+        slug: cat.slug,
+        categoryDocIds,
+        pageSize: HOME_SECTION_PAGE_SIZE,
+        displayCurrency: CURRENT_STOREFRONT.defaultCurrency,
+      });
+
       return {
         slug: cat.slug,
         title: cat.title,
-        categoryDocIds: [cat.documentId, ...childIds] as string[],
+        categoryDocIds,
+        initialRows: initialProductsResult.rows,
+        initialTotal: initialProductsResult.total,
       };
     }),
   );
@@ -221,6 +361,8 @@ export default async function HomePage() {
             slug={s.slug}
             title={s.title}
             categoryDocIds={s.categoryDocIds}
+            initialRows={s.initialRows}
+            initialTotal={s.initialTotal}
             pageSize={HOME_SECTION_PAGE_SIZE}
             displayCurrency={CURRENT_STOREFRONT.defaultCurrency}
           />

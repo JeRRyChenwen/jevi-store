@@ -1,6 +1,7 @@
 // src/components/home/HomeCategorySectionClient.tsx
 "use client";
 
+import { useMemo } from "react";
 import Link from "next/link";
 import ProductCard from "@/app/(shop)/category/[slug]/_components/ProductCard";
 import { CURRENT_STOREFRONT } from "@/lib/market/current";
@@ -16,6 +17,8 @@ type Props = {
   slug: string;
   title: string;
   categoryDocIds?: string[];
+  initialRows?: any[];
+  initialTotal?: number;
   pageSize?: number;
   displayCurrency?: string;
 };
@@ -27,13 +30,25 @@ export default function HomeCategorySectionClient({
   slug,
   title,
   categoryDocIds,
+  initialRows = [],
+  initialTotal = 0,
   pageSize = 5,
   displayCurrency = CURRENT_STOREFRONT.defaultCurrency,
 }: Props) {
   const sortQueryString =
     "&sort[0]=hot_score:desc&sort[1]=priority:asc&sort[2]=updatedAt:desc";
 
+  const initialProducts = useMemo(
+    () =>
+      Array.isArray(initialRows)
+        ? initialRows.map((row) => normalizeProduct(row))
+        : [],
+    [initialRows],
+  );
+
   const { loading, list, error } = useCategoryProducts({
+    initialProducts,
+    initialTotal,
     slug,
     categoryDocIds,
     page: 1,
@@ -57,7 +72,7 @@ export default function HomeCategorySectionClient({
   let displayHeading: string;
 
   if (slug === "new-in") {
-    displayHeading = "News In";
+    displayHeading = "New In";
   } else if (slug === "on-sale") {
     displayHeading = "On Sale";
   } else {
