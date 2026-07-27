@@ -27,6 +27,157 @@ type Props = {
   categoryLeafSlug?: string | null;
 };
 
+function getNodeText(node: StrapiTextNode): string {
+  if (typeof node.text === "string") {
+    return node.text;
+  }
+
+  return (node.children ?? []).map(getNodeText).join("");
+}
+
+function getBlockText(block: StrapiBlock): string {
+  return getNodeText(block).trim();
+}
+
+/**
+ * 从第一个包含文字的节点中移除 Markdown 前缀。
+ *
+ * 示例：
+ * "## Key Features" → "Key Features"
+ * "* Breathable upper" → "Breathable upper"
+ */
+function stripPrefixFromChildren(
+  children: StrapiTextNode[] | undefined,
+  prefixPattern: RegExp,
+): StrapiTextNode[] {
+  let prefixRemoved = false;
+
+  function visit(node: StrapiTextNode): StrapiTextNode {
+    if (prefixRemoved) {
+      return node;
+    }
+
+    if (typeof node.text === "string") {
+      const nextText = node.text.replace(prefixPattern, "");
+
+      if (nextText !== node.text) {
+        prefixRemoved = true;
+
+        return {
+          ...node,
+          text: nextText,
+        };
+      }
+    }
+
+    if (node.children?.length) {
+      return {
+        ...node,
+        children: node.children.map(visit),
+      };
+    }
+
+    return node;
+  }
+
+  return (children ?? []).map(visit);
+}
+
+/**
+ * 将旧的 Markdown 风格 paragraph 转换成语义化 Strapi block。
+ *
+ * 支持：
+ * - ## Heading
+ * - ### Heading
+ * - * Unordered item
+ * - - Unordered item
+ * - 1. Ordered item
+ *
+ * 同时移除空段落。
+ */
+function normalizeDescriptionBlocks(inputBlocks: StrapiBlock[]): StrapiBlock[] {
+  const normalizedBlocks: StrapiBlock[] = [];
+  let pendingList: StrapiBlock | null = null;
+
+  function flushPendingList() {
+    if (!pendingList) {
+      return;
+    }
+
+    normalizedBlocks.push(pendingList);
+    pendingList = null;
+  }
+
+  for (const block of inputBlocks) {
+    const blockText = getBlockText(block);
+
+    // 跳过空段落，避免输出空的 <p>。
+    if (!blockText) {
+      continue;
+    }
+
+    if (block.type === "paragraph") {
+      const headingMatch = blockText.match(/^(#{2,4})\s+(.+)$/);
+
+      if (headingMatch) {
+        flushPendingList();
+
+        const markdownLevel = headingMatch[1].length;
+
+        normalizedBlocks.push({
+          ...block,
+          type: "heading",
+          level: markdownLevel === 2 ? 2 : 3,
+          children: stripPrefixFromChildren(block.children, /^\s*#{2,4}\s+/),
+        });
+
+        continue;
+      }
+
+      const unorderedListMatch = blockText.match(/^[*-]\s+(.+)$/);
+      const orderedListMatch = blockText.match(/^\d+[.)]\s+(.+)$/);
+
+      const listFormat: "ordered" | "unordered" | null = unorderedListMatch
+        ? "unordered"
+        : orderedListMatch
+          ? "ordered"
+          : null;
+
+      if (listFormat) {
+        if (!pendingList || pendingList.format !== listFormat) {
+          flushPendingList();
+
+          pendingList = {
+            type: "list",
+            format: listFormat,
+            children: [],
+          };
+        }
+
+        const prefixPattern =
+          listFormat === "ordered" ? /^\s*\d+[.)]\s+/ : /^\s*[*-]\s+/;
+
+        pendingList.children = [
+          ...(pendingList.children ?? []),
+          {
+            type: "list-item",
+            children: stripPrefixFromChildren(block.children, prefixPattern),
+          },
+        ];
+
+        continue;
+      }
+    }
+
+    flushPendingList();
+    normalizedBlocks.push(block);
+  }
+
+  flushPendingList();
+
+  return normalizedBlocks;
+}
+
 function renderTextNode(node: StrapiTextNode, key: string): ReactNode {
   if (node.type === "link") {
     const external = /^https?:\/\//i.test(node.url || "");
@@ -192,9 +343,11 @@ export default function ProductDetails({
   categoryRootSlug,
   categoryLeafSlug,
 }: Props) {
-  const blocks = Array.isArray(description)
+  const rawBlocks = Array.isArray(description)
     ? (description as StrapiBlock[])
     : [];
+
+  const blocks = normalizeDescriptionBlocks(rawBlocks);
 
   const cleanSizes = Array.from(
     new Set(sizes.map((size) => String(size).trim()).filter(Boolean)),
