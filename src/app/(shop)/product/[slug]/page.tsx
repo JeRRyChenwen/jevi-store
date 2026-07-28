@@ -16,7 +16,6 @@ import { isNewProduct } from "@/lib/productNew";
 import CornerRibbon from "@/components/badges/CornerRibbon";
 
 import ProductMeta from "../_components/ProductMeta";
-import Stars from "../_components/Stars";
 import {
   getImagesByColorFromProduct,
   getCardImagesByColorFromProduct,
@@ -131,6 +130,12 @@ const LOW_STOCK_THRESHOLD = 20;
 const SITE_ORIGIN = (
   process.env.NEXT_PUBLIC_SITE_URL || "https://jeviapparelstudio.com"
 ).replace(/\/+$/, "");
+
+const MERCHANT_RETURN_POLICY_ID = `${SITE_ORIGIN}/returns-policy#merchant-return-policy`;
+
+const STANDARD_SHIPPING_SERVICE_ID = `${SITE_ORIGIN}/shipping-policy#standard-shipping`;
+
+const EXPRESS_SHIPPING_SERVICE_ID = `${SITE_ORIGIN}/shipping-policy#express-shipping`;
 
 type VariantSkuMap = Record<
   string,
@@ -349,10 +354,10 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   // ✅ Strapi 只取 meta（不信任 stock），但我们仍然取 sku/color/size/height
   const qs =
     `/api/products?filters[slug][$eq]=${encodeURIComponent(slug)}` +
-    `&fields[0]=title&fields[1]=slug&fields[2]=hot_score` +
-    `&fields[3]=new_starts_at&fields[4]=new_ends_at` +
-    `&fields[5]=description&fields[6]=seo_title` +
-    `&fields[7]=seo_description&fields[8]=seo_intro` +
+    `&fields[0]=title&fields[1]=slug` +
+    `&fields[2]=new_starts_at&fields[3]=new_ends_at` +
+    `&fields[4]=description&fields[5]=seo_title` +
+    `&fields[6]=seo_description&fields[7]=seo_intro` +
     `&populate[color_galleries][fields][0]=color` +
     `&populate[color_galleries][populate][card_image]=true` +
     `&populate[color_galleries][populate][images]=true` +
@@ -459,8 +464,6 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     total > 0
       ? `${selectedImageAltBase} – image ${selected + 1}`
       : selectedImageAltBase;
-
-  const rating = Math.max(0, Math.min(5, Number(attrs.hot_score) || 0));
 
   const colorOptions = colorKeys.map((name) => ({
     name,
@@ -628,7 +631,9 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const activeStructuredPrice = saleActive ? (salePrice ?? price) : price;
 
   const plainDescription = toPlainText(description);
-  const structuredDescription = seoDescription || plainDescription;
+
+  const structuredDescription =
+    seoDescription || plainDescription || seoIntro || title;
 
   const allProductImages = Array.from(
     new Set(
@@ -684,6 +689,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                   "@id": `${variantUrl}#${encodeURIComponent(sku)}`,
 
                   name: `${title} – ${color} – EU ${size} – +${height} cm`,
+                  description: structuredDescription,
                   image: variantImages,
                   sku,
                   color,
@@ -708,6 +714,28 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                         ? "https://schema.org/InStock"
                         : "https://schema.org/OutOfStock",
                     itemCondition: "https://schema.org/NewCondition",
+
+                    hasMerchantReturnPolicy: {
+                      "@id": MERCHANT_RETURN_POLICY_ID,
+                    },
+
+                    shippingDetails: [
+                      {
+                        "@type": "OfferShippingDetails",
+
+                        hasShippingService: {
+                          "@id": STANDARD_SHIPPING_SERVICE_ID,
+                        },
+                      },
+
+                      {
+                        "@type": "OfferShippingDetails",
+
+                        hasShippingService: {
+                          "@id": EXPRESS_SHIPPING_SERVICE_ID,
+                        },
+                      },
+                    ],
                   },
                 },
               ];
@@ -871,10 +899,6 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                   {seoIntro}
                 </p>
               ) : null}
-
-              <div className="text-neutral-800">
-                <Stars value={rating} />
-              </div>
 
               {saleActive ? (
                 <div className="space-y-2">

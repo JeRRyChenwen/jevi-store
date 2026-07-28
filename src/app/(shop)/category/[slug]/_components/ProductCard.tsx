@@ -5,7 +5,6 @@
 import { useState, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Star } from "lucide-react";
 import { normalizeColorName, colorNameToCss } from "@/lib/colors";
 import ImageCarousel from "./ImageCarousel";
 import CornerRibbon from "@/components/badges/CornerRibbon"; // ✅ NEW
@@ -30,8 +29,6 @@ type ProductLite = {
   newStartsAt?: string | null;
   newEndsAt?: string | null;
 
-  hotScore?: number | null;
-
   colors?: string[];
   sizes?: string[];
 
@@ -49,10 +46,6 @@ type PickRes = {
   effective_minor: number | null;
   currency: string;
 } | null;
-
-function clamp(n: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, n));
-}
 
 function formatColorLabel(value?: string | null) {
   return String(value || "")
@@ -104,11 +97,6 @@ export default function ProductCard({
 
   // ✅ NEW: 是否显示 NEW（依赖写稳：只跟时间窗相关）
   const showNew = useMemo(() => isNewActive(p), [p.newStartsAt, p.newEndsAt]);
-
-  // 热度星级（0~5）
-  let stars = p.hotScore ?? 0;
-  if (stars > 5) stars = Math.round(clamp(stars, 0, 100) / 20);
-  stars = clamp(Math.round(stars), 0, 5);
 
   // 商品卡图片选择：每种颜色只显示一张 card_image
   const colorKey = selectedColor ? normalizeColorName(selectedColor) : null;
@@ -361,19 +349,6 @@ export default function ProductCard({
             )}
           </div>
         )}
-
-        <div className="mt-2 sm:mt-3 flex items-center gap-0.5 sm:gap-1">
-          {Array.from({ length: 5 }).map((_, i3) => (
-            <Star
-              key={i3}
-              className={
-                i3 < (stars as number)
-                  ? "h-3.5 w-3.5 sm:h-4 sm:w-4 fill-black text-black"
-                  : "h-3.5 w-3.5 sm:h-4 sm:w-4 text-neutral-300"
-              }
-            />
-          ))}
-        </div>
       </div>
     </article>
   );

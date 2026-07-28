@@ -4,7 +4,6 @@
 import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Star } from "lucide-react";
 import { normalizeColorName, colorNameToCss } from "@/lib/colors";
 import CornerRibbon from "@/components/badges/CornerRibbon"; // ✅ NEW
 import HomeImageCarousel from "@/components/home/HomeImageCarousel";
@@ -29,26 +28,25 @@ type ProductLite = {
   newStartsAt?: string | null;
   newEndsAt?: string | null;
 
-  hotScore?: number | null;
-
   colors?: string[];
   sizes?: string[];
   variantsByColor: Record<string, string[]>;
   imageUrl?: string;
 };
 
-type PickRes =
-  | { base_minor: number | null; effective_minor: number | null; currency: string }
-  | null;
-
-function clamp(n: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, n));
-}
+type PickRes = {
+  base_minor: number | null;
+  effective_minor: number | null;
+  currency: string;
+} | null;
 
 // ✅ 判断 NEW 是否生效（跟你 category 里一致）
 // - 没有窗口：不显示（更稳）
 // - 有 starts/ends：按时间窗口判断
-function isNewActive(p: { newStartsAt?: string | null; newEndsAt?: string | null }) {
+function isNewActive(p: {
+  newStartsAt?: string | null;
+  newEndsAt?: string | null;
+}) {
   const now = Date.now();
   const s = p.newStartsAt ? Date.parse(p.newStartsAt) : NaN;
   const e = p.newEndsAt ? Date.parse(p.newEndsAt) : NaN;
@@ -84,19 +82,11 @@ export default function HomeProductCard({
   const clickStartRef = useRef<{ x: number; y: number } | null>(null);
 
   const [selectedColor, setSelectedColor] = useState<string | null>(
-    p.colors?.[0] ?? null
+    p.colors?.[0] ?? null,
   );
 
   // ✅ NEW：是否显示 NEW（只依赖窗口字段，避免对象引用变化导致 useMemo 失效）
-  const showNew = useMemo(
-    () => isNewActive(p),
-    [p.newStartsAt, p.newEndsAt]
-  );
-
-  // 热度星级（0~5）
-  let stars = p.hotScore ?? 0;
-  if (stars > 5) stars = Math.round(clamp(stars, 0, 100) / 20);
-  stars = clamp(Math.round(stars), 0, 5);
+  const showNew = useMemo(() => isNewActive(p), [p.newStartsAt, p.newEndsAt]);
 
   // 图片选择：按颜色取变体图，取不到就用任意颜色第一组，最后 fallback imageUrl
   const urls = useMemo(() => {
@@ -126,7 +116,9 @@ export default function HomeProductCard({
   // 原价（minor）
   const baseMinor: number | null =
     pick?.base_minor ??
-    (typeof p.price === "number" ? Math.round(Math.max(0, p.price) * 100) : null);
+    (typeof p.price === "number"
+      ? Math.round(Math.max(0, p.price) * 100)
+      : null);
 
   // 折后价（minor）
   const effectiveMinor: number | null = pick?.effective_minor ?? baseMinor;
@@ -145,17 +137,19 @@ export default function HomeProductCard({
   const showCcy = pick?.currency || displayCurrency;
 
   const displayBase =
-    typeof baseMinor === "number" ? formatPriceForCard(baseMinor, showCcy) : null;
+    typeof baseMinor === "number"
+      ? formatPriceForCard(baseMinor, showCcy)
+      : null;
 
   const displayEff =
     typeof effectiveMinor === "number"
       ? formatPriceForCard(effectiveMinor, showCcy)
       : typeof p.price === "number"
-      ? formatPriceForCard(
-          Math.round(Math.max(0, Number(p.price)) * 100),
-          String(p.currency || showCcy || "AUD")
-        )
-      : "No price";
+        ? formatPriceForCard(
+            Math.round(Math.max(0, Number(p.price)) * 100),
+            String(p.currency || showCcy || "AUD"),
+          )
+        : "No price";
 
   const handleImagePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     clickStartRef.current = { x: e.clientX, y: e.clientY };
@@ -305,20 +299,6 @@ export default function HomeProductCard({
             ) : null}
           </div>
         ) : null}
-
-        {/* 星级：更小 */}
-        <div className="mt-2 flex items-center gap-0.5">
-          {Array.from({ length: 5 }).map((_, i3) => (
-            <Star
-              key={i3}
-              className={
-                i3 < (stars as number)
-                  ? "h-3.5 w-3.5 fill-black text-black"
-                  : "h-3.5 w-3.5 text-neutral-300"
-              }
-            />
-          ))}
-        </div>
       </div>
     </article>
   );
