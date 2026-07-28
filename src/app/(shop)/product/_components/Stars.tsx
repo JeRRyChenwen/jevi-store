@@ -1,5 +1,24 @@
 // src/app/(shop)/product/_components/Stars.tsx
 
+/**
+ * Reserved rating display component.
+ *
+ * This component is intentionally not used by the storefront at present.
+ *
+ * The website does not currently have a verified customer review system.
+ * Do not use manually configured values such as Product.hot_score as customer
+ * ratings. Product.hot_score may continue to be used internally for product
+ * sorting, but it must not be presented to customers as a review score.
+ *
+ * This component may be enabled in the future only after:
+ * 1. Ratings are submitted by genuine customers.
+ * 2. Ratings and reviews are stored in a trusted backend data source.
+ * 3. The displayed aggregate rating is calculated from those real reviews.
+ * 4. Any Product JSON-LD review or aggregateRating data exactly matches the
+ *    rating information visibly displayed on the product page.
+ *
+ * Until those requirements are implemented, keep this component unimported.
+ */
 export default function Stars({ value = 0 }: { value?: number }) {
   const v = Math.max(0, Math.min(5, Number(value) || 0));
   const full = Math.floor(v);
@@ -11,7 +30,13 @@ export default function Stars({ value = 0 }: { value?: number }) {
         const state = i < full ? "full" : i === full && half ? "half" : "empty";
 
         return (
-          <svg key={i} viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4" role="img">
+          <svg
+            key={i}
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            className="h-4 w-4"
+            role="img"
+          >
             {state === "half" ? (
               <>
                 <defs>
