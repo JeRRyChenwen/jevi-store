@@ -5,7 +5,7 @@ import { api } from "@/lib/strapi";
 
 const SITE_URL = BRAND.siteUrl.replace(/\/+$/, "");
 
-
+const POLICY_LAST_MODIFIED = new Date("2026-07-28T00:00:00.000Z");
 
 export const dynamic = "force-dynamic";
 /**
@@ -181,6 +181,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: generatedAt,
       changeFrequency: "daily",
       priority: 1,
+    },
+    {
+      url: absoluteUrl("/shipping-policy"),
+      lastModified: POLICY_LAST_MODIFIED,
+      changeFrequency: "monthly",
+      priority: 0.5,
+    },
+    {
+      url: absoluteUrl("/returns-policy"),
+      lastModified: POLICY_LAST_MODIFIED,
+      changeFrequency: "monthly",
+      priority: 0.5,
     },
   ];
 
