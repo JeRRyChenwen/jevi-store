@@ -2,8 +2,16 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { GoogleAnalytics } from "@next/third-parties/google";
 import { cn } from "@/lib/utils";
 import { BRAND } from "@/lib/brand";
+
+const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID?.trim();
+
+const shouldLoadGoogleAnalytics =
+  process.env.NODE_ENV === "production" &&
+  Boolean(GA_MEASUREMENT_ID) &&
+  /^G-[A-Z0-9]+$/i.test(GA_MEASUREMENT_ID ?? "");
 
 export const metadata: Metadata = {
   title: {
@@ -56,6 +64,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       >
         {children}
       </body>
+
+      {shouldLoadGoogleAnalytics ? (
+        <GoogleAnalytics gaId={GA_MEASUREMENT_ID!} />
+      ) : null}
     </html>
   );
 }
