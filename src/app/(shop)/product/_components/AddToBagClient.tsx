@@ -1,9 +1,14 @@
 // src/app/product/_components/AddToBagClient.tsx
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { bag, type CartItem } from "@/components/bag/bag";
+import {
+  trackAddToCart,
+  trackViewItem,
+  type Ga4CommerceItemInput,
+} from "@/lib/analytics/ga4";
 
 type StockMap = Record<string, Record<string, number>>;
 type Stock3 = Record<string, Record<string, Record<number, number>>>;
@@ -181,6 +186,72 @@ export default function AddToBagClient({
   const unitPriceMajor = salePrice ?? price ?? 0;
   const basePriceMajor = price ?? unitPriceMajor;
 
+  const normalisedCurrency = useMemo(() => {
+    const value = String(currency || "")
+      .trim()
+      .toUpperCase();
+
+    return /^[A-Z]{3}$/.test(value) ? value : "AUD";
+  }, [currency]);
+
+  const analyticsItem = useMemo<Ga4CommerceItemInput | null>(() => {
+    if (!variantSku || !currentColor || !currentSize || unitPriceMajor <= 0) {
+      return null;
+    }
+
+    return {
+      itemId: variantSku,
+      itemName: title,
+      productSlug: slug,
+
+      price: unitPriceMajor,
+      basePrice: basePriceMajor,
+      quantity: 1,
+
+      currency: normalisedCurrency,
+
+      color: currentColor,
+      size: currentSize,
+      heightIncreaseCm: heightForSnapshot,
+
+      categoryRootSlug: categoryRootSlug ?? "uncategorized",
+      categoryLeafSlug: categoryLeafSlug ?? null,
+    };
+  }, [
+    variantSku,
+    currentColor,
+    currentSize,
+    unitPriceMajor,
+    basePriceMajor,
+    normalisedCurrency,
+    title,
+    slug,
+    heightForSnapshot,
+    categoryRootSlug,
+    categoryLeafSlug,
+  ]);
+
+  const viewedVariantKeysRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!analyticsItem) {
+      return;
+    }
+
+    const viewedVariantKey = [
+      analyticsItem.itemId,
+      analyticsItem.currency,
+      analyticsItem.price,
+    ].join("|");
+
+    if (viewedVariantKeysRef.current.has(viewedVariantKey)) {
+      return;
+    }
+
+    viewedVariantKeysRef.current.add(viewedVariantKey);
+    trackViewItem(analyticsItem);
+  }, [analyticsItem]);
+
   // ✅ disabled：由 color/size/stock/price 决定
   const disabled =
     !currentColor ||
@@ -195,10 +266,7 @@ export default function AddToBagClient({
     const heightPart = String(pickedHeightForLookup);
 
     // ✅ 关键：同时写入 prices[]（minor, 分）——让 cart/checkout 统一走 minor 路径
-    const ccy =
-      String(currency || "")
-        .trim()
-        .toUpperCase() || "AUD";
+    const ccy = normalisedCurrency;
 
     const baseMinor = toMinor2(basePriceMajor);
     const effMinor = toMinor2(unitPriceMajor);
@@ -242,7 +310,25 @@ export default function AddToBagClient({
       variantSku: variantSku,
     } as unknown as CartItem;
 
+    const previousQuantity =
+      bag.get().find((cartItem) => cartItem.key === item.key)?.qty ?? 0;
+
     bag.add(item);
+
+    const nextQuantity =
+      bag.get().find((cartItem) => cartItem.key === item.key)?.qty ?? 0;
+
+    const addedQuantity = Math.max(
+      0,
+      Number(nextQuantity) - Number(previousQuantity),
+    );
+
+    if (analyticsItem && addedQuantity > 0) {
+      trackAddToCart({
+        ...analyticsItem,
+        quantity: addedQuantity,
+      });
+    }
 
     if (typeof (bag as any).setOffset === "function") {
       (bag as any).setOffset(64);
