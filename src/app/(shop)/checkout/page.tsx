@@ -69,7 +69,7 @@ function CheckoutPageContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const { cart, setCart, itemsCount, hasItems, clearCart } = useCart();
+  const { cart, itemsCount, hasItems, clearCart } = useCart();
 
   // ✅ 统一表单级提示（用于 Continue 下方提示：Bag / Address）
   const formAlert = useFormAlert();
@@ -441,7 +441,6 @@ function CheckoutPageContent() {
 
   const bagStepProps = buildCheckoutBagStepProps({
     cart,
-    setCart,
     currency,
     itemsMajor,
     savedMajor,

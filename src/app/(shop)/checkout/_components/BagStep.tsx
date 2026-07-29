@@ -5,6 +5,7 @@ import React, { useMemo } from "react";
 import Link from "next/link";
 import CartList from "@/components/cart/CartList";
 import type { CartItem as CartListItem } from "@/components/cart/CartList";
+import { useBag } from "@/components/bag/BagProvider";
 import BraintreePayPalOnly from "./BraintreePayPalOnly";
 
 // ✅ 统一提示体系
@@ -14,9 +15,8 @@ type CartItem = CartListItem;
 
 interface BagStepProps {
   cart: CartItem[];
-  setCart: React.Dispatch<React.SetStateAction<CartItem[]>>;
 
-  // 价格相关（先保留 props，避免你 checkout/page.tsx 现在的调用报错）
+  // 价格相关
   currency: string; // 比如 "AUD"
   itemsMajor: number; // ⚠️ 不再信任（可能是原价）
   savedMajor: number; // ⚠️ 不再信任（可能基于旧 prices）
@@ -77,11 +77,12 @@ function Row({
 
 const BagStep: React.FC<BagStepProps> = ({
   cart,
-  setCart,
   currency,
   hasItems,
   amountInMajorUnit,
 }) => {
+  const { inc, dec, removeItem } = useBag();
+
   const isEmpty = (cart?.length || 0) === 0;
 
   /**
@@ -132,24 +133,7 @@ const BagStep: React.FC<BagStepProps> = ({
             </Alert>
           )}
 
-          <CartList
-            cart={cart}
-            onInc={(k) =>
-              setCart((p) =>
-                p.map((x) =>
-                  x.key === k ? { ...x, qty: Math.min(x.qty + 1, x.stock) } : x
-                )
-              )
-            }
-            onDec={(k) =>
-              setCart((p) =>
-                p.map((x) =>
-                  x.key === k ? { ...x, qty: Math.max(1, x.qty - 1) } : x
-                )
-              )
-            }
-            onRemove={(k) => setCart((p) => p.filter((x) => x.key !== k))}
-          />
+          <CartList cart={cart} onInc={inc} onDec={dec} onRemove={removeItem} />
         </div>
 
         <div className="border-t p-4">

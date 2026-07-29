@@ -5,7 +5,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { CheckCircle2 } from "lucide-react";
-
 import type { ServerItem, ServerOrder, ServerResp } from "./types";
 import { deriveMoney, normalizeAddress, normalizeItems } from "./utils";
 import FinalizingView from "./_components/FinalizingView";
@@ -30,16 +29,6 @@ export default function OrderConfirmationPage() {
   const [loading, setLoading] = useState(true);
   const [order, setOrder] = useState<ServerOrder | null>(null);
   const [items, setItems] = useState<ServerItem[] | null>(null);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("bag:v1", "[]");
-      window.dispatchEvent(
-        new CustomEvent("bag:count", { detail: { count: 0 } }),
-      );
-      window.dispatchEvent(new CustomEvent("bag:updated", { detail: {} }));
-    } catch {}
-  }, []);
 
   useEffect(() => {
     if (!orderId) return;

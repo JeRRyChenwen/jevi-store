@@ -52,7 +52,9 @@ const LS_KEY = "bag:v1";
 // ---------- localStorage 读写 ----------
 function readCart(): CartItem[] {
   try {
-    return JSON.parse(localStorage.getItem(LS_KEY) || "[]");
+    const parsed = JSON.parse(localStorage.getItem(LS_KEY) || "[]");
+
+    return Array.isArray(parsed) ? (parsed as CartItem[]) : [];
   } catch {
     return [];
   }
@@ -61,13 +63,19 @@ function readCart(): CartItem[] {
 function writeCart(list: CartItem[]) {
   try {
     localStorage.setItem(LS_KEY, JSON.stringify(list));
-  } catch {}
+  } catch {
+    // localStorage 不可用时保持页面可运行。
+  }
+
   try {
-    window.dispatchEvent(new Event("bag:updated"));
-    window.dispatchEvent(new CustomEvent<CartItem[]>("bag:change", { detail: list }));
-    const count = list.reduce((a, it) => a + (Number(it.qty) || 0), 0);
-    window.dispatchEvent(new CustomEvent("bag:count", { detail: { count } }));
-  } catch {}
+    window.dispatchEvent(
+      new CustomEvent<CartItem[]>("bag:change", {
+        detail: list,
+      }),
+    );
+  } catch {
+    // 事件系统不可用时保持购物袋写操作可完成。
+  }
 }
 
 // ---------- 内部状态（仅记录 open / offset） ----------
@@ -88,11 +96,14 @@ function add(item: CartItem) {
 
     // ✅ 关键修复：同 key 再次 add 时，覆盖旧字段（尤其是 price / prices），只累计 qty
     const nextStock = Number(item.stock ?? cur.stock) || 0;
-    const nextQty = Math.min((Number(cur.qty) || 0) + (Number(item.qty) || 1), nextStock || 999999);
+    const nextQty = Math.min(
+      (Number(cur.qty) || 0) + (Number(item.qty) || 1),
+      nextStock || 999999,
+    );
 
     list[i] = {
-      ...cur,     // 保留旧字段兜底
-      ...item,    // ✅ 用新 item 覆盖旧字段（价格、prices、图片等）
+      ...cur, // 保留旧字段兜底
+      ...item, // ✅ 用新 item 覆盖旧字段（价格、prices、图片等）
       stock: nextStock || cur.stock,
       qty: Math.max(1, nextQty),
     };
@@ -135,8 +146,12 @@ function open() {
 }
 
 function toggle() {
-  markOpenState(!OPEN_STATE);
-  window.dispatchEvent(new Event("bag:toggle"));
+  if (OPEN_STATE) {
+    close();
+    return;
+  }
+
+  open();
 }
 
 function close() {
@@ -146,7 +161,9 @@ function close() {
 
 function setOffset(px: number) {
   FLOAT_OFFSET_PX = Math.max(0, Number(px) || 0);
-  window.dispatchEvent(new CustomEvent<number>("bag:setOffset", { detail: FLOAT_OFFSET_PX }));
+  window.dispatchEvent(
+    new CustomEvent<number>("bag:setOffset", { detail: FLOAT_OFFSET_PX }),
+  );
 }
 
 function isOpen() {

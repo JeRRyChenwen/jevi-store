@@ -14,23 +14,14 @@ export default function BagButton() {
   const [count, setCount] = useState(0);
 
   useEffect(() => {
-    // 初始化
     setCount(calcCount(bag.get()));
 
-    // 订阅单例变更
     const offChange = bag.on("change", (list: CartItem[]) => {
       setCount(calcCount(list));
     });
 
-    // 兼容你项目里可能还在发的旧自定义事件
-    const onLegacy = () => setCount(calcCount(bag.get()));
-    window.addEventListener("bag:updated", onLegacy as EventListener);
-    window.addEventListener("bag:count", onLegacy as EventListener);
-
     return () => {
       offChange();
-      window.removeEventListener("bag:updated", onLegacy as EventListener);
-      window.removeEventListener("bag:count", onLegacy as EventListener);
     };
   }, []);
 
