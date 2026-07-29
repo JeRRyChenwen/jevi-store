@@ -5,7 +5,14 @@ import { useEffect, useMemo, useRef } from "react";
 import { X, ChevronRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useBag } from "@/components/bag/BagProvider";
-import CartList, { type CartItem as CartListItem } from "@/components/cart/CartList";
+import CartList, {
+  type CartItem as CartListItem,
+} from "@/components/cart/CartList";
+import {
+  cartItemToGa4CommerceInput,
+  trackViewCart,
+  type Ga4CommerceItemInput,
+} from "@/lib/analytics/ga4";
 
 // 价格格式化
 function fmt(n: number, currency: string, locale?: string) {
@@ -17,7 +24,11 @@ function fmt(n: number, currency: string, locale?: string) {
   }).format(n);
 }
 
-export default function BagDrawer({ ownerId = "global" }: { ownerId?: string }) {
+export default function BagDrawer({
+  ownerId = "global",
+}: {
+  ownerId?: string;
+}) {
   // 不做整体断言，防止与上下文类型冲突
   const bag = useBag() as any;
 
@@ -27,17 +38,27 @@ export default function BagDrawer({ ownerId = "global" }: { ownerId?: string }) 
     typeof bag?.close === "function"
       ? bag.close
       : typeof bag?.closeBag === "function"
-      ? bag.closeBag
-      : () => {};
+        ? bag.closeBag
+        : () => {};
 
   const removeItem: (key: string) => void = bag?.removeItem;
   const inc: (key: string) => void = bag?.inc;
   const dec: (key: string) => void = bag?.dec;
 
-  const cartItems: CartListItem[] = Array.isArray(bag?.cart) ? (bag.cart as CartListItem[]) : [];
+  const cartItems: CartListItem[] = Array.isArray(bag?.cart)
+    ? (bag.cart as CartListItem[])
+    : [];
 
   const router = useRouter();
   const asideRef = useRef<HTMLElement | null>(null);
+
+  /**
+   * 每次购物袋从关闭变为打开时，只发送一次 view_cart。
+   *
+   * 即使打开期间购物袋发生重新渲染、数量变化或商品变化，
+   * 也不会重复发送。
+   */
+  const viewedCurrentOpenCycleRef = useRef(false);
 
   // 仅做标记（不再操作其它实例 DOM，避免与 React 卸载冲突）
   useEffect(() => {
@@ -52,6 +73,28 @@ export default function BagDrawer({ ownerId = "global" }: { ownerId?: string }) 
       .toUpperCase() || "AUD";
   const hasItems = cartItems.length > 0;
 
+  useEffect(() => {
+    if (!isOpen) {
+      viewedCurrentOpenCycleRef.current = false;
+      return;
+    }
+
+    if (viewedCurrentOpenCycleRef.current || !hasItems) {
+      return;
+    }
+
+    const analyticsItems = cartItems
+      .map((item) => cartItemToGa4CommerceInput(item))
+      .filter((item): item is Ga4CommerceItemInput => item !== null);
+
+    if (analyticsItems.length === 0) {
+      return;
+    }
+
+    trackViewCart(analyticsItems);
+    viewedCurrentOpenCycleRef.current = true;
+  }, [isOpen, hasItems, cartItems]);
+
   // ✅ 总件数：用于手机端 header 辅助信息
   const itemCount = cartItems.reduce((sum, it) => sum + (it.qty ?? 0), 0);
 
@@ -60,20 +103,21 @@ export default function BagDrawer({ ownerId = "global" }: { ownerId?: string }) 
     () =>
       cartItems.reduce(
         (a: number, it: CartListItem) => a + (it.price ?? 0) * (it.qty ?? 0),
-        0
+        0,
       ),
-    [cartItems]
+    [cartItems],
   );
 
   // ✅ You saved：仍按 basePrice - price 来算（如果你 basePrice 是原价）
   const saved = useMemo(
     () =>
       cartItems.reduce((a: number, it: CartListItem) => {
-        const base = typeof it.basePrice === "number" ? it.basePrice : it.price ?? 0;
+        const base =
+          typeof it.basePrice === "number" ? it.basePrice : (it.price ?? 0);
         const diff = Math.max(0, base - (it.price ?? 0));
         return a + diff * (it.qty ?? 0);
       }, 0),
-    [cartItems]
+    [cartItems],
   );
 
   // ✅ 关键：BagDrawer 不显示 Delivery fee，并且 Total = Subtotal
@@ -93,7 +137,9 @@ export default function BagDrawer({ ownerId = "global" }: { ownerId?: string }) 
         onClick={closeFn}
         className={[
           "fixed inset-0 z-[9998] bg-black/30 transition-opacity",
-          isOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
+          isOpen
+            ? "pointer-events-auto opacity-100"
+            : "pointer-events-none opacity-0",
         ].join(" ")}
       />
 
@@ -138,7 +184,12 @@ export default function BagDrawer({ ownerId = "global" }: { ownerId?: string }) 
 
           {/* 中部：可滚动的列表（min-h-0 避免子元素撑爆） */}
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:p-4">
-            <CartList cart={cartItems} onInc={inc} onDec={dec} onRemove={removeItem} />
+            <CartList
+              cart={cartItems}
+              onInc={inc}
+              onDec={dec}
+              onRemove={removeItem}
+            />
           </div>
 
           {/* 底部：Subtotal / You saved / Total / Check out */}
@@ -155,19 +206,25 @@ export default function BagDrawer({ ownerId = "global" }: { ownerId?: string }) 
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center justify-between">
                     <span className="text-neutral-600">Subtotal</span>
-                    <span className="text-base font-semibold">{fmt(subtotal, currency)}</span>
+                    <span className="text-base font-semibold">
+                      {fmt(subtotal, currency)}
+                    </span>
                   </div>
 
                   {saved > 0 && (
                     <div className="flex items-center justify-between">
                       <span className="text-neutral-600">You saved</span>
-                      <span className="font-semibold text-emerald-700">{fmt(saved, currency)}</span>
+                      <span className="font-semibold text-emerald-700">
+                        {fmt(saved, currency)}
+                      </span>
                     </div>
                   )}
 
                   <div className="mt-1 flex items-center justify-between border-t border-neutral-100 pt-2">
                     <span className="text-sm font-semibold">Total</span>
-                    <span className="text-lg font-bold">{fmt(total, currency)}</span>
+                    <span className="text-lg font-bold">
+                      {fmt(total, currency)}
+                    </span>
                   </div>
                 </div>
 
