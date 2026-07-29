@@ -58,7 +58,10 @@ export default function CartList({
   }
 
   // 只有当需要显示 footer 时，这些值才有用
-  const currency = cart[0]?.currency ?? "USD";
+  const currency =
+    String(cart[0]?.currency || "AUD")
+      .trim()
+      .toUpperCase() || "AUD";
   const subtotal = showFooter
     ? cart.reduce((a, it) => a + it.price * it.qty, 0)
     : 0;
@@ -90,6 +93,14 @@ export default function CartList({
         // ✅ 只有鞋子才显示 Height；鞋子哪怕 h=0 也允许显示（保持原逻辑）
         const showHeight = isShoes && typeof h === "number";
 
+        const safeQuantity = Math.max(1, Math.floor(Number(it.qty) || 1));
+
+        const safeStock = Math.max(0, Math.floor(Number(it.stock) || 0));
+
+        const isAtStockLimit = safeStock <= 0 || safeQuantity >= safeStock;
+
+        const decreaseWillRemove = safeQuantity <= 1;
+
         return (
           <div
             key={it.key}
@@ -117,9 +128,7 @@ export default function CartList({
                 {it.size && <span className="ml-3">Size: {it.size}</span>}
 
                 {/* ✅ 只有鞋子才显示 Height */}
-                {showHeight && (
-                  <span className="ml-3">Height: +{h} cm</span>
-                )}
+                {showHeight && <span className="ml-3">Height: +{h} cm</span>}
               </div>
 
               <div className="mt-2 flex items-center justify-between">
@@ -130,28 +139,48 @@ export default function CartList({
                 <div className="flex items-center rounded-full border">
                   <button
                     type="button"
-                    className="px-2 py-1 hover:bg-neutral-50"
+                    className="rounded-l-full px-2 py-1 transition-colors hover:bg-neutral-100"
                     onClick={() => onDec(it.key)}
-                    aria-label="Decrease"
-                    title="Decrease"
+                    aria-label={
+                      decreaseWillRemove ? "Remove item" : "Decrease quantity"
+                    }
+                    title={
+                      decreaseWillRemove ? "Remove item" : "Decrease quantity"
+                    }
                   >
                     <Minus className="h-4 w-4" />
                   </button>
-                  <span className="min-w-[2rem] text-center text-sm">{it.qty}</span>
+
+                  <span className="min-w-[2rem] text-center text-sm">
+                    {safeQuantity}
+                  </span>
+
                   <button
                     type="button"
-                    className="px-2 py-1 hover:bg-neutral-50"
+                    className={[
+                      "rounded-r-full px-2 py-1 transition-colors",
+                      isAtStockLimit
+                        ? "cursor-not-allowed text-neutral-300"
+                        : "hover:bg-neutral-100",
+                    ].join(" ")}
                     onClick={() => onInc(it.key)}
-                    aria-label="Increase"
-                    title="Increase"
-                    disabled={it.qty >= it.stock}
+                    aria-label={
+                      isAtStockLimit
+                        ? "Maximum available quantity reached"
+                        : "Increase quantity"
+                    }
+                    title={
+                      isAtStockLimit
+                        ? "Maximum available quantity reached"
+                        : "Increase quantity"
+                    }
+                    disabled={isAtStockLimit}
                   >
                     <Plus className="h-4 w-4" />
                   </button>
                 </div>
               </div>
-
-              </div>
+            </div>
 
             <button
               type="button"
@@ -174,7 +203,9 @@ export default function CartList({
         >
           <div className="mb-1 flex items-center justify-between">
             <div className="text-sm text-neutral-600">Subtotal</div>
-            <div className="text-base font-semibold">{fmt(subtotal, currency)}</div>
+            <div className="text-base font-semibold">
+              {fmt(subtotal, currency)}
+            </div>
           </div>
 
           {saved > 0 && (
