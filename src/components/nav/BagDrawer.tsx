@@ -10,6 +10,7 @@ import CartList, {
 } from "@/components/cart/CartList";
 import {
   cartItemToGa4CommerceInput,
+  trackBeginCheckout,
   trackViewCart,
   type Ga4CommerceItemInput,
 } from "@/lib/analytics/ga4";
@@ -59,6 +60,12 @@ export default function BagDrawer({
    * 也不会重复发送。
    */
   const viewedCurrentOpenCycleRef = useRef(false);
+
+  /**
+   * 防止用户快速连续点击 Check out，
+   * 导致同一次进入结账发送多个 begin_checkout。
+   */
+  const lastBeginCheckoutAtRef = useRef(0);
 
   // 仅做标记（不再操作其它实例 DOM，避免与 React 卸载冲突）
   useEffect(() => {
@@ -124,6 +131,29 @@ export default function BagDrawer({
   const total = hasItems ? subtotal : 0;
 
   const toCheckout = () => {
+    const analyticsItems = cartItems
+      .map((item) => cartItemToGa4CommerceInput(item))
+      .filter((item): item is Ga4CommerceItemInput => item !== null);
+
+    const now = Date.now();
+
+    /**
+     * 只有所有购物袋商品都包含有效真实 SKU 时，
+     * 才发送完整的 begin_checkout。
+     *
+     * 避免旧 localStorage 商品缺少 SKU 时，
+     * 只发送部分商品并产生错误的结账金额。
+     */
+    const hasCompleteAnalyticsCart =
+      cartItems.length > 0 && analyticsItems.length === cartItems.length;
+
+    const isRapidDuplicate = now - lastBeginCheckoutAtRef.current < 1500;
+
+    if (hasCompleteAnalyticsCart && !isRapidDuplicate) {
+      lastBeginCheckoutAtRef.current = now;
+      trackBeginCheckout(analyticsItems);
+    }
+
     closeFn();
     router.push("/checkout?step=bag");
   };
