@@ -13,7 +13,8 @@ type CommerceEventName =
   | "view_item"
   | "add_to_cart"
   | "view_cart"
-  | "remove_from_cart";
+  | "remove_from_cart"
+  | "begin_checkout";
 
 export type Ga4CommerceItemInput = {
   itemId: string;
@@ -127,7 +128,6 @@ function resolveCartItemId(item: Ga4CartItemSnapshot): string {
 function buildGa4Item(input: Ga4CommerceItemInput) {
   const itemId = cleanText(input.itemId);
   const itemName = cleanText(input.itemName);
-  const productSlug = cleanText(input.productSlug);
 
   const color = cleanText(input.color);
   const size = cleanText(input.size);
@@ -175,11 +175,6 @@ function buildGa4Item(input: Ga4CommerceItemInput) {
 
   if (basePrice > price) {
     item.discount = normaliseMoney(basePrice - price);
-  }
-
-  if (productSlug) {
-    item.item_list_id = `product_${productSlug}`;
-    item.item_list_name = "Product detail page";
   }
 
   return item;
@@ -327,4 +322,10 @@ export function trackRemoveFromCart(
   input: Ga4CommerceItemInput,
 ): void {
   sendCommerceItemsEvent("remove_from_cart", [input]);
+}
+
+export function trackBeginCheckout(
+  inputs: Ga4CommerceItemInput[],
+): void {
+  sendCommerceItemsEvent("begin_checkout", inputs);
 }
