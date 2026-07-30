@@ -4,6 +4,7 @@
 import { Suspense, useEffect, useRef, useState } from "react";
 import {
   cartItemToGa4CommerceInput,
+  trackAddPaymentInfo,
   trackAddShippingInfo,
   type Ga4CommerceItemInput,
 } from "@/lib/analytics/ga4";
@@ -172,6 +173,14 @@ function CheckoutPageContent() {
    * 商品或配送方式改变后可以重新发送。
    */
   const lastShippingInfoKeyRef = useRef("");
+  /**
+   * 同一个购物袋、配送方式和付款方式，
+   * 在当前 Checkout 页面生命周期内只记录一次。
+   *
+   * 防止 PayPal SDK 重试或用户快速重复点击，
+   * 造成重复的 add_payment_info。
+   */
+  const lastPaymentInfoKeyRef = useRef("");
   const [isPayProcessing, setIsPayProcessing] = useState(false);
   const [payPersistErrMsg, setPayPersistErrMsg] = useState<string | null>(null);
   const [cookieConsent, setCookieConsent] = useState<
@@ -482,6 +491,44 @@ function CheckoutPageContent() {
 
   const handlePayInitiated = () => {
     console.log("[checkout] PayPal payment initiated");
+
+    const paymentType = "PayPal";
+
+    const analyticsItems = cart
+      .map((item) => cartItemToGa4CommerceInput(item))
+      .filter((item): item is Ga4CommerceItemInput => item !== null);
+
+    /**
+     * 必须确保整个购物袋都有真实 Variant SKU。
+     *
+     * 若旧 localStorage 商品缺少 SKU，
+     * 不发送只有部分商品的付款信息事件。
+     */
+    const hasCompleteAnalyticsCart =
+      cart.length > 0 && analyticsItems.length === cart.length;
+
+    if (!hasCompleteAnalyticsCart) {
+      return;
+    }
+
+    const paymentInfoKey = JSON.stringify({
+      paymentType,
+      deliveryMethod,
+      items: analyticsItems.map((item) => ({
+        itemId: item.itemId,
+        currency: item.currency,
+        price: item.price,
+        quantity: item.quantity ?? 1,
+      })),
+    });
+
+    if (lastPaymentInfoKeyRef.current === paymentInfoKey) {
+      return;
+    }
+
+    lastPaymentInfoKeyRef.current = paymentInfoKey;
+
+    trackAddPaymentInfo(analyticsItems, paymentType);
   };
 
   const handleLoginAndContinue = () => {

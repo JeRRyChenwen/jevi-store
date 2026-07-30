@@ -15,11 +15,13 @@ type CommerceEventName =
   | "view_cart"
   | "remove_from_cart"
   | "begin_checkout"
-  | "add_shipping_info";
+  | "add_shipping_info"
+  | "add_payment_info";
 
 
 type CommerceEventExtraParams = {
   shipping_tier?: string;
+  payment_type?: string;
 };
 
 export type Ga4CommerceItemInput = {
@@ -355,6 +357,27 @@ export function trackAddShippingInfo(
     inputs,
     {
       shipping_tier: normalisedShippingTier,
+    },
+  );
+}
+
+export function trackAddPaymentInfo(
+  inputs: Ga4CommerceItemInput[],
+  paymentType: string,
+): void {
+  const normalisedPaymentType = cleanText(
+    paymentType,
+  );
+
+  if (!normalisedPaymentType) {
+    return;
+  }
+
+  sendCommerceItemsEvent(
+    "add_payment_info",
+    inputs,
+    {
+      payment_type: normalisedPaymentType,
     },
   );
 }
