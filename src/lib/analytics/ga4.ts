@@ -14,7 +14,13 @@ type CommerceEventName =
   | "add_to_cart"
   | "view_cart"
   | "remove_from_cart"
-  | "begin_checkout";
+  | "begin_checkout"
+  | "add_shipping_info";
+
+
+type CommerceEventExtraParams = {
+  shipping_tier?: string;
+};
 
 export type Ga4CommerceItemInput = {
   itemId: string;
@@ -194,6 +200,7 @@ function isValidCommerceInput(
 function sendCommerceItemsEvent(
   eventName: CommerceEventName,
   inputs: Ga4CommerceItemInput[],
+  extraParams: CommerceEventExtraParams = {},
 ): void {
   if (!isGa4Enabled()) {
     return;
@@ -226,6 +233,7 @@ function sendCommerceItemsEvent(
   }
 
   sendGAEvent("event", eventName, {
+    ...extraParams,
     currency,
     value,
     items: normalisedInputs.map(buildGa4Item),
@@ -328,4 +336,25 @@ export function trackBeginCheckout(
   inputs: Ga4CommerceItemInput[],
 ): void {
   sendCommerceItemsEvent("begin_checkout", inputs);
+}
+
+export function trackAddShippingInfo(
+  inputs: Ga4CommerceItemInput[],
+  shippingTier: string,
+): void {
+  const normalisedShippingTier = cleanText(
+    shippingTier,
+  ).toLowerCase();
+
+  if (!normalisedShippingTier) {
+    return;
+  }
+
+  sendCommerceItemsEvent(
+    "add_shipping_info",
+    inputs,
+    {
+      shipping_tier: normalisedShippingTier,
+    },
+  );
 }
