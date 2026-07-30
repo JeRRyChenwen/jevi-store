@@ -16,12 +16,17 @@ type CommerceEventName =
   | "remove_from_cart"
   | "begin_checkout"
   | "add_shipping_info"
-  | "add_payment_info";
+  | "add_payment_info"
+  | "purchase";
 
 
 type CommerceEventExtraParams = {
   shipping_tier?: string;
   payment_type?: string;
+
+  transaction_id?: string;
+  shipping?: number;
+  tax?: number;
 };
 
 export type Ga4CommerceItemInput = {
@@ -41,6 +46,13 @@ export type Ga4CommerceItemInput = {
 
   categoryRootSlug?: string;
   categoryLeafSlug?: string | null;
+};
+
+export type Ga4PurchaseInput = {
+  transactionId: string;
+  items: Ga4CommerceItemInput[];
+  shipping?: number;
+  tax?: number;
 };
 
 /**
@@ -380,4 +392,91 @@ export function trackAddPaymentInfo(
       payment_type: normalisedPaymentType,
     },
   );
+}
+
+const PURCHASE_DEDUPE_KEY_PREFIX =
+  "ga4:purchase:";
+
+/**
+ * 发送真实购买事件。
+ *
+ * transaction_id 使用真实订单号或数据库订单 ID。
+ * 相同页面会话内相同 transaction_id 只发送一次。
+ */
+export function trackPurchase(
+  input: Ga4PurchaseInput,
+): void {
+  if (!isGa4Enabled()) {
+    return;
+  }
+
+  const transactionId = cleanText(
+    input.transactionId,
+  );
+
+  if (!transactionId) {
+    return;
+  }
+
+  const validItems = input.items.filter(
+    isValidCommerceInput,
+  );
+
+  /**
+   * 不允许发送缺少 SKU、名称、价格或数量的部分订单。
+   */
+  if (
+    validItems.length === 0 ||
+    validItems.length !== input.items.length
+  ) {
+    return;
+  }
+
+  const dedupeKey =
+    `${PURCHASE_DEDUPE_KEY_PREFIX}${transactionId}`;
+
+  try {
+    if (
+      window.sessionStorage.getItem(
+        dedupeKey,
+      ) === "1"
+    ) {
+      return;
+    }
+  } catch {
+    // sessionStorage 不可用时仍依赖 GA4 transaction_id 去重。
+  }
+
+  const extraParams: CommerceEventExtraParams = {
+    transaction_id: transactionId,
+  };
+
+  const shipping = normaliseMoney(
+    input.shipping,
+  );
+
+  const tax = normaliseMoney(input.tax);
+
+  if (shipping > 0) {
+    extraParams.shipping = shipping;
+  }
+
+  if (tax > 0) {
+    extraParams.tax = tax;
+  }
+
+  sendCommerceItemsEvent(
+    "purchase",
+    validItems,
+    extraParams,
+  );
+
+  try {
+    window.sessionStorage.setItem(
+      dedupeKey,
+      "1",
+    );
+  } catch {
+    // GA4 本身仍会根据 transaction_id 去重。
+  }
 }

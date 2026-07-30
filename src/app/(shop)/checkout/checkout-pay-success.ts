@@ -1,4 +1,9 @@
 // src/app/(shop)/checkout/checkout-pay-success.ts
+import {
+  cartItemToGa4CommerceInput,
+  trackPurchase,
+  type Ga4CommerceItemInput,
+} from "@/lib/analytics/ga4";
 import type { DeliveryMethod } from "./types";
 import type { ShippingQuoteAPIResult } from "./shipping-quote";
 
@@ -54,6 +59,13 @@ export async function finalizeCheckoutPaySuccess({
       ? Number(checkoutTotals.total_minor)
       : Number(totalMinorEffective) || 0;
 
+  const taxMinorForPreview =
+    typeof checkoutTotals?.tax_minor === "number"
+      ? Number(checkoutTotals.tax_minor)
+      : typeof checkoutTotals?.taxMinor === "number"
+        ? Number(checkoutTotals.taxMinor)
+        : 0;
+
   const cartForPreview =
     Array.isArray(checkoutTotals?.items) && checkoutTotals.items.length
       ? checkoutTotals.items
@@ -79,8 +91,128 @@ export async function finalizeCheckoutPaySuccess({
   if (!orderId) {
     return {
       ok: false,
-      error: "We couldn’t finalize your order right now. If you were charged, contact support.",
+      error:
+        "We couldn’t finalize your order right now. If you were charged, contact support.",
     };
+  }
+
+  /**
+   * GA4 purchase 必须在：
+   *
+   * 1. PayPal 捕获成功；
+   * 2. 后端订单已经持久化；
+   * 3. 返回真实 orderId；
+   * 4. clearCart 和页面跳转之前；
+   *
+   * 才能发送。
+   */
+  const transactionId = String(
+    orderNumber || orderId,
+  ).trim();
+
+  const purchaseCurrency =
+    String(currencyForPreview || "AUD")
+      .trim()
+      .toUpperCase() || "AUD";
+
+  const analyticsItems = cart
+    .map((item) =>
+      cartItemToGa4CommerceInput(item),
+    )
+    .filter(
+      (
+        item,
+      ): item is Ga4CommerceItemInput =>
+        item !== null,
+    );
+
+  const hasCompleteAnalyticsCart =
+    cart.length > 0 &&
+    analyticsItems.length === cart.length;
+
+  const purchaseItems = analyticsItems.map(
+    (item) => ({
+      ...item,
+      currency: purchaseCurrency,
+    }),
+  );
+
+  /**
+   * 再次核对前端商品合计与成功订单的权威商品合计。
+   *
+   * 最多允许 1 cent 的浮点舍入误差。
+   * 金额不一致时不发送错误的 purchase revenue。
+   */
+  const analyticsItemsMinor = Math.round(
+    purchaseItems.reduce(
+      (sum, item) => {
+        const quantity = Math.max(
+          1,
+          Math.floor(
+            Number(item.quantity) || 1,
+          ),
+        );
+
+        return (
+          sum +
+          Number(item.price || 0) * quantity
+        );
+      },
+      0,
+    ) * 100,
+  );
+
+  const expectedItemsMinor = Math.round(
+    Number(itemsMinorForPreview) || 0,
+  );
+
+  const itemTotalMatches =
+    expectedItemsMinor > 0 &&
+    Math.abs(
+      analyticsItemsMinor -
+        expectedItemsMinor,
+    ) <= 1;
+
+  if (
+    transactionId &&
+    hasCompleteAnalyticsCart &&
+    itemTotalMatches
+  ) {
+    trackPurchase({
+      transactionId,
+      items: purchaseItems,
+
+      shipping:
+        Math.max(
+          0,
+          Math.round(
+            Number(
+              deliveryFeeMinorForPreview,
+            ) || 0,
+          ),
+        ) / 100,
+
+      tax:
+        Math.max(
+          0,
+          Math.round(
+            Number(taxMinorForPreview) || 0,
+          ),
+        ) / 100,
+    });
+  } else {
+    console.warn(
+      "[ga4] purchase event skipped because order analytics data was incomplete or inconsistent",
+      {
+        transactionId,
+        cartLength: cart.length,
+        analyticsItemsLength:
+          analyticsItems.length,
+        expectedItemsMinor,
+        analyticsItemsMinor,
+        itemTotalMatches,
+      },
+    );
   }
 
   try {
