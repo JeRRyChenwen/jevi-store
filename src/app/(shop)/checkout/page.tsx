@@ -1,7 +1,12 @@
 // src/app/checkout/page.tsx
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
+import {
+  cartItemToGa4CommerceInput,
+  trackAddShippingInfo,
+  type Ga4CommerceItemInput,
+} from "@/lib/analytics/ga4";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCart } from "./(hooks)/useCart";
 import { usePricing } from "./(hooks)/usePricing";
@@ -160,6 +165,13 @@ function CheckoutPageContent() {
 
   const [deliveryMethod, setDeliveryMethod] =
     useState<DeliveryMethod>("standard");
+  /**
+   * 同一个购物袋和配送方式在当前 Checkout 页面生命周期内，
+   * 只发送一次 add_shipping_info。
+   *
+   * 商品或配送方式改变后可以重新发送。
+   */
+  const lastShippingInfoKeyRef = useRef("");
   const [isPayProcessing, setIsPayProcessing] = useState(false);
   const [payPersistErrMsg, setPayPersistErrMsg] = useState<string | null>(null);
   const [cookieConsent, setCookieConsent] = useState<
@@ -361,6 +373,51 @@ function CheckoutPageContent() {
     currency,
   });
 
+  const handleDeliveryContinueSuccess = () => {
+    /**
+     * 必须存在当前选中配送方式的有效报价。
+     * 防止仅有 UI 选择、但报价实际不可用时发送事件。
+     */
+    const selectedQuote = quoteByMethod?.[deliveryMethod];
+
+    if (!selectedQuote?.ok) {
+      return;
+    }
+
+    const analyticsItems = cart
+      .map((item) => cartItemToGa4CommerceInput(item))
+      .filter((item): item is Ga4CommerceItemInput => item !== null);
+
+    /**
+     * 购物袋中的每一个商品都必须具有真实 SKU。
+     * 不发送只有部分商品的 add_shipping_info。
+     */
+    const hasCompleteAnalyticsCart =
+      cart.length > 0 && analyticsItems.length === cart.length;
+
+    if (!hasCompleteAnalyticsCart) {
+      return;
+    }
+
+    const shippingInfoKey = JSON.stringify({
+      shippingTier: deliveryMethod,
+      items: analyticsItems.map((item) => ({
+        itemId: item.itemId,
+        currency: item.currency,
+        price: item.price,
+        quantity: item.quantity ?? 1,
+      })),
+    });
+
+    if (lastShippingInfoKeyRef.current === shippingInfoKey) {
+      return;
+    }
+
+    lastShippingInfoKeyRef.current = shippingInfoKey;
+
+    trackAddShippingInfo(analyticsItems, deliveryMethod);
+  };
+
   const handleContinue = async () => {
     await runCheckoutContinue({
       step,
@@ -380,6 +437,7 @@ function CheckoutPageContent() {
       quoteLoading,
       quoteError,
       nextStepCore,
+      onDeliveryContinueSuccess: handleDeliveryContinueSuccess,
       sendSubscriptionIfNeeded,
     });
   };

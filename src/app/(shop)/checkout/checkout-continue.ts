@@ -20,6 +20,7 @@ type Params = {
   quoteLoading?: boolean;
   quoteError?: string | null;
   nextStepCore: () => void;
+  onDeliveryContinueSuccess: () => void;
   sendSubscriptionIfNeeded: (emailRaw?: string) => Promise<void>;
 };
 
@@ -41,6 +42,7 @@ export async function runCheckoutContinue({
   quoteLoading = false,
   quoteError = null,
   nextStepCore,
+  onDeliveryContinueSuccess,
   sendSubscriptionIfNeeded,
 }: Params) {
   if (step === "bag") {
@@ -106,7 +108,9 @@ export async function runCheckoutContinue({
 
   if (step === "delivery") {
     if (quoteLoading) {
-      setContinueErrMsg("Please wait while we calculate shipping for your address.");
+      setContinueErrMsg(
+        "Please wait while we calculate shipping for your address.",
+      );
       return;
     }
 
@@ -121,6 +125,7 @@ export async function runCheckoutContinue({
       return;
     }
 
+    onDeliveryContinueSuccess();
     nextStepCore();
   }
 }
