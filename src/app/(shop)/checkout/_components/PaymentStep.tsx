@@ -8,12 +8,8 @@ import React, {
   useMemo,
   useEffect,
 } from "react";
-import { useRouter } from "next/navigation";
 import { Check } from "lucide-react";
-import {
-  pickCreatedOrderIdFromPayPalPayload,
-  type PayError,
-} from "./PaymentStep.helpers";
+import type { PayError } from "./PaymentStep.helpers";
 import type { PaymentStepProps } from "./PaymentStep.types";
 import { getOutOfStockDisplay, mapPayFailure } from "./PaymentStep.error-utils";
 import { buildCheckoutTotalsMeta } from "./PaymentStep.checkout-meta";
@@ -71,6 +67,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   deliveryFeeMinor,
   currency,
   onPayInitiated,
+  onPaySucceeded,
   cart,
   preReservationId,
   preReservationExpiresAtSec,
@@ -80,7 +77,6 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   paypalConsentRequired = false,
   paypalDisabledText,
 }) => {
-  const router = useRouter();
   const { layoutReady, isDesktopLayout } = useCheckoutResponsiveLayout();
 
   const [method, setMethod] = useState<"card" | "paypal">("paypal");
@@ -189,60 +185,37 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     setPayError,
   });
 
+  /**
+   * PayPal capture 和后端建单成功后的组件级处理。
+   *
+   * PaymentStep 只负责清理本组件的 reservation UI 状态，
+   * 然后把完整成功 payload 交还给 Checkout page。
+   *
+   * Checkout page 是唯一负责以下操作的位置：
+   * - 发送 GA4 purchase；
+   * - 保存 last-order-preview；
+   * - 清空购物袋；
+   * - 处理订阅；
+   * - 跳转订单确认页。
+   */
   const handlePaySucceeded = useCallback(
-    (payload: any) => {
+    async (payload: any) => {
       setPayError(null);
       setSuppressBlockedHint(true);
 
-      // 成功后把 reservation 状态清掉（后端 /orders 会 consume）
       setReservationId(null);
       setReservationExpiresAt(null);
       reservationIdRef.current = null;
 
-      // ✅ 优先使用订单号，例如 SP20260528-000001
-      // 这样 confirmation page 可以直接按 order_number 查询订单。
-      const orderNumber =
-        payload?.order?.order?.order_number ||
-        payload?.order?.orderNumber ||
-        payload?.order?.order_number ||
-        payload?.orderNumber ||
-        payload?.successMeta?.orderNumber ||
-        null;
+      try {
+        await Promise.resolve(onPaySucceeded(payload));
+      } catch (error) {
+        console.error("[payment] checkout success finalization failed:", error);
 
-      // ✅ 兜底：如果拿不到订单号，再使用数字 id
-      const createdOrderId = pickCreatedOrderIdFromPayPalPayload(payload);
-
-      const finalOrderId = String(orderNumber || createdOrderId || "").trim();
-
-      // ✅ confirmation page 读取订单需要 email。
-      // 优先使用当前 PaymentStep 已经计算好的 effectiveOrderEmail。
-      const finalOrderEmail = String(
-        effectiveOrderEmail ||
-          payload?.successMeta?.checkoutEmail ||
-          payload?.successMeta?.accountEmail ||
-          payload?.successMeta?.email ||
-          payload?.successMeta?.address?.email ||
-          "",
-      )
-        .trim()
-        .toLowerCase();
-
-      if (finalOrderId) {
-        const url = new URL("/order/confirmation", window.location.origin);
-        url.searchParams.set("orderId", finalOrderId);
-
-        if (finalOrderEmail) {
-          url.searchParams.set("email", finalOrderEmail);
-        }
-
-        router.replace(`${url.pathname}${url.search}`);
-        return;
+        setPayError(mapPayFailure(error));
       }
-
-      // 拿不到 orderId 也至少跳过去（会停在 Finalizing）
-      router.replace(`/order/confirmation`);
     },
-    [router, effectiveOrderEmail],
+    [onPaySucceeded],
   );
 
   /**

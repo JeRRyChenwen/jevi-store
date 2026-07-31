@@ -8,8 +8,13 @@ import { BRAND } from "@/lib/brand";
 
 const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID?.trim();
 
+const shouldEnableDevelopmentAnalytics =
+  process.env.NODE_ENV === "development" &&
+  process.env.NEXT_PUBLIC_GA_ENABLE_DEVELOPMENT?.trim().toLowerCase() ===
+    "true";
+
 const shouldLoadGoogleAnalytics =
-  process.env.NODE_ENV === "production" &&
+  (process.env.NODE_ENV === "production" || shouldEnableDevelopmentAnalytics) &&
   Boolean(GA_MEASUREMENT_ID) &&
   /^G-[A-Z0-9]+$/i.test(GA_MEASUREMENT_ID ?? "");
 
@@ -66,7 +71,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       </body>
 
       {shouldLoadGoogleAnalytics ? (
-        <GoogleAnalytics gaId={GA_MEASUREMENT_ID!} />
+        <GoogleAnalytics
+          gaId={GA_MEASUREMENT_ID!}
+          debugMode={process.env.NODE_ENV === "development"}
+        />
       ) : null}
     </html>
   );

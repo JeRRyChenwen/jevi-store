@@ -6,7 +6,17 @@ import { sendGAEvent } from "@next/third-parties/google";
 const GA_MEASUREMENT_ID =
   process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID?.trim() ?? "";
 
-const STORE_AFFILIATION = "JEVI Store Production";
+const shouldEnableDevelopmentAnalytics =
+  process.env.NODE_ENV === "development" &&
+  process.env.NEXT_PUBLIC_GA_ENABLE_DEVELOPMENT
+    ?.trim()
+    .toLowerCase() === "true";
+
+const STORE_AFFILIATION =
+  process.env.NODE_ENV === "production"
+    ? "JEVI Store Production"
+    : "JEVI Store Local PayPal Sandbox";
+
 const ITEM_BRAND = "JEVI APPAREL STUDIO";
 
 type CommerceEventName =
@@ -87,7 +97,10 @@ export type Ga4CartItemSnapshot = {
 function isGa4Enabled(): boolean {
   return (
     typeof window !== "undefined" &&
-    process.env.NODE_ENV === "production" &&
+    (
+      process.env.NODE_ENV === "production" ||
+      shouldEnableDevelopmentAnalytics
+    ) &&
     /^G-[A-Z0-9]+$/i.test(GA_MEASUREMENT_ID)
   );
 }
