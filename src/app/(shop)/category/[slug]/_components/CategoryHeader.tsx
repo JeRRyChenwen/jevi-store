@@ -24,9 +24,8 @@ export type CategoryHeaderProps = {
   title: string;
 
   /**
-   * slug 和 description 目前由上层传入。
-   * description 会继续用于 page.tsx 里的 SEO metadata，
-   * 但这里不在页面视觉区域显示。
+   * slug 和 description 由上层传入。
+   * description 会显示在分类页 H1 下方，作为可见的分类介绍。
    */
   slug: string;
   description?: string;
@@ -42,6 +41,7 @@ export type CategoryHeaderProps = {
 
 export default function CategoryHeader({
   title,
+  description,
   resultLabel,
   sortKey,
   setSortInUrl,
@@ -50,9 +50,15 @@ export default function CategoryHeader({
 }: CategoryHeaderProps) {
   return (
     <header className="mb-6">
-      <div className="flex items-end justify-between gap-4">
-        <div>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0 max-w-4xl">
           <h1 className="text-2xl font-bold">{title}</h1>
+
+          {description ? (
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-neutral-600 md:text-base md:leading-7">
+              {description}
+            </p>
+          ) : null}
         </div>
 
         <div className="flex items-center gap-3">

@@ -1,5 +1,6 @@
 // src/app/(shop)/page.tsx
 import type { Metadata } from "next";
+import Link from "next/link";
 import {
   api,
   fetchSubcategoriesByParentId,
@@ -295,6 +296,15 @@ export default async function HomePage() {
             APPAREL STUDIO, designed to add height discreetly while maintaining
             everyday comfort, natural proportions and versatile style.
           </p>
+
+          <div className="mt-4">
+            <Link
+              href="/category/shoes"
+              className="inline-flex text-sm font-medium text-neutral-900 underline underline-offset-4 transition-colors hover:text-neutral-600"
+            >
+              Shop men&apos;s height-increasing and elevator shoes
+            </Link>
+          </div>
         </section>
 
         <HomeBanner intervalMs={7000} />
