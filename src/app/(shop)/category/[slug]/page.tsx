@@ -39,12 +39,12 @@ type CategorySeoContent = {
 
 const CATEGORY_SEO_CONTENT: Record<string, CategorySeoContent> = {
   shoes: {
-    title: "Add Height Shoes & Elevator Shoes Australia",
+    title: "Men's Height Increasing & Elevator Shoes Australia",
     description:
-      "Shop add height shoes, elevator shoes and hidden-lift sneakers designed for discreet elevation, everyday comfort and delivery across Australia.",
-    heading: "Add Height, Elevator & Hidden-Lift Shoes",
+      "Shop men's elevator shoes and height-increasing sneakers in Australia. Explore discreet 6 cm and 8 cm hidden-lift styles with Australia-wide delivery.",
+    heading: "Men's Elevator Shoes & Height Increasing Shoes Australia",
     introduction:
-      "Explore our complete collection of add height shoes, elevator shoes and hidden-lift sneakers designed to provide discreet elevation for everyday and formal wear.",
+      "Discover men's elevator shoes and height-increasing shoes designed for a discreet lift and everyday wear. Explore sneakers, dress shoes and Chelsea boots with hidden 6 cm and 8 cm height options, available for delivery across Australia.",
   },
 
   "new-in": {
